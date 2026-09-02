@@ -14,7 +14,7 @@ export default function BillingHeader() {
       <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
         <span className="flex items-baseline gap-1.5 shrink-0">
           <span className="text-brand font-bold text-base sm:text-lg">LIVE Sidestage</span>
-          <span className="text-gray-400 font-medium text-sm">プラン</span>
+          <span className="text-muted font-medium text-sm">プラン</span>
         </span>
 
         <button

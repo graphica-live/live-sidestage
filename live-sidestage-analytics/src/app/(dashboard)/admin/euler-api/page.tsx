@@ -127,27 +127,27 @@ export default function EulerApiAdminPage() {
     <div className="max-w-5xl px-6 py-8 space-y-6">
       <div>
         <h1 className="text-lg font-bold text-brand">EulerAPI 設定</h1>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-muted mt-1">
           ここで設定したAPIキーを使ってTikTok Liveの署名(Euler)を取得します。未設定の場合は匿名で取得します。
         </p>
       </div>
 
       <div className="card space-y-4 max-w-xl">
         <div>
-          <p className="text-sm text-gray-300 mb-1">現在の状態</p>
+          <p className="text-sm text-strong mb-1">現在の状態</p>
           {status ? (
             status.configured ? (
-              <p className="text-sm font-mono text-green-400">設定済み ({status.maskedKey})</p>
+              <p className="text-sm font-mono text-green-600 dark:text-green-400">設定済み ({status.maskedKey})</p>
             ) : (
-              <p className="text-sm text-gray-500">未設定(匿名取得)</p>
+              <p className="text-sm text-muted">未設定(匿名取得)</p>
             )
           ) : (
-            <p className="text-sm text-gray-500">読み込み中...</p>
+            <p className="text-sm text-muted">読み込み中...</p>
           )}
         </div>
 
         <div>
-          <label className="text-sm text-gray-300 block mb-1">APIキー</label>
+          <label className="text-sm text-strong block mb-1">APIキー</label>
           <input
             type="text"
             placeholder="新しいAPIキーを入力"
@@ -160,8 +160,8 @@ export default function EulerApiAdminPage() {
           />
         </div>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-        {message && <p className="text-green-400 text-sm">{message}</p>}
+        {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
+        {message && <p className="text-green-600 dark:text-green-400 text-sm">{message}</p>}
 
         <div className="flex gap-2">
           <button onClick={handleSave} disabled={loading} className="btn-primary flex-1">
@@ -171,7 +171,7 @@ export default function EulerApiAdminPage() {
             <button
               onClick={handleClear}
               disabled={loading}
-              className="btn-ghost text-sm text-red-400 hover:text-red-300"
+              className="btn-ghost text-sm text-red-600 dark:text-red-400 hover:text-red-300"
             >
               削除
             </button>
@@ -182,7 +182,7 @@ export default function EulerApiAdminPage() {
       <div className="space-y-3">
         <div>
           <h2 className="text-lg font-bold text-brand">署名利用履歴</h2>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-muted mt-1">
             EulerAPIへ実際に署名(WebSocket接続用)を要求した履歴。いつ・何がきっかけで・誰の目的で消費したかを追跡する。
           </p>
         </div>
@@ -207,12 +207,12 @@ export default function EulerApiAdminPage() {
           </button>
         </div>
 
-        {usageError && <p className="text-red-400 text-sm">{usageError}</p>}
+        {usageError && <p className="text-red-600 dark:text-red-400 text-sm">{usageError}</p>}
 
         <div className="card overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-gray-400 border-b border-gray-700">
+              <tr className="text-left text-muted border-b border-border">
                 <th className="p-2">requestedAt</th>
                 <th className="p-2">tiktokId</th>
                 <th className="p-2">outcome</th>
@@ -226,16 +226,16 @@ export default function EulerApiAdminPage() {
             </thead>
             <tbody>
               {usageRows.map((r) => (
-                <tr key={r.id} className="border-b border-gray-800">
+                <tr key={r.id} className="border-b border-border">
                   <td className="p-2 whitespace-nowrap">{new Date(r.requestedAt).toLocaleString("ja-JP")}</td>
                   <td className="p-2">@{r.tiktokId}</td>
-                  <td className={`p-2 ${r.outcome === "error" ? "text-red-400" : "text-green-400"}`}>
+                  <td className={`p-2 ${r.outcome === "error" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                     {r.outcome}
-                    {r.errorMessage && <div className="text-gray-500">{r.errorMessage}</div>}
+                    {r.errorMessage && <div className="text-muted">{r.errorMessage}</div>}
                   </td>
                   <td className="p-2">
                     {r.trigger}
-                    {r.reason && <div className="text-gray-500">({r.reason})</div>}
+                    {r.reason && <div className="text-muted">({r.reason})</div>}
                   </td>
                   <td className="p-2">
                     {r.role}
@@ -258,7 +258,7 @@ export default function EulerApiAdminPage() {
               ))}
               {usageRows.length === 0 && !usageLoading && (
                 <tr>
-                  <td colSpan={9} className="p-4 text-center text-gray-500">
+                  <td colSpan={9} className="p-4 text-center text-muted">
                     履歴がありません
                   </td>
                 </tr>

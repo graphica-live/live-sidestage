@@ -84,10 +84,10 @@ export const STATUS_LABELS: Record<EventStatus, string> = {
 };
 
 export const STATUS_CLASSES: Record<EventStatus, string> = {
-  SCHEDULED: "text-yellow-400 bg-yellow-400/10",
-  RUNNING: "text-green-400 bg-green-400/10",
-  FINISHED: "text-gray-400 bg-white/5",
-  ARCHIVED: "text-gray-500 bg-white/5",
+  SCHEDULED: "text-yellow-700 dark:text-yellow-400 bg-yellow-400/10",
+  RUNNING: "text-green-700 dark:text-green-400 bg-green-400/10",
+  FINISHED: "text-muted bg-black/5 dark:bg-white/5",
+  ARCHIVED: "text-muted bg-black/5 dark:bg-white/5",
 };
 
 // 順位表の見出し。獲得ダイヤレース以外は「順位」を名乗らせない —
@@ -128,14 +128,14 @@ export const MATCH_STATUS_LABELS: Record<string, string> = {
 };
 
 export const MATCH_STATUS_CLASSES: Record<string, string> = {
-  SCHEDULED: "text-gray-400 bg-white/5",
+  SCHEDULED: "text-muted bg-black/5 dark:bg-white/5",
   // バトル中だけは赤。カード側の赤い発光(.live-glow)と揃えて、表でも一覧でも同じ色で読める。
-  LIVE: "text-red-400 bg-red-500/15",
-  DETECTED: "text-blue-400 bg-blue-400/10",
-  NEEDS_REVIEW: "text-yellow-400 bg-yellow-400/10",
-  FINISHED: "text-white bg-white/10",
-  NO_SHOW: "text-gray-500 bg-white/5",
-  VOID: "text-red-400 bg-red-400/10",
+  LIVE: "text-red-700 dark:text-red-400 bg-red-500/15",
+  DETECTED: "text-blue-700 dark:text-blue-400 bg-blue-400/10",
+  NEEDS_REVIEW: "text-yellow-700 dark:text-yellow-400 bg-yellow-400/10",
+  FINISHED: "text-strong bg-black/10 dark:bg-white/10",
+  NO_SHOW: "text-muted bg-black/5 dark:bg-white/5",
+  VOID: "text-red-700 dark:text-red-400 bg-red-400/10",
 };
 
 // 勝敗をどう決めたか。公開ページでも出して、自動と手動を区別できるようにする。
@@ -186,11 +186,11 @@ export const LISTENER_STATUS_LABELS: Record<string, string> = {
 };
 
 export const LISTENER_STATUS_CLASSES: Record<string, string> = {
-  idle: "text-gray-400 bg-white/5",
-  connecting: "text-yellow-400 bg-yellow-400/10",
-  connected: "text-green-400 bg-green-400/10",
-  retrying: "text-gray-400 bg-white/5",
-  error: "text-red-400 bg-red-400/10",
+  idle: "text-muted bg-black/5 dark:bg-white/5",
+  connecting: "text-yellow-700 dark:text-yellow-400 bg-yellow-400/10",
+  connected: "text-green-700 dark:text-green-400 bg-green-400/10",
+  retrying: "text-muted bg-black/5 dark:bg-white/5",
+  error: "text-red-700 dark:text-red-400 bg-red-400/10",
 };
 
 // 対戦ルール(Event.rules.matchRules)のラベル。

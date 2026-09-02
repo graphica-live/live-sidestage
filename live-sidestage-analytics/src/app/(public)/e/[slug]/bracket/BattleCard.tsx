@@ -40,17 +40,17 @@ export function BattleCard({
   const singleTiktokScores = !isCombined ? battles[0]?.tiktokScores : undefined;
 
   return (
-    <div className={`border border-white/10 bg-panel p-4 ${CARD_CLIP}`}>
+    <div className={`border border-border bg-panel p-4 ${CARD_CLIP}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-white">第{index + 1}ゲーム</h3>
-        <span className="text-xs text-gray-500">
+        <h3 className="text-sm font-bold text-strong">第{index + 1}ゲーム</h3>
+        <span className="text-xs text-muted">
           {formatJstStamp(new Date(game.startedAt))}
           {game.endedAt ? ` 〜 ${formatJstStamp(new Date(game.endedAt))}` : "(進行中)"}
         </span>
       </div>
 
       {isCombined && (
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-muted">
           検知バトル:{" "}
           {battles
             .map(
@@ -63,7 +63,7 @@ export function BattleCard({
       )}
 
       {!game.completed ? (
-        <p className="mt-3 text-sm text-gray-500">まだ決着していない。</p>
+        <p className="mt-3 text-sm text-muted">まだ決着していない。</p>
       ) : (
         <>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -76,7 +76,7 @@ export function BattleCard({
                   type="button"
                   onClick={() => sideIndex !== null && setSelectedSideIndex(sideIndex)}
                   aria-pressed={isSelected}
-                  className={`min-w-0 border border-white/10 bg-black/20 p-2.5 text-left sm:cursor-default ${CARD_CLIP} ${
+                  className={`min-w-0 border border-border bg-black/5 dark:bg-white/5 p-2.5 text-left sm:cursor-default ${CARD_CLIP} ${
                     isSelected ? "ring-1 ring-inset ring-brand/60 sm:ring-0" : ""
                   }`}
                 >
@@ -91,13 +91,13 @@ export function BattleCard({
                     )}
                   </div>
                   {singleTiktokScores?.[s.sideId] && (
-                    <p className="font-mono text-base font-bold tabular-nums text-white">
+                    <p className="font-mono text-base font-bold tabular-nums text-strong">
                       {formatNumber(singleTiktokScores[s.sideId]!)}{" "}
-                      <span className="text-xs font-normal text-gray-400">バトルスコア</span>
+                      <span className="text-xs font-normal text-muted">バトルスコア</span>
                     </p>
                   )}
-                  <p className="font-mono text-xs tabular-nums text-gray-500">
-                    {formatNumber(s.diamonds)} <span className="text-gray-600">ダイヤ</span>
+                  <p className="font-mono text-xs tabular-nums text-muted">
+                    {formatNumber(s.diamonds)} <span className="text-muted">ダイヤ</span>
                   </p>
                 </button>
               );
@@ -129,7 +129,7 @@ function GameContributions({
   const contributions = game.contributions;
   if (!contributions) return null;
   if (contributions.length === 0) {
-    return <p className="mt-3 text-xs text-gray-600">このゲームで記録されたギフトはまだ無い。</p>;
+    return <p className="mt-3 text-xs text-muted">このゲームで記録されたギフトはまだ無い。</p>;
   }
 
   const sideIndexes = [...new Set(contributions.map((c) => c.sideIndex))].sort((a, b) => a - b);
@@ -137,8 +137,8 @@ function GameContributions({
     sides.find((s) => s.sideIndex === sideIndex)?.name ?? `サイド${sideIndex + 1}`;
 
   return (
-    <div className="mt-4 border-t border-white/5 pt-3">
-      <p className="text-xs text-gray-500">
+    <div className="mt-4 border-t border-border pt-3">
+      <p className="text-xs text-muted">
         貢献者一覧
         <span className="sm:hidden"> (上のカードをタップで切り替え)</span>
       </p>
@@ -148,7 +148,7 @@ function GameContributions({
             key={sideIndex}
             className={`min-w-0 space-y-3 ${sideIndex === selectedSideIndex ? "" : "hidden sm:block"}`}
           >
-            <p className="truncate text-xs font-semibold text-gray-400">{sideName(sideIndex)}</p>
+            <p className="truncate text-xs font-semibold text-muted">{sideName(sideIndex)}</p>
             {contributions
               .filter((slot) => slot.sideIndex === sideIndex)
               .map((slot) => (
@@ -166,16 +166,16 @@ function ContributionSlot({ slot }: { slot: BattleContributionSlot }) {
     <div>
       <p className="text-xs font-medium text-brand/80">
         {slot.displayName}
-        <span className="ml-2 font-mono text-gray-500">
+        <span className="ml-2 font-mono text-muted">
           {formatNumber(slot.diamonds)} ダイヤ ・ {formatNumber(String(slot.giftCount))} 個
         </span>
       </p>
       {slot.listeners.length === 0 ? (
-        <p className="mt-1 text-xs text-gray-600">まだギフトが無い。</p>
+        <p className="mt-1 text-xs text-muted">まだギフトが無い。</p>
       ) : (
         <ul className="mt-1 space-y-1">
           {slot.listeners.map((l) => (
-            <li key={l.uniqueId} className="flex items-center gap-2 text-xs text-gray-400">
+            <li key={l.uniqueId} className="flex items-center gap-2 text-xs text-muted">
               {l.profileImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -185,7 +185,7 @@ function ContributionSlot({ slot }: { slot: BattleContributionSlot }) {
                   loading="lazy"
                 />
               ) : (
-                <span className="h-5 w-5 shrink-0 rounded-full bg-white/5" aria-hidden />
+                <span className="h-5 w-5 shrink-0 rounded-full bg-black/5 dark:bg-white/5" aria-hidden />
               )}
               <span className="min-w-0 flex-1 truncate">{l.nickname}</span>
               <span className="shrink-0 font-mono tabular-nums">{formatNumber(l.diamonds)}</span>
@@ -193,7 +193,7 @@ function ContributionSlot({ slot }: { slot: BattleContributionSlot }) {
           ))}
         </ul>
       )}
-      {slot.truncated && <p className="mt-1 text-xs text-gray-600">上位のみ表示している。</p>}
+      {slot.truncated && <p className="mt-1 text-xs text-muted">上位のみ表示している。</p>}
     </div>
   );
 }
@@ -204,15 +204,15 @@ function ContributionSlot({ slot }: { slot: BattleContributionSlot }) {
  */
 export function UnselectedBattleNote({ battle }: { battle: BattleDetail }) {
   return (
-    <div className={`border border-dashed border-white/10 bg-panel/50 p-3 ${CARD_CLIP}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+    <div className={`border border-dashed border-border bg-panel/50 p-3 ${CARD_CLIP}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span>
           {formatJstStamp(new Date(battle.startedAt))}
           {battle.endedAt ? ` 〜 ${formatJstStamp(new Date(battle.endedAt))}` : "(進行中)"}
         </span>
         {battle.confidence === "partial" && <span>部分一致</span>}
       </div>
-      <p className="mt-1 text-xs text-gray-600">この候補は現在の結果には反映されていない(除外済み)。</p>
+      <p className="mt-1 text-xs text-muted">この候補は現在の結果には反映されていない(除外済み)。</p>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useOverlayKindSettings } from "./useOverlayKindSettings";
 
 const CHOICE_BASE = "text-xs px-2 py-2 rounded-lg border transition-colors";
 const CHOICE_ON = "border-brand text-brand bg-brand/10";
-const CHOICE_OFF = "border-border text-gray-400 hover:text-white hover:border-white/30";
+const CHOICE_OFF = "border-border text-muted hover:text-strong hover:border-brand/40";
 
 type Payload = {
   bgStyle: "transparent" | "semi";
@@ -16,12 +16,12 @@ type Payload = {
 export default function CoinListSettings() {
   const { settings, loading, error, update } = useOverlayKindSettings<Payload>("coin-list");
 
-  if (loading) return <p className="text-sm text-gray-400">読み込み中...</p>;
-  if (!settings) return error ? <p className="text-sm text-red-400">{error}</p> : null;
+  if (loading) return <p className="text-sm text-muted">読み込み中...</p>;
+  if (!settings) return error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null;
 
   return (
     <div className="space-y-5">
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div>
         <span className="label">並び順</span>

@@ -50,9 +50,10 @@ export default function LoginPage({
   return (
     <GoogleLoginPanel
       brandSuffix="Analytics"
-      tagline="TikTok Live ギフト解析"
+      tagline="TikTok Live 配信データ総合解析Platform"
       defaultCallbackUrl="/"
       origin={canonicalOrigin("analytics")}
+      variant="split"
     />
   );
 }

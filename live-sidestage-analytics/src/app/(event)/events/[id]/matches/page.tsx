@@ -255,11 +255,11 @@ export default async function MatchesPage({ params }: { params: { id: string } }
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <Link href={`/events/${event.id}`} className="text-sm text-gray-400 hover:text-white">
+      <Link href={`/events/${event.id}`} className="text-sm text-muted hover:text-strong">
         ← {event.title}
       </Link>
       <h1 className="mt-2 text-2xl font-bold">対戦管理</h1>
-      <p className="mt-1 text-sm text-gray-400">
+      <p className="mt-1 text-sm text-muted">
         対戦は開催日程に割り当てる。その日程の中で<strong>終了した</strong> TikTok バトルを
         組み合わせで自動照合する。
       </p>
@@ -301,7 +301,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
           <Link href={`/events/${event.id}`} className="btn-primary text-sm">
             次へ: 完了
           </Link>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted">
             組み合わせはあとからでも入れ替えられる。作り直すときは破棄してから。
           </span>
         </div>

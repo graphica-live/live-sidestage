@@ -77,7 +77,7 @@ export function DestroyBracketDialog({
           トーナメント表を破棄する
         </h2>
 
-        <ul className="mt-3 space-y-1 text-sm text-gray-300">
+        <ul className="mt-3 space-y-1 text-sm text-strong">
           <li>対戦カード {summary.total} 件がすべて消える。</li>
           {summary.finished > 0 && (
             <li className="text-red-300">確定した結果 {summary.finished} 件が消える。</li>
@@ -88,7 +88,7 @@ export function DestroyBracketDialog({
             </li>
           )}
           {summary.bye > 0 && (
-            <li className="text-gray-400">
+            <li className="text-muted">
               不戦勝 {summary.bye} 件は、同じ組み合わせで作り直せば同じように再生成される。
             </li>
           )}
@@ -106,7 +106,7 @@ export function DestroyBracketDialog({
           </div>
         )}
 
-        <p className="mt-3 text-xs leading-relaxed text-gray-500">
+        <p className="mt-3 text-xs leading-relaxed text-muted">
           破棄すると表が無い状態になる。作り直すときは、このあと「表を作る」から日程と
           組み合わせを決め直す。検知したバトルの記録そのものは消えないので、日程が同じなら
           新しい表でも同じバトルが検知され直す。
@@ -121,7 +121,7 @@ export function DestroyBracketDialog({
         {/* 明示的な破壊操作なので、進行状態を問わず入力を求める。 */}
         <div className="mt-4">
           <label htmlFor="destroy-confirm" className="label">
-            確認のため <code className="select-all text-gray-200">{eventTitle}</code> と入力する
+            確認のため <code className="select-all text-strong">{eventTitle}</code> と入力する
           </label>
           <input
             id="destroy-confirm"
@@ -133,7 +133,7 @@ export function DestroyBracketDialog({
           />
         </div>
 
-        {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           <button

@@ -55,26 +55,26 @@ function AgencyLoginForm() {
         <div className="text-center mb-8">
           <h1 className="flex items-baseline justify-center gap-2 leading-tight">
             <span className="text-2xl font-bold text-brand">LIVE Sidestage</span>
-            <span className="text-base font-medium text-gray-400">事務所コンソール</span>
+            <span className="text-base font-medium text-muted">事務所コンソール</span>
           </h1>
-          <p className="text-gray-400 text-sm mt-1">監視対象ライバーの管理と企業向けAPI</p>
+          <p className="text-muted text-sm mt-1">監視対象ライバーの管理と企業向けAPI</p>
         </div>
 
         {deniedMessage && (
           <div className="card mb-4 border-red-900/60 bg-red-500/5">
-            <p className="text-sm text-red-400">{deniedMessage}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{deniedMessage}</p>
           </div>
         )}
 
         <div className="card">
           <button
             onClick={() => signIn(AGENCY_GOOGLE_PROVIDER_ID, { callbackUrl })}
-            className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-2 bg-black/5 dark:bg-white/5 hover:bg-row-hover border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
           >
             <GoogleIcon />
             Googleでログイン
           </button>
-          <p className="text-xs text-gray-500 mt-3">
+          <p className="text-xs text-muted mt-3">
             運営に登録してもらったGoogleアカウントでログインしてください。
             配信者向けのログインとは別で、どちらか一方のログアウトがもう一方に影響することはありません。
           </p>
@@ -82,7 +82,7 @@ function AgencyLoginForm() {
 
         {DEV_LOGIN_ENABLED && (
           <div className="card mt-4 border-dashed">
-            <p className="text-xs text-gray-500 mb-2">開発用ログイン(ローカルテスト環境専用)</p>
+            <p className="text-xs text-muted mb-2">開発用ログイン(ローカルテスト環境専用)</p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -99,7 +99,7 @@ function AgencyLoginForm() {
               />
               <button
                 type="submit"
-                className="bg-brand text-white rounded-lg px-3 text-sm font-medium hover:opacity-90"
+                className="bg-brand text-on-accent rounded-lg px-3 text-sm font-medium hover:opacity-90"
               >
                 ログイン
               </button>

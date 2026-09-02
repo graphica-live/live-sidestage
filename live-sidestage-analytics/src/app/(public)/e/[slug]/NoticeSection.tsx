@@ -13,7 +13,7 @@ export function NoticeSection({ text }: { text: string }) {
             return (
               <h3
                 key={index}
-                className="mt-2 flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-xl font-black tracking-tight text-white first:mt-0"
+                className="mt-2 flex items-center gap-2.5 font-[family-name:var(--font-battle)] text-xl font-black tracking-tight text-strong first:mt-0"
               >
                 <span className="h-5 w-1.5 shrink-0 -skew-x-12 bg-brand" aria-hidden />
                 {block.text}
@@ -21,13 +21,13 @@ export function NoticeSection({ text }: { text: string }) {
             );
           case "heading3":
             return (
-              <h4 key={index} className="mt-1 text-sm font-bold text-gray-200">
+              <h4 key={index} className="mt-1 text-sm font-bold text-strong">
                 {block.text}
               </h4>
             );
           case "list":
             return (
-              <ul key={index} className="grid gap-1 pl-4 text-sm text-gray-300">
+              <ul key={index} className="grid gap-1 pl-4 text-sm text-strong">
                 {block.items.map((item, itemIndex) => (
                   <li key={itemIndex} className="list-disc marker:text-brand/70">
                     {item}
@@ -37,7 +37,7 @@ export function NoticeSection({ text }: { text: string }) {
             );
           case "paragraph":
             return (
-              <p key={index} className="whitespace-pre-wrap text-sm leading-relaxed text-gray-300">
+              <p key={index} className="whitespace-pre-wrap text-sm leading-relaxed text-strong">
                 {block.text}
               </p>
             );

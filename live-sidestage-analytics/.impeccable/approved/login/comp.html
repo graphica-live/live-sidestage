@@ -1,0 +1,298 @@
+<title>Analytics新デザイン採用案</title>
+<meta name="description" content="live-sidestage-analytics 定番SaaS方向(ライト/ダーク対応)のダッシュボード確定+ログイン画面3案">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+
+<style>
+:root{
+  --page-bg:#f4f5f7; --page-panel:#ffffff; --page-border:#e2e4ea;
+  --page-text:#15181f; --page-muted:#6b7280; --page-accent:#4f46e5;
+  --chip-shadow:0 1px 2px rgba(15,18,25,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page-bg:#0b0c10; --page-panel:#15171c; --page-border:#262932;
+    --page-text:#eef0f4; --page-muted:#9aa0ac; --page-accent:#8b85ff;
+    --chip-shadow:0 1px 2px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --page-bg:#0b0c10; --page-panel:#15171c; --page-border:#262932;
+  --page-text:#eef0f4; --page-muted:#9aa0ac; --page-accent:#8b85ff;
+  --chip-shadow:0 1px 2px rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box;}
+body{background:var(--page-bg);color:var(--page-text);font-family:"Inter",ui-sans-serif,system-ui,sans-serif;padding:28px 20px 90px;}
+.wrap{max-width:1180px;margin:0 auto;}
+header.page-head h1{font-size:1.5rem;font-weight:800;letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance;}
+header.page-head p{margin:0;color:var(--page-muted);font-size:.92rem;max-width:70ch;line-height:1.6;}
+.decided{
+  display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:.78rem;font-weight:700;
+  color:#15803d;background:rgba(34,197,94,.12);padding:5px 10px;border-radius:6px;
+}
+
+.modebar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  margin:22px 0 6px;padding:10px 14px;background:var(--page-panel);border:1px solid var(--page-border);border-radius:10px;
+}
+.modebar span{font-size:.78rem;color:var(--page-muted);}
+.modetoggle{display:inline-flex;border:1px solid var(--page-border);border-radius:999px;padding:3px;background:var(--page-bg);}
+.modetoggle button{
+  appearance:none;border:0;background:transparent;color:var(--page-muted);font:inherit;font-weight:600;font-size:.78rem;
+  padding:6px 14px;border-radius:999px;cursor:pointer;
+}
+.modetoggle button.active{background:var(--page-accent);color:#fff;}
+
+.sectiontitle{margin:28px 0 4px;font-size:1.05rem;font-weight:700;}
+.sectionsub{margin:0 0 14px;color:var(--page-muted);font-size:.84rem;line-height:1.6;max-width:70ch;}
+
+.tabbar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0;border-bottom:1px solid var(--page-border);}
+.tabbtn{
+  appearance:none;border:1px solid var(--page-border);background:var(--page-panel);color:var(--page-muted);
+  font:inherit;font-weight:600;font-size:.82rem;padding:10px 14px;border-radius:10px 10px 0 0;cursor:pointer;
+  border-bottom:none;position:relative;top:1px;transition:color .15s,background .15s;
+}
+.tabbtn:hover{color:var(--page-text);}
+.tabbtn[aria-selected="true"]{color:var(--page-text);background:var(--page-bg);box-shadow:0 -2px 0 var(--page-accent) inset;}
+.tabbtn small{display:block;font-weight:400;font-size:.7rem;color:var(--page-muted);margin-top:2px;}
+.tabbtn:focus-visible{outline:2px solid var(--page-accent);outline-offset:2px;}
+
+.stage{border-radius:0 16px 16px 16px;overflow:hidden;box-shadow:var(--chip-shadow);border:1px solid var(--page-border);border-top:0;}
+.mock{padding:20px;font-family:var(--f-body);min-height:60px;}
+.mock[hidden]{display:none;}
+
+/* ---- shared "canon" (定番SaaS) token system : light default, dark override ---- */
+.dir-canon{
+  --bg:#ffffff; --panel:#f8f9fb; --border:#e5e7eb; --row-border:#eef0f3; --row-hover:#f5f6f9;
+  --text:#374151; --text-strong:#111827; --muted:#6b7280;
+  --accent:#4f46e5; --on-accent:#ffffff; --ok:#22c55e;
+  --field:#ffffff; --avatar-bg:#4f46e5;
+  --f-display:"Inter",sans-serif; --f-label:"Inter",sans-serif; --f-num:"Inter",sans-serif; --f-body:"Inter",sans-serif;
+  --label-tracking:.02em; --th-case:none;
+  --dot-radius:50%; --seg-radius:8px; --field-radius:8px; --card-radius:12px;
+  background:var(--bg); color:var(--text);
+}
+[data-mode="dark"] .dir-canon{
+  --bg:#101216; --panel:#181b21; --border:#2a2e37; --row-border:#22252c; --row-hover:#1e2129;
+  --text:#c7cbd4; --text-strong:#f3f4f7; --muted:#8890a0;
+  --accent:#8b85ff; --on-accent:#0d0c1a; --ok:#34d399;
+  --field:#14161b; --avatar-bg:#8b85ff;
+}
+
+/* ---- dashboard mock shared component scaffolding ---- */
+.m-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;margin:-20px -20px 18px;background:var(--panel);border-bottom:1px solid var(--border);}
+.m-brand{font-family:var(--f-display);font-weight:700;font-size:1.05rem;color:var(--text-strong);}
+.m-status{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--muted);}
+.m-dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(34,197,94,.15);}
+.m-toolrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+.m-seg{display:inline-flex;gap:2px;background:var(--panel);border:1px solid var(--border);border-radius:var(--seg-radius);padding:3px;}
+.m-seg button{appearance:none;border:0;background:transparent;color:var(--muted);font-family:var(--f-label);font-weight:600;font-size:.78rem;padding:7px 13px;border-radius:calc(var(--seg-radius) - 3px);cursor:pointer;}
+.m-seg button.active{background:var(--accent);color:var(--on-accent);box-shadow:0 1px 2px rgba(16,24,40,.08);}
+.m-filterrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+.m-input{flex:1;min-width:160px;background:var(--field);border:1px solid var(--border);color:var(--text);border-radius:var(--field-radius);padding:8px 12px;font-size:.82rem;font-family:inherit;}
+.m-ghost{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted);font-size:.76rem;font-weight:600;padding:8px 10px;border-radius:var(--field-radius);cursor:pointer;}
+.m-stats{display:flex;gap:16px;flex-wrap:wrap;font-size:.74rem;color:var(--muted);margin-bottom:10px;font-family:var(--f-num);}
+.m-stats span b{color:var(--text-strong);font-weight:700;}
+.m-tablewrap{border:1px solid var(--border);border-radius:var(--card-radius);overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.05);}
+table.m-table{width:100%;border-collapse:collapse;font-size:.84rem;}
+table.m-table thead th{text-align:right;font-family:var(--f-label);font-weight:600;font-size:.68rem;letter-spacing:var(--label-tracking);color:var(--muted);padding:9px 12px;background:var(--panel);border-bottom:1px solid var(--border);}
+table.m-table thead th:nth-child(2){text-align:left;}
+table.m-table tbody td{padding:9px 12px;border-bottom:1px solid var(--row-border);text-align:right;color:var(--text);}
+table.m-table tbody td:nth-child(2){text-align:left;}
+table.m-table tbody tr:last-child td{border-bottom:0;}
+table.m-table tbody tr:hover{background:var(--row-hover);}
+.m-rank{font-family:var(--f-num);color:var(--muted);}
+.m-user{display:flex;align-items:center;gap:8px;}
+.m-avatar{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;color:var(--on-accent);background:var(--avatar-bg);}
+.m-uname{font-weight:600;color:var(--text-strong);}
+.m-uid{color:var(--muted);font-size:.72rem;}
+.m-coin{font-family:var(--f-num);font-weight:700;color:var(--text-strong);}
+.m-gift,.m-time{font-family:var(--f-num);color:var(--muted);}
+
+/* ---- login mocks ---- */
+.loginwrap{display:flex;min-height:520px;}
+.l-brand{font-size:1.35rem;font-weight:800;color:var(--text-strong);letter-spacing:-.01em;}
+.l-brand span{font-weight:500;color:var(--muted);font-size:.95rem;margin-left:6px;}
+.l-tag{color:var(--muted);font-size:.86rem;margin-top:6px;}
+.l-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--card-radius);padding:22px;box-shadow:0 1px 3px rgba(16,24,40,.06);}
+.l-gbtn{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--bg);border:1px solid var(--border);color:var(--text-strong);
+  border-radius:var(--field-radius);padding:11px 16px;font-size:.88rem;font-weight:600;cursor:pointer;font-family:inherit;
+}
+.l-gbtn:hover{background:var(--row-hover);}
+.l-gicon{width:18px;height:18px;flex-shrink:0;}
+.l-foot{margin-top:14px;font-size:.72rem;color:var(--muted);text-align:center;}
+
+/* A: ミニマル中央カード */
+.login-a{background:var(--bg);display:flex;align-items:center;justify-content:center;padding:60px 20px;width:100%;}
+.login-a .inner{width:100%;max-width:360px;text-align:center;}
+.login-a .l-brand,.login-a .l-tag{text-align:center;}
+.login-a .l-card{margin-top:26px;text-align:left;}
+
+/* B: 分割スプリット */
+.login-b{width:100%;}
+.login-b .split-l{
+  flex:1 1 46%;background:linear-gradient(155deg,var(--accent),color-mix(in srgb, var(--accent) 60%, var(--bg)));
+  color:var(--on-accent);padding:44px 36px;display:flex;flex-direction:column;justify-content:space-between;
+}
+.login-b .split-l .l-brand,.login-b .split-l .l-brand span{color:var(--on-accent);}
+.login-b .split-l .l-tag{color:rgba(255,255,255,.85);}
+.login-b .split-l .headline{font-size:1.15rem;font-weight:700;line-height:1.5;margin:18px 0 22px;text-wrap:balance;}
+.login-b .split-l .headline b{font-family:var(--f-num);font-size:1.3rem;}
+.login-b .split-l .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.login-b .split-l .stat-chip{background:rgba(255,255,255,.12);border-radius:10px;padding:12px;font-size:.76rem;}
+.login-b .split-l .stat-chip b{display:block;font-size:1.15rem;font-family:var(--f-num);}
+.login-b .split-l .synthetic-note{font-size:.68rem;color:rgba(255,255,255,.65);margin-top:14px;}
+.login-b .split-l .soon{display:inline-block;font-size:.62rem;font-weight:700;background:rgba(255,255,255,.22);padding:1px 6px;border-radius:999px;margin-left:6px;vertical-align:middle;}
+.login-b .split-r{flex:1 1 54%;display:flex;align-items:center;justify-content:center;padding:40px 24px;background:var(--bg);}
+.login-b .split-r .inner{width:100%;max-width:320px;}
+
+/* C: フルブリード浮遊カード */
+.login-c{
+  width:100%;padding:0;position:relative;
+  background:
+    radial-gradient(circle at 18px 18px, var(--border) 1px, transparent 1px) 0 0/28px 28px,
+    var(--bg);
+}
+.login-c .topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;}
+.login-c .center{display:flex;align-items:center;justify-content:center;padding:40px 20px 70px;}
+.login-c .l-card{width:100%;max-width:380px;box-shadow:0 8px 24px -8px rgba(16,24,40,.18),0 1px 3px rgba(16,24,40,.06);}
+.login-c .l-brand,.login-c .l-tag{text-align:center;}
+</style>
+
+<div class="wrap">
+  <header class="page-head">
+    <h1>analytics 新デザイン — 定番SaaS方向 採用</h1>
+    <p>ダッシュボード方向は「定番SaaS」で確定。ライト基準+ダークモード対応の両方をトークン化。続けてログイン画面を同じ世界観で3構造案作成。</p>
+    <div class="decided">✓ ダッシュボード方向: 定番SaaS(ライト/ダーク対応) — 採用確定</div>
+  </header>
+
+  <div class="modebar">
+    <span>プレビューの表示モード(OSテーマとは独立に切替できます)</span>
+    <div class="modetoggle" role="group" aria-label="表示モード">
+      <button class="active" data-mode="light">☀️ ライト</button>
+      <button data-mode="dark">🌙 ダーク</button>
+    </div>
+  </div>
+
+  <h2 class="sectiontitle">1. ダッシュボード(確定)</h2>
+  <p class="sectionsub">/analytics のランキング画面。情報構成は変更なし(期間タブ・ビュー切替・フィルタ操作・統計・ランキング表)。</p>
+  <div class="stage" style="border-radius:16px;">
+    <div class="mock dir-canon" id="mock-dashboard"></div>
+  </div>
+
+  <h2 class="sectiontitle">2. ログイン画面 — 3構造案</h2>
+  <p class="sectionsub">実装(/login, GoogleLoginPanel)の内容(ブランド名+タグライン「TikTok Live 配信データ総合解析Platform」+Googleログインボタン)は3案とも同一。開発用ログインフォームは本番非表示のためコンプ対象外。構造だけを比較。</p>
+
+  <div class="tabbar" role="tablist" aria-label="ログイン構造案">
+    <button class="tabbtn" role="tab" aria-selected="false" data-target="a">A. ミニマル中央カード</button>
+    <button class="tabbtn" role="tab" aria-selected="true" data-target="b">B. 分割スプリット<small>採用</small></button>
+    <button class="tabbtn" role="tab" aria-selected="false" data-target="c">C. フルブリード浮遊カード</button>
+  </div>
+  <div class="stage">
+    <div class="mock dir-canon" id="mock-a" hidden></div>
+    <div class="mock dir-canon" id="mock-b"></div>
+    <div class="mock dir-canon" id="mock-c" hidden></div>
+  </div>
+</div>
+
+<script>
+const GICON = `<svg class="l-gicon" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.3 2.7l5.7-5.7C33.6 6.9 29 5 24 5 13.5 5 5 13.5 5 24s8.5 19 19 19 19-8.5 19-19c0-1.3-.1-2.5-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.5 16 18.9 13 24 13c2.8 0 5.3 1 7.3 2.7l5.7-5.7C33.6 6.9 29 5 24 5c-7.5 0-14 4.2-17.7 9.7z"/><path fill="#4CAF50" d="M24 43c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 34.1 26.7 35 24 35c-5.3 0-9.6-3.4-11.3-8l-6.5 5C9.9 38.8 16.4 43 24 43z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.4-2.4 4.4-4.5 5.8l6.2 5.2C40.6 36.6 43 30.9 43 24c0-1.3-.1-2.5-.4-3.5z"/></svg>`;
+
+const DASHBOARD_HTML = `
+  <div class="m-header">
+    <div class="m-brand">LIVE Sidestage Analytics</div>
+    <div class="m-status"><span class="m-dot"></span>@example_streamer</div>
+  </div>
+  <div class="m-toolrow">
+    <div class="m-seg"><button class="active">日</button><button>週</button><button>月</button><button>年</button></div>
+    <div class="m-seg"><button class="active">ユーザー別コイン数</button><button>ギフト履歴</button><button>バトル履歴</button></div>
+  </div>
+  <div class="m-filterrow">
+    <input class="m-input" placeholder="ユーザーを絞り込み..." />
+    <button class="m-ghost">並び替え ▾</button>
+    <button class="m-ghost">CSV</button>
+    <button class="m-ghost">🙈 非表示</button>
+  </div>
+  <div class="m-stats">
+    <span><b>10</b> 人</span><span>合計 <b>974,800</b> コイン</span><span>ギフト <b>1,179</b> 件</span>
+    <span style="margin-left:auto">更新 14:32:07</span>
+  </div>
+  <div class="m-tablewrap"><table class="m-table">
+    <thead><tr><th>#</th><th>ユーザー</th><th>💎</th><th>🎁</th><th>最終</th></tr></thead>
+    <tbody>
+      ${[["あおいろ","user_aoi",284500,312,"3分前"],["ひかりTV","hikari_tv",196200,201,"11分前"],["ゆず.live","yuzu.live",152800,178,"22分前"],["こうた配信","kota_stream",98400,140,"41分前"],["ななほ","nanaho.tk",76300,96,"1時間前"]]
+        .map(([n,id,c,g,t],i)=>`<tr><td class="m-rank">${i+1}</td><td><div class="m-user"><span class="m-avatar">${n[0]}</span><div><div class="m-uname">${n}</div><div class="m-uid">@${id}</div></div></div></td><td class="m-coin">${c.toLocaleString()}</td><td class="m-gift">${g}</td><td class="m-time">${t}</td></tr>`).join("")}
+    </tbody>
+  </table></div>
+`;
+document.getElementById("mock-dashboard").innerHTML = DASHBOARD_HTML;
+
+function loginCard(){
+  return `
+    <div class="l-card">
+      <button class="l-gbtn">${GICON}Googleでログイン</button>
+    </div>
+    <p class="l-foot">続行することで利用規約とプライバシーポリシーに同意したものとみなされます</p>
+  `;
+}
+
+document.getElementById("mock-a").innerHTML = `
+  <div class="login-a">
+    <div class="inner">
+      <div class="l-brand">LIVE Sidestage<span>Analytics</span></div>
+      <p class="l-tag">TikTok Live 配信データ総合解析Platform</p>
+      ${loginCard()}
+    </div>
+  </div>
+`;
+
+document.getElementById("mock-b").innerHTML = `
+  <div class="loginwrap login-b" style="display:flex;">
+    <div class="split-l">
+      <div>
+        <div class="l-brand">LIVE Sidestage<span>Analytics</span></div>
+        <p class="l-tag">TikTok Live 配信データ総合解析Platform</p>
+        <p class="headline"><b>1,204</b>人の配信者データを集計する、配信を支えるサポートプラットフォーム</p>
+        <div class="stat-grid">
+          <div class="stat-chip"><b>38,600</b>人の貢献リスナーデータ</div>
+          <div class="stat-chip"><b>512,300</b>件のギフト履歴</div>
+          <div class="stat-chip"><b>9,840</b>件のバトル履歴</div>
+          <div class="stat-chip">高度なAI解析<span class="soon">近日公開</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="split-r"><div class="inner">${loginCard()}</div></div>
+  </div>
+`;
+
+document.getElementById("mock-c").innerHTML = `
+  <div class="login-c">
+    <div class="topbar"><div class="l-brand" style="font-size:1.05rem;">LIVE Sidestage<span>Analytics</span></div></div>
+    <div class="center">
+      <div style="text-align:center;">
+        <p class="l-tag" style="margin-bottom:22px;">TikTok Live 配信データ総合解析Platform</p>
+        ${loginCard()}
+      </div>
+    </div>
+  </div>
+`;
+
+// mode toggle (light/dark, independent of OS)
+const modeBtns = document.querySelectorAll(".modetoggle button");
+modeBtns.forEach(b=>b.addEventListener("click",()=>{
+  modeBtns.forEach(x=>x.classList.toggle("active", x===b));
+  document.querySelectorAll(".stage").forEach(s=>s.setAttribute("data-mode", b.dataset.mode));
+}));
+document.querySelectorAll(".stage").forEach(s=>s.setAttribute("data-mode","light"));
+
+// login structure tabs
+const tabs = document.querySelectorAll('.tabbar[aria-label="ログイン構造案"] .tabbtn');
+function activate(target){
+  tabs.forEach(t=>t.setAttribute("aria-selected", String(t.dataset.target===target)));
+  ["a","b","c"].forEach(k=>{document.getElementById("mock-"+k).hidden = (k!==target);});
+}
+tabs.forEach(t=>t.addEventListener("click",()=>activate(t.dataset.target)));
+</script>

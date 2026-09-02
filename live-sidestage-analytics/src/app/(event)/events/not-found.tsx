@@ -8,8 +8,8 @@ import Link from "next/link";
 export default function EventNotFound() {
   return (
     <div className="card text-center">
-      <p className="text-sm text-gray-400">イベントが見つからない。</p>
-      <p className="mt-1 text-xs text-gray-500">削除されたか、URL が間違っている。</p>
+      <p className="text-sm text-muted">イベントが見つからない。</p>
+      <p className="mt-1 text-xs text-muted">削除されたか、URL が間違っている。</p>
       <Link href="/events" className="mt-3 inline-block text-sm text-brand hover:underline">
         イベント一覧へ戻る
       </Link>

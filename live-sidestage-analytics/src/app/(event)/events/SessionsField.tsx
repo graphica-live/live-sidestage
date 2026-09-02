@@ -59,20 +59,20 @@ export function SessionsField({
         </p>
       </div>
 
-      <p className="mb-2 text-xs text-gray-500">
+      <p className="mb-2 text-xs text-muted">
         日を分けて開催するときは日程を足す(例: 1日目に予選、2日目に決勝)。
-        <strong className="text-gray-400">日程と日程の間のギフトは集計に入らない。</strong>
+        <strong className="text-muted">日程と日程の間のギフトは集計に入らない。</strong>
       </p>
 
       <div className="grid gap-3">
         {sessions.map((session, index) => (
           <div key={index} className="rounded-lg border border-border bg-panel p-3">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-xs font-medium text-gray-400">{index + 1} 日程目</span>
+              <span className="text-xs font-medium text-muted">{index + 1} 日程目</span>
               {sessions.length > 1 && (
                 <button
                   type="button"
-                  className="text-xs text-red-400 hover:text-red-300"
+                  className="text-xs text-red-600 dark:text-red-400 hover:text-red-300"
                   onClick={() => removeSession(index)}
                 >
                   削除

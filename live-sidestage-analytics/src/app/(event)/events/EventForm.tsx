@@ -90,7 +90,7 @@ export function EventForm({
     <form onSubmit={handleSubmit} className="grid gap-5">
       {errors.length > 0 && (
         <div className="card border-red-500/40 bg-red-500/5">
-          <ul className="grid gap-1 text-sm text-red-400">
+          <ul className="grid gap-1 text-sm text-red-600 dark:text-red-400">
             {errors.map((message) => (
               <li key={message}>{message}</li>
             ))}
@@ -102,9 +102,9 @@ export function EventForm({
         <span className="label">種目</span>
         {/* 選択肢は出さない。決まっている種目だけを見せる(変更は作成時のみ)。 */}
         <div className="rounded-lg border border-border bg-panel p-3">
-          <p className="text-sm font-medium text-white">{FORMAT_LABELS[values.format]}</p>
-          <p className="mt-0.5 text-xs text-gray-400">{FORMAT_DESCRIPTIONS[values.format]}</p>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="text-sm font-medium text-strong">{FORMAT_LABELS[values.format]}</p>
+          <p className="mt-0.5 text-xs text-muted">{FORMAT_DESCRIPTIONS[values.format]}</p>
+          <p className="mt-2 text-xs text-muted">
             種目は作成後に変更できない。別の種目で開催するときは新しいイベントを作る。
           </p>
         </div>

@@ -30,7 +30,7 @@ function privateNotice(visibility: string): string | null {
 function ReadinessList({ tasks }: { tasks: ReadinessTask[] }) {
   if (tasks.length === 0) {
     return (
-      <p className="mt-3 border-t border-border pt-3 text-xs text-gray-500">
+      <p className="mt-3 border-t border-border pt-3 text-xs text-muted">
         開催までの残タスクはない。
       </p>
     );
@@ -48,16 +48,16 @@ function ReadinessList({ tasks }: { tasks: ReadinessTask[] }) {
             >
               <span
                 className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                  task.blocking ? "bg-red-400/10 text-red-400" : "bg-white/5 text-gray-400"
+                  task.blocking ? "bg-red-400/10 text-red-600 dark:text-red-400" : "bg-black/5 dark:bg-white/5 text-muted"
                 }`}
               >
                 {task.blocking ? "必須" : "任意"}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm text-white">{task.label}</span>
-                <span className="mt-0.5 block text-xs text-gray-500">{task.detail}</span>
+                <span className="block text-sm text-strong">{task.label}</span>
+                <span className="mt-0.5 block text-xs text-muted">{task.detail}</span>
               </span>
-              <span className="mt-0.5 shrink-0 text-xs text-gray-500">→</span>
+              <span className="mt-0.5 shrink-0 text-xs text-muted">→</span>
             </Link>
           </li>
         ))}
@@ -130,7 +130,7 @@ export function EventAdminControls({
 
   return (
     <div className="card">
-      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+      {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {status === "SCHEDULED" ? (
         // 開始前だけ、ステータス行をまるごと主操作のブロックに置き換える。
@@ -152,16 +152,16 @@ export function EventAdminControls({
                 <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_CLASSES.SCHEDULED}`}>
                   {STATUS_LABELS.SCHEDULED}
                 </span>
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold text-strong">
                   {blocked ? "開催の準備が終わっていない" : "集計はまだ始まっていない"}
                 </span>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-gray-400">
+              <p className="mt-2 text-xs leading-relaxed text-muted">
                 {blocked
                   ? "下の必須タスクを片付けると開催中にできる。"
                   : "押すまで集計は動かず、公開ページの順位表も空のまま。"}
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              <p className="mt-1 text-xs leading-relaxed text-muted">
                 (開始後は日程内のギフトを遡って数え直すので、押し遅れても取りこぼさない)
               </p>
             </div>
@@ -188,7 +188,7 @@ export function EventAdminControls({
                 </button>
               ))}
             {/* 削除は他の遷移ボタンと同じ並びに置く。詳細ページの奥底に隠すと存在に気づかれない。 */}
-            <button onClick={remove} disabled={busy} className="btn-ghost text-xs text-red-400">
+            <button onClick={remove} disabled={busy} className="btn-ghost text-xs text-red-600 dark:text-red-400">
               このイベントを削除する
             </button>
           </div>
@@ -224,7 +224,7 @@ export function EventAdminControls({
             );
           })}
           {/* 削除は他の遷移ボタンと同じ並びに置く。詳細ページの奥底に隠すと存在に気づかれない。 */}
-          <button onClick={remove} disabled={busy} className="btn-ghost text-xs text-red-400">
+          <button onClick={remove} disabled={busy} className="btn-ghost text-xs text-red-600 dark:text-red-400">
             このイベントを削除する
           </button>
         </div>
@@ -235,7 +235,7 @@ export function EventAdminControls({
       <div className="mt-4 border-t border-border pt-4">
         <span className="label">公開ページ</span>
         <div className="flex flex-wrap items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded bg-surface px-2 py-1.5 font-mono text-xs text-gray-300">
+          <code className="min-w-0 flex-1 truncate rounded bg-surface px-2 py-1.5 font-mono text-xs text-strong">
             {publicUrl}
           </code>
           <button

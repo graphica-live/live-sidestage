@@ -37,7 +37,7 @@ export function UpgradeButton({ plan, label }: { plan: PaidPlan; label: string }
       <button onClick={handleClick} disabled={loading} className="btn-primary w-full text-sm">
         {loading ? "処理中..." : label}
       </button>
-      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
     </div>
   );
 }
@@ -63,7 +63,7 @@ export function ManageBillingButton({ label = "プランを管理する" }: { la
       <button onClick={handleClick} disabled={loading} className="btn-ghost text-sm">
         {loading ? "処理中..." : label}
       </button>
-      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
     </div>
   );
 }

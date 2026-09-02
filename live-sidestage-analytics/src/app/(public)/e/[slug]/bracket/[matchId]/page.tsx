@@ -48,7 +48,7 @@ export default async function MatchDetailPage({
     <div className="mx-auto max-w-3xl px-4 py-10">
       <Link
         href={`/e/${event.slug}/bracket`}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-brand"
+        className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-brand"
       >
         ← トーナメント表
       </Link>

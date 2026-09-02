@@ -2,13 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
+/* トークン: ライトが既定、ダークは prefers-color-scheme で自動追従。
+   実測値は .impeccable/approved/dashboard/spec.md(色テーブル)が正本。
+   login 画面のみ常時ライト固定(.theme-light-forced、GoogleLoginPanel.tsx参照)。
+   値は "R G B"(スペース区切り)で持つ — tailwind.config.ts が `rgb(var(--x) / <alpha>)`
+   の形で参照するため、opacity修飾子(bg-brand/40等)が機能するにはこの形式が必須。 */
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
+  --bg: 255 255 255;
+  --panel: 248 249 251;
+  --border: 229 231 235;
+  --row-border: 238 240 243;
+  --row-hover: 245 246 249;
+  --text: 55 65 81;
+  --text-strong: 17 24 39;
+  --muted: 107 114 128;
+  --accent: 79 70 229;
+  --accent-hover: 67 56 202;
+  --on-accent: 255 255 255;
+  --ok: 34 197 94;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: 16 18 22;
+    --panel: 24 27 33;
+    --border: 42 46 55;
+    --row-border: 34 37 44;
+    --row-hover: 30 33 41;
+    --text: 199 203 212;
+    --text-strong: 243 244 247;
+    --muted: 136 144 160;
+    --accent: 139 133 255;
+    --accent-hover: 122 115 224;
+    --on-accent: 13 12 26;
+    --ok: 52 211 153;
+  }
+}
+
+/* CSS変数とcolor-schemeのみ上書き。tailwindのdarkModeはmedia戦略のままなので、
+   このクラス配下でも `dark:` ユーティリティはOS設定に追従してしまう —
+   配下に `dark:` クラスを新しく足さないこと(足すとライト固定が破れる)。 */
+.theme-light-forced {
+  color-scheme: light;
+  --bg: 255 255 255;
+  --panel: 248 249 251;
+  --border: 229 231 235;
+  --row-border: 238 240 243;
+  --row-hover: 245 246 249;
+  --text: 55 65 81;
+  --text-strong: 17 24 39;
+  --muted: 107 114 128;
+  --accent: 79 70 229;
+  --accent-hover: 67 56 202;
+  --on-accent: 255 255 255;
+  --ok: 34 197 94;
 }
 
 body {
-  background-color: #111111;
-  color: #f0f0f0;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--text));
 }
 
 @layer base {
@@ -21,30 +74,30 @@ body {
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #1a1a1a;
+    background: rgb(var(--panel));
   }
   ::-webkit-scrollbar-thumb {
-    background: #3a3a3a;
+    background: rgb(var(--border));
     border-radius: 3px;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-brand hover:bg-brand-hover text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-brand hover:bg-brand-hover text-on-accent font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-ghost {
-    @apply text-gray-400 hover:text-white hover:bg-white/5 px-3 py-2 rounded-lg transition-colors;
+    @apply text-muted hover:text-strong hover:bg-black/5 dark:hover:bg-white/5 px-3 py-2 rounded-lg transition-colors;
   }
 
   /* 主操作と並べる二次操作。承認・勝者確定など、押しても取り返しがつくもの。 */
   .btn-secondary {
-    @apply bg-white/5 border border-border hover:border-brand/40 hover:bg-white/10 text-white text-sm px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-black/5 dark:bg-white/5 border border-border hover:border-brand/40 hover:bg-black/10 dark:hover:bg-white/10 text-strong text-sm px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .input-field {
-    @apply bg-panel border border-border rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-brand/60 transition-colors w-full;
+    @apply bg-panel border border-border rounded-lg px-3 py-2 text-strong placeholder-muted focus:outline-none focus:border-brand/60 transition-colors w-full;
   }
 
   .card {
@@ -52,7 +105,7 @@ body {
   }
 
   .label {
-    @apply block text-xs font-medium text-gray-400 mb-1.5;
+    @apply block text-xs font-medium text-muted mb-1.5;
   }
 
   /* バトル中(EventMatch.status = "LIVE")の対戦カード。管理画面(トーナメント表・対戦一覧)と

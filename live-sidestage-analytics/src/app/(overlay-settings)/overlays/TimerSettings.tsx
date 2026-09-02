@@ -28,8 +28,8 @@ export default function TimerSettings() {
   const [newGiftName, setNewGiftName] = useState("");
   const [newMinutesDelta, setNewMinutesDelta] = useState("1");
 
-  if (loading) return <p className="text-sm text-gray-400">読み込み中...</p>;
-  if (!settings) return error ? <p className="text-sm text-red-400">{error}</p> : null;
+  if (loading) return <p className="text-sm text-muted">読み込み中...</p>;
+  if (!settings) return error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null;
 
   const addGiftRule = () => {
     const giftName = newGiftName.trim();
@@ -46,8 +46,8 @@ export default function TimerSettings() {
 
   return (
     <div className="space-y-5">
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      {controls.error && <p className="text-sm text-red-400">{controls.error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {controls.error && <p className="text-sm text-red-600 dark:text-red-400">{controls.error}</p>}
 
       <div>
         <span className="label">操作</span>
@@ -165,7 +165,7 @@ export default function TimerSettings() {
           <span className="label mb-0">カウントダウン音</span>
           <button
             onClick={() => update({ countdownSoundEnabled: !settings.countdownSoundEnabled }, true)}
-            className={`text-xs px-2 py-1 rounded-lg border ${settings.countdownSoundEnabled ? "border-brand text-brand bg-brand/10" : "border-border text-gray-400"}`}
+            className={`text-xs px-2 py-1 rounded-lg border ${settings.countdownSoundEnabled ? "border-brand text-brand bg-brand/10" : "border-border text-muted"}`}
           >
             {settings.countdownSoundEnabled ? "ON" : "OFF"}
           </button>
@@ -212,9 +212,9 @@ export default function TimerSettings() {
         <div className="space-y-2">
           {settings.giftRules.map((rule, i) => (
             <div key={`${rule.giftName}:${i}`} className="flex items-center gap-2 text-sm">
-              <span className="flex-1 truncate text-white">{rule.giftName}</span>
-              <span className="text-gray-400 shrink-0">{rule.minutesDelta > 0 ? "+" : ""}{rule.minutesDelta}分</span>
-              <button onClick={() => removeGiftRule(i)} className="text-red-400 text-xs shrink-0">
+              <span className="flex-1 truncate text-strong">{rule.giftName}</span>
+              <span className="text-muted shrink-0">{rule.minutesDelta > 0 ? "+" : ""}{rule.minutesDelta}分</span>
+              <button onClick={() => removeGiftRule(i)} className="text-red-600 dark:text-red-400 text-xs shrink-0">
                 削除
               </button>
             </div>

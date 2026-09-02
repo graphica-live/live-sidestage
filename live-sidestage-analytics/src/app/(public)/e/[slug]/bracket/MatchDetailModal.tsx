@@ -88,7 +88,7 @@ export function MatchDetailModal({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative mx-auto w-full max-w-2xl border border-white/10 bg-panel p-5 sm:p-6 ${CARD_CLIP}`}
+        className={`relative mx-auto w-full max-w-2xl border border-border bg-panel p-5 sm:p-6 ${CARD_CLIP}`}
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -96,16 +96,16 @@ export function MatchDetailModal({
           type="button"
           onClick={onClose}
           aria-label="閉じる"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong"
         >
           <CloseIcon />
         </button>
 
         {state?.status === "loading" && (
-          <p className="py-16 text-center text-sm text-gray-500">読み込み中…</p>
+          <p className="py-16 text-center text-sm text-muted">読み込み中…</p>
         )}
         {state?.status === "error" && (
-          <p className="py-16 text-center text-sm text-gray-500">対戦詳細を取得できなかった。</p>
+          <p className="py-16 text-center text-sm text-muted">対戦詳細を取得できなかった。</p>
         )}
         {state?.status === "ready" && <MatchDetailBody detail={state.detail} />}
       </div>

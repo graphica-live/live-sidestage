@@ -196,8 +196,8 @@ function PlacementSection({
   index: MatchIndex;
 }) {
   return (
-    <div className="mt-10 border-t border-white/10 pt-6">
-      <h3 className="mb-4 text-[11px] font-bold tracking-[0.2em] text-gray-500">順位決定戦</h3>
+    <div className="mt-10 border-t border-border pt-6">
+      <h3 className="mb-4 text-[11px] font-bold tracking-[0.2em] text-muted">順位決定戦</h3>
       <div className="grid gap-8">
         {blocks.map((block) => {
           const root = index.get(key(block.root.round, block.root.position));
@@ -207,7 +207,7 @@ function PlacementSection({
               <div className="mb-2 flex items-center gap-2">
                 <RoundLabel>{`${block.rank}位決定戦`}</RoundLabel>
                 {winner && (
-                  <span className="flex items-center gap-1.5 text-xs text-gray-300">
+                  <span className="flex items-center gap-1.5 text-xs text-strong">
                     <span className="font-bold text-brand">{block.rank}位</span>
                     <SmallEntrantAvatars entrants={winner.entrants} />
                     <span className="truncate font-medium">{winner.name}</span>
@@ -255,7 +255,7 @@ function SmallEntrantAvatars({ entrants }: { entrants: BracketEntrantDto[] }) {
           title={e.displayName}
           width={24}
           height={24}
-          className="h-6 w-6 rounded-full border border-panel bg-white/5 object-cover"
+          className="h-6 w-6 rounded-full border border-panel bg-black/5 dark:bg-white/5 object-cover"
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -263,7 +263,7 @@ function SmallEntrantAvatars({ entrants }: { entrants: BracketEntrantDto[] }) {
       ))}
       {rest > 0 && (
         <span
-          className="flex h-6 w-6 items-center justify-center rounded-full border border-panel bg-white/10 font-mono text-[9px] text-gray-300"
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-panel bg-black/10 dark:bg-white/10 font-mono text-[9px] text-strong"
           title={entrants.slice(2).map((e) => e.displayName).join(" / ")}
         >
           +{rest}
@@ -331,7 +331,7 @@ function RoundLabel({ children, highlight }: { children: React.ReactNode; highli
     <div className="flex justify-center">
       <span
         className={`${TAG_SKEW} border px-2.5 py-0.5 text-center text-[11px] font-bold tracking-wide ${
-          highlight ? "border-brand/50 bg-brand/10 text-brand" : "border-white/10 text-gray-400"
+          highlight ? "border-brand/50 bg-brand/10 text-brand" : "border-border text-muted"
         }`}
       >
         <span className={`inline-block ${TAG_UNSKEW}`}>{children}</span>
@@ -472,7 +472,7 @@ function Champion({ final }: { final: BracketMatchDto | undefined }) {
         </div>
       ) : (
         <div
-          className={`flex ${CHAMPION_BOX_H} w-full items-center justify-center border border-dashed border-brand/40 px-2 text-center text-xs text-gray-600 ${CARD_CLIP}`}
+          className={`flex ${CHAMPION_BOX_H} w-full items-center justify-center border border-dashed border-brand/40 px-2 text-center text-xs text-muted ${CARD_CLIP}`}
         >
           未確定
         </div>
@@ -544,11 +544,11 @@ function MatchCard({
             ? "border-yellow-500/60 bg-gradient-to-b from-yellow-500/10 to-transparent"
             : isFinal
               ? "border-2 border-brand/60 bg-gradient-to-b from-brand/10 to-transparent shadow-[0_0_24px_-6px_rgba(254,44,85,0.45)]"
-              : "border-white/10 bg-panel"
+              : "border-border bg-panel"
       }`}
     >
       <div
-        className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
+        className={`flex items-center justify-between gap-1 text-[10px] text-muted ${
           mirror ? "flex-row-reverse" : ""
         }`}
       >
@@ -568,7 +568,7 @@ function MatchCard({
         </span>
         <span
           className={`truncate font-semibold ${
-            isLive ? "text-red-400" : needsSelection ? "text-yellow-400" : decided ? "text-brand" : ""
+            isLive ? "text-red-600 dark:text-red-400" : needsSelection ? "text-yellow-600 dark:text-yellow-400" : decided ? "text-brand" : ""
           }`}
         >
           {needsSelection
@@ -593,7 +593,7 @@ function MatchCard({
               />
             ))}
             <span
-              className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${TAG_SKEW} border border-white/15 bg-[#0a0a0a] px-1.5 py-px text-[9px] font-black tracking-wide text-gray-400`}
+              className={`pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 ${TAG_SKEW} border border-border bg-[#0a0a0a] px-1.5 py-px text-[9px] font-black tracking-wide text-muted`}
             >
               <span className={`inline-block ${TAG_UNSKEW}`}>VS</span>
             </span>
@@ -643,13 +643,13 @@ function SideRow({ side, loser }: { side: BracketSideDto; loser: boolean }) {
   const frame = `relative flex ${SIDE_H} flex-col items-center overflow-hidden text-center ${
     side.hasLiveStreamer
       ? "bg-emerald-500/10 ring-1 ring-emerald-400/80 shadow-[0_0_10px_rgba(52,211,153,0.55)]"
-      : "bg-white/[0.04]"
+      : "bg-black/[0.04] dark:bg-white/[0.04]"
   }`;
 
   if (!side.name) {
     return (
       <div className={`${frame} justify-center`} data-bracket-side={side.sideIndex}>
-        <span className="text-xs text-gray-600">未確定</span>
+        <span className="text-xs text-muted">未確定</span>
       </div>
     );
   }
@@ -726,7 +726,7 @@ function EntrantAvatars({
         title={only.displayName}
         width={champion ? 176 : 156}
         height={champion ? 176 : 156}
-        className={`absolute inset-0 h-full w-full bg-white/5 object-cover ${dimClass}`}
+        className={`absolute inset-0 h-full w-full bg-black/5 dark:bg-white/5 object-cover ${dimClass}`}
         style={avatarFrameStyle(frame)}
         loading="lazy"
         decoding="async"
@@ -758,7 +758,7 @@ function EntrantAvatars({
           title={e.displayName}
           width={px}
           height={px}
-          className={`${box} shrink-0 rounded-full border border-panel bg-white/5 object-cover ${dimClass}`}
+          className={`${box} shrink-0 rounded-full border border-panel bg-black/5 dark:bg-white/5 object-cover ${dimClass}`}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -766,7 +766,7 @@ function EntrantAvatars({
       ))}
       {rest > 0 && (
         <span
-          className={`${box} flex shrink-0 items-center justify-center rounded-full border border-panel bg-white/10 font-mono ${restText} text-gray-300`}
+          className={`${box} flex shrink-0 items-center justify-center rounded-full border border-panel bg-black/10 dark:bg-white/10 font-mono ${restText} text-strong`}
           title={entrants.slice(2).map((e) => e.displayName).join(" / ")}
         >
           +{rest}
@@ -781,8 +781,8 @@ function EmptyCard({ isFinal, mirror }: { isFinal?: boolean; mirror?: boolean } 
   const clip = mirror ? CARD_CLIP_MIRROR : CARD_CLIP;
   return (
     <div
-      className={`flex ${CARD_H} items-center justify-center border border-dashed text-[10px] text-gray-600 ${clip} ${
-        isFinal ? "border-brand/40" : "border-white/15"
+      className={`flex ${CARD_H} items-center justify-center border border-dashed text-[10px] text-muted ${clip} ${
+        isFinal ? "border-brand/40" : "border-border"
       }`}
     >
       —

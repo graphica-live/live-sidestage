@@ -104,14 +104,14 @@ export function EventResults({
           空状態の差し替えではなく常時表示にしてあるのは、EventStanding が0点でも
           全参加者ぶん作られるため「集計結果が空」の状態が事実上ありえないから。 */}
       {battleOnly && (
-        <p className={`mb-4 border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-gray-400 ${CARD_CLIP}`}>
+        <p className={`mb-4 border border-border bg-panel px-3 py-2 text-xs text-muted ${CARD_CLIP}`}>
           {BATTLE_ONLY_SCORING_NOTE}
         </p>
       )}
 
       <div className="flex items-center gap-2.5">
         <span className="h-5 w-1.5 shrink-0 -skew-x-12 bg-brand" aria-hidden />
-        <div className="flex gap-1 border-b border-white/10">
+        <div className="flex gap-1 border-b border-border">
           <TabButton active={tab === "standings"} onClick={() => setTab("standings")}>
             {entryMode === "TEAM" ? `チーム${heading}` : `参加者${heading}`}
           </TabButton>
@@ -122,7 +122,7 @@ export function EventResults({
       </div>
 
       {notAggregated ? (
-        <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>
+        <p className={`mt-4 border border-border bg-panel p-4 text-sm text-muted ${CARD_CLIP}`}>
           {status === "SCHEDULED"
             ? "イベントが始まると、順位とリスナーの貢献ランキングがここに出る。"
             : "まだ集計されたギフトがない。"}
@@ -139,7 +139,7 @@ export function EventResults({
             <select
               value={participantId}
               onChange={(e) => setParticipantId(e.target.value)}
-              className="w-auto border border-white/10 bg-panel px-3 py-2 text-xs text-white focus:border-brand/60 focus:outline-none"
+              className="w-auto border border-border bg-panel px-3 py-2 text-xs text-strong focus:border-brand/60 focus:outline-none"
               aria-label="集計対象"
             >
               <option value="">イベント全体</option>
@@ -171,7 +171,7 @@ export function EventResults({
       )}
 
       {snapshot.lastAggregatedAt && (
-        <p className="mt-3 text-xs text-gray-600">
+        <p className="mt-3 text-xs text-muted">
           {/* toLocaleString はサーバー(UTC)とブラウザ(JST)で結果が変わり、
               SSR したこの行がハイドレーション不一致になる。JST 固定で出す。 */}
           最終集計: {formatJstStamp(new Date(snapshot.lastAggregatedAt))}
@@ -205,8 +205,8 @@ function TabButton({
       onClick={onClick}
       className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-brand text-white"
-          : "border-transparent text-gray-500 hover:text-gray-300"
+          ? "border-brand text-strong"
+          : "border-transparent text-muted hover:text-strong"
       }`}
     >
       {children}
@@ -227,7 +227,7 @@ function SortButton({
     <button
       onClick={onClick}
       className={`${TAG_SKEW} border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-        active ? "border-brand/50 bg-brand/10 text-brand" : "border-white/10 text-gray-500 hover:text-gray-300"
+        active ? "border-brand/50 bg-brand/10 text-brand" : "border-border text-muted hover:text-strong"
       }`}
     >
       <span className={`inline-block ${TAG_UNSKEW}`}>{children}</span>
@@ -240,10 +240,10 @@ function RankBadge({ rank }: { rank: number }) {
     rank === 1
       ? "border-yellow-400/60 bg-yellow-400/15 text-yellow-300"
       : rank === 2
-        ? "border-gray-300/50 bg-gray-300/15 text-gray-200"
+        ? "border-border bg-black/10 dark:bg-white/10 text-strong"
         : rank === 3
           ? "border-orange-400/50 bg-orange-400/15 text-orange-300"
-          : "border-white/10 text-gray-500";
+          : "border-border text-muted";
   return (
     <span
       className={`flex h-8 w-8 shrink-0 -skew-x-12 items-center justify-center border font-mono text-xs font-black tabular-nums ${medal}`}
@@ -255,7 +255,7 @@ function RankBadge({ rank }: { rank: number }) {
 
 function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMultiplier: boolean }) {
   if (rows.length === 0) {
-    return <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ順位がついていない。</p>;
+    return <p className={`mt-4 border border-border bg-panel p-4 text-sm text-muted ${CARD_CLIP}`}>まだ順位がついていない。</p>;
   }
 
   return (
@@ -264,7 +264,7 @@ function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMulti
         <li
           key={r.subjectId}
           className={`flex items-center gap-3 border p-3 ${CARD_CLIP} ${
-            r.rank === 1 ? "border-brand/40 bg-brand/[0.06]" : "border-white/10 bg-panel"
+            r.rank === 1 ? "border-brand/40 bg-brand/[0.06]" : "border-border bg-panel"
           }`}
         >
           <RankBadge rank={r.rank} />
@@ -277,17 +277,17 @@ function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMulti
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{r.name}</p>
-            {r.sub && <p className="truncate font-mono text-xs text-gray-500">{r.sub}</p>}
+            {r.sub && <p className="truncate font-mono text-xs text-muted">{r.sub}</p>}
           </div>
           <div className="shrink-0 text-right">
             <p className="font-mono text-sm tabular-nums">
               {hasMultiplier ? formatPoints(r.points) : formatNumber(r.diamonds)}
-              <span className="ml-1 text-xs text-gray-500">
+              <span className="ml-1 text-xs text-muted">
                 {hasMultiplier ? "pt" : "ダイヤ"}
               </span>
             </p>
             {hasMultiplier && (
-              <p className="font-mono text-xs text-gray-600 tabular-nums">
+              <p className="font-mono text-xs text-muted tabular-nums">
                 実弾 {formatNumber(r.diamonds)}
               </p>
             )}
@@ -308,7 +308,7 @@ function StandingsTable({ rows, hasMultiplier }: { rows: StandingDto[]; hasMulti
  */
 function LifeStandingsTable({ rows, battleOnly }: { rows: LifeStandingDto[]; battleOnly: boolean }) {
   if (rows.length === 0) {
-    return <p className={`mt-4 border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだ順位がついていない。</p>;
+    return <p className={`mt-4 border border-border bg-panel p-4 text-sm text-muted ${CARD_CLIP}`}>まだ順位がついていない。</p>;
   }
 
   return (
@@ -316,7 +316,7 @@ function LifeStandingsTable({ rows, battleOnly }: { rows: LifeStandingDto[]; bat
       {rows.map((r) => (
         <li
           key={r.subjectId}
-          className={`flex items-center gap-3 border border-white/10 bg-panel p-3 ${CARD_CLIP} ${r.eliminated ? "opacity-50" : ""}`}
+          className={`flex items-center gap-3 border border-border bg-panel p-3 ${CARD_CLIP} ${r.eliminated ? "opacity-50" : ""}`}
         >
           <RankBadge rank={r.rank} />
           {r.colorHex && (
@@ -328,20 +328,20 @@ function LifeStandingsTable({ rows, battleOnly }: { rows: LifeStandingDto[]; bat
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{r.name}</p>
-            {r.sub && <p className="truncate font-mono text-xs text-gray-500">{r.sub}</p>}
+            {r.sub && <p className="truncate font-mono text-xs text-muted">{r.sub}</p>}
           </div>
           <div className="shrink-0 text-right">
             {r.eliminated ? (
-              <p className="text-sm text-gray-500">脱落</p>
+              <p className="text-sm text-muted">脱落</p>
             ) : (
               <p className="text-sm text-brand" aria-label={`残ライフ ${r.current}`}>
                 {"♥".repeat(Math.min(r.current, 10))}
-                <span className="ml-1.5 font-mono text-xs text-gray-400 tabular-nums">
+                <span className="ml-1.5 font-mono text-xs text-muted tabular-nums">
                   {r.current} / {r.max}
                 </span>
               </p>
             )}
-            <p className="font-mono text-xs text-gray-600 tabular-nums">
+            <p className="font-mono text-xs text-muted tabular-nums">
               {formatNumber(r.diamonds)} {battleOnly ? "バトルダイヤ" : "ダイヤ"}
             </p>
           </div>
@@ -361,13 +361,13 @@ function ListenerTable({
   participantNames: Map<string, string>;
 }) {
   if (rows.length === 0) {
-    return <p className={`border border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500 ${CARD_CLIP}`}>まだギフトが記録されていない。</p>;
+    return <p className={`border border-border bg-panel p-4 text-sm text-muted ${CARD_CLIP}`}>まだギフトが記録されていない。</p>;
   }
 
   return (
     <ul className="space-y-2">
       {rows.map((r, i) => (
-        <li key={r.listenerUniqueId} className={`border border-white/10 bg-panel p-3 ${CARD_CLIP}`}>
+        <li key={r.listenerUniqueId} className={`border border-border bg-panel p-3 ${CARD_CLIP}`}>
           <div className="flex items-center gap-3">
             <RankBadge rank={i + 1} />
             {r.profileImageUrl ? (
@@ -380,20 +380,20 @@ function ListenerTable({
                 loading="lazy"
               />
             ) : (
-              <span className="h-8 w-8 shrink-0 rounded-full bg-white/5" aria-hidden />
+              <span className="h-8 w-8 shrink-0 rounded-full bg-black/5 dark:bg-white/5" aria-hidden />
             )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm">{r.nickname}</p>
-              <p className="truncate font-mono text-xs text-gray-500">@{r.listenerUniqueId}</p>
+              <p className="truncate font-mono text-xs text-muted">@{r.listenerUniqueId}</p>
             </div>
             <div className="shrink-0 text-right">
               <p className="font-mono text-sm tabular-nums">
                 {hasMultiplier ? formatPoints(r.points) : formatNumber(r.diamonds)}
-                <span className="ml-1 text-xs text-gray-500">
+                <span className="ml-1 text-xs text-muted">
                   {hasMultiplier ? "pt" : "ダイヤ"}
                 </span>
               </p>
-              <p className="font-mono text-xs text-gray-600 tabular-nums">
+              <p className="font-mono text-xs text-muted tabular-nums">
                 {hasMultiplier && `実弾 ${formatNumber(r.diamonds)} ・ `}
                 {formatNumber(String(r.giftCount))} 個
               </p>
@@ -436,13 +436,13 @@ function ListenerParticipants({
 
   if (entries && entries.length > 1) {
     return (
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-white/5 pt-2 text-xs text-gray-500">
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-border pt-2 text-xs text-muted">
         {/* 数値の単位(pt / ダイヤ)はカード上段の合計に出ているので繰り返さない。 */}
-        <span className="shrink-0 text-gray-600">内訳</span>
+        <span className="shrink-0 text-muted">内訳</span>
         {entries.map((b) => (
           <span key={b.participantId} className="inline-flex min-w-0 items-baseline gap-1">
             <span className="truncate text-brand/80">{b.name}</span>
-            <span className="shrink-0 font-mono tabular-nums text-gray-400">
+            <span className="shrink-0 font-mono tabular-nums text-muted">
               {hasMultiplier ? formatPoints(b.points) : formatNumber(b.diamonds)}
             </span>
           </span>
@@ -454,7 +454,7 @@ function ListenerParticipants({
   if (!row.topParticipantName) return null;
 
   return (
-    <p className="mt-2 truncate border-t border-white/5 pt-2 text-xs text-gray-500">
+    <p className="mt-2 truncate border-t border-border pt-2 text-xs text-muted">
       <span className="text-brand/80">{row.topParticipantName}</span> のリスナー
       {/* 内訳を持たない行だけ、従来の省略表記で人数を伝える。 */}
       {!row.breakdown && row.participantCount > 1 && <>（他{row.participantCount - 1}人にも）</>}

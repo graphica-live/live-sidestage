@@ -84,14 +84,14 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
 
   return (
     <div>
-      <Link href={`/events/${event.id}`} className="text-xs text-gray-500 hover:text-white">
+      <Link href={`/events/${event.id}`} className="text-xs text-muted hover:text-strong">
         ← {event.title}
       </Link>
       <h1 className="mb-1 mt-2 text-xl font-bold">参加者</h1>
 
       <EventSetupSteps format={event.format as EventFormat} current="participants" />
 
-      <p className="mb-6 text-xs text-gray-500">
+      <p className="mb-6 text-xs text-muted">
         {rows.length} / {MAX_PARTICIPANTS} 人
       </p>
 
@@ -118,7 +118,7 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
         >
           {event.format === "TOURNAMENT" ? "次へ: トーナメント表を作る" : "次へ: 完了"}
         </Link>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted">
           {rows.length === 0 && "参加者は0人でも先へ進める。"}
           参加者はあとからでも追加・変更・削除できる。
         </span>

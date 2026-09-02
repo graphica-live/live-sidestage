@@ -4,7 +4,7 @@ import { useOverlayKindSettings } from "./useOverlayKindSettings";
 
 const CHOICE_BASE = "text-xs px-2 py-2 rounded-lg border transition-colors";
 const CHOICE_ON = "border-brand text-brand bg-brand/10";
-const CHOICE_OFF = "border-border text-gray-400 hover:text-white hover:border-white/30";
+const CHOICE_OFF = "border-border text-muted hover:text-strong hover:border-brand/40";
 
 type Payload = {
   title: string;
@@ -15,12 +15,12 @@ type Payload = {
 export default function TopGiftSettings() {
   const { settings, loading, error, update } = useOverlayKindSettings<Payload>("top-gift");
 
-  if (loading) return <p className="text-sm text-gray-400">読み込み中...</p>;
-  if (!settings) return error ? <p className="text-sm text-red-400">{error}</p> : null;
+  if (loading) return <p className="text-sm text-muted">読み込み中...</p>;
+  if (!settings) return error ? <p className="text-sm text-red-600 dark:text-red-400">{error}</p> : null;
 
   return (
     <div className="space-y-5">
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div>
         <label className="label" htmlFor="top-gift-title">

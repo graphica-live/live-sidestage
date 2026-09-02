@@ -96,34 +96,34 @@ export function BattleDetailModal({
           type="button"
           onClick={onClose}
           aria-label="閉じる"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong"
         >
           <CloseIcon />
         </button>
 
         <div className="pr-8">
-          <div className="text-xs text-gray-500">{new Date(battle.startedAt).toLocaleString("ja-JP")}</div>
+          <div className="text-xs text-muted">{new Date(battle.startedAt).toLocaleString("ja-JP")}</div>
 
           <div className="mt-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
               {battle.selfTeam && battle.opponentTeam ? (
                 <BattleVersus selfTeam={battle.selfTeam} opponentTeam={battle.opponentTeam} size="md" />
               ) : opponent === null ? (
-                <span className="text-gray-500 text-sm">対戦相手不明</span>
+                <span className="text-muted text-sm">対戦相手不明</span>
               ) : opponent.count > 1 ? (
-                <span className="text-gray-400 text-sm">複数人バトル({opponent.count + 1}人)</span>
+                <span className="text-muted text-sm">複数人バトル({opponent.count + 1}人)</span>
               ) : opponent.nickName || opponent.displayId || opponent.tiktokId ? (
                 <>
                   <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
                   <div className="min-w-0">
                     <div className="font-medium truncate">{opponent.nickName ?? `@${opponent.displayId}`}</div>
                     {(opponent.displayId || opponent.tiktokId) && (
-                      <div className="text-xs text-gray-500 truncate">@{opponent.displayId ?? opponent.tiktokId}</div>
+                      <div className="text-xs text-muted truncate">@{opponent.displayId ?? opponent.tiktokId}</div>
                     )}
                   </div>
                 </>
               ) : (
-                <span className="text-gray-500 text-sm">対戦相手不明</span>
+                <span className="text-muted text-sm">対戦相手不明</span>
               )}
             </div>
             <span
@@ -131,8 +131,8 @@ export function BattleDetailModal({
                 battle.status === "live"
                   ? "text-brand"
                   : battle.status === "cut_short"
-                    ? "text-red-400"
-                    : "text-gray-400"
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-muted"
               }`}
             >
               {BATTLE_STATUS_LABELS[battle.status]}
@@ -146,24 +146,24 @@ export function BattleDetailModal({
               )}
               {" / "}
               {battle.opponentScore === null ? "-" : (
-                <span className={lose ? "text-red-400 font-semibold" : ""}>{Number(battle.opponentScore).toLocaleString()}</span>
+                <span className={lose ? "text-red-600 dark:text-red-400 font-semibold" : ""}>{Number(battle.opponentScore).toLocaleString()}</span>
               )}
             </span>
-            <span className="text-gray-400">💎{battle.selfTotalDiamonds.toLocaleString()}</span>
+            <span className="text-muted">💎{battle.selfTotalDiamonds.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="mt-4 border-t border-border pt-4">
-          <div className="text-xs text-gray-500 mb-2">貢献者</div>
+          <div className="text-xs text-muted mb-2">貢献者</div>
           {state?.status === "loading" && (
-            <div className="text-center py-6 text-gray-500 text-xs">読み込み中...</div>
+            <div className="text-center py-6 text-muted text-xs">読み込み中...</div>
           )}
           {state?.status === "error" && (
-            <div className="text-center py-6 text-gray-500 text-xs">貢献者一覧を取得できなかった。</div>
+            <div className="text-center py-6 text-muted text-xs">貢献者一覧を取得できなかった。</div>
           )}
           {state?.status === "ready" && (
             state.data.contributors.length === 0 ? (
-              <div className="text-center py-6 text-gray-500 text-xs">
+              <div className="text-center py-6 text-muted text-xs">
                 {state.data.status === "unknown"
                   ? "バトル区間を確定できないため集計できません"
                   : "このバトルへの貢献者なし"}
@@ -177,7 +177,7 @@ export function BattleDetailModal({
                     <div key={c.uniqueId} className="flex items-center gap-2 text-xs">
                       <Avatar src={c.profileImageUrl} alt={c.nickname} />
                       <span className="font-medium truncate max-w-[160px]">{c.nickname}</span>
-                      <span className="text-gray-500">@{c.uniqueId}</span>
+                      <span className="text-muted">@{c.uniqueId}</span>
                       <span className="ml-auto font-mono">
                         💎{c.totalDiamonds.toLocaleString()} ({c.giftCount}件)
                       </span>

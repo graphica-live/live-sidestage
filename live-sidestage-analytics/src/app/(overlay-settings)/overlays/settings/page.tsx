@@ -16,7 +16,7 @@ export default async function OverlaysSettingsPage() {
 
       <div className="card space-y-3">
         <div>
-          <p className="text-sm text-gray-300 font-semibold">現在のプラン</p>
+          <p className="text-sm text-strong font-semibold">現在のプラン</p>
           <p className="mt-1 text-lg font-bold text-brand">{plan}</p>
         </div>
         <Link href="/billing" className="btn-primary block w-full text-center text-sm">

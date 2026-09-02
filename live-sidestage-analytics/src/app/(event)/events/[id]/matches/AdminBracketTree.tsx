@@ -118,12 +118,12 @@ export function AdminBracketTree({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-end gap-1 text-xs text-gray-400">
+      <div className="flex items-center justify-end gap-1 text-xs text-muted">
         <button
           type="button"
           onClick={() => setZoom((z) => Math.max(fitZoom, Number((z - ZOOM_STEP).toFixed(2))))}
           disabled={zoom <= fitZoom}
-          className="rounded-full px-2 py-1.5 hover:bg-white/10 disabled:opacity-30"
+          className="rounded-full px-2 py-1.5 hover:bg-row-hover disabled:opacity-30"
           aria-label="縮小"
         >
           −
@@ -133,7 +133,7 @@ export function AdminBracketTree({
           type="button"
           onClick={() => setZoom((z) => Math.min(MAX_ZOOM, Number((z + ZOOM_STEP).toFixed(2))))}
           disabled={zoom >= MAX_ZOOM}
-          className="rounded-full px-2 py-1.5 hover:bg-white/10 disabled:opacity-30"
+          className="rounded-full px-2 py-1.5 hover:bg-row-hover disabled:opacity-30"
           aria-label="拡大"
         >
           ＋
@@ -142,7 +142,7 @@ export function AdminBracketTree({
           <button
             type="button"
             onClick={() => setZoom(fitZoom)}
-            className="ml-1 rounded-full px-2 py-1.5 hover:bg-white/10"
+            className="ml-1 rounded-full px-2 py-1.5 hover:bg-row-hover"
           >
             全体表示
           </button>
@@ -233,14 +233,14 @@ function RoundHeadings({
       {hasWings &&
         wings.map((round) => (
           <div key={`l${round}`} className="flex">
-            <div className={`${CARD_W} shrink-0 text-center text-xs text-gray-500`}>
+            <div className={`${CARD_W} shrink-0 text-center text-xs text-muted`}>
               {label(round)}
             </div>
             <div className={`${CONN_W} shrink-0`} />
           </div>
         ))}
 
-      <div className={`${CARD_W} shrink-0 text-center text-xs font-semibold text-gray-300`}>
+      <div className={`${CARD_W} shrink-0 text-center text-xs font-semibold text-strong`}>
         {label(roundCount)}
       </div>
 
@@ -248,7 +248,7 @@ function RoundHeadings({
         [...wings].reverse().map((round) => (
           <div key={`r${round}`} className="flex">
             <div className={`${CONN_W} shrink-0`} />
-            <div className={`${CARD_W} shrink-0 text-center text-xs text-gray-500`}>
+            <div className={`${CARD_W} shrink-0 text-center text-xs text-muted`}>
               {label(round)}
             </div>
           </div>
@@ -374,11 +374,11 @@ function PlacementSection({
 }) {
   return (
     <div className="mt-8 border-t border-border pt-5">
-      <h3 className="mb-3 text-[11px] font-bold tracking-[0.2em] text-gray-500">順位決定戦</h3>
+      <h3 className="mb-3 text-[11px] font-bold tracking-[0.2em] text-muted">順位決定戦</h3>
       <div className="grid gap-6">
         {blocks.map((block) => (
           <div key={block.depth}>
-            <div className="mb-2 text-xs font-semibold text-gray-300">{block.rank}位決定戦</div>
+            <div className="mb-2 text-xs font-semibold text-strong">{block.rank}位決定戦</div>
             <div className="flex items-center" data-bracket-section={`placement-${block.depth}`}>
               <MatchNode
                 round={block.root.round}
@@ -412,7 +412,7 @@ function PairConnector({ mirror }: { mirror: boolean }) {
 function StraightConnector() {
   return (
     <div className={`relative ${CONN_W} shrink-0`} aria-hidden>
-      <span className="absolute inset-x-0 top-1/2 h-px bg-white/20" />
+      <span className="absolute inset-x-0 top-1/2 h-px bg-black/20 dark:bg-white/20" />
     </div>
   );
 }
@@ -431,7 +431,7 @@ function MatchCardOrEmpty({
   if (!match) {
     return (
       <div
-        className={`flex ${CARD_H} items-center justify-center rounded-xl border border-dashed border-border text-[10px] text-gray-600`}
+        className={`flex ${CARD_H} items-center justify-center rounded-xl border border-dashed border-border text-[10px] text-muted`}
       >
         —
       </div>
@@ -454,7 +454,7 @@ function MatchCardOrEmpty({
 
   const header = (
     <div
-      className={`flex items-center justify-between gap-1 text-[10px] text-gray-500 ${
+      className={`flex items-center justify-between gap-1 text-[10px] text-muted ${
         mirror ? "flex-row-reverse" : ""
       }`}
     >
@@ -462,7 +462,7 @@ function MatchCardOrEmpty({
         className={`rounded-full px-1.5 py-0.5 ${
           needsSelection
             ? "bg-yellow-400/10 text-yellow-300"
-            : (MATCH_STATUS_CLASSES[match.status] ?? "bg-white/5 text-gray-400")
+            : (MATCH_STATUS_CLASSES[match.status] ?? "bg-black/5 dark:bg-white/5 text-muted")
         }`}
       >
         {needsSelection ? "⚠ 候補選択待ち" : (MATCH_STATUS_LABELS[match.status] ?? match.status)}
@@ -559,17 +559,17 @@ function SideRow({
   const content = (
     <>
       <span className={`min-w-0 flex-1 truncate ${mirror ? "text-right" : ""}`}>
-        {side.empty ? <span className="text-gray-600">{emptyLabel}</span> : side.label}
+        {side.empty ? <span className="text-muted">{emptyLabel}</span> : side.label}
       </span>
       {/* TikTok 側のバトルスコア。**行を増やさず同じ行に置く**。 */}
       {side.tiktokScore !== null && (
-        <span className="shrink-0 font-mono text-[11px] text-gray-400">{side.tiktokScore}</span>
+        <span className="shrink-0 font-mono text-[11px] text-muted">{side.tiktokScore}</span>
       )}
     </>
   );
 
   const base = `flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-sm ${
-    match.winnerSideId === side.id ? "bg-brand/10 ring-1 ring-brand/40" : "bg-white/5"
+    match.winnerSideId === side.id ? "bg-brand/10 ring-1 ring-brand/40" : "bg-black/5 dark:bg-white/5"
   } ${mirror ? "flex-row-reverse" : ""}`;
 
   if (!swap) {

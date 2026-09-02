@@ -129,7 +129,7 @@ export function BracketMethodDiagram({ method }: { method: BracketMethod }) {
                   x={x + BOX_W / 2}
                   y={y + BOX_H / 2 + 3}
                   textAnchor="middle"
-                  className="fill-gray-200 text-[9px]"
+                  className="fill-strong text-[9px]"
                 >
                   {slot.labels[0]}
                 </text>
@@ -139,7 +139,7 @@ export function BracketMethodDiagram({ method }: { method: BracketMethod }) {
                     x={x + BOX_W / 2}
                     y={y + BOX_H / 2 - 3}
                     textAnchor="middle"
-                    className="fill-gray-200 text-[8px]"
+                    className="fill-strong text-[8px]"
                   >
                     {slot.labels[0]}
                   </text>
@@ -147,7 +147,7 @@ export function BracketMethodDiagram({ method }: { method: BracketMethod }) {
                     x={x + BOX_W / 2}
                     y={y + BOX_H / 2 + 9}
                     textAnchor="middle"
-                    className="fill-gray-500 text-[7px]"
+                    className="fill-muted text-[7px]"
                   >
                     vs {slot.labels[1]}
                   </text>

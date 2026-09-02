@@ -10,8 +10,8 @@ const UPDATED_AT = "2026-08-30";
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-semibold text-white">{title}</h2>
-      <div className="space-y-2 text-sm leading-relaxed text-neutral-300">{children}</div>
+      <h2 className="text-lg font-semibold text-strong">{title}</h2>
+      <div className="space-y-2 text-sm leading-relaxed text-strong">{children}</div>
     </section>
   );
 }
@@ -19,7 +19,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-neutral-100">{title}</h3>
+      <h3 className="text-sm font-semibold text-strong">{title}</h3>
       <div className="space-y-2">{children}</div>
     </div>
   );
@@ -28,14 +28,14 @@ function SubSection({ title, children }: { title: string; children: React.ReactN
 export default function MobilePrivacyPolicyPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="text-2xl font-bold text-white">プライバシーポリシー</h1>
-      <p className="mt-2 text-xs text-neutral-500">最終更新日: {UPDATED_AT}</p>
+      <h1 className="text-2xl font-bold text-strong">プライバシーポリシー</h1>
+      <p className="mt-2 text-xs text-muted">最終更新日: {UPDATED_AT}</p>
 
       <div className="mt-8 space-y-10">
-        <p className="text-sm leading-relaxed text-neutral-300">
+        <p className="text-sm leading-relaxed text-strong">
           LIVE Sidestage（以下「本アプリ」といいます。）は、本アプリの提供にあたり、ユーザーに関する情報を以下のとおり取り扱います。
         </p>
-        <p className="-mt-6 text-sm leading-relaxed text-neutral-300">
+        <p className="-mt-6 text-sm leading-relaxed text-strong">
           本ポリシーは、iOS版およびAndroid版のLIVE Sidestageモバイルアプリに適用されます。
         </p>
 
@@ -44,7 +44,7 @@ export default function MobilePrivacyPolicyPage() {
 
           <SubSection title="1.1 アカウント情報">
             <p>
-              <strong className="text-neutral-100">Googleアカウントでログインした場合</strong>
+              <strong className="text-strong">Googleアカウントでログインした場合</strong>
             </p>
             <p>Googleから提供される以下の情報を取得する場合があります。</p>
             <ul className="list-disc space-y-1 pl-5">
@@ -54,7 +54,7 @@ export default function MobilePrivacyPolicyPage() {
               <li>Googleが発行するアカウント識別子</li>
             </ul>
             <p>
-              <strong className="text-neutral-100">Appleアカウントでログインした場合</strong>
+              <strong className="text-strong">Appleアカウントでログインした場合</strong>
             </p>
             <p>Appleから提供される以下の情報を取得する場合があります。</p>
             <ul className="list-disc space-y-1 pl-5">
@@ -173,7 +173,7 @@ export default function MobilePrivacyPolicyPage() {
 
           <SubSection title="4.2 アカウント削除後も保持される場合がある情報">
             <p>
-              <strong className="text-neutral-100">TikTok LIVEに関する配信データ</strong>
+              <strong className="text-strong">TikTok LIVEに関する配信データ</strong>
             </p>
             <p>
               TikTok
@@ -182,7 +182,7 @@ export default function MobilePrivacyPolicyPage() {
               Sidestageアカウントとの直接的な関連付けを可能な範囲で削除します。
             </p>
             <p>
-              <strong className="text-neutral-100">法令等に基づき保存が必要な情報</strong>
+              <strong className="text-strong">法令等に基づき保存が必要な情報</strong>
             </p>
             <p>法令上の義務、不正利用の防止、紛争への対応その他正当な理由により保存が必要な情報については、必要な期間に限り保持する場合があります。</p>
           </SubSection>

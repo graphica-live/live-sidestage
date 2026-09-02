@@ -111,7 +111,7 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
           const current = index === stepIndex;
           return (
             <li key={s} className="flex items-center gap-2">
-              {index > 0 && <span className="text-gray-700">›</span>}
+              {index > 0 && <span className="text-muted">›</span>}
               <button
                 type="button"
                 // 先の手順へは飛ばせない(前の手順が未確定のまま進むのを防ぐ)。
@@ -119,10 +119,10 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                 onClick={() => goTo(index)}
                 className={
                   current
-                    ? "font-medium text-white"
+                    ? "font-medium text-strong"
                     : done
-                      ? "text-gray-400 hover:text-white"
-                      : "cursor-default text-gray-600"
+                      ? "text-muted hover:text-strong"
+                      : "cursor-default text-muted"
                 }
               >
                 {index + 1}. {WIZARD_STEP_TITLES[s]}
@@ -134,12 +134,12 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
 
       <div className="card grid gap-4">
         <div>
-          <h2 className="text-base font-semibold text-white">{WIZARD_STEP_TITLES[step]}</h2>
-          <p className="mt-1 text-xs text-gray-500">{WIZARD_STEP_HINTS[step]}</p>
+          <h2 className="text-base font-semibold text-strong">{WIZARD_STEP_TITLES[step]}</h2>
+          <p className="mt-1 text-xs text-muted">{WIZARD_STEP_HINTS[step]}</p>
         </div>
 
         {errors.length > 0 && (
-          <ul className="grid gap-1 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-400">
+          <ul className="grid gap-1 rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-sm text-red-600 dark:text-red-400">
             {errors.map((message) => (
               <li key={message}>{message}</li>
             ))}
@@ -163,10 +163,10 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                   onChange={() => set("format", format)}
                 />
                 <span>
-                  <span className="block text-sm font-medium text-white">
+                  <span className="block text-sm font-medium text-strong">
                     {FORMAT_LABELS[format]}
                   </span>
-                  <span className="mt-0.5 block text-xs text-gray-400">
+                  <span className="mt-0.5 block text-xs text-muted">
                     {FORMAT_DESCRIPTIONS[format]}
                   </span>
                 </span>
@@ -180,10 +180,10 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
             {values.format === "TOURNAMENT" && (
               <div className="mt-2 grid gap-3 border-t border-border pt-4">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">
+                  <h3 className="text-sm font-semibold text-strong">
                     トーナメント表の不戦勝(BYE)方式
                   </h3>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-muted">
                     参加人数が2のべき乗でない場合、不戦勝が出る。その配り方を選ぶ。
                     総試合数はどちらの方式でも同じで、不戦勝の配り方だけが違う。
                   </p>
@@ -208,21 +208,21 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                           onChange={() => set("bracketMethod", method as BracketMethod)}
                         />
                         <span>
-                          <span className="block text-sm font-medium text-white">
+                          <span className="block text-sm font-medium text-strong">
                             {BRACKET_METHOD_LABELS[method]}
                           </span>
-                          <span className="mt-0.5 block text-xs text-gray-500">
+                          <span className="mt-0.5 block text-xs text-muted">
                             {BRACKET_METHOD_SUBTITLES[method]}
                           </span>
                         </span>
                       </div>
-                      <p className="text-xs leading-relaxed text-gray-400">
+                      <p className="text-xs leading-relaxed text-muted">
                         {BRACKET_METHOD_DESCRIPTIONS[method]}
                       </p>
-                      <div className="flex justify-center rounded-lg bg-black/20 p-3">
+                      <div className="flex justify-center rounded-lg bg-black/5 dark:bg-white/5 p-3">
                         <BracketMethodDiagram method={method} />
                       </div>
-                      <p className="text-center text-[10px] text-gray-600">
+                      <p className="text-center text-[10px] text-muted">
                         例: 5人参加の場合(奇数の最小構成)
                       </p>
                     </label>
@@ -231,8 +231,8 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
 
                 <div className="mt-2 grid gap-3 border-t border-border pt-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-white">順位決定戦</h3>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <h3 className="text-sm font-semibold text-strong">順位決定戦</h3>
+                    <p className="mt-1 text-xs text-muted">
                       3位以下も試合で決めるか。1つ増やすごとに参加者の実際のライブバトルが増える。
                     </p>
                   </div>
@@ -255,10 +255,10 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                           onChange={() => set("placementDepth", depth)}
                         />
                         <span>
-                          <span className="block text-sm font-medium text-white">
+                          <span className="block text-sm font-medium text-strong">
                             {PLACEMENT_DEPTH_LABELS[depth]}
                           </span>
-                          <span className="mt-0.5 block text-xs text-gray-400">
+                          <span className="mt-0.5 block text-xs text-muted">
                             {PLACEMENT_DEPTH_SUBTITLES[depth]}
                           </span>
                         </span>
@@ -335,10 +335,10 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
                     }}
                   />
                   <span>
-                    <span className="block text-sm font-medium text-white">
+                    <span className="block text-sm font-medium text-strong">
                       {ENTRY_MODE_LABELS[mode]}
                     </span>
-                    <span className="mt-0.5 block text-xs text-gray-400">
+                    <span className="mt-0.5 block text-xs text-muted">
                       {mode === "SOLO"
                         ? "参加者ひとりずつで順位を出す"
                         : "参加者をチームにまとめ、チーム合計で順位を出す"}
@@ -406,7 +406,7 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
               onChange={(e) => set("noticeText", e.target.value)}
               maxLength={MAX_NOTICE_LENGTH}
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-muted">
               テンプレートを自由に編集・削除できる。全部消して空にしてもよい。
             </p>
           </div>
@@ -440,21 +440,21 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
               <Row label="開催日程">
                 <ul className="grid gap-0.5">
                   {values.sessions.map((s, index) => (
-                    <li key={index} className="font-mono text-xs text-gray-300">
+                    <li key={index} className="font-mono text-xs text-strong">
                       {formatDraftRange(s.startAt, s.endAt)}
-                      {s.name && <span className="ml-2 font-sans text-gray-500">{s.name}</span>}
+                      {s.name && <span className="ml-2 font-sans text-muted">{s.name}</span>}
                     </li>
                   ))}
                 </ul>
               </Row>
             </dl>
 
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               作成すると同時に公開ページが有効になる。続けて参加者登録
               {values.format === "TOURNAMENT" && "→トーナメント表作成"}
               に進む。ここで決めた内容も含め、いつでもあとから編集できる。
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               ルール・優勝賞品・注意事項は前の手順で決めた内容のまま作成される。
             </p>
           </div>
@@ -482,7 +482,7 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
           </button>
         )}
 
-        <span className="self-center text-xs text-gray-500">
+        <span className="self-center text-xs text-muted">
           ステップ {stepIndex + 1} / {WIZARD_STEPS.length}
         </span>
       </div>
@@ -493,8 +493,8 @@ export function EventWizard({ initial }: { initial: EventDraft }) {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1">
-      <dt className="w-20 shrink-0 text-xs text-gray-500">{label}</dt>
-      <dd className="min-w-0 flex-1 text-sm text-gray-200">{children}</dd>
+      <dt className="w-20 shrink-0 text-xs text-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 text-sm text-strong">{children}</dd>
     </div>
   );
 }
