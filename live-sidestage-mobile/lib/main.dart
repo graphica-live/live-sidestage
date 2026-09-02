@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'core/account_status_store.dart';
 import 'core/app_config_store.dart';
 import 'core/app_version.dart';
+import 'core/apple_billing_service.dart';
 import 'core/background_task_handler.dart';
 import 'core/battle_activity.dart';
 import 'core/billing_service.dart';
@@ -193,6 +194,7 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AppConfigStore()..load()),
         ChangeNotifierProvider(create: (_) => AccountStatusStore()),
         ChangeNotifierProvider(create: (_) => BillingService()),
+        ChangeNotifierProvider(create: (_) => AppleBillingService()),
         ChangeNotifierProvider(create: (_) => ThemeModeStore()..load()),
         // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
@@ -260,6 +262,7 @@ class _AuthGateState extends State<AuthGate> {
           if (!mounted) return;
           context.read<AccountStatusStore>().reset();
           context.read<BillingService>().resetSession();
+          context.read<AppleBillingService>().resetSession();
         });
       }
       return const WelcomeScreen();
@@ -276,12 +279,18 @@ class _AuthGateState extends State<AuthGate> {
               userId: session.userId,
               accountStatusStore: context.read<AccountStatusStore>(),
             );
+        context.read<AppleBillingService>().init(
+              token: session.token,
+              userId: session.userId,
+              accountStatusStore: context.read<AccountStatusStore>(),
+            );
       });
     } else if (_syncedBillingToken != session.token) {
       _syncedBillingToken = session.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         context.read<BillingService>().updateToken(session.token);
+        context.read<AppleBillingService>().updateToken(session.token);
       });
     }
 

@@ -78,6 +78,9 @@ dependencies:
   # Billing Library 7系は2026-08-31でGoogle Playへの新規提出期限切れ(延長申請の期限が
   # 2026-11-01)。0.5.0でBilling Library 8.0.0へ上がっている(実装後レビュー指摘、HIGH)。
   in_app_purchase_android: ^0.5.0
+  # Apple IAP(StoreKit2)。in_app_purchase本体はfederated pluginで、iOS実装はこのパッケージが
+  # 別途要る(Android版のin_app_purchase_androidと対称)。
+  in_app_purchase_storekit: ^0.4.11
 
 dev_dependencies:
   flutter_test:

@@ -549,6 +549,35 @@ class LiveAnalyticsApi {
     );
   }
 
+  /// Apple IAP購入フローの開始。サーバーが発行する[appAccountToken](UUID)を
+  /// `PurchaseParam.applicationUserName`へそのまま渡す(StoreKit2のappAccountTokenとして
+  /// transactionに載る。横流し防止のため)。
+  ///
+  /// 既に有効なプランを持つユーザーが呼ぶと409(isForbiddenではなくApiException)になる —
+  /// これは「エラー」ではなく「復元不要、既に反映済み」を意味する。呼び出し側
+  /// (apple_billing_service.dart)はstatusCode 409を専用に扱うこと。
+  Future<String> initAppleBilling({required String token}) async {
+    final data = await _send('POST', '/api/mobile/billing/apple/init', const {}, token: token);
+    return data['appAccountToken'] as String;
+  }
+
+  /// Appleのtransaction IDをサーバーへ送って検証・反映する。[transactionId]は
+  /// `PurchaseDetails.purchaseID`(現在のtransaction id。originalTransactionIdとは
+  /// 更新・復元時に異なりうるため、original側の解決はサーバーに委ねる)。
+  /// 成功後は[fetchAccountStatus]で最新のeffectivePlanを取り直すこと(このAPI自体は
+  /// 更新後のプランを返さない)。
+  Future<void> verifyApplePurchase({
+    required String token,
+    required String transactionId,
+  }) async {
+    await _send(
+      'POST',
+      '/api/mobile/billing/apple/verify-purchase',
+      {'transactionId': transactionId},
+      token: token,
+    );
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }

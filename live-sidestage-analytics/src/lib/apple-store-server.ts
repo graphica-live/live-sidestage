@@ -56,6 +56,13 @@ export async function getAllSubscriptionStatuses(transactionId: string) {
   }
 }
 
+// verify-purchase route側で「実在しないtransactionId」を400(クライアント起因)と
+// 区別するために公開する(実装後レビュー指摘、LOW — 未検出のままだと素通りで500になり、
+// 壊れた/悪意あるクライアントが5xxを量産できる)。
+export function isTransactionNotFoundError(error: unknown): boolean {
+  return isSandboxTransactionError(error);
+}
+
 function isSandboxTransactionError(error: unknown): boolean {
   // app-store-server-libraryはAPIエラーをAPIExceptionとして投げ、Sandbox取引を
   // Production環境へ問い合わせた場合は4040010(TransactionIdNotFoundError)相当を返す。
@@ -73,11 +80,22 @@ function rootCAs(): Buffer[] {
     .map((b64) => Buffer.from(b64, "base64"));
 }
 
+// Production検証で公式ライブラリ(@apple/app-store-server-library)が必須とする値。
+// 未設定のまま任意扱いにすると、購入だけ成立してverify/webhookの署名検証が全滅しうる
+// (Design Modeレビュー指摘、HIGH)。App Store ConnectのApp情報ページに表示される
+// 数値のApple ID。
+function requiredAppAppleId(): number {
+  const raw = requiredEnv("APPLE_APP_APPLE_ID");
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`APPLE_APP_APPLE_ID must be a positive integer, got: ${raw}`);
+  }
+  return value;
+}
+
 function buildVerifier(environment: Environment): SignedDataVerifier {
   const bundleId = requiredEnv("APPLE_BUNDLE_ID");
-  const appAppleId = process.env.APPLE_APP_APPLE_ID
-    ? Number(process.env.APPLE_APP_APPLE_ID)
-    : undefined;
+  const appAppleId = requiredAppAppleId();
   // Appleが配布するG3 Root CA証明書。SignedDataVerifierはJWSの署名チェーンをこれと照合する。
   return new SignedDataVerifier(rootCAs(), true, environment, bundleId, appAppleId);
 }
@@ -128,4 +146,22 @@ export async function verifyAndDecodeNotification(
   signedPayload: string,
 ): Promise<ResponseBodyV2DecodedPayload> {
   return verifyWithFallback((v) => v.verifyAndDecodeNotification(signedPayload));
+}
+
+// verify-purchase/webhookで初めて環境変数不足に気づくと、購入だけ成立して以後の検証・
+// webhookが全滅する(Design Modeレビュー指摘、HIGH)。init APIの時点で必須環境変数の有無を
+// 確認し、揃っていなければ購入導線自体を開始させない(apple/init route参照)。
+const REQUIRED_APPLE_ENV_VARS = [
+  "APPLE_APP_STORE_PRIVATE_KEY",
+  "APPLE_APP_STORE_KEY_ID",
+  "APPLE_APP_STORE_ISSUER_ID",
+  "APPLE_BUNDLE_ID",
+  "APPLE_ROOT_CA_BASE64_LIST",
+  "APPLE_APP_APPLE_ID",
+  "APPLE_PRODUCT_ID_PRO",
+  "APPLE_PRODUCT_ID_ULTRA",
+] as const;
+
+export function isAppleBillingConfigured(): boolean {
+  return REQUIRED_APPLE_ENV_VARS.every((name) => !!process.env[name]);
 }
