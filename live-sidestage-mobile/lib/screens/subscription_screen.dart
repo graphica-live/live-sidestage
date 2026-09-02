@@ -92,12 +92,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Widget _buildAndroid(BuildContext context) {
     final accountStatus = context.watch<AccountStatusStore>();
     final billing = context.watch<BillingService>();
-    final currentPlan = accountStatus.status.effectivePlan;
-    final busy = billing.state == BillingPurchaseState.processing;
-    // サーバーのinitは有効な有料プラン保持中、provider問わず常に409で拒否する
-    // (cross-provider二重課金防止)。プラン間の変更(upgrade/downgrade)は未実装なので、
-    // 既に有料プランの間は他プランの購入ボタンも出さない(押しても常に失敗する導線にしない)。
-    final onPaidPlan = currentPlan == 'PRO' || currentPlan == 'ULTRA';
+    // 課金導線の出し分けは実プラン(plan)で判定する。βは課金状態と無関係なので
+    // planLabel(β前置きの表示用ラベル)をここで使わない。
+    final currentPlan = accountStatus.status.plan;
 
     ProductDetails? productFor(String productId) {
       // Play Consoleで同一productIdに複数のbase plan/offerを設定すると、
@@ -132,7 +129,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Widget _buildIos(BuildContext context) {
     final accountStatus = context.watch<AccountStatusStore>();
     final billing = context.watch<AppleBillingService>();
-    final currentPlan = accountStatus.status.effectivePlan;
+    // Android版と同じく実プランで判定する(理由は_buildAndroid参照)。
+    final currentPlan = accountStatus.status.plan;
 
     ProductDetails? productFor(String productId) {
       // App Store Connectで同一productIdに複数のofferを設定すると、in_app_purchase_storekitが

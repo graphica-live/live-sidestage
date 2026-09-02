@@ -46,7 +46,7 @@ class AppleBillingService extends ChangeNotifier {
 
   /// アプリ起動時、ログイン済みセッションが判明した時点で1回呼ぶ。
   /// [token]はverify-purchase呼び出しに使うJWT、[accountStatusStore]は
-  /// 購入確定後にeffectivePlanを取り直すために使う。
+  /// 購入確定後にplanを取り直すために使う。
   Future<void> init({
     required String token,
     required String userId,
@@ -164,7 +164,7 @@ class AppleBillingService extends ChangeNotifier {
     // downgrade)は未実装なので、既に有料プラン中の新規購入は開始させない
     // (Android版と同じ理由。cross-provider/cross-deviceの二重課金は既知の残存リスクとして
     // Android版と同水準で許容する — Design Modeレビュー指摘、対応はスコープ外)。
-    final currentPlan = _accountStatusStore?.status.effectivePlan;
+    final currentPlan = _accountStatusStore?.status.plan;
     if (currentPlan == 'PRO' || currentPlan == 'ULTRA') {
       state = BillingPurchaseState.error;
       errorMessage = '既に有料プランをご利用中です。';
@@ -323,7 +323,7 @@ class AppleBillingService extends ChangeNotifier {
       final reflectedStatus = accountStatusStore?.status;
       if (reflectedStatus != null &&
           !reflectedStatus.isFallback &&
-          reflectedStatus.effectivePlan == 'FREE') {
+          reflectedStatus.plan == 'FREE') {
         state = BillingPurchaseState.error;
         errorMessage = '購入処理は完了しましたが、プランへの反映を確認できませんでした。時間をおいて画面を開き直すか、サポートへお問い合わせください。';
         notifyListeners();

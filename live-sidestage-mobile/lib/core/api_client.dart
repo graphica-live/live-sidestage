@@ -564,7 +564,7 @@ class LiveAnalyticsApi {
   /// Appleのtransaction IDをサーバーへ送って検証・反映する。[transactionId]は
   /// `PurchaseDetails.purchaseID`(現在のtransaction id。originalTransactionIdとは
   /// 更新・復元時に異なりうるため、original側の解決はサーバーに委ねる)。
-  /// 成功後は[fetchAccountStatus]で最新のeffectivePlanを取り直すこと(このAPI自体は
+  /// 成功後は[fetchAccountStatus]で最新のplanを取り直すこと(このAPI自体は
   /// 更新後のプランを返さない)。
   Future<void> verifyApplePurchase({
     required String token,
