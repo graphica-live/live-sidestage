@@ -9,16 +9,22 @@
 // 確定してよい条件は「時間が経ったこと」ではなく「値が実際に静止していること」で判定する:
 //
 // 1. Gift の保存は persistBattle と非同期・非awaitの別経路(saveGift(...).then(...))なので、
-//    END検知の瞬間には集計対象の Gift がまだ INSERT されていない。トリガはEND検知の**10分後**。
-// 2. 10分後でも「スコアが一度も観測できていない」ことがある(resolveBattleScore の
+//    END検知の瞬間には集計対象の Gift がまだ INSERT されていない。トリガはEND検知の**30秒後**
+//    (2026-09-02に10分から短縮)。
+// 2. 30秒後でも「スコアが一度も観測できていない」ことがある(resolveBattleScore の
 //    kind !== "unknown" は自分の anchorId を識別できたことしか保証しない)。selfScore が null なら
 //    確定しない。不完全な値を確定すると、行が存在するせいでライブ集計へ戻れなくなり永久に残る。
 // 3. さらに**60秒待って同じ計算をやり直し、全項目が完全一致した場合のみ**確定する。
 //    armies の score_updated や遅延 Gift INSERT が届き続けている最中に確定しないための実測。
 //
-// 既知の残存リスク(ユーザー承認済み): 60秒の無変化は「今後もう変化しない」ことの証明ではない
-// (TikTok側に完了マーカーが無い)。2回目の計算直後〜コミット後に遅延更新が届くと、確定値が
-// わずかに古いまま残ることがありうる。実害は「表示が数ダイヤ・数秒古い」程度に限られる。
+// 既知の残存リスク: 60秒の無変化は「今後もう変化しない」ことの証明ではない(TikTok側に完了
+// マーカーが無い)。2回目の計算直後〜コミット後に遅延更新が届くと、確定値がわずかに古いまま
+// 残ることがありうる。**トリガを10分→30秒に短縮したことで、END検知から確定判定(2回目の計算)
+// までの実時間は最短90秒(30秒+60秒)となり、以前(11分)より遅延Giftを取りこぼすリスクが明確に
+// 上がる。取りこぼして確定した行は BattleHistory に存在してしまうため、
+// scripts/backfill-battle-history.ts は「既確定スキップ」で素通りし、自動では直らない
+// (手動で該当行を削除してから backfill を再実行する必要がある)。** 実害は「表示が数ダイヤ・
+// 数秒古い」程度に限られる、という従来の想定はこの変更で崩れうる。
 
 import { prisma } from "@/lib/prisma";
 import { aggregateGiftUsers } from "@/lib/gift-analytics";
@@ -123,7 +129,7 @@ export async function computeBattleSnapshot(
     select: { hostUserId: true, tiktokId: true },
   });
   // hostUserId は fill-once で、閲覧契機の遅延バックフィル(backfillHostUserIds)でしか埋まらない。
-  // 10分後の時点でも未解決なことがある。その場合は確定しない(以後もライブ集計にフォールバックする)。
+  // 30秒後の時点でも未解決なことがある。その場合は確定しない(以後もライブ集計にフォールバックする)。
   const selfHostUserId = selfRoom?.hostUserId ?? null;
   if (selfHostUserId === null) return null;
   const selfTiktokId = selfRoom?.tiktokId ?? null;
