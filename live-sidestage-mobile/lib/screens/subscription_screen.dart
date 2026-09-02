@@ -74,7 +74,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
     final accountStatus = context.watch<AccountStatusStore>();
     final billing = context.watch<BillingService>();
-    final currentPlan = accountStatus.status.effectivePlan;
+    final currentPlan = accountStatus.status.plan;
     final busy = billing.state == BillingPurchaseState.processing;
     // サーバーのinitは有効な有料プラン保持中、provider問わず常に409で拒否する
     // (cross-provider二重課金防止)。プラン間の変更(upgrade/downgrade)は未実装なので、

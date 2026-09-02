@@ -535,7 +535,7 @@ class LiveAnalyticsApi {
   }
 
   /// Google Playの購入トークンをサーバーへ送って検証・反映する。
-  /// 成功後は[fetchAccountStatus]で最新のeffectivePlanを取り直すこと(このAPI自体は
+  /// 成功後は[fetchAccountStatus]で最新のplanを取り直すこと(このAPI自体は
   /// 更新後のプランを返さない)。
   Future<void> verifyGooglePurchase({
     required String token,

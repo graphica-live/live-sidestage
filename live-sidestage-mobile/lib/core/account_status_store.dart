@@ -7,14 +7,18 @@ import '../models/account_status.dart';
 import 'api_client.dart';
 
 /// 背景Isolate(Foreground Service)がFREEプランの読み上げインターバル判定に使う、
-/// 直近にサーバーから実際に取得できた effectivePlan の永続化キー。
+/// 直近にサーバーから実際に取得できた実プラン(plan)の永続化キー。
 ///
 /// **サーバーへの問い合わせが失敗した([AccountStatus.isFallback])ときは書き換えない。**
 /// [AccountStatus.fallback] はUIの出し分け用に「最も広く許可される側(FREE)」へ倒す設計だが、
 /// それをそのままここへ書くと、一時的な通信不良だけでPRO/ULTRAユーザーの読み上げまで
 /// 5分間のインターバル制限を受ける事故になる。未保存(null)のときは背景Isolate側で
 /// 「制限しない」に倒す(background_task_handler.dart参照)。
-const String effectivePlanStorageKey = 'effectivePlan';
+const String planStorageKey = 'plan';
+
+/// 同じタイミングで保存する、モバイル領域のβが有効かどうかの永続化キー。
+/// [planStorageKey]と同じ「取得成功時のみ書き換え」パターンで保存する。
+const String mobileBetaActiveStorageKey = 'mobileBetaActive';
 
 /// サーバーが返す `GET /api/mobile/me` を起動時に取得し、アプリ内の共通状態として持つ。
 ///
@@ -69,9 +73,15 @@ class AccountStatusStore extends ChangeNotifier {
       // ベストエフォート。プラットフォームチャンネル未セットアップのテスト環境や
       // 保存失敗でアプリを止める理由にはならない(次回refresh成功時に上書きされる)。
       unawaited(
-        FlutterForegroundTask.saveData(key: effectivePlanStorageKey, value: next.effectivePlan)
+        FlutterForegroundTask.saveData(key: planStorageKey, value: next.plan).catchError((Object e) {
+          debugPrint('[plan] planの保存に失敗しました: $e');
+          return false;
+        }),
+      );
+      unawaited(
+        FlutterForegroundTask.saveData(key: mobileBetaActiveStorageKey, value: next.mobileBetaActive)
             .catchError((Object e) {
-          debugPrint('[plan] effectivePlanの保存に失敗しました: $e');
+          debugPrint('[plan] mobileBetaActiveの保存に失敗しました: $e');
           return false;
         }),
       );

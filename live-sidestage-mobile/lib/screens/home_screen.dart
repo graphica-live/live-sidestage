@@ -685,7 +685,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Center(child: _PlanBadge(plan: accountStatus.status.effectivePlan)),
+            child: Center(child: _PlanBadge(label: accountStatus.status.planLabel)),
           ),
         ],
       ),
@@ -767,16 +767,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 }
 
 /// AppBar右上のプラン表示。タップでプラン選択画面へ遷移する。
+/// 表示文字列はanalytics(サーバー)の`planLabel`をそのまま出す — β表記("βFREE"等)を
+/// 含めた組み立ての唯一の正本はサーバー側`getPlanDisplay`で、クライアントでは組み立て直さない。
 class _PlanBadge extends StatelessWidget {
-  const _PlanBadge({required this.plan});
+  const _PlanBadge({required this.label});
 
-  final String plan;
-
-  String get _label => switch (plan) {
-        'ULTRA' => 'ULTRA',
-        'PRO' => 'PRO',
-        _ => 'FREE',
-      };
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -793,7 +789,7 @@ class _PlanBadge extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
-          _label,
+          label,
           style: TextStyle(
             color: colorScheme.primary,
             fontWeight: FontWeight.bold,

@@ -39,7 +39,7 @@ TikTok Live特化+日本語ネイティブUIであることが差別化要因(Ti
 - Railwayホスティングでファイルシステムが永続化されない前提(`device_id`はDB保存)。
 - 元のギフトデータ(`Gift`)は変更・削除せず、編集内容は`GiftEdit`として別レコードに保持し表示時のみ上書きする。編集/非表示は編集した登録者本人にのみ影響する。
 - 認証は必須ではなく段階的: 未認証でもオーバーレイ運用は可能、コイン数・履歴の閲覧のみ認証後に解放。
-- 課金はFREE/PRO/ULTRAの3段(Stripe、`/billing`はanalyticsとイベント運営で共通)。**土台は入っているが、現時点で有料プランに閉じている機能は実質なく、UI上も「すべての機能を無料」と表示している**。プラン制御は`src/lib/plan/features.ts`に1行足す方式で、未登録キーはfail-closed。モバイルは無料β期間中`mobileBetaEnabled`でULTRA相当に倒れる(Web側の判定には流用しない)。
+- 課金はFREE/PRO/ULTRAの3段(Stripe、`/billing`はanalyticsとイベント運営で共通)。**土台は入っているが、現時点で有料プランに閉じている機能は実質なく、UI上も「すべての機能を無料」と表示している**。プラン制御は`src/lib/plan/features.ts`の`FEATURE_POLICIES`に1エントリ足す方式で、未登録キーはfail-closed。実プラン(`plan`)自体は書き換えず、機能ごとに`requiredPlan`未満でも紐づく`betaArea`(`mobile`/`analytics`/`events`、`src/lib/plan/beta-settings.ts`)が有効なら一時的にその機能だけ解放する。プラン表示ラベル("FREE"/"βFREE"等)は`src/lib/plan/plan-display.ts`が唯一の正本で、`GET /api/mobile/me`の`planLabel`経由でモバイル側もこれをそのまま表示する(Web側の判定にも同じ`FEATURE_POLICIES`/`hasFeatureAccess`/`getPlanDisplay`を流用できる設計)。
 - 管理者向けにEuler API管理画面(`/admin`)が別途存在する(内部運用者専用、一般ユーザー向けではない)。
 - イベント機能は同じPostgres・同じ`User`・同じセッションを共有し、Prismaが`public`と`event`の2スキーマを1ファイルで管理する。プロセス分離(TikTok接続を巻き込まない)はRailwayのサービス分割で行っている。
 

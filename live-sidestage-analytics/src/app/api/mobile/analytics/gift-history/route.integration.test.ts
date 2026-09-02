@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { setSetting } from "@/lib/settings";
-import { MOBILE_BETA_ENABLED_SETTING } from "@/lib/mobile-settings";
+import { betaSettingKey } from "@/lib/plan/beta-settings";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_gift_history";
@@ -22,10 +22,11 @@ let freeToken: string;
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-gift-history-secret";
 
 beforeAll(async () => {
-  // me/route.integration.test.tsがmobileBetaEnabledを一時的にtrueへ切り替えるテストを
-  // 持つため、並列実行時にこのファイルのFREE拒否テストがULTRA相当で通ってしまう
-  // 非決定的失敗を避ける(実装後レビュー指摘、LOW)。
-  await setSetting(MOBILE_BETA_ENABLED_SETTING, "false");
+  // me/route.integration.test.tsがanalyticsBetaEnabledを一時的にtrueへ切り替えるテストを
+  // 持つため、並列実行時にこのファイルのFREE拒否テストがβ経由で通ってしまう
+  // 非決定的失敗を避ける(実装後レビュー指摘、LOW)。この機能(mobile.history.*)は
+  // analytics領域のβでバイパスされる設計のため、mobileではなくanalyticsを明示的にfalseへ倒す。
+  await setSetting(betaSettingKey("analytics"), "false");
 
   const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID } });
   roomId = room.id;

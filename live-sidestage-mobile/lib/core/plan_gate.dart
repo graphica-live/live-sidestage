@@ -10,10 +10,12 @@ class PlanGate {
 
   final AccountStatus status;
 
-  bool get isFree => status.effectivePlan == 'FREE';
+  // mobile領域のβが有効な間は、実プラン(status.plan)がFREEでもこれらの
+  // オンデバイス制限を一時的にバイパスする(プラン自体は書き換えない設計)。
+  bool get isFree => status.plan == 'FREE' && !status.mobileBetaActive;
 
   // ランダムボイス・速度調整・全ボイス選択・効果音登録数上限はサーバーにデータが
-  // 存在しないオンデバイス処理なので、featuresキーではなくeffectivePlanで直接判定する。
+  // 存在しないオンデバイス処理なので、featuresキーではなくisFreeで直接判定する。
   bool get canUseRandomVoice => !isFree;
   bool get canAdjustTtsSpeed => !isFree;
   bool get canUseAllVoices => !isFree;
