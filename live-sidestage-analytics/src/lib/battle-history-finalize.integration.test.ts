@@ -110,25 +110,79 @@ describe("computeBattleSnapshot", () => {
     expect(snapshot!.participants).toEqual([
       {
         side: "self",
+        teamIndex: 0,
         position: 0,
         anchorId: SELF_ANCHOR_ID,
         tiktokId: SELF_TIKTOK_ID,
         displayId: "self_handle",
         nickName: "じぶん",
+        score: "1200",
       },
       {
         side: "opponent",
+        teamIndex: 1,
         position: 0,
         anchorId: OPPONENT_ANCHOR_ID,
         tiktokId: null,
         displayId: "opp_handle",
         nickName: "あいて",
+        score: "900",
       },
     ]);
     // totalDiamonds降順に明示ソートされている
     expect(snapshot!.contributors.map((c) => [c.uniqueId, c.totalDiamonds, c.giftCount])).toEqual([
       ["fan_a", 30, 3],
       ["fan_b", 10, 1],
+    ]);
+  });
+
+  // 実データで3陣営以上のバトルを観測できていないため、TikTokのteamArmies由来の
+  // hostTeams(anchorId -> teamId)を3チーム分そろえたフィクスチャで検証する。
+  it("3陣営(1vs1vs1)を「自分1人vs残り全員」へ丸めず、陣営ごとにteamIndex・スコアを保存する", async () => {
+    await prisma.tiktokBattle.create({
+      data: battleData(selfRoomId, "snap_tri", {
+        hostUserIds: [SELF_ANCHOR_ID, "finalize_host_x", "finalize_host_y"],
+        hostScores: { [SELF_ANCHOR_ID]: "1200", finalize_host_x: "900", finalize_host_y: "700" },
+        hostTeams: { [SELF_ANCHOR_ID]: "1", finalize_host_x: "2", finalize_host_y: "3" },
+        hostProfiles: {
+          [SELF_ANCHOR_ID]: { displayId: "self_handle", nickName: "じぶん", avatarUrl: null },
+          finalize_host_x: { displayId: "x_handle", nickName: "エックス", avatarUrl: null },
+          finalize_host_y: { displayId: "y_handle", nickName: "ワイ", avatarUrl: null },
+        },
+      }),
+    });
+    await makeGift(selfRoomId);
+
+    const snapshot = await computeBattleSnapshot(selfRoomId, "snap_tri", NOW);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot!.selfScore).toBe("1200");
+    // 旧opponentScoreは1v1のときだけ入れる仕様のまま(3陣営では意味を持たない)。
+    expect(snapshot!.opponentScore).toBeNull();
+    expect(
+      snapshot!.participants.map((p) => ({
+        anchorId: p.anchorId,
+        side: p.side,
+        teamIndex: p.teamIndex,
+        score: p.score,
+      }))
+    ).toEqual([
+      { anchorId: SELF_ANCHOR_ID, side: "self", teamIndex: 0, score: "1200" },
+      { anchorId: "finalize_host_x", side: "opponent", teamIndex: 1, score: "900" },
+      { anchorId: "finalize_host_y", side: "opponent", teamIndex: 2, score: "700" },
+    ]);
+
+    // 保存まで通ること(teamIndex/scoreがDB列として往復すること)を確認する。
+    const result = await commitBattleSnapshot(snapshot!, NOW);
+    expect(result).toEqual({ finalized: true, action: "created" });
+    const stored = await prisma.battleHistoryParticipant.findMany({
+      where: { battleHistory: { roomId: selfRoomId, battleId: "snap_tri" } },
+      orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
+      select: { anchorId: true, teamIndex: true, score: true },
+    });
+    expect(stored).toEqual([
+      { anchorId: SELF_ANCHOR_ID, teamIndex: 0, score: "1200" },
+      { anchorId: "finalize_host_x", teamIndex: 1, score: "900" },
+      { anchorId: "finalize_host_y", teamIndex: 2, score: "700" },
     ]);
   });
 

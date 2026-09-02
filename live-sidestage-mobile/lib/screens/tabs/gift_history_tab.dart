@@ -9,9 +9,10 @@ import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
 import '../../core/tiktok_profile.dart';
-import '../gift_sound_edit_screen.dart' show GiftThumbnail;
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
+import '../widgets/diamond_format.dart';
+import '../widgets/gradient_kit.dart';
 import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/user_avatar.dart';
@@ -217,6 +218,11 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          const KosaiSectionHeading(
+            'ギフト履歴',
+            top: 8,
+            subtitle: '受け取ったギフトの履歴',
+          ),
           PeriodSelectorBar(
             selection: _selection,
             rangeLabel: _rangeLabel,
@@ -237,12 +243,11 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             ),
           if (result != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Text(
-                '合計 ${result.total.count}件 / ${result.total.diamonds}コイン(LIVE Sidestage登録後データ)',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                '合計 ${result.total.count}件 / ${formatWithCommas(result.total.diamonds)}コイン'
+                '(LIVE Sidestage登録後データ)',
+                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           if (!_loading && result != null && events.isEmpty)
@@ -254,59 +259,57 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                   InkWell(
                     onTap: () => openTiktokProfile(context, event.uniqueId),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
                       child: Row(
                         children: [
-                          UserAvatar(event.profileImageUrl),
+                          // comp `.r-icon.ring`: グラデーション枠つきのリスナーアイコン。
+                          // **🎁絵文字・ギフト画像は出さない**(comp指示)。ギフト名はテキストで残す。
+                          GradientRing(child: UserAvatar(event.profileImageUrl)),
                           const SizedBox(width: 12),
                           Expanded(
-                            flex: 2,
-                            child: Text(
-                              event.nickname,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            flex: 3,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Flexible(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(event.giftName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                      Text(
-                                        event.edited ? 'x${event.repeatCount} ・ 編集済み' : 'x${event.repeatCount}',
-                                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
+                                Text(
+                                  event.nickname,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  event.edited
+                                      ? '${event.giftName} ×${event.repeatCount} ・ 編集済み'
+                                      : '${event.giftName} ×${event.repeatCount}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                GiftThumbnail(event.giftPictureUrl),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                '${event.totalDiamonds}コイン',
-                                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: Theme.of(context).colorScheme.primary,
+                                formatDiamonds(event.totalDiamonds),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: KosaiPalette.c2,
                                 ),
                               ),
+                              const SizedBox(height: 1),
                               Text(
                                 _formatTime(event.receivedAt),
-                                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                style: TextStyle(
+                                  fontSize: 10,
                                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               ),

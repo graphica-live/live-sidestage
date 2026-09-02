@@ -1,21 +1,22 @@
 ---
 name: LIVE Sidestage
-description: 配信を操る機材の筐体を思わせる、静かな副操縦士アプリ
+description: 上品さと高揚感を両立させる、光彩(グラデーション)のアプリ
 colors:
-  accent-led-light: "#1F8F4E"
-  accent-led-dark: "#35D07F"
-  accent-amber-light: "#FFB13C"
-  accent-amber-dark: "#FFC15C"
-  bg-light: "#E4E1DA"
-  bg-dark: "#15171B"
-  card-light: "#F4F2ED"
-  card-dark: "#1D2024"
-  ink-light: "#1A1D21"
-  ink-dark: "#E8EAED"
-  sub-light: "#5B5F66"
-  sub-dark: "#9AA0A6"
-  line-light: "#CFCBC0"
-  line-dark: "#2B2F35"
+  accent-light: "#9B6BFF"
+  accent-dark: "#9B6BFF"
+  kosai-coral: "#FF7A59"
+  kosai-violet: "#9B6BFF"
+  kosai-mint: "#2FC6A0"
+  bg-light: "#FAF7F5"
+  bg-dark: "#17151A"
+  card-light: "#FFFFFF"
+  card-dark: "#1F1B24"
+  ink-light: "#2A2130"
+  ink-dark: "#F1EDF5"
+  sub-light: "#7C7286"
+  sub-dark: "#A79FB0"
+  line-light: "#EFE6E9"
+  line-dark: "#332C3B"
   status-connected: "#4CAF50"
   status-connecting: "#FF9800"
   status-error-light: "#E24B4B"
@@ -24,15 +25,11 @@ colors:
   on-danger: "#FFFFFF"
 typography:
   display:
-    fontFamily: "Space Grotesk, ui-sans-serif, sans-serif"
+    fontFamily: "Zen Maru Gothic, ui-sans-serif, sans-serif"
     fontWeight: 700
   body:
-    fontFamily: "IBM Plex Sans, ui-sans-serif, sans-serif"
+    fontFamily: "Zen Kaku Gothic New, ui-sans-serif, sans-serif"
     fontSize: "16px"
-    fontWeight: 400
-  data:
-    fontFamily: "Space Mono, ui-monospace, monospace"
-    fontSize: "12px"
     fontWeight: 400
 spacing:
   sm: "8px"
@@ -41,7 +38,7 @@ spacing:
   xl: "32px"
 components:
   button-primary:
-    backgroundColor: "{colors.accent-led-light}"
+    backgroundColor: "{colors.accent-light}"
     textColor: "#FFFFFF"
     padding: "16px 24px"
   button-danger:
@@ -54,27 +51,28 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Mixer Console"**
+**Creative North Star: "光彩(Kosai)"**
 
-LIVE Sidestageは、配信を操る機材の筐体という世界観に刷新した(2026-09、Card Deckから移行)。配信者が画面を見なくても信頼して任せられる道具である、という「静かな信頼性」自体は変えていないが、その信頼性を「地味なMaterial3の既定値」ではなく「機材パネルらしい直線的なフォルムとLEDの発光」で表現する。UIが最も雄弁に語るのは今回も「今どういう状態か」を伝える瞬間で、接続中/接続済み/切断/エラーをLEDドットの発光とテキストで示す。
+LIVE Sidestageは、上品さと高揚感を両立させる世界観に刷新した(2026-09、Mixer Consoleから移行)。「配信機材」「ゲーム」といった題材モチーフから離れ、洗練されたプロダクトとしての品位を余白・タイポグラフィ・階調で語る一方、ギフトが届く瞬間の高揚感を装飾グラデーション(コーラル→バイオレット→ミント)で表現する。いわゆるネオン・ダークグラスのようなサイバー系表現(AI生成UIで陳腐化しているパターン)は意図的に避け、白地を基調にした軽やかな配色を採る。
 
 **Key Characteristics:**
-- 独自トークンは`main.dart`の`_buildTheme()`1箇所(LEDグリーンaccent・Space Grotesk/IBM Plex Sans/Space Mono・角丸8px)に集約
-- 状態(接続・読み上げ・エラー)を色とLED発光で即座に伝える、機能的な色使い
+- 独自トークンは`main.dart`の`_buildTheme()`1箇所(バイオレットaccent・Zen Maru Gothic/Zen Kaku Gothic New・カード角丸18px)に集約
+- 装飾グラデーション3色(コーラル `#FF7A59` / バイオレット `#9B6BFF` / ミント `#2FC6A0`)は`widgets/gradient_kit.dart`の`KosaiPalette`に集約し、バッジ・見出し文字・カード枠・メダル・アバター枠にのみ使う
+- 状態伝達色(接続・読み上げ・エラー)は装飾グラデーションとは別レイヤーとして扱い、既存のSignal-Only Color Rule(green/orange/red/grey)を維持する
 - ホームは6タブのボトムナビ(TTS / サウンド / 設定 / 貢献 / ギフト履歴 / バトル履歴)。各タブの中身は単一目的の縦積みを保つ
-- Mixer Panel構成: 要素は機材パネルの区画のように角の立ったカードへ分離して積む(2026-09〜)。装飾アニメーションは無し
+- カード類は角丸18px、chip/バッジ/メダル/アバターは999(完全円形)。Mixer Console期の直線的な8px角丸から、より柔らかい大きめの角丸へ移行
 
 ## Colors
 
-ライト/ダーク双方を同格で作る。背景・カード・文字色はテーマごとに別トークンを持ち、accent(LEDグリーン)・amber・errorの3色だけライト/ダークで明度違いの対を持つ。状態伝達の信号色はこれと独立。
+ライト/ダーク双方を同格で作る。背景・カード・文字色はテーマごとに別トークンを持ち、accent(バイオレット)・amber・errorの3色だけライト/ダークで明度違いの対を持つ。状態伝達の信号色はこれと独立。
 
 ### Primary
-- **LED Green Accent** (light `#1F8F4E` / dark `#35D07F`): `main.dart`の`_buildTheme()`でColorSchemeの`primary`へ直接指定する固定値。FilledButton(読み上げ開始ボタン等)・アクティブなNavigationBarアイコン・スライダー・見出しラベルがこのロールを直接使う。機材パネルのLEDが光っているような彩度を狙い、ダークでは明度を上げて発光感を出す。
-- **Amber**(light `#FFB13C` / dark `#FFC15C`): アクセントの副色。primaryContainerや強調が必要だがprimaryほど強くしたくない箇所に使う。
-- **Background / Card / Ink / Sub / Line** はいずれも承認済みモックアップの実測hexをそのまま`_buildTheme()`へハードコードしている(light: bg `#E4E1DA` / card `#F4F2ED` / ink `#1A1D21` / sub `#5B5F66` / line `#CFCBC0`、dark: bg `#15171B` / card `#1D2024` / ink `#E8EAED` / sub `#9AA0A6` / line `#2B2F35`)。ライトは温度感のある紙寄りのグレージュ、ダークは純黒ではなく僅かに青みのある筐体グレーにして、どちらも「金属パネル」の質感を狙う。
-- **`ColorScheme.fromSeed`任せにしない。** fromSeedのトーンパレット生成はseed色の彩度・明度を自動シフトするため、背景・カード・アクセントの主要トークンはfromSeedの出力に依存せず、モックアップの数値を直接`ColorScheme.copyWith`で上書きする(2026-09 Card Deck期からの既存方針を継続)。
-- 2026-09にタンジェリン単色(Card Deck方向)からLED Green+Amberの2アクセント構成へ変更(Mixer Consoleリブランディング)。「配信を操る機材」という北極星に対し、緑=稼働中/正常のLEDという直感的な結びつきを持つ色を採用した。この判断は**アプリ全体のアクセント色**の採否であり、後述するRanking Listの金銀銅バッジ(順位専用の限定的な装飾色)とは別レイヤーの判断である。
-- 状態伝達以外のアクセント表現にも`colorScheme.primary`を直接再利用してよい(Signal-Only Color Ruleの対象はgreen/orange/red/greyの4色のみ)。
+- **Violet Accent** (`#9B6BFF`、ライト/ダーク共通): `main.dart`の`_buildTheme()`でColorSchemeの`primary`へ直接指定する固定値。FilledButton・アクティブなNavigationBarアイコン・スライダー・コイン数値がこのロールを直接使う。
+- **装飾グラデーション3色**(コーラル `#FF7A59` / バイオレット `#9B6BFF` / ミント `#2FC6A0`): `widgets/gradient_kit.dart`の`KosaiPalette`に集約。プランバッジ・タブ見出し文字・サマリーカード合計値・カード外枠・1〜3位メダル・アバター枠にのみ使う装飾専用の色で、状態伝達色とは別レイヤー。単色のアクセント(`colorScheme.primary`)とも別物として扱い、混同しない。
+- **Background / Card / Ink / Sub / Line** はいずれも承認済みcomp(`.impeccable/approved/home-screen-kosai/`)の実測hexをそのまま`_buildTheme()`へハードコードしている(light: bg `#FAF7F5` / card `#FFFFFF` / ink `#2A2130` / sub `#7C7286` / line `#EFE6E9`、dark: bg `#17151A` / card `#1F1B24` / ink `#F1EDF5` / sub `#A79FB0` / line `#332C3B`)。ダーク値はcompに無いため実装時の仮置き(未解決事項として`spec.md`に記載済み、実機確認後に調整の可能性あり)。
+- **`ColorScheme.fromSeed`任せにしない。** fromSeedのトーンパレット生成はseed色の彩度・明度を自動シフトするため、背景・カード・アクセントの主要トークンはfromSeedの出力に依存せず、compの数値を直接`ColorScheme.copyWith`で上書きする(Card Deck期からの既存方針を継続)。
+- 2026-09にLED Green+Amber(Mixer Console)からバイオレット単色accent+装飾グラデーション3色(光彩)へ変更。「配信機材」というモチーフを離れ、上品さと高揚感を両立させる方向へ転換した。
+- 状態伝達色(接続・読み上げ・エラー)は既存のSignal-Only Color Ruleを維持し、装飾グラデーションへ統合しない(下記Named Rules参照)。
 
 ### Neutral / Status(実装上はNeutralではなく状態伝達色)
 - **Connected Green** (`#4CAF50` / `Colors.green`): Socket.IO接続が確立し、コメント受信可能な状態。LEDドットはダークテーマでのみ`boxShadow`で発光させる(ライトの筐体上では発光が目立ちすぎるため)。
@@ -89,18 +87,18 @@ LIVE Sidestageは、配信を操る機材の筐体という世界観に刷新し
 
 ## Typography
 
-**Display Font:** Space Grotesk(`google_fonts`パッケージ、フォールバック sans-serif、bold 700)
-**Body Font:** IBM Plex Sans(`google_fonts`パッケージ)
-**Data Font:** Space Mono(コイン数・タイムスタンプなど数値の並ぶ箇所、フォールバック monospace)
+**Display Font:** Zen Maru Gothic(`google_fonts`パッケージ、フォールバック sans-serif、bold 700)
+**Body Font:** Zen Kaku Gothic New(`google_fonts`パッケージ)
 
-**Character:** 2026-09にIBM Plex Mono一本(Card Deck)から3書体構成(Mixer Console)へ変更。等幅一本の「機材然とした無機質さ」から、見出しに硬質なグロテスク(Space Grotesk)、本文に可読性の高いサンセリフ(IBM Plex Sans)、数値だけ等幅(Space Mono)という役割分担に変えた。サイズ階層はMaterial3 TextThemeのロール名に準拠する。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
+**Character:** 2026-09にSpace Grotesk/IBM Plex Sans/Space Monoの3書体構成(Mixer Console)から、Zen Maru Gothic(見出し)+Zen Kaku Gothic New(本文・データ表示すべて)の2書体構成(光彩)へ変更。丸みのある見出し書体で柔らかさ・親しみやすさを出しつつ、本文は引き締まったゴシックで可読性を保つ。等幅のデータ専用書体は廃止し、コイン数等の数値も本文書体で統一する(桁揃えは`tabular-nums`相当の効果を持つフォント機能に依存せず、数値の並びが乱れないことを実機で確認する)。サイズ階層はMaterial3 TextThemeのロール名に準拠する。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
 
 ### Hierarchy
-- **Display** (Space Grotesk bold 700, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
-- **Body** (IBM Plex Sans regular 400, 16px、Material3 bodyLarge/bodyMedium相当): ボタンラベル、フォームラベル、コメント本文・ニックネームなど、画面の大半のテキスト。
-- **Data** (Space Mono regular 400, 12px): コイン数・ランキング順位・日付など、桁を揃えたい数値表示。
-- **Label** (IBM Plex Sans regular 400, 12〜13px, grey): 補助的な状態テキスト(「ランダムボイス」ラベル、「VOICEVOX準備中…」、話者名表示)。
-- **Caption** (IBM Plex Sans regular 400, 11px, error色): エラーメッセージの縮小表示(接続エラー詳細など、スペースが限られる箇所)。
+- **Display** (Zen Maru Gothic bold 700, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
+- **Tab Title** (Zen Maru Gothic bold 700, 22px、グラデーション文字): 各タブの見出し(例:「貢献」)。`widgets/gradient_kit.dart`の`GradientText`を使う。
+- **Body** (Zen Kaku Gothic New regular 400, 16px、Material3 bodyLarge/bodyMedium相当): ボタンラベル、フォームラベル、コメント本文・ニックネームなど、画面の大半のテキスト。
+- **Data** (Zen Kaku Gothic New 700, 13px): コイン数・ランキング順位・日付など、桁を揃えたい数値表示。合計値のみ25px/800でグラデーション文字。
+- **Label** (Zen Kaku Gothic New regular 400, 12〜13px, grey): 補助的な状態テキスト(「ランダムボイス」ラベル、「VOICEVOX準備中…」、話者名表示)。
+- **Caption** (Zen Kaku Gothic New regular 400, 11px, error色): エラーメッセージの縮小表示(接続エラー詳細など、スペースが限られる箇所)。
 
 ### Named Rules
 **The One Title Rule.** 28px boldの大型見出しはウェルカム画面のアプリ名一箇所のみに予約されている。他画面で見出しサイズを増やして視覚的な重みを作らない。
@@ -125,19 +123,19 @@ LIVE Sidestageは、配信を操る機材の筐体という世界観に刷新し
 
 ## Elevation & Depth
 
-2026-09のMixer Consoleリブランディングでも、要素をカードへ分離して積む構成自体は維持する(Card Deck期からの継続)。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 0、角丸8、`line`トークン色の1px枠線、`surfaceTintColor: transparent`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。`surfaceTintColor`を明示的に透明化しているのは、Material3のデフォルト挙動(elevationに応じてカードへ`primary`をブレンドする)が、モックアップの意図した中立なカード色と食い違うため。
+光彩でも、要素をカードへ分離して積む構成自体は維持する。`main.dart`の`_buildTheme()`が`CardThemeData`(elevation 0、角丸18、`line`トークン色の1px枠線、`surfaceTintColor: transparent`)を全域へ適用し、個々の画面はカスタムShadowを手打ちしない(テーマ1箇所への集約を保つ)。唯一の例外は`widgets/gradient_kit.dart`の`GradientBorderCard`(サマリーカード用の二重枠構造)と`ListPanel`(リスト全体の淡い浮き影)で、これらはグラデーション枠や意図的な浮遊感を表現するためテーマの単純な1px枠では再現できず、個別にdecorationを持つ。
 
 ### Named Rules
-**The Mixer Panel Rule(旧: Card Deck Rule / Flat-By-Default Rule).** 深度は`main.dart`の`CardThemeData`1箇所にのみ由来する。個々の画面・Widgetで独自のBoxShadowや手動elevation値を追加しない(テーマの一括変更で全画面に反映される状態を維持する)。角の丸みも8pxに統一し、Card Deck期の16pxより直線的な機材パネルらしいフォルムにする(唯一の例外はStatus BarのLEDドット。これは`BoxShape.circle`で、機材のインジケータランプそのものを表すため角丸ルールの対象外)。
+**The Kosai Softness Rule(旧: Mixer Panel Rule / Card Deck Rule).** 深度・角丸は`main.dart`の`CardThemeData`1箇所を基本に由来する。個々の画面・Widgetで独自のBoxShadowを追加するのは、`GradientBorderCard`のようにグラデーション自体が視覚的な主役になる箇所に限る。角の丸みは18pxを基本とし、chip/バッジ/メダル/アバターは999(完全円形)。Mixer Console期の直線的な8pxから、柔らかく浮くような大きめの角丸へ移行した。
 
 ## Shapes
 
-`main.dart`の`_buildTheme()`がCard(角丸8+line色の1px枠線)・ListTile(角丸8)・Chip(スタジアム形のまま維持)・FilledButton(角丸8)の形状をテーマ側で一括指定する。角丸を16→8へ縮小したのはCard Deck期の柔らかい印象を捨て、機材パネルらしい直線的なフォルムを狙ったため。Chipのみスタジアム形(角丸最大)を維持している――コイン帯フィルタのような選択トグルは指で摘む対象としての丸みを保つ判断で、パネルの箱型とは役割が異なる。TextFormField・AlertDialog・Switchは Material3 のデフォルト形状のまま(個別のオーバーライドは無い)。独自の角丸スケールは持たず、テーマの数値をそのまま使う。
+`main.dart`の`_buildTheme()`がCard(角丸18+line色の1px枠線)・ListTile(角丸18)・Chip(スタジアム形)・FilledButton(角丸18)の形状をテーマ側で一括指定する。角丸を8→18へ拡大したのはMixer Console期の直線的な機材パネル感を捨て、白磁のような柔らかさを狙ったため。Chipはスタジアム形(角丸最大)を維持。バッジ・メダル・アバターは`BoxShape.circle`の完全円形で、いずれも`widgets/gradient_kit.dart`のグラデーション実装。TextFormField・AlertDialog・Switchは Material3 のデフォルト形状のまま(個別のオーバーライドは無い)。
 
 ## Components
 
 ### Buttons
-- **Shape:** `_buildTheme()`の`filledButtonTheme`で角丸8に統一(Material3デフォルトのpill型から変更)。
+- **Shape:** `_buildTheme()`の`filledButtonTheme`で角丸18に統一(Material3デフォルトのpill型から変更、`radius`定数をCard等と共有)。
 - **Primary:** `FilledButton`/`FilledButton.icon`。読み上げ開始・ログイン・連携する・変更する、など画面の主アクションに使用。縦paddingは12〜14px程度。
 - **Danger variant:** 読み上げ停止ボタンのみ`backgroundColor: colorScheme.error`で上書きされる(`Colors.red`直書きは廃止、2026-09)。危険/停止アクション専用。ボタン内の`CircularProgressIndicator`もこの状態では`onError`を使い、`onPrimary`固定にしない――ダークテーマのLED Green primaryは`onPrimary`が暗色になるため、停止中はエラー色に合わせた明るい色を明示的に選ぶ。
 - **Secondary / Text:** `TextButton`(ダイアログの「キャンセル」、AppBarの「保存」)。`OutlinedButton.icon`は編集画面の「テスト再生」のみ――主アクション(保存)と競合させずに、副次的で非破壊な確認操作であることを示す。
@@ -190,8 +188,9 @@ LIVE Sidestageは、配信を操る機材の筐体という世界観に刷新し
 
 ### Ranking List(貢献タブ・バトル履歴貢献者展開共通、2026-09改訂)
 - **Style:** `RankingListTile`(`lib/screens/widgets/ranking_list_tile.dart`)が貢献タブとバトル履歴タブの貢献者展開(`showModalBottomSheet`)の両方で共有される(サーバー側が同じ形状のデータを返すため)。**行そのものの見た目(`Card`の枠・サイズ・コイン数のフォントサイズ)は順位によらず統一する。** 一時期、上位3人だけ表彰台レイアウト(`RankingPodium`)へ切り出す案を実装したが、通常リストとの視覚差が大きすぎるとして撤回し、この統一形へ戻した。
-- **順位バッジ:** 1〜3位だけ、行頭の順位数字を丸バッジ(1位=金`#C9971F`、2位=銀`#A8ADB5`、3位=銅`#C48A5A`、白文字)にする。4位以下はプレーンな数字テキストのまま。これは順位専用の限定的な装飾色であり、Signal-Only Color Ruleの対象(green/orange/red/grey)には含まれない。
-- コイン数は`🪙3,613`のようにカンマ区切りで表示する(`diamond_format.dart`の`formatDiamonds()`)。1位も含め通常の濃色太字で、金色などの装飾はしない(視認性を優先)。
+- **順位バッジ:** 1〜3位だけ、行頭の順位数字を`widgets/gradient_kit.dart`の`GradientMedal`(丸・白文字、1位=c1→c2、2位=c2→c3、3位=c3→c1のグラデーション、3位のみopacity .85)にする。4位以下はプレーンな数字テキストのまま。装飾グラデーションであり、Signal-Only Color Ruleの対象(green/orange/red/grey)には含まれない。
+- アバターは`GradientRing`(c1→c2の1.5pxグラデーション枠)で囲む。
+- コイン数は`🪙3,613`のようにカンマ区切りで表示する(`diamond_format.dart`の`formatDiamonds()`)。フォントはw700/13px・色は`KosaiPalette.c2`単色(グラデーションではない)。
 - バトル履歴タブの貢献者展開でも同じ`RankingListTile`が使われる。両画面とも「ギフト貢献ランキング」という同一文脈のため共有している。
 
 ### Status Bar(Signature Component)

@@ -259,6 +259,20 @@ describe("queryBattles teams (2vs2)", () => {
     // 旧opponentフィールドはmulti時代と同じ形(人数のみ)を保つ(モバイル互換)。
     expect(battle.opponent).toEqual({ tiktokId: null, displayId: null, nickName: null, avatarUrl: null, count: 3 });
     expect(battle.selfScore).toBe("100");
+
+    // 追加フィールド teams は2陣営でも同じ形で返る(selfTeam/opponentTeamの上位互換)。
+    // スコアは陣営内の合算(自陣 100+50、相手陣 80+20)。
+    expect(
+      battle.teams?.map((t) => ({
+        index: t.index,
+        isSelf: t.isSelf,
+        score: t.score,
+        anchorIds: t.participants.map((p) => p.anchorId),
+      }))
+    ).toEqual([
+      { index: 0, isSelf: true, score: "150", anchorIds: ["host_self", "host_b"] },
+      { index: 1, isSelf: false, score: "100", anchorIds: ["host_c", "host_d"] },
+    ]);
   });
 });
 
@@ -365,6 +379,145 @@ describe("queryBattles multi(hostTeamsが2チームに解決できない乱戦)"
     expect(battle.opponent).toEqual({ tiktokId: null, displayId: null, nickName: null, avatarUrl: null, count: 2 });
     expect(battle.opponentScore).toBeNull();
     expect(battle.selfScore).toBe("100");
+
+    // 旧フィールドは「自分1人 vs 残り全員」のままだが、teamsでは1人=1陣営として
+    // 全員分のスコアを個別に返す(1 vs 1 vs 1 の表示に使う)。
+    expect(
+      battle.teams?.map((t) => ({
+        index: t.index,
+        isSelf: t.isSelf,
+        score: t.score,
+        anchorIds: t.participants.map((p) => p.anchorId),
+      }))
+    ).toEqual([
+      { index: 0, isSelf: true, score: "100", anchorIds: ["host_self"] },
+      { index: 1, isSelf: false, score: "50", anchorIds: ["host_e"] },
+      { index: 2, isSelf: false, score: "80", anchorIds: ["host_f"] },
+    ]);
+  });
+});
+
+// 3陣営以上(2vs2vs2)。実データを観測できていないため、TikTokのteamArmies由来の
+// hostTeams(anchorId -> teamId)を3チーム分そろえたフィクスチャで検証する。
+describe("queryBattles teams(3陣営以上)", () => {
+  const SELF_TRI_TIKTOK_ID = "itest_tri_self";
+  const TRI_TIKTOK_IDS: Record<string, string> = {
+    host_tri_ally: "itest_tri_ally",
+    host_tri_b1: "itest_tri_b1",
+    host_tri_b2: "itest_tri_b2",
+    host_tri_c1: "itest_tri_c1",
+    host_tri_c2: "itest_tri_c2",
+  };
+
+  let selfTriRoomId: string;
+  const otherTriRoomIds: string[] = [];
+
+  beforeAll(async () => {
+    const selfRoom = await prisma.tiktokRoom.create({
+      data: { tiktokId: SELF_TRI_TIKTOK_ID, hostUserId: "host_tri_self" },
+    });
+    selfTriRoomId = selfRoom.id;
+    for (const [hostUserId, tiktokId] of Object.entries(TRI_TIKTOK_IDS)) {
+      const room = await prisma.tiktokRoom.create({ data: { tiktokId, hostUserId } });
+      otherTriRoomIds.push(room.id);
+    }
+  });
+
+  afterAll(async () => {
+    await prisma.tiktokRoom.delete({ where: { id: selfTriRoomId } }).catch(() => {}); // cascades TiktokBattle
+    for (const id of otherTriRoomIds) await prisma.tiktokRoom.delete({ where: { id } }).catch(() => {});
+  });
+
+  it("2vs2vs2は3陣営のteamsとして返し、旧selfTeam/opponentTeamは自陣vs残り全員のまま保つ", async () => {
+    const range = { start: new Date("2026-08-26T00:00:00Z"), end: new Date("2026-08-27T00:00:00Z") };
+    const allHostUserIds = [
+      "host_tri_self",
+      "host_tri_ally",
+      "host_tri_b1",
+      "host_tri_b2",
+      "host_tri_c1",
+      "host_tri_c2",
+    ];
+
+    await prisma.tiktokBattle.create({
+      data: {
+        roomId: selfTriRoomId,
+        battleId: "tri_battle",
+        action: BATTLE_ACTION.FINISH,
+        startedAt: new Date("2026-08-26T10:00:00Z"),
+        startedAtEstimated: false,
+        endedAt: new Date("2026-08-26T10:05:00Z"),
+        durationSec: 300,
+        hostUserIds: allHostUserIds,
+        hostScores: {
+          host_tri_self: "100",
+          host_tri_ally: "50",
+          host_tri_b1: "80",
+          host_tri_b2: "20",
+          host_tri_c1: "10",
+          host_tri_c2: "5",
+        },
+        hostProfiles: Object.fromEntries(
+          allHostUserIds.map((id) => [id, { displayId: `${id}_handle`, nickName: id, avatarUrl: null }])
+        ),
+        hostTeams: {
+          host_tri_self: "1",
+          host_tri_ally: "1",
+          host_tri_b1: "2",
+          host_tri_b2: "2",
+          host_tri_c1: "3",
+          host_tri_c2: "3",
+        },
+        raw: {},
+      },
+    });
+    for (const roomId of otherTriRoomIds) {
+      await prisma.tiktokBattle.create({
+        data: {
+          roomId,
+          battleId: "tri_battle",
+          action: BATTLE_ACTION.FINISH,
+          startedAt: new Date("2026-08-26T10:00:00Z"),
+          startedAtEstimated: false,
+          endedAt: new Date("2026-08-26T10:05:00Z"),
+          durationSec: 300,
+          hostUserIds: allHostUserIds,
+          hostScores: {},
+          raw: {},
+        },
+      });
+    }
+
+    const { battles } = await queryBattles(selfTriRoomId, "itest-tri-viewer", range);
+    expect(battles).toHaveLength(1);
+    const battle = battles[0];
+
+    expect(
+      battle.teams?.map((t) => ({
+        index: t.index,
+        isSelf: t.isSelf,
+        score: t.score,
+        anchorIds: t.participants.map((p) => p.anchorId),
+      }))
+    ).toEqual([
+      { index: 0, isSelf: true, score: "150", anchorIds: ["host_tri_self", "host_tri_ally"] },
+      { index: 1, isSelf: false, score: "100", anchorIds: ["host_tri_b1", "host_tri_b2"] },
+      { index: 2, isSelf: false, score: "15", anchorIds: ["host_tri_c1", "host_tri_c2"] },
+    ]);
+    // 陣営メンバーのtiktokIdも取り違えずに解決できている。
+    expect(battle.teams?.[1].participants.map((p) => p.tiktokId)).toEqual(["itest_tri_b1", "itest_tri_b2"]);
+
+    // 後方互換の旧フィールドは従来どおり(自陣 vs 残り全員、人数のみのopponent)。
+    expect(battle.selfTeam?.map((p) => p.anchorId)).toEqual(["host_tri_self", "host_tri_ally"]);
+    expect(battle.opponentTeam?.map((p) => p.anchorId)).toEqual([
+      "host_tri_b1",
+      "host_tri_b2",
+      "host_tri_c1",
+      "host_tri_c2",
+    ]);
+    expect(battle.opponent).toEqual({ tiktokId: null, displayId: null, nickName: null, avatarUrl: null, count: 5 });
+    expect(battle.selfScore).toBe("100");
+    expect(battle.opponentScore).toBeNull();
   });
 });
 
@@ -812,6 +965,59 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     expect(live.selfTotalDiamonds).toBe(8);
     expect(live.selfTeam!.map((p) => p.nickName)).toEqual(["ライブ自分"]);
     expect(live.opponentTeam!.map((p) => p.nickName)).toEqual(["ライブ相手"]);
+
+    // teamIndex/score列の導入前に確定した行(createHistoryはどちらも書かない)でも、
+    // sideとBattleHistory.selfScore/opponentScoreから2陣営を復元して表示が変わらない。
+    expect(
+      finalized.teams?.map((t) => ({ index: t.index, score: t.score, nickNames: t.participants.map((p) => p.nickName) }))
+    ).toEqual([
+      { index: 0, score: "777", nickNames: ["確定自分"] },
+      { index: 1, score: "555", nickNames: ["確定相手"] },
+    ]);
+  });
+
+  it("teamIndex付きで確定した3陣営バトルは、陣営ごとのスコアをスナップショットから復元する", async () => {
+    const range = { start: new Date("2026-09-03T00:00:00Z"), end: new Date("2026-09-04T00:00:00Z") };
+    const startedAt = new Date("2026-09-03T10:00:00Z");
+    await prisma.tiktokBattle.create({ data: finalBattleData("tri_finalized", startedAt) });
+    await prisma.battleHistory.create({
+      data: {
+        roomId: finalRoomId,
+        battleId: "tri_finalized",
+        windowStart: startedAt,
+        windowEnd: new Date(startedAt.getTime() + 5 * 60 * 1000),
+        status: "finished",
+        selfScore: "300",
+        // 3陣営では旧opponentScoreは意味を持たないのでnullのまま確定される。
+        opponentScore: null,
+        selfTotalDiamonds: 10,
+        sourceUpdatedAt: new Date("2026-09-03T10:10:00Z"),
+        finalizedAt: new Date("2026-09-03T10:16:00Z"),
+        participants: {
+          create: [
+            { side: "self", teamIndex: 0, position: 0, anchorId: SELF_ANCHOR, nickName: "自分", score: "300" },
+            { side: "opponent", teamIndex: 1, position: 0, anchorId: "tri_x1", nickName: "X1", score: "80" },
+            { side: "opponent", teamIndex: 1, position: 1, anchorId: "tri_x2", nickName: "X2", score: "20" },
+            { side: "opponent", teamIndex: 2, position: 0, anchorId: "tri_y1", nickName: "Y1", score: "5" },
+          ],
+        },
+      },
+    });
+
+    const { battles } = await queryBattles(finalRoomId, VIEWER, range);
+    const battle = battles.find((b) => b.battleId === "tri_finalized")!;
+
+    expect(
+      battle.teams?.map((t) => ({ index: t.index, score: t.score, nickNames: t.participants.map((p) => p.nickName) }))
+    ).toEqual([
+      { index: 0, score: "300", nickNames: ["自分"] },
+      { index: 1, score: "100", nickNames: ["X1", "X2"] },
+      { index: 2, score: "5", nickNames: ["Y1"] },
+    ]);
+    // 旧フィールドは従来どおり(自陣 vs 残り全員)。
+    expect(battle.selfTeam!.map((p) => p.anchorId)).toEqual([SELF_ANCHOR]);
+    expect(battle.opponentTeam!.map((p) => p.anchorId)).toEqual(["tri_x1", "tri_x2", "tri_y1"]);
+    expect(battle.opponentScore).toBeNull();
   });
 
   it("queryBattleContributorsは確定済みならGiftを見ずスナップショットをダイヤ降順で返す", async () => {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/feature_status.dart';
+import 'gradient_kit.dart';
 
 /// タブごとの状態バー。エラーは**ラベル付きで全部並べる**。
 ///
@@ -31,56 +32,78 @@ class FeatureStatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = status.color;
     final noticeText = notice;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // 光彩(comp `.status.deco`): 白カード + 状態色のドット + 右上の装飾グラデーション円。
+    // **地の色は状態色にしない。** 状態伝達はドットが担い(Signal-Only Color Rule)、
+    // 面は他のカードと同じ card 色で揃える(`_kosai-tokens.md`)。
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: isDark ? 0.4 : 0.3)),
+        color: kosaiCardColor(context),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const [
+          BoxShadow(color: Color(0x599B6BFF), blurRadius: 16, offset: Offset(0, 6), spreadRadius: -12),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // 機材のLEDらしく、ダークモードでは発光させる。ライトの筐体上では
-              // 発光が目立ちすぎるため控えめ(shadowなし)にする。
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color,
-                  boxShadow: isDark
-                      ? [BoxShadow(color: color.withValues(alpha: 0.7), blurRadius: 8, spreadRadius: 1)]
-                      : const [],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -14,
+              top: -18,
+              child: Opacity(
+                opacity: 0.14,
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: const BoxDecoration(gradient: KosaiPalette.border, shape: BoxShape.circle),
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(status.label),
-            ],
-          ),
-          if (noticeText != null)
+            ),
             Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: SelectableText(
-                noticeText,
-                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          status.label,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (noticeText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: SelectableText(
+                        noticeText,
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  for (final (label, message) in errors)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: SelectableText(
+                        '$label: $message',
+                        style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                      ),
+                    ),
+                ],
               ),
             ),
-          for (final (label, message) in errors)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: SelectableText(
-                '$label: $message',
-                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -132,6 +155,7 @@ class FeatureStartButton extends StatelessWidget {
     required this.busy,
     required this.onToggle,
     this.blocked = false,
+    this.labelPrefix,
   });
 
   final bool started;
@@ -142,36 +166,24 @@ class FeatureStartButton extends StatelessWidget {
   /// [busy] と違い、待っても解消しない。
   final bool blocked;
 
+  /// ボタンに出す文言。サウンドタブは「効果音を開始/停止」のように機能名を含める。
+  final String? labelPrefix;
+
   @override
   Widget build(BuildContext context) {
+    final prefix = labelPrefix ?? '';
+    // 光彩(comp `.btn-primary-grad`): 全幅グラデーションpill + glow影。
+    // 開始中(=停止ボタン)だけは状態伝達のため error 単色にする。
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          // busy は両タブ共通。片方の遷移中にもう片方を押させると、
-          // 双方が「サービスは止まっている」と判断して二重に起動しうる。
-          onPressed: busy || blocked ? null : () => onToggle(!started),
-          style: FilledButton.styleFrom(
-            backgroundColor: started ? Theme.of(context).colorScheme.error : null,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-          ),
-          icon: busy
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    // 開始ボタンはLEDグリーン背景でonPrimaryが暗色になるため、
-                    // 白固定だとダークで背景に埋もれて見えなくなる。
-                    color: started
-                        ? Theme.of(context).colorScheme.onError
-                        : Theme.of(context).colorScheme.onPrimary,
-                  ),
-                )
-              : Icon(started ? Icons.stop : Icons.play_arrow),
-          label: Text(started ? '停止' : '開始'),
-        ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: KosaiPrimaryButton(
+        label: started ? '$prefix停止' : '$prefix開始',
+        icon: started ? Icons.stop : Icons.play_arrow,
+        busy: busy,
+        color: started ? Theme.of(context).colorScheme.error : null,
+        // busy は両タブ共通。片方の遷移中にもう片方を押させると、
+        // 双方が「サービスは止まっている」と判断して二重に起動しうる。
+        onPressed: busy || blocked ? null : () => onToggle(!started),
       ),
     );
   }

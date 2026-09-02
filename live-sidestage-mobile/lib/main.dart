@@ -12,6 +12,7 @@ import 'core/app_version.dart';
 import 'core/apple_billing_service.dart';
 import 'core/background_task_handler.dart';
 import 'core/battle_activity.dart';
+import 'core/battle_filter_store.dart';
 import 'core/billing_service.dart';
 import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
@@ -22,6 +23,7 @@ import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/update_required_screen.dart';
 import 'screens/welcome_screen.dart';
+import 'screens/widgets/gradient_kit.dart';
 
 @pragma('vm:entry-point')
 void startCallback() {
@@ -51,34 +53,32 @@ Future<void> main() async {
   runApp(const LiveSidestageApp());
 }
 
-/// Mixer Console方向のブランドテーマ(2026-09、Card Deckから刷新)。
-/// 配信を操る機材の筐体という世界観で、承認済みモック(`.impeccable/mocks/directions.html`)の
-/// 実測トークンをそのまま使う: bg #E4E1DA / card #F4F2ED / ink #1A1D21 / sub #5B5F66 /
-/// line #CFCBC0 / accent(LEDグリーン) #1F8F4E、暗所は bg #15171B / card #1D2024 /
-/// ink #E8EAED / sub #9AA0A6 / line #2B2F35 / accent #35D07F。
+/// 光彩(Kosai)ブランドテーマ(2026-09、Mixer Consoleから刷新)。
+/// 「上品さ+高揚感」の世界観で、承認済みcomp(`.impeccable/approved/home-screen-kosai/`)の
+/// 実測トークンをそのまま使う: bg #FAF7F5 / card #FFFFFF / ink #2A2130 / sub #7C7286 /
+/// line #EFE6E9、暗所は bg #17151A / card #1F1B24 / ink #F1EDF5 / sub #A79FB0 /
+/// line #332C3B。装飾グラデーション3色(コーラル #FF7A59 / バイオレット #9B6BFF /
+/// ミント #2FC6A0)はライト/ダーク共通(`widgets/gradient_kit.dart`の`KosaiPalette`)。
+/// primaryはグラデーションの中心色バイオレットを直接指定する。
 /// **`ColorScheme.fromSeed`任せにしない**(Material3のトーンパレット生成がseed色を
 /// 意図せずシフトする問題は2026-09-01の実機確認で既知のため、数値を直接指定する)。
-/// フォントは見出し/ボタンにSpace Grotesk、本文にIBM Plex Sans、
-/// ラベル/データ表示(コイン数・時刻等)にSpace Monoを使い分ける。
-ThemeData _buildTheme(Brightness brightness) {
+/// フォントは見出し/ボタンにZen Maru Gothic、本文・ラベル/データ表示にZen Kaku Gothic Newを使う。
+ThemeData buildAppTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
-  const accentLight = Color(0xFF1F8F4E);
-  const accentDark = Color(0xFF35D07F);
-  const amberLight = Color(0xFFFFB13C);
-  const amberDark = Color(0xFFFFC15C);
+  const accent = Color(0xFF9B6BFF); // KosaiPalette.c2
+  const amber = Color(0xFFFF7A59); // KosaiPalette.c1
   const errLight = Color(0xFFE24B4B);
   const errDark = Color(0xFFFF5C5C);
-  final accent = isDark ? accentDark : accentLight;
-  final amber = isDark ? amberDark : amberLight;
   final err = isDark ? errDark : errLight;
-  final bg = isDark ? const Color(0xFF15171B) : const Color(0xFFE4E1DA);
-  final card = isDark ? const Color(0xFF1D2024) : const Color(0xFFF4F2ED);
-  final ink = isDark ? const Color(0xFFE8EAED) : const Color(0xFF1A1D21);
-  final sub = isDark ? const Color(0xFF9AA0A6) : const Color(0xFF5B5F66);
-  final line = isDark ? const Color(0xFF2B2F35) : const Color(0xFFCFCBC0);
-  final onAccent = isDark ? const Color(0xFF0C0F10) : Colors.white;
-  // モックアップの「配信中」ピル(薄いLEDグリーン背景+アクセント文字)。
-  final primaryContainer = accent.withValues(alpha: isDark ? 0.22 : 0.14);
+  final bg = isDark ? const Color(0xFF17151A) : const Color(0xFFFAF7F5);
+  final card = isDark ? const Color(0xFF1F1B24) : const Color(0xFFFFFFFF);
+  final ink = isDark ? const Color(0xFFF1EDF5) : const Color(0xFF2A2130);
+  final sub = isDark ? const Color(0xFFA79FB0) : const Color(0xFF7C7286);
+  final line = isDark ? const Color(0xFF332C3B) : const Color(0xFFEFE6E9);
+  // スイッチOFF・スライダー非活性のトラック(comp `#E5DFE8`)。罫線より一段濃い。
+  final track = isDark ? const Color(0xFF3D3547) : KosaiPalette.track;
+  const onAccent = Colors.white;
+  final primaryContainer = accent.withValues(alpha: isDark ? 0.22 : 0.12);
 
   final colorScheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
     primary: accent,
@@ -98,29 +98,27 @@ ThemeData _buildTheme(Brightness brightness) {
   );
 
   final base = ThemeData(brightness: brightness);
-  final displayFont = GoogleFonts.spaceGroteskTextTheme(base.textTheme);
-  final bodyFont = GoogleFonts.ibmPlexSansTextTheme(base.textTheme);
-  final monoFont = GoogleFonts.spaceMonoTextTheme(base.textTheme);
+  final displayFont = GoogleFonts.zenMaruGothicTextTheme(base.textTheme);
+  final bodyFont = GoogleFonts.zenKakuGothicNewTextTheme(base.textTheme);
 
   final textTheme = bodyFont
       .copyWith(
-        displayLarge: displayFont.displayLarge,
-        displayMedium: displayFont.displayMedium,
-        displaySmall: displayFont.displaySmall,
-        headlineLarge: displayFont.headlineLarge,
-        headlineMedium: displayFont.headlineMedium,
-        headlineSmall: displayFont.headlineSmall,
+        displayLarge: displayFont.displayLarge?.copyWith(fontWeight: FontWeight.w700),
+        displayMedium: displayFont.displayMedium?.copyWith(fontWeight: FontWeight.w700),
+        displaySmall: displayFont.displaySmall?.copyWith(fontWeight: FontWeight.w700),
+        headlineLarge: displayFont.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
+        headlineMedium: displayFont.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+        headlineSmall: displayFont.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
         titleLarge: displayFont.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         titleMedium: displayFont.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         titleSmall: displayFont.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-        labelLarge: monoFont.labelLarge,
-        labelMedium: monoFont.labelMedium,
-        labelSmall: monoFont.labelSmall,
       )
       .apply(bodyColor: ink, displayColor: ink);
 
-  // 機材筐体らしい直線的な印象を出すため、Card Deck時代の14/16pxから縮小。
-  const radius = 8.0;
+  // 白磁カード・chip/badge/medalの円形など、光彩は要素ごとに角丸を変える
+  // (Mixer Console時代の8px単一スケールから移行)。カード類は18px、
+  // chip/バッジ/メダル等の円形要素は999(StadiumBorder/BoxShape.circleで実質円)。
+  const radius = 18.0;
 
   return ThemeData(
     useMaterial3: true,
@@ -155,22 +153,32 @@ ThemeData _buildTheme(Brightness brightness) {
           shape: const StadiumBorder(),
           backgroundColor: card,
           side: BorderSide(color: line),
-          labelStyle: monoFont.labelMedium?.copyWith(color: sub, fontWeight: FontWeight.w700),
+          labelStyle: bodyFont.labelMedium?.copyWith(color: sub, fontWeight: FontWeight.w600),
         ),
     dividerTheme: DividerThemeData(color: line),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected) ? onAccent : Colors.white,
-      ),
+      thumbColor: const WidgetStatePropertyAll(Colors.white),
+      // OFFトラックは罫線(line)ではなく専用のtrack色(#E5DFE8)。罫線色だと
+      // 白カードの上でスイッチが消える(comp `.switch` は明確に一段濃い)。
       trackColor: WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.selected) ? accent : line,
+        (states) => states.contains(WidgetState.selected) ? accent : track,
       ),
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      trackOutlineWidth: const WidgetStatePropertyAll(0),
     ),
     sliderTheme: SliderThemeData(
+      trackHeight: 5,
       activeTrackColor: accent,
-      inactiveTrackColor: line,
-      thumbColor: accent,
+      inactiveTrackColor: track,
+      thumbColor: Colors.white,
+      overlayColor: accent.withValues(alpha: 0.12),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
+      // comp `.mini-slider .thumb`: 白丸16dp + 2dpのc2枠。標準の
+      // `RoundSliderThumbShape` は枠線を描けないので専用shapeを使う。
+      thumbShape: const KosaiSliderThumbShape(),
+      activeTickMarkColor: Colors.transparent,
+      inactiveTickMarkColor: Colors.transparent,
+      valueIndicatorColor: accent,
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -196,6 +204,8 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BillingService()),
         ChangeNotifierProvider(create: (_) => AppleBillingService()),
         ChangeNotifierProvider(create: (_) => ThemeModeStore()..load()),
+        // バトル履歴の表示フィルタ(小さいバトルを隠す)。背景Isolateへは同期しない。
+        ChangeNotifierProvider(create: (_) => BattleFilterStore()..load()),
         // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
         // バトル終了(またはEND後のスコア確定)をバトル履歴タブへ伝えるだけの通知。
@@ -206,8 +216,8 @@ class LiveSidestageApp extends StatelessWidget {
           final themeMode = context.watch<ThemeModeStore>().themeMode;
           return MaterialApp(
             title: 'LIVE Sidestage',
-            theme: _buildTheme(Brightness.light),
-            darkTheme: _buildTheme(Brightness.dark),
+            theme: buildAppTheme(Brightness.light),
+            darkTheme: buildAppTheme(Brightness.dark),
             themeMode: themeMode,
             // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
             // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。

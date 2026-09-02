@@ -8,6 +8,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task_platform_interfa
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/account_status_store.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
+import 'package:live_sidestage_mobile/core/battle_filter_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
 import 'package:live_sidestage_mobile/models/account_status.dart';
@@ -65,6 +66,7 @@ void main() {
           ),
           ChangeNotifierProvider<SessionController>(create: (_) => SessionController()),
           ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
+          ChangeNotifierProvider<BattleFilterStore>(create: (_) => BattleFilterStore()),
         ],
         child: MaterialApp(
           home: Scaffold(
@@ -82,16 +84,26 @@ void main() {
     return store;
   }
 
-  ListTile voiceTile(WidgetTester tester) =>
-      tester.widget<ListTile>(find.widgetWithText(ListTile, 'ボイス'));
-
-  /// タイトルで音量スライダーを1つに絞る（設定タブには読み上げと効果音の2つある）。
-  Slider volumeSlider(WidgetTester tester, String title) => tester.widget<Slider>(
-        find.descendant(
-          of: find.widgetWithText(ListTile, title),
-          matching: find.byType(Slider),
-        ),
+  /// 光彩デザインでは設定の各行が `ListTile` ではなく `InkWell` の行になった。
+  /// 触れる/触れないは `onTap` が null かどうかで表れる。
+  InkWell settingRow(WidgetTester tester, String title) => tester.widget<InkWell>(
+        find.ancestor(of: find.text(title), matching: find.byType(InkWell)).first,
       );
+
+  InkWell voiceTile(WidgetTester tester) => settingRow(tester, 'ボイス');
+
+  /// 数値設定は一覧では「値 + ›」の行で、スライダーはタップで開くシートの中にある
+  /// (`settings-tab-kosai/spec.md`)。開いた状態のスライダーを返す。
+  Future<Slider> openVolumeSlider(WidgetTester tester, String title) async {
+    await tester.tap(find.text(title));
+    await tester.pumpAndSettle();
+    return tester.widget<Slider>(find.byType(Slider));
+  }
+
+  Future<void> closeSheet(WidgetTester tester) async {
+    Navigator.of(tester.element(find.byType(Slider))).pop();
+    await tester.pumpAndSettle();
+  }
 
   group('固定ボイスの選択', () {
     testWidgets('ランダムボイスON中は選べないが、選択中のボイスは見える', (tester) async {
@@ -99,7 +111,6 @@ void main() {
 
       // 既定はランダムON。
       expect(voiceTile(tester).onTap, isNull);
-      expect(voiceTile(tester).enabled, isFalse);
       // 「OFFにすると使えます」だけに差し替えると、OFFにしたとき何の声になるのか
       // 確かめられない。
       expect(find.textContaining('四国めたん ノーマル'), findsOneWidget);
@@ -112,7 +123,7 @@ void main() {
 
       expect(voiceTile(tester).onTap, isNotNull);
 
-      await tester.tap(find.widgetWithText(ListTile, 'ボイス'));
+      await tester.tap(find.text('ボイス'));
       await tester.pumpAndSettle();
 
       expect(find.text('ボイスを選ぶ'), findsOneWidget);
@@ -150,8 +161,10 @@ void main() {
 
       expect(store.config.ttsEnabled, isFalse);
       expect(voiceTile(tester).onTap, isNotNull);
-      expect(volumeSlider(tester, '読み上げの音量').onChanged, isNotNull);
-      expect(volumeSlider(tester, 'すべての効果音の音量').onChanged, isNotNull);
+      expect((await openVolumeSlider(tester, '読み上げの音量')).onChanged, isNotNull);
+      await closeSheet(tester);
+      expect((await openVolumeSlider(tester, 'すべての効果音の音量')).onChanged, isNotNull);
+      await closeSheet(tester);
     });
 
     testWidgets('同じボイスを選び直しても revision を進めない', (tester) async {
@@ -170,20 +183,23 @@ void main() {
     testWidgets('ドラッグ中は保存せず、指を離したときだけ保存する', (tester) async {
       final store = await pumpSettings(tester);
 
-      volumeSlider(tester, '読み上げの音量').onChanged!(30);
+      final slider = await openVolumeSlider(tester, '読み上げの音量');
+      slider.onChanged!(30);
       await tester.pumpAndSettle();
       // つまみは指に付いてくるが、設定はまだ書き換わっていない。
       expect(find.text('30'), findsOneWidget);
       expect(store.config.ttsVolume, 100);
 
-      volumeSlider(tester, '読み上げの音量').onChangeEnd!(30);
+      tester.widget<Slider>(find.byType(Slider)).onChangeEnd!(30);
       await tester.pumpAndSettle();
       expect(store.config.ttsVolume, 30);
+      await closeSheet(tester);
     });
 
     testWidgets('効果音の全体音量は運用中も触れる', (tester) async {
       await pumpSettings(tester);
-      expect(volumeSlider(tester, 'すべての効果音の音量').onChanged, isNotNull);
+      expect((await openVolumeSlider(tester, 'すべての効果音の音量')).onChanged, isNotNull);
+      await closeSheet(tester);
     });
 
     // 開始処理は「設定を保存 → サービス起動」の順に進むので、その間の変更は背景
@@ -191,13 +207,11 @@ void main() {
     testWidgets('開始/停止の遷移中はどの設定も止める', (tester) async {
       await pumpSettings(tester, busy: true);
 
-      expect(volumeSlider(tester, 'すべての効果音の音量').onChanged, isNull);
-      expect(volumeSlider(tester, '読み上げの音量').onChanged, isNull);
+      // 行の onTap を null にするのでシート自体が開かない。
+      expect(settingRow(tester, 'すべての効果音の音量').onTap, isNull);
+      expect(settingRow(tester, '読み上げの音量').onTap, isNull);
       expect(voiceTile(tester).onTap, isNull);
-      expect(
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged,
-        isNull,
-      );
+      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
     });
   });
 }

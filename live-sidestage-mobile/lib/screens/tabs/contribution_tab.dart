@@ -10,6 +10,8 @@ import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
+import '../widgets/diamond_format.dart';
+import '../widgets/gradient_kit.dart';
 import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
@@ -217,6 +219,21 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
+            child: GradientText(
+              '貢献',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Text(
+              'ギフト貢献ランキング',
+              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
           PeriodSelectorBar(
             selection: _selection,
             rangeLabel: _rangeLabel,
@@ -237,17 +254,11 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             ),
           if (result != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Theme.of(context).colorScheme.outline),
-                ),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: GradientBorderCard(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       '表示中の合計 ${users.length}人',
@@ -255,13 +266,9 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                         context,
                       ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
-                    Text(
-                      '${result.total.totalDiamonds}コイン',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
+                    GradientText(
+                      formatWithCommas(result.total.totalDiamonds),
+                      style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800, letterSpacing: -0.2),
                     ),
                   ],
                 ),

@@ -25,6 +25,7 @@ import 'tabs/gift_history_tab.dart';
 import 'tabs/settings_tab.dart';
 import 'tabs/sound_tab.dart';
 import 'tabs/tts_tab.dart';
+import 'widgets/gradient_kit.dart';
 import 'widgets/voicevox_terms.dart';
 
 /// 背景Isolateから届く読み上げ状態。
@@ -776,25 +777,17 @@ class _PlanBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
       ),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: colorScheme.primary),
-          borderRadius: BorderRadius.circular(999),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: const BoxDecoration(gradient: KosaiPalette.badge, borderRadius: BorderRadius.all(Radius.circular(999))),
         child: Text(
           label,
-          style: TextStyle(
-            color: colorScheme.primary,
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
-          ),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
         ),
       ),
     );

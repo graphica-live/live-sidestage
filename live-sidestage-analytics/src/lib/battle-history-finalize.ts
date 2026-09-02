@@ -23,6 +23,7 @@
 import { prisma } from "@/lib/prisma";
 import { aggregateGiftUsers } from "@/lib/gift-analytics";
 import {
+  mergeMaxScores,
   resolveBattleScore,
   resolveBattleSides,
   resolveBattleWindow,
@@ -35,12 +36,18 @@ import type { HostProfiles } from "@/lib/tiktok-battle";
 export const STABILITY_DELAY_MS = 60 * 1000;
 
 export type BattleSnapshotParticipant = {
+  /** 後方互換の2値。teamIndex===0 が "self"、それ以外が "opponent"。 */
   side: "self" | "opponent";
+  /** 陣営番号。0が自分の陣営。**3陣営以上もここで区別する**(sideでは潰れる)。 */
+  teamIndex: number;
+  /** 陣営内の表示順。 */
   position: number;
   anchorId: string;
   tiktokId: string | null;
   displayId: string | null;
   nickName: string | null;
+  /** 確定時に観測できていたこのメンバーのスコア。未観測ならnull。 */
+  score: string | null;
 };
 
 export type BattleSnapshotContributor = {
@@ -158,9 +165,18 @@ export async function computeBattleSnapshot(
   const otherRoomIdsForBattle = others.map((o) => o.roomId);
   const hostProfiles = own.hostProfiles as HostProfiles | null;
 
-  const toParticipants = (anchorIds: string[], side: "self" | "opponent"): BattleSnapshotParticipant[] =>
-    anchorIds.map((anchorId, position) => ({
-      side,
+  // 陣営の内訳は resolveBattleScore が出した factions をそのまま保存する
+  // (**「自分1人 vs 残り全員」へ丸めない**)。sides は旧side列の値を決めるためだけに使う。
+  const factions = "factions" in resolved ? resolved.factions : null;
+  if (factions === null || factions.length === 0) return null;
+
+  // メンバー個別のスコアは faction の合計からは復元できないので、ここで anchorId 単位に引き直す。
+  const merged = mergeMaxScores(rows);
+
+  const participants: BattleSnapshotParticipant[] = factions.flatMap((faction) =>
+    faction.anchorIds.map((anchorId, position) => ({
+      side: (faction.index === 0 ? "self" : "opponent") as "self" | "opponent",
+      teamIndex: faction.index,
       position,
       ...resolveParticipantIdentity(
         anchorId,
@@ -170,12 +186,9 @@ export async function computeBattleSnapshot(
         selfHostUserId,
         selfTiktokId
       ),
-    }));
-
-  const participants = [
-    ...toParticipants(sides.selfTeamAnchorIds, "self"),
-    ...toParticipants(sides.opponentTeamAnchorIds, "opponent"),
-  ];
+      score: merged.get(anchorId)?.toString() ?? null,
+    }))
+  );
 
   // 貢献者は閲覧者非依存(GiftEdit.hiddenを見ない)で集計する。確定は全閲覧者で共有される。
   // アバターの署名付きURLは保存しないので解決も省く。
@@ -242,6 +255,8 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
     const y = b.participants[i];
     if (
       x.side !== y.side ||
+      x.teamIndex !== y.teamIndex ||
+      x.score !== y.score ||
       x.position !== y.position ||
       x.anchorId !== y.anchorId ||
       x.tiktokId !== y.tiktokId ||

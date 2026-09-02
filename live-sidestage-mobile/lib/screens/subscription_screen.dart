@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../core/account_status_store.dart';
 import '../core/apple_billing_service.dart';
 import '../core/billing_service.dart';
+import 'widgets/gradient_kit.dart';
 
 const List<String> _paidPlanBenefits = [
   'ランダムボイス',
@@ -78,12 +79,36 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (Platform.isAndroid) return _buildAndroid(context);
     if (Platform.isIOS) return _buildIos(context);
     // Android/iOS以外(将来の対応外プラットフォーム)。
+    // 見出しはAppBarに置かず本文側のグラデ文字で出す(`subscription-screen-kosai/spec.md`)。
     return Scaffold(
-      appBar: AppBar(title: const Text('プランを選択')),
-      body: const Center(
+      appBar: AppBar(),
+      body: Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('このプラットフォームではプランのご購入に対応していません。', textAlign: TextAlign.center),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: GradientText(
+                  'プランを選択',
+                  style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
+                      const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                'このプラットフォームではプランのご購入に対応していません。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -179,20 +204,37 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     final onPaidPlan = currentPlan == 'PRO' || currentPlan == 'ULTRA';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('プランを選択')),
+      // 見出しは本文側のグラデ文字で出すので、AppBarにタイトル文字は置かない
+      // (`subscription-screen-kosai/spec.md`)。
+      appBar: AppBar(),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        // 最後の「購入を復元」がジェスチャーバーに重なるので、端末の下部インセットを足す。
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + MediaQuery.viewPaddingOf(context).bottom),
         children: [
+          // ListView側で横16dpを持っているので、見出しは横paddingを持たない
+          // `GradientText` を直に置く(`KosaiSectionHeading`だと32dpになる)。
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: GradientText(
+              'プランを選択',
+              style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+          ),
           if (billingUnavailable)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
                 unavailableMessage,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.error),
               ),
             ),
           _PlanCard(
             title: 'FREE',
+            variant: _PlanCardVariant.plain,
             price: '無料',
             benefits: _freePlanBenefits,
             isCurrent: currentPlan == 'FREE',
@@ -200,6 +242,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           const SizedBox(height: 12),
           _PlanCard(
             title: 'PRO',
+            variant: _PlanCardVariant.outlined,
             price: productFor(proProductId)?.price ?? '—',
             benefits: _paidPlanBenefits,
             isCurrent: currentPlan == 'PRO',
@@ -216,6 +259,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           const SizedBox(height: 12),
           _PlanCard(
             title: 'ULTRA',
+            variant: _PlanCardVariant.gradientBorder,
             price: productFor(ultraProductId)?.price ?? '—',
             benefits: _paidPlanBenefits,
             isCurrent: currentPlan == 'ULTRA',
@@ -233,22 +277,45 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           Center(
             child: TextButton(
               onPressed: busy ? null : onRestore,
-              child: const Text('購入を復元'),
+              child: Text(
+                '購入を復元',
+                style: TextStyle(
+                  fontSize: 12,
+                  decoration: TextDecoration.underline,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  decorationColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
-          if (busy) const Padding(
-            padding: EdgeInsets.only(top: 16),
-            child: Center(child: CircularProgressIndicator()),
-          ),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: Center(child: CircularProgressIndicator(color: KosaiPalette.c2)),
+            ),
         ],
       ),
     );
   }
 }
 
+/// カードの見え方(comp `.card.flat` / `.card.grad-border`)。
+/// **視覚的な優先度だけを表すもので、販促バッジは一切置かない**(採用時のユーザー指示)。
+enum _PlanCardVariant {
+  /// FREE。白カード+1dp line枠。
+  plain,
+
+  /// PRO。白カード+1.5dp c2枠。
+  outlined,
+
+  /// ULTRA。二重枠グラデーションカード。
+  gradientBorder,
+}
+
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.title,
+    required this.variant,
     required this.price,
     required this.benefits,
     required this.isCurrent,
@@ -257,6 +324,7 @@ class _PlanCard extends StatelessWidget {
   });
 
   final String title;
+  final _PlanCardVariant variant;
   final String price;
   final List<String> benefits;
   final bool isCurrent;
@@ -266,58 +334,104 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final sub = colorScheme.onSurfaceVariant;
+    const titleStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w800);
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(width: 8),
-                if (isCurrent)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '現在のプラン',
-                      style: TextStyle(color: colorScheme.primary, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                const Spacer(),
-                Text(price, style: Theme.of(context).textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 12),
-            for (final benefit in benefits)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.check, size: 18, color: colorScheme.primary),
-                    const SizedBox(width: 6),
-                    Expanded(child: Text(benefit)),
-                  ],
+            switch (variant) {
+              _PlanCardVariant.plain => Text(title, style: titleStyle),
+              _PlanCardVariant.outlined =>
+                Text(title, style: titleStyle.copyWith(color: KosaiPalette.c2)),
+              _PlanCardVariant.gradientBorder =>
+                GradientText(title, style: titleStyle, gradient: KosaiPalette.score),
+            },
+            if (isCurrent) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: KosaiPalette.c2.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                // 現在の状態表示。「おすすめ」等の販促バッジはここにも置かない。
+                child: const Text(
+                  '現在のプラン',
+                  style: TextStyle(color: KosaiPalette.c2, fontSize: 11, fontWeight: FontWeight.w800),
                 ),
               ),
-            if (onSubscribe != null) ...[
-              const SizedBox(height: 8),
-              FilledButton(onPressed: onSubscribe, child: const Text('このプランへ変更')),
-            ] else if (disabledNotice != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                disabledNotice!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colorScheme.outline),
-              ),
             ],
+            const Spacer(),
+            Text(
+              price,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: variant == _PlanCardVariant.plain ? sub : colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
+        const SizedBox(height: 8),
+        for (final benefit in benefits)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.check, size: 15, color: KosaiPalette.c2),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    benefit,
+                    style: TextStyle(fontSize: 11.5, height: 1.7, color: sub),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (onSubscribe != null) ...[
+          const SizedBox(height: 10),
+          if (variant == _PlanCardVariant.gradientBorder)
+            KosaiPrimaryButton(
+              label: 'このプランへ変更',
+              verticalPadding: 12,
+              fontSize: 13.5,
+              onPressed: onSubscribe,
+            )
+          else
+            KosaiOutlineButton(
+              label: 'このプランへ変更',
+              verticalPadding: 11,
+              fontSize: 13,
+              onPressed: onSubscribe,
+            ),
+        ] else if (disabledNotice != null) ...[
+          const SizedBox(height: 10),
+          Text(disabledNotice!, style: TextStyle(fontSize: 11.5, color: sub)),
+        ],
+      ],
+    );
+
+    if (variant == _PlanCardVariant.gradientBorder) {
+      return GradientBorderCard(child: content);
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kosaiCardColor(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: variant == _PlanCardVariant.outlined
+              ? KosaiPalette.c2
+              : colorScheme.outlineVariant,
+          width: variant == _PlanCardVariant.outlined ? 1.5 : 1,
+        ),
       ),
+      child: content,
     );
   }
 }

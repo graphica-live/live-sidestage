@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/account_status_store.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
+import 'package:live_sidestage_mobile/core/battle_filter_store.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/theme_mode_store.dart';
 import 'package:live_sidestage_mobile/models/auth_session.dart';
@@ -37,6 +38,7 @@ Future<void> _pumpSettings(WidgetTester tester) async {
         ChangeNotifierProvider<AccountStatusStore>(create: (_) => AccountStatusStore()),
         ChangeNotifierProvider<SessionController>.value(value: controller),
         ChangeNotifierProvider<ThemeModeStore>(create: (_) => ThemeModeStore()),
+        ChangeNotifierProvider<BattleFilterStore>(create: (_) => BattleFilterStore()),
       ],
       child: MaterialApp(
         home: Scaffold(
