@@ -8,6 +8,8 @@ import { type PlanTier, meetsPlan } from "./types";
 // 将来ここへ実際のmobile限定機能を足すときは、この行の下に追加すればよい。
 export const FEATURE_REQUIREMENTS = {
   "mobile.entitlementProbe": "PRO",
+  "mobile.history.extendedRange": "PRO",
+  "mobile.history.listenerFilter": "PRO",
 } as const satisfies Record<string, PlanTier>;
 
 // keyofで導出することで、未登録キーでの呼び出しはコンパイルエラーになる

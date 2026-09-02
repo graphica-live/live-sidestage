@@ -3,7 +3,7 @@ import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseListenerQuery } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
 
 const buildUnregisteredResponse = () =>
   NextResponse.json({
@@ -22,6 +22,12 @@ export async function GET(req: NextRequest) {
   if (!query.ok) return query.response;
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
+
+  const planDenied = await requireHistoryPlan(ctx.streamer.userId, {
+    range: query.value,
+    listenerQuery: listenerQuery.value,
+  });
+  if (planDenied) return planDenied;
 
   let where: Parameters<typeof queryGifts>[2];
   let dateRange: { start: string; end: string };

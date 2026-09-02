@@ -3,6 +3,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { setSetting } from "@/lib/settings";
+import { MOBILE_BETA_ENABLED_SETTING } from "@/lib/mobile-settings";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_ranking";
@@ -11,12 +13,20 @@ let userId: string;
 let streamerId: string;
 let roomId: string;
 let noRoomUserId: string;
+let freeUserId: string;
 let token: string;
 let noRoomToken: string;
+let freeToken: string;
 
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-ranking-secret";
 
 beforeAll(async () => {
+  // me/route.integration.test.tsがmobileBetaEnabledを一時的にtrueへ切り替えるテストを
+  // 持つため、並列実行時にこのファイルのFREE拒否テストがULTRA相当で通ってしまう
+  // 非決定的失敗を避ける(実装後レビュー指摘、LOW)。真の並列プロセス間競合までは
+  // 防げないが、少なくともこのファイル自身が前提を明示する。
+  await setSetting(MOBILE_BETA_ENABLED_SETTING, "false");
+
   const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID } });
   roomId = room.id;
 
@@ -33,11 +43,35 @@ beforeAll(async () => {
   const noRoom = await prisma.user.create({ data: { email: `itest-mobile-ranking-noroom-${Date.now()}@local.test` } });
   noRoomUserId = noRoom.id;
   noRoomToken = signMobileToken({ userId: noRoomUserId });
+
+  // custom range / listenerQuery はPRO限定機能(requireHistoryPlan)なので、
+  // FREEのままだと既存のcustom range系テストが403で落ちる。このファイルの主目的は
+  // 期間集計ロジックの検証であってプラン判定の検証ではないため、mainのuserIdはPRO扱いにする。
+  await prisma.subscription.create({
+    data: {
+      userId,
+      plan: "PRO",
+      entitlementActive: true,
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
+  // Subscription無し(=FREE)のユーザー。同一TikTok IDを複数Streamerが共有できる
+  // 既存仕様どおり、userId側と同じroomIdへ別のStreamer行として登録する。
+  const freeUser = await prisma.user.create({ data: { email: `itest-mobile-ranking-free-${Date.now()}@local.test` } });
+  freeUserId = freeUser.id;
+  await prisma.streamer.create({
+    data: { userId: freeUserId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: false, roomId },
+  });
+  freeToken = signMobileToken({ userId: freeUserId });
 });
 
 afterAll(async () => {
+  await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.user.delete({ where: { id: userId } }).catch(() => {});
   await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: freeUserId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
   await prisma.$disconnect();
 });
@@ -91,6 +125,42 @@ describe("GET /api/mobile/analytics/ranking", () => {
   it("不正な(存在しない)dateは400", async () => {
     const res = await GET(request("?period=day&date=2026-02-30", token));
     expect(res.status).toBe(400);
+  });
+
+  describe("プラン制限(requireHistoryPlan)", () => {
+    it("FREEユーザーのday/weekは通る(拡張範囲でなければプラン判定を通過する)", async () => {
+      const res = await GET(request("?period=day&date=2026-08-20", freeToken));
+      expect(res.status).toBe(200);
+    });
+
+    it("FREEユーザーがmonthを指定すると403", async () => {
+      const res = await GET(request("?period=month&date=2026-08-20", freeToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("FREEユーザーがカスタム範囲を指定すると403", async () => {
+      const res = await GET(
+        request("?startDatetime=2026-08-01T00:00:00Z&endDatetime=2026-08-02T00:00:00Z", freeToken)
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("FREEユーザーがlistenerQueryを指定すると403", async () => {
+      const res = await GET(request("?period=day&date=2026-08-20&listenerQuery=taro", freeToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("PROユーザーのmonth/カスタム範囲/listenerQueryは通る", async () => {
+      expect((await GET(request("?period=month&date=2026-08-20", token))).status).toBe(200);
+      expect(
+        (
+          await GET(
+            request("?startDatetime=2026-08-01T00:00:00Z&endDatetime=2026-08-02T00:00:00Z", token)
+          )
+        ).status
+      ).toBe(200);
+      expect((await GET(request("?period=day&date=2026-08-20&listenerQuery=taro", token))).status).toBe(200);
+    });
   });
 
   it("totalDiamonds降順でソートされ、順位はインデックスで決まる", async () => {
