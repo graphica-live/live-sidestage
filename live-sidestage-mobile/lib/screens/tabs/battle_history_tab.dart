@@ -333,7 +333,9 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             for (final b in allBattles)
               if (!isSmallBattle(
                 selfScore: b.selfScore,
-                opponentScore: b.opponentScore,
+                // 3陣営以上ではopponentScoreがnullなので、他陣営スコアの最大値で代用する
+                // (代用しないと、自分の取り分が小さい大規模バトルまで隠れてしまう)。
+                opponentScore: b.opponentScore ?? b.maxOtherTeamScore,
                 threshold: filter.threshold,
               ))
                 b,
@@ -447,24 +449,156 @@ class _BattleCard extends StatelessWidget {
   /// comp `.battle-card` の `min-height:118px` 相当。
   static const double _minHeight = 142;
 
+  /// 陣営ラベル。自陣は自分のハンドル、相手陣は先頭メンバーのハンドル(無ければ表示名)。
+  String _teamLabel(BattleTeam team) {
+    final count = team.participants.isEmpty ? 1 : team.participants.length;
+    final String base;
+    if (team.isSelf) {
+      base = '@${myTiktokId ?? ''}';
+    } else {
+      final head = team.participants.isEmpty ? null : team.participants.first;
+      final tiktokId = head?.tiktokId;
+      base = tiktokId != null ? '@$tiktokId' : (head?.nickName ?? '対戦相手不明');
+    }
+    return count > 1 ? '$base 他${count - 1}名' : base;
+  }
+
   @override
   Widget build(BuildContext context) {
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
-    final selfTeam = battle.selfTeam;
-    final opponentTeam = battle.opponentTeam;
-    final selfCount = selfTeam?.length ?? 1;
-    final opponentCount = opponentTeam?.length ?? battle.opponent?.count ?? 1;
-    // 3陣営以上は comp `.score-line.many` の縮小サイズで横に並べる。
-    final many = selfCount + opponentCount > 2;
+    final teams = battle.teams;
+    // **3陣営以上のときだけ**陣営ごとの表示へ切り替える。2陣営までは従来どおり
+    // selfTeam/opponentTeam + selfScore/opponentScore の経路をそのまま使う
+    // (1vs1・2vs2の見た目を変えないため)。
+    final multiTeam = teams != null && teams.length > 2;
 
-    final self = BigInt.tryParse(battle.selfScore ?? '');
-    final opponent = BigInt.tryParse(battle.opponentScore ?? '');
+    final BigInt? self;
+    final BigInt? opponent;
+    final String countLabel;
+    final Widget scoreRow;
 
-    final selfLabel = selfCount > 1
-        ? '@${myTiktokId ?? ''} 他${selfCount - 1}名'
-        : '@${myTiktokId ?? ''}';
-    final opponentBase = _BattleHistoryTabState._opponentLabel(battle.opponent);
-    final opponentLabel = opponentCount > 1 ? '$opponentBase 他${opponentCount - 1}名' : opponentBase;
+    if (multiTeam) {
+      final selfTeamData = teams.firstWhere((t) => t.isSelf, orElse: () => teams.first);
+      self = BigInt.tryParse(selfTeamData.score ?? '');
+      // 勝敗バッジは「自分 vs 他陣営の最高スコア」で判定する。
+      opponent = BigInt.tryParse(battle.maxOtherTeamScore ?? '');
+      countLabel = teams.map((t) => t.participants.isEmpty ? 1 : t.participants.length).join(' vs ');
+
+      final scores = [for (final t in teams) BigInt.tryParse(t.score ?? '')];
+      // 首位が1陣営だけのときのみグラデーション表示にする(同点なら誰も強調しない)。
+      BigInt? top;
+      var topCount = 0;
+      for (final s in scores) {
+        if (s == null) continue;
+        if (top == null || s > top) {
+          top = s;
+          topCount = 1;
+        } else if (s == top) {
+          topCount++;
+        }
+      }
+
+      final segments = <Widget>[];
+      for (var i = 0; i < teams.length; i++) {
+        if (i > 0) {
+          segments.add(
+            Container(
+              height: 19,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text('–', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: sub)),
+            ),
+          );
+        }
+        final team = teams[i];
+        segments.add(
+          Flexible(
+            child: _ScoreSegment(
+              own: team.isSelf,
+              many: true,
+              name: _teamLabel(team),
+              score: _BattleHistoryTabState._formatScore(team.score),
+              winning: topCount == 1 && scores[i] != null && scores[i] == top,
+              avatars: [
+                for (final p in team.participants) p.avatarUrl,
+                if (team.participants.isEmpty) null,
+              ],
+            ),
+          ),
+        );
+      }
+      scoreRow = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: segments,
+      );
+    } else {
+      final selfTeam = battle.selfTeam;
+      final opponentTeam = battle.opponentTeam;
+      final selfCount = selfTeam?.length ?? 1;
+      final opponentCount = opponentTeam?.length ?? battle.opponent?.count ?? 1;
+      // 3陣営以上は comp `.score-line.many` の縮小サイズで横に並べる。
+      final many = selfCount + opponentCount > 2;
+
+      self = BigInt.tryParse(battle.selfScore ?? '');
+      opponent = BigInt.tryParse(battle.opponentScore ?? '');
+
+      final selfLabel = selfCount > 1
+          ? '@${myTiktokId ?? ''} 他${selfCount - 1}名'
+          : '@${myTiktokId ?? ''}';
+      final opponentBase = _BattleHistoryTabState._opponentLabel(battle.opponent);
+      final opponentLabel = opponentCount > 1 ? '$opponentBase 他${opponentCount - 1}名' : opponentBase;
+      countLabel = '$selfCount vs $opponentCount';
+
+      scoreRow = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        // セグメントはスコア行の下に名前を持つので、既定の中央揃えだと
+        // 区切りの「–」がスコアより下へずれる。上端で揃えて、区切り自体を
+        // スコア行(=アバターの高さ)の中で中央に置く。
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Flexible(
+            child: _ScoreSegment(
+              own: true,
+              many: many,
+              name: selfLabel,
+              score: _BattleHistoryTabState._formatScore(battle.selfScore),
+              winning: self != null && opponent != null && self > opponent,
+              avatars: [
+                for (final p in selfTeam ?? const <BattleParticipant>[]) p.avatarUrl,
+                if (selfTeam == null) null,
+              ],
+            ),
+          ),
+          Container(
+            height: many ? 19 : 26,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              '–',
+              style: TextStyle(
+                fontSize: many ? 11 : 13,
+                fontWeight: FontWeight.w700,
+                color: sub,
+              ),
+            ),
+          ),
+          Flexible(
+            child: _ScoreSegment(
+              own: false,
+              many: many,
+              name: opponentLabel,
+              score: _BattleHistoryTabState._formatScore(battle.opponentScore),
+              winning: self != null && opponent != null && opponent > self,
+              avatars: [
+                for (final p in opponentTeam ?? const <BattleParticipant>[]) p.avatarUrl,
+                if (opponentTeam == null) battle.opponent?.avatarUrl,
+              ],
+            ),
+          ),
+        ],
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -495,63 +629,13 @@ class _BattleCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            '$selfCount vs $opponentCount',
-                            style: TextStyle(fontSize: 11, color: sub),
-                          ),
+                          child: Text(countLabel, style: TextStyle(fontSize: 11, color: sub)),
                         ),
                         _OutcomeBadge(status: battle.status, self: self, opponent: opponent),
                       ],
                     ),
                     const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      // セグメントはスコア行の下に名前を持つので、既定の中央揃えだと
-                      // 区切りの「–」がスコアより下へずれる。上端で揃えて、区切り自体を
-                      // スコア行(=アバターの高さ)の中で中央に置く。
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Flexible(
-                          child: _ScoreSegment(
-                            own: true,
-                            many: many,
-                            name: selfLabel,
-                            score: _BattleHistoryTabState._formatScore(battle.selfScore),
-                            winning: self != null && opponent != null && self > opponent,
-                            avatars: [
-                              for (final p in selfTeam ?? const <BattleParticipant>[]) p.avatarUrl,
-                              if (selfTeam == null) null,
-                            ],
-                          ),
-                        ),
-                        Container(
-                          height: many ? 19 : 26,
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            '–',
-                            style: TextStyle(
-                              fontSize: many ? 11 : 13,
-                              fontWeight: FontWeight.w700,
-                              color: sub,
-                            ),
-                          ),
-                        ),
-                        Flexible(
-                          child: _ScoreSegment(
-                            own: false,
-                            many: many,
-                            name: opponentLabel,
-                            score: _BattleHistoryTabState._formatScore(battle.opponentScore),
-                            winning: self != null && opponent != null && opponent > self,
-                            avatars: [
-                              for (final p in opponentTeam ?? const <BattleParticipant>[]) p.avatarUrl,
-                              if (opponentTeam == null) battle.opponent?.avatarUrl,
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                    scoreRow,
                   ],
                 ),
                 Padding(

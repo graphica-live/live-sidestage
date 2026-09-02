@@ -92,17 +92,70 @@ export function mergeMaxScores(rows: BattleRow[]): Map<string, bigint> {
   return merged;
 }
 
+/**
+ * 陣営(faction)1つ分。**陣営数は2に限らない**(3陣営以上のマルチバトルをそのまま表現する)。
+ *
+ * `index === 0` は常に自分の陣営。以降は「anchorIdList上で最初に現れた順」で安定させる
+ * (teamIdの文字列順は受信payload由来で意味を持たないため使わない)。
+ */
+export type BattleFaction = {
+  index: number;
+  isSelf: boolean;
+  anchorIds: string[];
+  /**
+   * 陣営内メンバーのスコア合計(観測できたメンバーのみ加算)。1人も観測できなければ null。
+   * 桁あふれを避けるため BigInt で合算して文字列で保持する。
+   */
+  score: string | null;
+};
+
 export type ResolvedBattleScore =
-  | { kind: "1v1"; selfScore: string | null; opponentAnchorId: string; opponentScore: string | null }
+  | {
+      kind: "1v1";
+      selfScore: string | null;
+      opponentAnchorId: string;
+      opponentScore: string | null;
+      factions: BattleFaction[];
+    }
   | {
       kind: "teams";
       selfTeamAnchorIds: string[];
+      /** 後方互換: 自陣以外の全メンバーを1つに畳んだもの。陣営の内訳は `factions` を見る。 */
       opponentTeamAnchorIds: string[];
       selfScore: string | null;
+      factions: BattleFaction[];
     }
-  | { kind: "multi"; participantCount: number; anchorIds: string[]; selfScore: string | null }
+  | {
+      kind: "multi";
+      participantCount: number;
+      anchorIds: string[];
+      selfScore: string | null;
+      /** チーム情報が無いので「1人=1陣営」として扱う。 */
+      factions: BattleFaction[];
+    }
   | { kind: "solo"; selfScore: string | null }
   | { kind: "unknown"; selfScore: null };
+
+/** 陣営内メンバーのスコア合計。観測できたメンバーが1人もいなければ null(0に丸めない)。 */
+function sumFactionScore(anchorIds: string[], merged: Map<string, bigint>): string | null {
+  let total: bigint | null = null;
+  for (const id of anchorIds) {
+    const value = merged.get(id);
+    if (value === undefined) continue;
+    total = (total ?? 0n) + value;
+  }
+  return total === null ? null : total.toString();
+}
+
+/** anchorIdのグループ配列(先頭が自陣)からBattleFaction[]を作る。純粋関数。 */
+function toFactions(groups: string[][], merged: Map<string, bigint>): BattleFaction[] {
+  return groups.map((anchorIds, index) => ({
+    index,
+    isSelf: index === 0,
+    anchorIds,
+    score: sumFactionScore(anchorIds, merged),
+  }));
+}
 
 /**
  * 消去法でスコアを解決する。純粋関数。
@@ -112,7 +165,8 @@ export type ResolvedBattleScore =
  * 自分しか観測できていない場合(`solo`)は、相手情報こそ無いが自分のスコア自体は正しいので出す。
  *
  * `selfHostTeams`(自room行のhostTeams列)にanchorIds全員分のteamId割当があり、かつ
- * distinctなteamIdがちょうど2種類のときだけ`teams`を返す。**チーム判定は自room行だけを見る**
+ * distinctなteamIdが2種類**以上**のとき`teams`を返す(3陣営以上もそのまま`factions`で表す)。
+ * **チーム判定は自room行だけを見る**
  * (相手room行とはマージしない)。teamIdが受信room視点の相対値である可能性が未検証なため、
  * 複数roomのhostTeamsを混ぜると視点の異なる誤ったチーム分けを「割当済み」のまま表示しうる。
  * teamArmiesは両チーム分を1payloadに含むので、自room行だけで判定が完結する。
@@ -139,6 +193,7 @@ export function resolveBattleScore(input: {
       selfScore,
       opponentAnchorId,
       opponentScore: merged.get(opponentAnchorId)?.toString() ?? null,
+      factions: toFactions([[input.selfHostUserId], [opponentAnchorId]], merged),
     };
   }
 
@@ -152,16 +207,40 @@ export function resolveBattleScore(input: {
   // 実際のanchorIdList分だけでdistinct数を数える。
   const distinctTeamCount = new Set(anchorIdList.map((id) => teamOf.get(id))).size;
 
-  if (allAssigned && selfTeamId !== undefined && distinctTeamCount === 2) {
+  if (allAssigned && selfTeamId !== undefined && distinctTeamCount >= 2) {
+    // 自陣を先頭に、残りは anchorIdList 上の初出順で陣営を並べる(teamIdの文字列順は
+    // 受信payload由来で意味を持たないため使わない)。
+    const orderedTeamIds: string[] = [selfTeamId];
+    for (const id of anchorIdList) {
+      const teamId = teamOf.get(id)!;
+      if (!orderedTeamIds.includes(teamId)) orderedTeamIds.push(teamId);
+    }
+    const groups = orderedTeamIds.map((teamId) => anchorIdList.filter((id) => teamOf.get(id) === teamId));
     return {
       kind: "teams",
-      selfTeamAnchorIds: anchorIdList.filter((id) => teamOf.get(id) === selfTeamId),
+      selfTeamAnchorIds: groups[0],
+      // 3陣営以上でも旧UI(左右split)が壊れないよう、自陣以外は1つに畳んだものを残す。
       opponentTeamAnchorIds: anchorIdList.filter((id) => teamOf.get(id) !== selfTeamId),
       selfScore,
+      factions: toFactions(groups, merged),
     };
   }
 
-  return { kind: "multi", participantCount: anchorIds.size, anchorIds: anchorIdList, selfScore };
+  // チーム分けが取れない3人以上の乱戦。**「自分1人 vs 残り全員」に丸めず**、1人=1陣営として
+  // 全員分のスコアを個別に出せる形で返す(hostScoresはanchorId単位で観測できている)。
+  return {
+    kind: "multi",
+    participantCount: anchorIds.size,
+    anchorIds: anchorIdList,
+    selfScore,
+    factions: toFactions(
+      [
+        [input.selfHostUserId],
+        ...anchorIdList.filter((id) => id !== input.selfHostUserId).map((id) => [id]),
+      ],
+      merged
+    ),
+  };
 }
 
 /** 決着済みバトルの開始からの猶予。この間は duration を過ぎていても「進行中」寄りに倒す。 */
@@ -295,6 +374,19 @@ export function resolveBattleSides(
   return { selfTeamAnchorIds: null, opponentTeamAnchorIds: null };
 }
 
+/**
+ * 陣営1つ分の表示用データ。**陣営数は2に限らない**(3陣営以上のマルチバトルをそのまま返す)。
+ * `index === 0` が自分の陣営。`selfTeam`/`opponentTeam`は後方互換のため残してあり、
+ * `teams`はその上位互換(2陣営なら teams[0] === selfTeam、teams[1] === opponentTeam と一致する)。
+ */
+export type BattleTeam = {
+  index: number;
+  isSelf: boolean;
+  /** 陣営内メンバーのスコア合計。1人も観測できていなければ null。 */
+  score: string | null;
+  participants: BattleParticipant[];
+};
+
 export type BattleListItem = {
   battleId: string;
   startedAt: string;
@@ -311,6 +403,12 @@ export type BattleListItem = {
    */
   selfTeam: BattleParticipant[] | null;
   opponentTeam: BattleParticipant[] | null;
+  /**
+   * 陣営ごとの内訳(3陣営以上をそのまま表現する)。solo/unknownのときのみnull。
+   * 既存クライアントは`selfTeam`/`opponentTeam`/`selfScore`/`opponentScore`だけを見ればよく、
+   * こちらは追加フィールド(後方互換を壊さない)。
+   */
+  teams: BattleTeam[] | null;
   selfScore: string | null;
   opponentScore: string | null;
   /** 自分が受け取った実ダイヤ合計。区間が確定できない(unknown、end===nullのcut_short)場合は0。 */
@@ -606,12 +704,17 @@ export type FinalizedBattle = {
   opponentScore: string | null;
   selfTotalDiamonds: number;
   participants: {
+    /** 後方互換の2値。teamIndex===0が"self"、それ以外が"opponent"。 */
     side: string;
+    /** 陣営番号。0が自分の陣営。3陣営以上はここでしか区別できない。 */
+    teamIndex: number;
     position: number;
     anchorId: string;
     tiktokId: string | null;
     displayId: string | null;
     nickName: string | null;
+    /** 確定時に観測できていたこのメンバーのスコア。未観測ならnull。 */
+    score: string | null;
   }[];
 };
 
@@ -630,8 +733,17 @@ async function loadFinalizedBattles(roomId: string, battleIds: string[]): Promis
       opponentScore: true,
       selfTotalDiamonds: true,
       participants: {
-        select: { side: true, position: true, anchorId: true, tiktokId: true, displayId: true, nickName: true },
-        orderBy: { position: "asc" },
+        select: {
+          side: true,
+          teamIndex: true,
+          position: true,
+          anchorId: true,
+          tiktokId: true,
+          displayId: true,
+          nickName: true,
+          score: true,
+        },
+        orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
       },
     },
   });
@@ -721,6 +833,8 @@ async function buildBattleListItems(
     /** 左右split表示用。1v1/teamsに解決できた場合のみ非null(hostProfiles解決前の生anchorId)。 */
     selfTeamAnchorIds: string[] | null;
     opponentTeamAnchorIds: string[] | null;
+    /** 陣営ごとの内訳(3陣営以上をそのまま持つ)。solo/unknownのみnull。 */
+    factions: { anchorIds: string[]; score: string | null }[] | null;
     hostProfiles: HostProfiles | null;
     /** このバトルで実際に観測された他roomのroomId一覧。buildParticipantの検索対象をこのバトルだけに絞る。 */
     otherRoomIdsForBattle: string[];
@@ -744,12 +858,35 @@ async function buildBattleListItems(
    * それ以外は teams/multi と同じ「人数のみ」の形にする(ライブ集計と同じ規則)。
    */
   function buildFinalizedPendingItem(own: OwnBattleRow, finalized: FinalizedBattle): PendingItem {
-    const selfParticipants = finalized.participants
-      .filter((p) => p.side === "self")
-      .sort((a, b) => a.position - b.position);
-    const opponentParticipants = finalized.participants
-      .filter((p) => p.side === "opponent")
-      .sort((a, b) => a.position - b.position);
+    // 3陣営以上ではsideが同じでも陣営が違う(position はその陣営内の連番)ので、
+    // 旧フィールド用に畳むときは teamIndex → position の順で並べる。
+    const byTeamThenPosition = (a: FinalizedBattle["participants"][number], b: FinalizedBattle["participants"][number]) =>
+      a.teamIndex - b.teamIndex || a.position - b.position;
+    const selfParticipants = finalized.participants.filter((p) => p.side === "self").sort(byTeamThenPosition);
+    const opponentParticipants = finalized.participants.filter((p) => p.side === "opponent").sort(byTeamThenPosition);
+
+    // 陣営はteamIndexで復元する。**teamIndex列の導入前に確定した行はすべて0**なので、
+    // 2陣営以上に分かれていなければ従来どおりside(self/opponent)から2陣営を作る。
+    const teamIndexes = [...new Set(finalized.participants.map((p) => p.teamIndex))].sort((a, b) => a - b);
+    const factionGroups: typeof finalized.participants[] =
+      teamIndexes.length >= 2
+        ? teamIndexes.map((i) =>
+            finalized.participants.filter((p) => p.teamIndex === i).sort((a, b) => a.position - b.position)
+          )
+        : [selfParticipants, opponentParticipants].filter((g) => g.length > 0);
+
+    const factions = factionGroups.map((group, index) => {
+      let total: bigint | null = null;
+      for (const p of group) {
+        if (p.score === null) continue;
+        total = (total ?? 0n) + BigInt(p.score);
+      }
+      // score列の導入前に確定した行はスコアを持たないので、BattleHistory側の
+      // selfScore/opponentScore(2陣営のときのみ意味がある)で補う。
+      const legacy =
+        index === 0 ? finalized.selfScore : factionGroups.length === 2 ? finalized.opponentScore : null;
+      return { anchorIds: group.map((p) => p.anchorId), score: total === null ? legacy : total.toString() };
+    });
 
     const storedIdentities = new Map<string, BattleParticipantIdentity>(
       finalized.participants.map((p) => [
@@ -778,6 +915,7 @@ async function buildBattleListItems(
       opponentCount,
       selfTeamAnchorIds: selfParticipants.length > 0 ? selfParticipants.map((p) => p.anchorId) : null,
       opponentTeamAnchorIds: opponentParticipants.length > 0 ? opponentParticipants.map((p) => p.anchorId) : null,
+      factions: factions.length > 0 ? factions : null,
       hostProfiles: null,
       otherRoomIdsForBattle: [],
       storedIdentities,
@@ -855,6 +993,10 @@ async function buildBattleListItems(
       opponentCount,
       selfTeamAnchorIds,
       opponentTeamAnchorIds,
+      factions:
+        resolved.kind === "1v1" || resolved.kind === "teams" || resolved.kind === "multi"
+          ? resolved.factions.map((f) => ({ anchorIds: f.anchorIds, score: f.score }))
+          : null,
       hostProfiles: own.hostProfiles as HostProfiles | null,
       otherRoomIdsForBattle: others.map((o) => o.roomId),
       storedIdentities: null,
@@ -894,6 +1036,13 @@ async function buildBattleListItems(
           },
     selfTeam: p.selfTeamAnchorIds?.map((id) => participantOf(id, p)) ?? null,
     opponentTeam: p.opponentTeamAnchorIds?.map((id) => participantOf(id, p)) ?? null,
+    teams:
+      p.factions?.map((f, index) => ({
+        index,
+        isSelf: index === 0,
+        score: f.score,
+        participants: f.anchorIds.map((id) => participantOf(id, p)),
+      })) ?? null,
     selfScore: p.selfScore,
     opponentScore: p.opponentScore,
     selfTotalDiamonds: p.selfTotalDiamonds,

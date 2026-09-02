@@ -43,27 +43,77 @@ class BattleOpponent {
   }
 }
 
-/// 左右split表示(vs)1メンバー分。サーバーの`BattleParticipant`と対応する。
+/// 陣営1メンバー分。サーバーの`BattleParticipant`と対応する。
 class BattleParticipant {
   final String anchorId;
   final String? avatarUrl;
 
-  const BattleParticipant({required this.anchorId, this.avatarUrl});
+  /// 相手が登録済みならそのtiktokId。未登録ならnull。3陣営以上のとき、陣営ラベルに使う
+  /// (2陣営までは従来どおり[BattleSummary.opponent]側のtiktokIdを使う)。
+  final String? tiktokId;
+  final String? nickName;
+
+  const BattleParticipant({required this.anchorId, this.avatarUrl, this.tiktokId, this.nickName});
 
   static BattleParticipant? tryParse(Object? value) {
     if (value is! Map) return null;
     final anchorId = value['anchorId'];
     if (anchorId is! String || anchorId.isEmpty) return null;
     final avatarUrl = value['avatarUrl'];
+    final tiktokId = value['tiktokId'];
+    final nickName = value['nickName'];
     return BattleParticipant(
       anchorId: anchorId,
       avatarUrl: avatarUrl is String && avatarUrl.isNotEmpty ? avatarUrl : null,
+      tiktokId: tiktokId is String && tiktokId.isNotEmpty ? tiktokId : null,
+      nickName: nickName is String && nickName.isNotEmpty ? nickName : null,
     );
   }
 
   static List<BattleParticipant>? tryParseList(Object? value) {
     if (value is! List) return null;
     return value.map(BattleParticipant.tryParse).whereType<BattleParticipant>().toList();
+  }
+}
+
+/// 陣営1つ分。サーバーの`BattleTeam`と対応する。**陣営数は2に限らない**
+/// (3陣営以上のマルチバトルはここでしか個別のスコアを取れない)。
+///
+/// [index] が0の陣営が自分。[score] は陣営内メンバーのスコア合計で、1人も観測
+/// できていなければnull。
+class BattleTeam {
+  final int index;
+  final bool isSelf;
+  final String? score;
+  final List<BattleParticipant> participants;
+
+  const BattleTeam({
+    required this.index,
+    required this.isSelf,
+    required this.score,
+    required this.participants,
+  });
+
+  static BattleTeam? tryParse(Object? value) {
+    if (value is! Map) return null;
+    final index = value['index'];
+    if (index is! int) return null;
+    final score = value['score'];
+    return BattleTeam(
+      index: index,
+      isSelf: value['isSelf'] == true,
+      score: score is String && score.isNotEmpty ? score : null,
+      participants: BattleParticipant.tryParseList(value['participants']) ?? const [],
+    );
+  }
+
+  /// 陣営が2つ未満なら「陣営表示」は成立しないのでnullを返す(呼び出し側は
+  /// 従来のselfTeam/opponentTeam表示へフォールバックする)。
+  static List<BattleTeam>? tryParseList(Object? value) {
+    if (value is! List) return null;
+    final teams = value.map(BattleTeam.tryParse).whereType<BattleTeam>().toList();
+    if (teams.length < 2) return null;
+    return teams;
   }
 }
 
@@ -86,6 +136,12 @@ class BattleSummary {
   /// どちらもnull(UIは[opponent]でフォールバック表示する)。
   final List<BattleParticipant>? selfTeam;
   final List<BattleParticipant>? opponentTeam;
+
+  /// 陣営ごとの内訳。**3陣営以上のバトルはここでしかスコアを分けられない**
+  /// (トップレベルの[opponentScore]は1vs1のときしか入らない)。
+  /// 2陣営のときは[selfTeam]/[opponentTeam]と同じ内容になる。
+  /// サーバーが古い(このフィールドを返さない)場合はnull。
+  final List<BattleTeam>? teams;
   final String? selfScore;
   final String? opponentScore;
 
@@ -96,9 +152,25 @@ class BattleSummary {
     this.opponent,
     this.selfTeam,
     this.opponentTeam,
+    this.teams,
     this.selfScore,
     this.opponentScore,
   });
+
+  /// 自陣以外の陣営スコアの最大値。3陣営以上で[opponentScore]がnullのときの
+  /// 「相手側スコア」の代わりに使う(勝敗判定・しきい値フィルタ)。
+  String? get maxOtherTeamScore {
+    final list = teams;
+    if (list == null) return null;
+    BigInt? max;
+    for (final t in list) {
+      if (t.isSelf) continue;
+      final value = BigInt.tryParse(t.score ?? '');
+      if (value == null) continue;
+      if (max == null || value > max) max = value;
+    }
+    return max?.toString();
+  }
 
   static BattleSummary? tryParse(Object? value) {
     if (value is! Map) return null;
@@ -112,6 +184,7 @@ class BattleSummary {
       opponent: BattleOpponent.tryParse(value['opponent']),
       selfTeam: BattleParticipant.tryParseList(value['selfTeam']),
       opponentTeam: BattleParticipant.tryParseList(value['opponentTeam']),
+      teams: BattleTeam.tryParseList(value['teams']),
       selfScore: value['selfScore'] as String?,
       opponentScore: value['opponentScore'] as String?,
     );

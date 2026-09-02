@@ -139,4 +139,82 @@ void main() {
       expect(battle.opponentTeam, isNull);
     });
   });
+
+  group('BattleTeam(3陣営以上)', () {
+    Map<String, Object?> team(int index, bool isSelf, String? score, List<String> anchorIds) => {
+          'index': index,
+          'isSelf': isSelf,
+          'score': score,
+          'participants': [
+            for (final id in anchorIds) {'anchorId': id, 'tiktokId': '${id}_handle'},
+          ],
+        };
+
+    test('陣営ごとのスコアと参加者を解析できる', () {
+      final battle = BattleSummary.tryParse({
+        'battleId': 'b1',
+        'status': 'finished',
+        'selfScore': '150',
+        'teams': [
+          team(0, true, '150', ['me', 'ally']),
+          team(1, false, '100', ['x1', 'x2']),
+          team(2, false, '15', ['y1', 'y2']),
+        ],
+      });
+      expect(battle!.teams, hasLength(3));
+      expect(battle.teams![0].isSelf, isTrue);
+      expect(battle.teams![1].score, '100');
+      expect(battle.teams![2].participants.map((p) => p.anchorId), ['y1', 'y2']);
+    });
+
+    test('陣営が2つ未満ならteamsはnull(従来のselfTeam/opponentTeam表示へ倒す)', () {
+      final battle = BattleSummary.tryParse({
+        'battleId': 'b1',
+        'status': 'finished',
+        'teams': [team(0, true, '10', ['me'])],
+      });
+      expect(battle!.teams, isNull);
+    });
+
+    test('teamsが無い(古いサーバー)ならnull', () {
+      expect(BattleSummary.tryParse({'battleId': 'b1', 'status': 'live'})!.teams, isNull);
+    });
+
+    test('maxOtherTeamScoreは自陣以外の最大スコア。全てnullならnull', () {
+      final battle = BattleSummary.tryParse({
+        'battleId': 'b1',
+        'status': 'finished',
+        'teams': [
+          team(0, true, '150', ['me']),
+          team(1, false, '100', ['x1']),
+          team(2, false, '900', ['y1']),
+        ],
+      });
+      expect(battle!.maxOtherTeamScore, '900');
+
+      final noScores = BattleSummary.tryParse({
+        'battleId': 'b2',
+        'status': 'finished',
+        'teams': [
+          team(0, true, '150', ['me']),
+          team(1, false, null, ['x1']),
+        ],
+      });
+      expect(noScores!.maxOtherTeamScore, isNull);
+    });
+
+    test('30桁のスコアもStringのまま比較できる(桁あふれしない)', () {
+      const huge = '999999999999999999999999999999';
+      final battle = BattleSummary.tryParse({
+        'battleId': 'b1',
+        'status': 'finished',
+        'teams': [
+          team(0, true, '1', ['me']),
+          team(1, false, huge, ['x1']),
+          team(2, false, '2', ['y1']),
+        ],
+      });
+      expect(battle!.maxOtherTeamScore, huge);
+    });
+  });
 }

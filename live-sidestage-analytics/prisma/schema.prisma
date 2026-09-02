@@ -791,17 +791,23 @@ model BattleHistory {
   @@schema("public")
 }
 
-// 確定済みバトルの左右split表示1メンバー分。BattleParticipant(battle-history.ts)から
+// 確定済みバトルの陣営1メンバー分。BattleParticipant(battle-history.ts)から
 // avatarUrl(署名付きで失効する)を除いた恒久部分だけを持つ。
+//
+// **陣営は teamIndex(0=自分の陣営)で表す。3陣営以上のマルチバトルも丸めずに保存する。**
+// side は teamIndex 導入前からある2値で、teamIndex===0 が "self"、それ以外が "opponent"。
+// 既存クライアント・既存クエリの後方互換のためだけに書き続ける(判定の正は teamIndex)。
 model BattleHistoryParticipant {
   id              String  @id @default(cuid())
   battleHistoryId String
-  side            String // "self" | "opponent"
-  position        Int // side内の表示順(生成順をそのまま保存)
+  side            String // "self" | "opponent"(後方互換。正は teamIndex)
+  teamIndex       Int     @default(0) // 陣営番号。0が自分の陣営
+  position        Int // 陣営内の表示順(生成順をそのまま保存)
   anchorId        String
   tiktokId        String?
   displayId       String?
   nickName        String?
+  score           String? // 確定時に観測できていたこのメンバーのスコア(最大30桁なのでString)。未観測ならnull
 
   battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
 

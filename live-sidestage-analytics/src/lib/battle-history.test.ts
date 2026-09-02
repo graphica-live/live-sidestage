@@ -134,13 +134,90 @@ describe("resolveBattleScore", () => {
     expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
   });
 
-  it("hostTeamsのdistinctなteamIdが3種類以上(1vs1vs1等)ならmultiにフォールバックする", () => {
+  it("hostTeamsのdistinctなteamIdが3種類以上(1vs1vs1等)なら3陣営のteamsを返す", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
       selfHostUserId: "A",
       selfHostTeams: { A: "1", B: "2", C: "3" },
     });
-    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
+    expect(resolved).toMatchObject({
+      kind: "teams",
+      selfScore: "10",
+      selfTeamAnchorIds: ["A"],
+      // 後方互換の左右split用。3陣営目もここでは相手側へ畳まれる。
+      opponentTeamAnchorIds: ["B", "C"],
+      factions: [
+        { index: 0, isSelf: true, anchorIds: ["A"], score: "10" },
+        { index: 1, isSelf: false, anchorIds: ["B"], score: "20" },
+        { index: 2, isSelf: false, anchorIds: ["C"], score: "30" },
+      ],
+    });
+  });
+
+  it("2vs2vs2(3陣営×2人)でも陣営ごとにスコアを合算して返す", () => {
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B", "C", "D", "E", "F"], { A: "10", B: "1", C: "20", D: "2", E: "30", F: "3" })],
+      selfHostUserId: "C",
+      selfHostTeams: { A: "1", B: "1", C: "2", D: "2", E: "3", F: "3" },
+    });
+    expect(resolved).toMatchObject({
+      kind: "teams",
+      selfScore: "20",
+      factions: [
+        // 自陣が必ず index 0。残りは anchorIdList 上の初出順。
+        { index: 0, isSelf: true, anchorIds: ["C", "D"], score: "22" },
+        { index: 1, isSelf: false, anchorIds: ["A", "B"], score: "11" },
+        { index: 2, isSelf: false, anchorIds: ["E", "F"], score: "33" },
+      ],
+    });
+  });
+
+  it("チーム情報が無い3人以上の乱戦は1人=1陣営として全員分のスコアを返す(自分1人vs残り全員に丸めない)", () => {
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B", "C", "D"], { A: "10", B: "20", C: "30", D: "40" })],
+      selfHostUserId: "B",
+      selfHostTeams: {},
+    });
+    expect(resolved).toMatchObject({
+      kind: "multi",
+      participantCount: 4,
+      factions: [
+        { index: 0, isSelf: true, anchorIds: ["B"], score: "20" },
+        { index: 1, isSelf: false, anchorIds: ["A"], score: "10" },
+        { index: 2, isSelf: false, anchorIds: ["C"], score: "30" },
+        { index: 3, isSelf: false, anchorIds: ["D"], score: "40" },
+      ],
+    });
+  });
+
+  it("1v1でもfactionsは2陣営の形で返る(クライアントが陣営数によらず同じ経路で描ける)", () => {
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B"], { A: "10", B: "20" })],
+      selfHostUserId: "A",
+      selfHostTeams: {},
+    });
+    expect(resolved).toMatchObject({
+      kind: "1v1",
+      factions: [
+        { index: 0, isSelf: true, anchorIds: ["A"], score: "10" },
+        { index: 1, isSelf: false, anchorIds: ["B"], score: "20" },
+      ],
+    });
+  });
+
+  it("陣営メンバーのスコアが1人も観測できていなければ陣営スコアはnull(0に丸めない)", () => {
+    const resolved = resolveBattleScore({
+      rows: [row(["A", "B", "C"], { A: "10" })],
+      selfHostUserId: "A",
+      selfHostTeams: { A: "1", B: "2", C: "2" },
+    });
+    expect(resolved).toMatchObject({
+      kind: "teams",
+      factions: [
+        { index: 0, isSelf: true, anchorIds: ["A"], score: "10" },
+        { index: 1, isSelf: false, anchorIds: ["B", "C"], score: null },
+      ],
+    });
   });
 });
 
@@ -326,7 +403,7 @@ describe("jstDateRangeToUtc", () => {
 describe("resolveBattleSides", () => {
   it("1v1は各サイド1人へ正規化する", () => {
     const sides = resolveBattleSides(
-      { kind: "1v1", selfScore: "10", opponentAnchorId: "B", opponentScore: "5" },
+      { kind: "1v1", selfScore: "10", opponentAnchorId: "B", opponentScore: "5", factions: [] },
       "A"
     );
     expect(sides).toEqual({ selfTeamAnchorIds: ["A"], opponentTeamAnchorIds: ["B"] });
@@ -334,7 +411,7 @@ describe("resolveBattleSides", () => {
 
   it("teamsは解決済みのチーム分けをそのまま使う", () => {
     const sides = resolveBattleSides(
-      { kind: "teams", selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"], selfScore: "10" },
+      { kind: "teams", selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"], selfScore: "10", factions: [] },
       "A"
     );
     expect(sides).toEqual({ selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"] });
@@ -342,7 +419,7 @@ describe("resolveBattleSides", () => {
 
   it("multiは「自分1人 vs 残り全員」として埋める", () => {
     const sides = resolveBattleSides(
-      { kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" },
+      { kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10", factions: [] },
       "A"
     );
     expect(sides).toEqual({ selfTeamAnchorIds: ["A"], opponentTeamAnchorIds: ["B", "C"] });
@@ -358,7 +435,7 @@ describe("resolveBattleSides", () => {
       opponentTeamAnchorIds: null,
     });
     expect(
-      resolveBattleSides({ kind: "1v1", selfScore: null, opponentAnchorId: "B", opponentScore: null }, null)
+      resolveBattleSides({ kind: "1v1", selfScore: null, opponentAnchorId: "B", opponentScore: null, factions: [] }, null)
     ).toEqual({ selfTeamAnchorIds: null, opponentTeamAnchorIds: null });
   });
 });
