@@ -107,6 +107,15 @@ export type ExistenceClassification = {
   notFoundFirstAt: Date | null;
   outcome: ExistenceOutcome;
   shouldSuspend: boolean;
+  /**
+   * TikTok が `user_not_found` を明示したか。hostUserId の補完を恒久的に諦める判断に使う。
+   *
+   * **`outcome === "not_found"` とは別物。** そちらは非 0 statusCode をまとめた粗い値で、
+   * bot 判定や一時的な異常応答も含む(tiktok-profile.ts の `TiktokProfileResult` 参照)。
+   * 監視停止はストリークと継続時間で守られているのでその粗さを許容できるが、
+   * hostUserId の give-up は不可逆なので明示シグナルだけを根拠にする。
+   */
+  explicitNotFound: boolean;
 };
 
 /** fetchTiktokProfile()の結果からストリークを更新し、監視停止確定すべきかを判定する。純粋関数。 */
@@ -116,7 +125,13 @@ export function classifyExistenceResult(
   now: Date
 ): ExistenceClassification {
   if (result.ok) {
-    return { notFoundStreak: 0, notFoundFirstAt: null, outcome: "exists", shouldSuspend: false };
+    return {
+      notFoundStreak: 0,
+      notFoundFirstAt: null,
+      outcome: "exists",
+      shouldSuspend: false,
+      explicitNotFound: false,
+    };
   }
 
   if (result.reason === "NOT_FOUND") {
@@ -124,7 +139,13 @@ export function classifyExistenceResult(
     const notFoundStreak = current.notFoundStreak + 1;
     const elapsedMs = now.getTime() - notFoundFirstAt.getTime();
     const shouldSuspend = notFoundStreak >= NOT_FOUND_STREAK_REQUIRED && elapsedMs >= NOT_FOUND_ELAPSED_MS;
-    return { notFoundStreak, notFoundFirstAt, outcome: "not_found", shouldSuspend };
+    return {
+      notFoundStreak,
+      notFoundFirstAt,
+      outcome: "not_found",
+      shouldSuspend,
+      explicitNotFound: result.explicitNotFound === true,
+    };
   }
 
   // RATE_LIMITED / ERROR: 判定不能として現状維持(増やしも減らしもしない)。
@@ -133,6 +154,7 @@ export function classifyExistenceResult(
     notFoundFirstAt: current.notFoundFirstAt,
     outcome: "inconclusive",
     shouldSuspend: false,
+    explicitNotFound: false,
   };
 }
 
@@ -153,6 +175,17 @@ async function recordExistenceCheck(
       notFoundStreak: classification.notFoundStreak,
       notFoundFirstAt: classification.notFoundFirstAt,
       lastExistenceCheckAt: checkedAt,
+      // TikTokが「そのユーザーはいない」と明示したなら、hostUserIdの補完も恒久的に諦める。
+      //
+      // **notFoundStreakと違って一方向で、connected復帰でも戻さない。** 改名で空いた
+      // ハンドルを第三者が取得するとRoomは再びEXISTSになりstreakは0へ戻るが、そこで
+      // 引ける数値userIdは第三者のもの。fill-onceなので一度入ると訂正できず、
+      // 「このRoomの持ち主は第三者だ」という誤った証明として残り続ける
+      // (詳細はschema.prismaのhostUserIdBackfillGaveUpAtのコメント)。
+      //
+      // 補完ジョブ(tiktok-host-id.ts)は自分が観測したNOT_FOUNDしか記録できないので、
+      // 先にcleanupが観測したケースはここで拾わないと規律に穴が残る。
+      ...(classification.explicitNotFound ? { hostUserIdBackfillGaveUpAt: checkedAt } : {}),
     },
   });
 }

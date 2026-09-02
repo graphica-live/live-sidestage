@@ -291,9 +291,32 @@ model TiktokRoom {
   // TikTokの数値userId(api-live/user/room/ の data.user.id)。バトルpayloadのanchorIdStrと
   // 同じ空間で、tiktok_battles.hostScoresのキーと突き合わせてバトルスコアを配信者へ帰属させる。
   // avatar URLと違って**不変**なので保存してよい(署名付きURLのように失効しない)。
-  // 書き込みはsrc/lib/tiktok-host-id.tsの1箇所だけ。一度入った値は上書きしない
-  // (updateManyのwhereでhostUserId: nullを条件にして構造的に保証する)。
+  // 書き込みはsrc/lib/tiktok-host-id.tsの saveHostUserIdOnce() を必ず通す(呼び出し元は
+  // 補完ジョブとバトル逆引きの2つ)。一度入った値は上書きしない — where条件は
+  // HOST_USER_ID_WRITABLE_WHERE 1箇所に集約してあり、新しい経路を足しても
+  // 条件を書き写す必要がない(書き写すとドリフトで規律が抜ける)。
   hostUserId String?
+  // hostUserIdを書いた時刻。「fill時点でそのハンドルを持っていた人」しか証明しないので、
+  // 誤ったfillを事後に洗うための監査用。判定ロジックからは参照しない。
+  hostUserIdFilledAt DateTime?
+  // hostUserIdの補完を**恒久的に諦めた**時刻(TikTokがNOT_FOUNDを返した)。
+  //
+  // **これはセキュリティ上の規律であって、単なる再試行制御ではない。**
+  // NOT_FOUNDのハンドルは削除済みか改名済み。改名の場合、空いたハンドルを第三者が
+  // 取得しうる。後日そのハンドルを引き直すと「第三者のuserId」がこのRoomへfill-onceされ、
+  // 以後上書き不能なまま「このRoomの持ち主は第三者だ」という誤った証明になる。
+  // TikTok IDの自動合流(tiktok-id-migration)はhostUserIdの一致を根拠にRoomを吸収するので、
+  // この汚染は他人の履歴が別人のRoomへ移る事故に直結する。
+  //
+  // したがって**一度NOT_FOUNDを観測したRoomには二度とhostUserIdを書かない**。
+  // 「NOT_FOUND → 後日EXISTS」は持ち主が入れ替わった強いシグナルであり、
+  // そこで得られる値は原理的に信用できない。
+  // notFoundStreak(listener由来・connectedで0に戻る)とは別系統の値なので流用しない。
+  hostUserIdBackfillGaveUpAt DateTime?
+  // hostUserIdの補完を最後に試みた時刻(結果を問わず)。候補抽出のローテーションに使う。
+  // これが無いと最古の候補から順に取り続け、解決しない先頭の数十件で詰まって
+  // それ以降のRoomへ永久に到達しない(lastExistenceCheckAtと同じ理由)。
+  hostUserIdAttemptedAt DateTime?
 
   streamers       Streamer[]
   gifts           Gift[]
@@ -307,6 +330,9 @@ model TiktokRoom {
   @@index([workerId, monitorUntil])
   // tiktok-room-cleanup.tsの候補抽出クエリ用(listenerStatus + unhealthySince の複合条件)。
   @@index([listenerStatus, unhealthySince])
+  // 「同じhostUserIdを持つ別ハンドルのRoom」を探す検索用(tiktok-id-migration)。
+  // 改名の検知はこの引き当てが唯一の手段なので、全件スキャンにさせない。
+  @@index([hostUserId])
   @@schema("public")
 }
 
