@@ -3,8 +3,19 @@
 `zerodytrash/TikTok-Live-Connector` の `v2.1.1-beta1`（commit `eee8383`, MIT license）を fork。
 このバージョンで固定し、以降の upstream 追従・アップデートは行わない（`v2.3.0` 以降で AGPL-3.0-only 化されているため）。
 
-改造後は `npm run build` で `dist/` を再生成し、生成物ごと commit する。
-analytics / desktop / TikCaption の3プロジェクトが `file:../shared/tiktok-live-connector` で参照する。
+analytics / desktop / TikCaption の3プロジェクトは、各プロジェクト配下 `vendor/tiktok-live-connector-2.1.1-beta1.tgz` を
+`file:vendor/tiktok-live-connector-2.1.1-beta1.tgz` で参照する（`file:../shared/...` のようなプロジェクト外パスは使わない。
+analytics は Docker ビルドの context が `live-sidestage-analytics` ディレクトリ単体に絞られているため、
+プロジェクト外を参照すると `npm ci` がビルド不能になる）。
+
+**改造手順:**
+
+1. このディレクトリ（`shared/tiktok-live-connector`）の `src/` を編集する
+2. `npm run build` で `dist/` を再生成する
+3. `npm pack` で `tiktok-live-connector-2.1.1-beta1.tgz` を作り直す
+4. 生成された tgz を analytics / desktop / TikCaption 各プロジェクトの `vendor/` へコピーし直す
+5. 各プロジェクトで `npm install tiktok-live-connector`（lockfile 更新）を実行する
+6. `shared/tiktok-live-connector/` と3プロジェクトの `vendor/*.tgz` + `package.json` + `package-lock.json` をまとめて commit する
 
 ---
 

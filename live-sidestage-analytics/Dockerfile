@@ -3,6 +3,7 @@ RUN apk add --no-cache openssl
 WORKDIR /app
 
 COPY package*.json ./
+COPY vendor ./vendor
 RUN npm ci
 
 COPY . .

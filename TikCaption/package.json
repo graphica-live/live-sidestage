@@ -14,7 +14,7 @@
     "electron-updater": "^6.8.3",
     "express": "^4.18.0",
     "socket.io": "^4.7.0",
-    "tiktok-live-connector": "file:../shared/tiktok-live-connector"
+    "tiktok-live-connector": "file:vendor/tiktok-live-connector-2.1.1-beta1.tgz"
   },
   "devDependencies": {
     "electron": "^35.0.0",

@@ -41,7 +41,7 @@
     "sherpa-onnx": "^1.13.2",
     "socket.io": "^4.7.2",
     "socket.io-client": "^4.8.3",
-    "tiktok-live-connector": "file:../shared/tiktok-live-connector"
+    "tiktok-live-connector": "file:vendor/tiktok-live-connector-2.1.1-beta1.tgz"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",
