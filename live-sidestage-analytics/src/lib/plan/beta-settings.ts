@@ -6,7 +6,7 @@ import { MOBILE_BETA_ENABLED_SETTING, parseMobileBetaEnabled } from "../mobile-s
 // 「FREEの制限を一時解除する」ためだけに使う。プラン(FREE/PRO/ULTRA)そのものは書き換えない
 // — 実プランを書き換えるとβ中の全ユーザーへ将来のPRO/ULTRA限定機能まで無条件開放してしまうため。
 // 領域を増やすときはこの配列に1件足すだけでよい。
-export const BETA_AREAS = ["mobile", "analytics", "events"] as const;
+export const BETA_AREAS = ["mobile", "analytics", "events", "agency"] as const;
 export type BetaArea = (typeof BETA_AREAS)[number];
 
 /** 領域ごとのAppSettingキーを返す。テストやDB直接操作からも参照できるようexportする。 */

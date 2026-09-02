@@ -15,7 +15,7 @@ describe("parseBetaEnabled", () => {
 });
 
 describe("BETA_AREAS", () => {
-  it("mobile/analytics/eventsの3領域を持つ", () => {
-    expect(BETA_AREAS).toEqual(["mobile", "analytics", "events"]);
+  it("mobile/analytics/events/agencyの4領域を持つ", () => {
+    expect(BETA_AREAS).toEqual(["mobile", "analytics", "events", "agency"]);
   });
 });
