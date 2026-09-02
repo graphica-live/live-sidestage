@@ -4,7 +4,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { queryGiftHistory } from "@/lib/gift-history";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseLimit, parseListenerQuery } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseLimit, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -31,6 +31,12 @@ export async function GET(req: NextRequest) {
 
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
+
+  const planDenied = await requireHistoryPlan(ctx.streamer.userId, {
+    range: query.value,
+    listenerQuery: listenerQuery.value,
+  });
+  if (planDenied) return planDenied;
 
   let where: Parameters<typeof queryGiftHistory>[2];
   let dateRange: { start: string; end: string };

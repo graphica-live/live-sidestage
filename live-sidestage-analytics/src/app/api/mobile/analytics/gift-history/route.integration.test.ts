@@ -5,6 +5,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { setSetting } from "@/lib/settings";
+import { MOBILE_BETA_ENABLED_SETTING } from "@/lib/mobile-settings";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_gift_history";
@@ -12,12 +14,19 @@ const TIKTOK_ID = "itest_mobile_gift_history";
 let userId: string;
 let roomId: string;
 let noRoomUserId: string;
+let freeUserId: string;
 let token: string;
 let noRoomToken: string;
+let freeToken: string;
 
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-gift-history-secret";
 
 beforeAll(async () => {
+  // me/route.integration.test.tsがmobileBetaEnabledを一時的にtrueへ切り替えるテストを
+  // 持つため、並列実行時にこのファイルのFREE拒否テストがULTRA相当で通ってしまう
+  // 非決定的失敗を避ける(実装後レビュー指摘、LOW)。
+  await setSetting(MOBILE_BETA_ENABLED_SETTING, "false");
+
   const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID } });
   roomId = room.id;
 
@@ -33,11 +42,36 @@ beforeAll(async () => {
   });
   noRoomUserId = noRoom.id;
   noRoomToken = signMobileToken({ userId: noRoomUserId });
+
+  // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
+  // Subscription無し(=FREE)のユーザー。
+  const freeUser = await prisma.user.create({
+    data: { email: `itest-mobile-gift-history-free-${Date.now()}@local.test` },
+  });
+  freeUserId = freeUser.id;
+  await prisma.streamer.create({
+    data: { userId: freeUserId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+  });
+  freeToken = signMobileToken({ userId: freeUserId });
+
+  // custom range / listenerQuery はPRO限定機能(requireHistoryPlan)なので、
+  // FREEのままだと既存のcustom range系テストが403で落ちる。このファイルの主目的は
+  // ルートハンドラの配線検証であってプラン判定の検証ではないため、mainのuserIdはPRO扱いにする。
+  await prisma.subscription.create({
+    data: {
+      userId,
+      plan: "PRO",
+      entitlementActive: true,
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
 });
 
 afterAll(async () => {
+  await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});
   await prisma.user.delete({ where: { id: userId } }).catch(() => {});
   await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: freeUserId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
   await prisma.$disconnect();
 });
@@ -75,6 +109,42 @@ describe("GET /api/mobile/analytics/gift-history", () => {
   it("limit上限(200)を超えると400", async () => {
     const res = await GET(request("?period=day&date=2026-08-20&limit=201", token));
     expect(res.status).toBe(400);
+  });
+
+  describe("プラン制限(requireHistoryPlan)", () => {
+    it("FREEユーザーのday/weekは通る(拡張範囲でなければプラン判定を通過する)", async () => {
+      const res = await GET(request("?period=day&date=2026-08-20", freeToken));
+      expect(res.status).toBe(200);
+    });
+
+    it("FREEユーザーがmonthを指定すると403", async () => {
+      const res = await GET(request("?period=month&date=2026-08-20", freeToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("FREEユーザーがカスタム範囲を指定すると403", async () => {
+      const res = await GET(
+        request("?startDatetime=2026-08-01T00:00:00Z&endDatetime=2026-08-02T00:00:00Z", freeToken)
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("FREEユーザーがlistenerQueryを指定すると403", async () => {
+      const res = await GET(request("?period=day&date=2026-08-20&listenerQuery=taro", freeToken));
+      expect(res.status).toBe(403);
+    });
+
+    it("PROユーザーのmonth/カスタム範囲/listenerQueryは通る", async () => {
+      expect((await GET(request("?period=month&date=2026-08-20", token))).status).toBe(200);
+      expect(
+        (
+          await GET(
+            request("?startDatetime=2026-08-01T00:00:00Z&endDatetime=2026-08-02T00:00:00Z", token)
+          )
+        ).status
+      ).toBe(200);
+      expect((await GET(request("?period=day&date=2026-08-20&listenerQuery=taro", token))).status).toBe(200);
+    });
   });
 
   it("受信履歴を新しい順に返し、危険な画像URLはnullに落とす", async () => {

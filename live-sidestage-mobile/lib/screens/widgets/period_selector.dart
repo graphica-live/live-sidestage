@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/analytics_period.dart';
+import '../../core/upgrade_notice.dart';
 
 /// 貢献/ギフト履歴/バトル履歴タブ共通の期間選択バー(日/週/月 + ◀/▶)。
 class PeriodSelectorBar extends StatelessWidget {
@@ -14,6 +15,7 @@ class PeriodSelectorBar extends StatelessWidget {
     this.filterActive = false,
     this.onOpenCustomRangeFilter,
     this.onShiftCustomRange,
+    this.extendedRangeAllowed = true,
   });
 
   final AnalyticsPeriodSelection selection;
@@ -47,6 +49,12 @@ class PeriodSelectorBar extends StatelessWidget {
   /// [customRangeActive]中は◀/▶を無効化したままにする。
   final ValueChanged<bool>? onShiftCustomRange;
 
+  /// FREEプランではmonth/yearを選べない(履歴の遡り期間制限)。選択自体は拒否せず、
+  /// 押されたらアップグレード誘導を出す(§14と同じ「onPressedをnullにしない」方針)。
+  final bool extendedRangeAllowed;
+
+  bool _isExtendedPeriod(AnalyticsPeriod p) => p == AnalyticsPeriod.month || p == AnalyticsPeriod.year;
+
   @override
   Widget build(BuildContext context) {
     final periodControlsEnabled = enabled && !customRangeActive;
@@ -63,11 +71,31 @@ class PeriodSelectorBar extends StatelessWidget {
               children: [
                 SegmentedButton<AnalyticsPeriod>(
                   segments: [
-                    for (final p in AnalyticsPeriod.values) ButtonSegment(value: p, label: Text(p.label)),
+                    for (final p in AnalyticsPeriod.values)
+                      ButtonSegment(
+                        value: p,
+                        label: !extendedRangeAllowed && _isExtendedPeriod(p)
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(p.label),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.lock_outline, size: 14),
+                                ],
+                              )
+                            : Text(p.label),
+                      ),
                   ],
                   selected: {selection.period},
                   onSelectionChanged: periodControlsEnabled
-                      ? (selected) => onChanged(selection.withPeriod(selected.first))
+                      ? (selected) {
+                          final next = selected.first;
+                          if (!extendedRangeAllowed && _isExtendedPeriod(next)) {
+                            showUpgradeRequiredNotice(context, '月・年での表示はPRO/ULTRAプランで利用できます');
+                            return;
+                          }
+                          onChanged(selection.withPeriod(next));
+                        }
                       : null,
                 ),
                 if (onOpenCustomRangeFilter != null)

@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/account_deletion.dart';
+import '../../core/account_status_store.dart';
 import '../../core/app_config_store.dart';
+import '../../core/plan_gate.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/session_controller.dart';
 import '../../core/theme_mode_store.dart';
+import '../../core/upgrade_notice.dart';
 import '../../models/auth_session.dart';
 import '../../models/voice_catalog.dart';
 import '../home_screen.dart' show SpeechState;
+import '../subscription_screen.dart';
 import '../widgets/voicevox_terms.dart';
+
+void _showUpgradeRequired(BuildContext context, String message) =>
+    showUpgradeRequiredNotice(context, message);
 
 /// 設定の集約先。
 ///
@@ -39,6 +46,7 @@ class SettingsTab extends StatelessWidget {
     final store = context.watch<AppConfigStore>();
     final session = context.watch<SessionController>().session;
     final themeModeStore = context.watch<ThemeModeStore>();
+    final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     // **どの設定も「開始しているか」では止めない。** `ttsEnabled` / `sound.enabled` は
     // 機能のON/OFF設定ではなく開始しているかの記録なので、それで無効化すると
@@ -64,14 +72,23 @@ class SettingsTab extends StatelessWidget {
             children: [
               SwitchListTile(
                 title: const Text('ランダムボイス'),
-                subtitle: const Text('コメント投稿者ごとに声を割り当てます'),
+                subtitle: Text(
+                  planGate.canUseRandomVoice
+                      ? 'コメント投稿者ごとに声を割り当てます'
+                      : 'PRO/ULTRAプランで利用できます',
+                ),
                 value: store.config.randomVoice,
-                onChanged: canEdit ? (value) => store.setRandomVoice(value) : null,
+                onChanged: !canEdit
+                    ? null
+                    : planGate.canUseRandomVoice
+                        ? (value) => store.setRandomVoice(value)
+                        : (_) => _showUpgradeRequired(context, 'PRO/ULTRAプランで利用できます'),
               ),
               _VoiceTile(
                 styleId: store.config.fixedStyleId,
                 randomVoice: store.config.randomVoice,
                 enabled: canEdit,
+                canUseAllVoices: planGate.canUseAllVoices,
                 onSelected: store.setFixedStyleId,
               ),
               _VolumeSlider(
@@ -85,8 +102,11 @@ class SettingsTab extends StatelessWidget {
               _VolumeSlider(
                 title: '読み上げの速さ',
                 value: store.config.ttsSpeed,
-                enabled: canEdit,
+                enabled: canEdit && planGate.canAdjustTtsSpeed,
                 onChanged: store.setTtsSpeed,
+                onLockedTap: planGate.canAdjustTtsSpeed
+                    ? null
+                    : () => _showUpgradeRequired(context, 'PRO/ULTRAプランで速度を調整できます'),
                 min: 50,
                 max: 200,
                 divisions: 30,
@@ -122,6 +142,14 @@ class SettingsTab extends StatelessWidget {
                 subtitle: Text('@${session?.streamer?.tiktokId ?? ''}'),
                 trailing: const Icon(Icons.edit),
                 onTap: onChangeTiktokId,
+              ),
+              ListTile(
+                leading: Icon(Icons.workspace_premium_outlined, color: Theme.of(context).colorScheme.primary),
+                title: const Text('プランをアップグレード'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+                ),
               ),
               if (session != null && session.userEmail.isNotEmpty)
                 ListTile(
@@ -249,12 +277,14 @@ class _VoiceTile extends StatelessWidget {
     required this.styleId,
     required this.randomVoice,
     required this.enabled,
+    required this.canUseAllVoices,
     required this.onSelected,
   });
 
   final int styleId;
   final bool randomVoice;
   final bool enabled;
+  final bool canUseAllVoices;
   final ValueChanged<int> onSelected;
 
   @override
@@ -279,16 +309,17 @@ class _VoiceTile extends StatelessWidget {
     final picked = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _VoicePickerSheet(selected: styleId),
+      builder: (context) => _VoicePickerSheet(selected: styleId, canUseAllVoices: canUseAllVoices),
     );
     if (picked != null && picked != styleId) onSelected(picked);
   }
 }
 
 class _VoicePickerSheet extends StatelessWidget {
-  const _VoicePickerSheet({required this.selected});
+  const _VoicePickerSheet({required this.selected, required this.canUseAllVoices});
 
   final int selected;
+  final bool canUseAllVoices;
 
   @override
   Widget build(BuildContext context) {
@@ -320,16 +351,26 @@ class _VoicePickerSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              for (final style in character.styles)
-                ListTile(
-                  // スタイル名はキャラをまたいで重複する（「あまあま」など）。行の
-                  // 同一性は styleId で持たせる。
-                  key: ValueKey('voice-style-${style.styleId}'),
-                  title: Text(style.styleName),
-                  trailing:
-                      style.styleId == selected ? const Icon(Icons.check) : null,
-                  onTap: () => Navigator.of(context).pop(style.styleId),
-                ),
+              for (final style in character.styles) ...[
+                if (canUseAllVoices || VoiceCatalog.isFreeStyle(style.styleId))
+                  ListTile(
+                    // スタイル名はキャラをまたいで重複する（「あまあま」など）。行の
+                    // 同一性は styleId で持たせる。
+                    key: ValueKey('voice-style-${style.styleId}'),
+                    title: Text(style.styleName),
+                    trailing:
+                        style.styleId == selected ? const Icon(Icons.check) : null,
+                    onTap: () => Navigator.of(context).pop(style.styleId),
+                  )
+                else
+                  ListTile(
+                    key: ValueKey('voice-style-${style.styleId}'),
+                    title: Text(style.styleName, style: const TextStyle(color: Colors.grey)),
+                    leading: const Icon(Icons.lock_outline, color: Colors.grey, size: 18),
+                    subtitle: const Text('PRO/ULTRAプランで選べます'),
+                    onTap: () => _showUpgradeRequired(context, 'PRO/ULTRAプランで選べます'),
+                  ),
+              ],
             ],
           ],
         ),
@@ -350,6 +391,7 @@ class _VolumeSlider extends StatefulWidget {
     required this.value,
     required this.enabled,
     required this.onChanged,
+    this.onLockedTap,
     this.min = 0,
     this.max = 100,
     this.divisions = 20,
@@ -360,6 +402,9 @@ class _VolumeSlider extends StatefulWidget {
   final int value;
   final bool enabled;
   final ValueChanged<int> onChanged;
+
+  /// [enabled] が false のとき、タップされたら呼ぶ(ロック中のアップグレード導線)。
+  final VoidCallback? onLockedTap;
   final int min;
   final int max;
   final int divisions;
@@ -381,6 +426,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
 
     return ListTile(
       title: Text(widget.title),
+      onTap: widget.enabled ? null : widget.onLockedTap,
       subtitle: Slider(
         value: value.toDouble(),
         min: widget.min.toDouble(),

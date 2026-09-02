@@ -5,7 +5,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { backfillHostUserIds } from "@/lib/tiktok-host-id";
 import { prisma } from "@/lib/prisma";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseListenerQuery } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
 
 const buildUnregisteredResponse = () =>
   NextResponse.json({
@@ -24,6 +24,12 @@ export async function GET(req: NextRequest) {
   if (!query.ok) return query.response;
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
+
+  const planDenied = await requireHistoryPlan(ctx.streamer.userId, {
+    range: query.value,
+    listenerQuery: listenerQuery.value,
+  });
+  if (planDenied) return planDenied;
 
   // hostUserId(TikTokの数値userId)はfill-onceの不変値で、スコア表示の消去法に要る。
   // Web版(analytics/battles/route.ts)と同じくレスポンスはブロックしない。

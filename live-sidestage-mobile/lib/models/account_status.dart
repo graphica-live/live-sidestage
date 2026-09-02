@@ -15,6 +15,14 @@ class AccountStatus {
   final String? latestVersion;
   final bool maintenanceMode;
 
+  /// サーバー応答由来ではなく[fallback]既定値であることを示す。
+  ///
+  /// 通信断・タイムアウト・5xxでもここはFREEに倒れる(UIを誤って広く許可しないため)。
+  /// **サーバーが実際にFREEと答えたわけではない**ので、降格に伴う破壊的な操作
+  /// (保存済み設定の強制リセット等)の引き金にしてはいけない — 一時的な電波不良
+  /// だけでPRO/ULTRAユーザーの設定が消える事故になる。
+  final bool isFallback;
+
   const AccountStatus({
     required this.userId,
     required this.effectivePlan,
@@ -23,6 +31,7 @@ class AccountStatus {
     required this.minimumSupportedVersion,
     required this.maintenanceMode,
     this.latestVersion,
+    this.isFallback = false,
   });
 
   /// サーバーから取得できるまで(または取得に失敗したとき)の既定値。
@@ -36,6 +45,7 @@ class AccountStatus {
     minimumSupportedVersion: '0.0.0',
     maintenanceMode: false,
     latestVersion: null,
+    isFallback: true,
   );
 
   bool hasFeature(String key) => features.contains(key);

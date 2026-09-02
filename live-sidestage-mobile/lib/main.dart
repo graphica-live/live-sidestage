@@ -11,6 +11,7 @@ import 'core/app_config_store.dart';
 import 'core/app_version.dart';
 import 'core/background_task_handler.dart';
 import 'core/battle_activity.dart';
+import 'core/billing_service.dart';
 import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
 import 'core/session_controller.dart';
@@ -191,6 +192,7 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SessionController()..loadPersisted()),
         ChangeNotifierProvider(create: (_) => AppConfigStore()..load()),
         ChangeNotifierProvider(create: (_) => AccountStatusStore()),
+        ChangeNotifierProvider(create: (_) => BillingService()),
         ChangeNotifierProvider(create: (_) => ThemeModeStore()..load()),
         // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
@@ -230,6 +232,16 @@ class _AuthGateState extends State<AuthGate> {
   // リクエストが飛んでしまう。
   String? _requestedForUserId;
 
+  // effectivePlanが変わった(初回取得含む)ときにだけFREE降格フォールバックを走らせるための
+  // 直近適用済みplanの記録。buildは何度も呼ばれるので、これが無いと呼ぶたびに走ってしまう。
+  String? _enforcedForPlan;
+
+  // BillingServiceへ反映済みのtoken。userId不変のままJWTだけ更新された(無言リフレッシュ等)
+  // 場合、init()自体は_requestedForUserId判定で再実行されないため、ここで別途追跡して
+  // updateToken()へ渡す(実装後レビュー指摘、MEDIUM — 反映漏れのまま失効tokenで
+  // 購入・復元を試みると401になる)。
+  String? _syncedBillingToken;
+
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<SessionController>();
@@ -247,6 +259,7 @@ class _AuthGateState extends State<AuthGate> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           context.read<AccountStatusStore>().reset();
+          context.read<BillingService>().resetSession();
         });
       }
       return const WelcomeScreen();
@@ -254,9 +267,21 @@ class _AuthGateState extends State<AuthGate> {
 
     if (_requestedForUserId != session.userId) {
       _requestedForUserId = session.userId;
+      _syncedBillingToken = session.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         context.read<AccountStatusStore>().refresh(userId: session.userId, token: session.token);
+        context.read<BillingService>().init(
+              token: session.token,
+              userId: session.userId,
+              accountStatusStore: context.read<AccountStatusStore>(),
+            );
+      });
+    } else if (_syncedBillingToken != session.token) {
+      _syncedBillingToken = session.token;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<BillingService>().updateToken(session.token);
       });
     }
 
@@ -273,6 +298,24 @@ class _AuthGateState extends State<AuthGate> {
     // 取得の試行が終わるまで待つ(成功・失敗は問わない。失敗時はfallback値で通過する)。
     if (!accountStatus.loaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    // isFallbackは通信断・タイムアウト・5xxでも立つ既定値で、サーバーが実際に
+    // FREEと応答したわけではない。ここで強制リセットすると一時的な電波不良だけで
+    // PRO/ULTRAユーザーの保存済みボイス設定が消える事故になる。
+    //
+    // fallback中は_enforcedForPlanを更新しない(実装後レビュー指摘、HIGH)。
+    // fallback FREEのときに'FREE'を記録してしまうと、その後サーバーから正式な
+    // FREE応答が届いても文字列としては同じ'FREE'なので判定に入らず、実際に
+    // 降格すべきユーザーのボイス設定が野放しのまま残ってしまう。
+    if (!accountStatus.status.isFallback && _enforcedForPlan != accountStatus.status.effectivePlan) {
+      _enforcedForPlan = accountStatus.status.effectivePlan;
+      if (accountStatus.status.effectivePlan == 'FREE') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.read<AppConfigStore>().enforceFreePlanLimits();
+        });
+      }
     }
 
     // 自分のバージョンが取得できない場合は判定不能として通す(fail open) —

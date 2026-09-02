@@ -378,6 +378,10 @@ class SoundConfig {
 
   bool get canAddSet => sets.length < maxSets;
 
+  /// 全セット合計のGiftSound登録数。FREEプランの上限判定に使う
+  /// (タブのセット数ではなく、セットをまたいだ登録行の総数)。
+  int get totalGiftSoundCount => sets.fold(0, (sum, set) => sum + set.gifts.length);
+
   /// 最後の1セットは消せない（空のセット状態を作らない）。
   bool get canRemoveSet => sets.length > 1;
 

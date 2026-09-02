@@ -28,6 +28,55 @@ class SpeechQueueController extends ChangeNotifier {
   String? errorMessage;
   String? nowSpeakingCharacterName;
 
+  // ── FREEプランの自動インターバル ─────────────────────────────────────────
+  //
+  // FREEプランは100件読み上げるごとに5分間、新規コメントの読み上げを止める。
+  // isFreePlan は背景Isolate起動時(onStart)に、UI Isolate側で永続化された
+  // effectivePlanから一度だけ設定される(account_status_store.dart参照)。
+  // サービス稼働中のプラン変更はリアルタイム反映しない(次回「開始」時に反映)。
+
+  static const int _freeIntervalThreshold = 100;
+  static const Duration _freeIntervalCooldown = Duration(minutes: 5);
+
+  bool _isFreePlan = false;
+  int _spokenSinceCooldown = 0;
+  final Stopwatch _intervalCooldownWatch = Stopwatch();
+
+  bool get isFreePlan => _isFreePlan;
+
+  set isFreePlan(bool value) {
+    if (_isFreePlan == value) return;
+    _isFreePlan = value;
+    if (!value) _resetInterval();
+  }
+
+  void _resetInterval() {
+    _spokenSinceCooldown = 0;
+    _intervalCooldownWatch
+      ..stop()
+      ..reset();
+  }
+
+  /// クールダウン中かどうか。経過していれば自動的にリセットして false を返す。
+  bool get _intervalActive {
+    if (!_intervalCooldownWatch.isRunning) return false;
+    if (_intervalCooldownWatch.elapsed < _freeIntervalCooldown) return true;
+    _resetInterval();
+    return false;
+  }
+
+  /// 1件読み上げ終わるたびに呼ぶ。FREEプランで閾値に達したらクールダウンを開始する。
+  void _recordSpoken() {
+    if (!_isFreePlan) return;
+    _spokenSinceCooldown++;
+    if (_spokenSinceCooldown >= _freeIntervalThreshold) {
+      _spokenSinceCooldown = 0;
+      _intervalCooldownWatch
+        ..reset()
+        ..start();
+    }
+  }
+
   /// 今読み上げ中のコメントを isolate をまたいで識別するためのキー
   /// ([Comment.identityKey])。UI側がハイライト対象の行を判定するのに使う。
   String? nowSpeakingCommentKey;
@@ -130,6 +179,8 @@ class SpeechQueueController extends ChangeNotifier {
     // **_processQueue 側ではなくここで止めること。** 先読み合成は次の1件を先に
     // 合成するので、向こうで弾いても空文字が合成へ渡る経路が残る。
     if (comment.speechText.isEmpty) return;
+    // FREEプランのクールダウン中は新規コメントを読み上げない(既存キューに積まず無視する)。
+    if (_isFreePlan && _intervalActive) return;
     _queue.add(comment);
     unawaited(_processQueue());
   }
@@ -181,6 +232,7 @@ class SpeechQueueController extends ChangeNotifier {
 
       _setNowSpeaking(pool.characterNameForStyleId(styleId), comment.identityKey);
       await _play(wav);
+      _recordSpoken();
     }
 
     _scheduleCharacterNameClear();

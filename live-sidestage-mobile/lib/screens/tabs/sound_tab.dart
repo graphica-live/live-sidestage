@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/account_status_store.dart';
 import '../../core/app_config_store.dart';
 import '../../core/feature_status.dart';
 import '../../core/gift_name_ja.dart';
+import '../../core/plan_gate.dart';
 import '../../core/sound_file_cleanup.dart';
 import '../../core/sound_library.dart';
+import '../../core/upgrade_notice.dart';
 import '../../models/app_config.dart';
 import '../gift_sound_edit_screen.dart';
 import '../home_screen.dart' show SoundState;
@@ -17,12 +20,11 @@ const String _lockedSetMessage = 'セットを変更するには停止してく�
 /// ギフト設定を触ろうとしたときの案内。
 const String _lockedSettingMessage = '設定を変更するには停止してください';
 
-void _showLocked(BuildContext context, String message) {
-  // 連打で溜めない。同じ案内が何枚も積まれても意味がない。
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
-}
+void _showLocked(BuildContext context, String message) => showTimedNotice(context, message);
+
+/// FREEプランの上限到達を伝え、プラン選択画面への導線を添える。
+void _showUpgradeRequired(BuildContext context, String message) =>
+    showUpgradeRequiredNotice(context, message);
 
 /// 「ギフト → 音」の一覧。最大 [SoundConfig.maxSets] セットを切り替えて使う。
 ///
@@ -65,6 +67,9 @@ class SoundTab extends StatelessWidget {
     final config = store.sound;
     final selected = config.selectedSet;
     final locked = started || busy;
+    final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    final soundLimitReached = planGate.maxSoundRegistrations != null &&
+        config.totalGiftSoundCount >= planGate.maxSoundRegistrations!;
 
     return Scaffold(
       body: ListView(
@@ -120,7 +125,7 @@ class SoundTab extends StatelessWidget {
             ),
 
           _SoundSetTabs(config: config, locked: locked),
-          _SelectedSetPanel(set: selected, locked: locked),
+          _SelectedSetPanel(set: selected, locked: locked, soundLimitReached: soundLimitReached),
         ],
       ),
     );
@@ -269,9 +274,10 @@ class _SetTabNotchPainter extends CustomPainter {
 /// 一覧が画面直下に流れ、どこまでがそのセットの持ち物なのかが見えない。
 /// 深度はテーマの`CardThemeData`（DESIGN.md「Card Deck Rule」）に委ねる。
 class _SelectedSetPanel extends StatelessWidget {
-  const _SelectedSetPanel({required this.set, required this.locked});
+  const _SelectedSetPanel({required this.set, required this.locked, required this.soundLimitReached});
 
   final SoundSet set;
+  final bool soundLimitReached;
   final bool locked;
 
   /// 上端の帯。舌と同色でタブへつなぐ。細いと画面に埋もれるので6px取る。
@@ -310,8 +316,8 @@ class _SelectedSetPanel extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerRight,
               child: Opacity(
-                // ロック中は薄くしてロックを示す。押せなくはしない（§15）。
-                opacity: locked ? 0.45 : 1,
+                // ロック中・FREE上限到達時は薄くして示す。押せなくはしない（§15）。
+                opacity: locked || soundLimitReached ? 0.45 : 1,
                 child: FloatingActionButton.extended(
                   // 囲いの中なので浮かせない（DESIGN.md「Flat-By-Default」）。
                   elevation: 0,
@@ -322,6 +328,10 @@ class _SelectedSetPanel extends StatelessWidget {
                   onPressed: () {
                     if (locked) {
                       _showLocked(context, _lockedSettingMessage);
+                      return;
+                    }
+                    if (soundLimitReached) {
+                      _showUpgradeRequired(context, 'FREEプランでは効果音の登録は5件までです');
                       return;
                     }
                     Navigator.of(context).push(

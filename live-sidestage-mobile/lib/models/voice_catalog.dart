@@ -63,6 +63,11 @@ class VoiceCatalog {
     VoiceCharacter('剣崎雌雄', [VoiceStyleOption(21, 'ノーマル')]),
   ];
 
+  /// FREEプランで選べるstyleId(ずんだもん ノーマル・四国めたん ノーマル)。
+  static const List<int> freeStyleIds = [2, 3];
+
+  static bool isFreeStyle(int styleId) => freeStyleIds.contains(styleId);
+
   static bool isKnown(int styleId) {
     for (final character in characters) {
       for (final style in character.styles) {

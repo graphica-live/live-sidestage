@@ -87,7 +87,7 @@ export async function resolveActiveMobileUser(req: NextRequest): Promise<{ userI
   return { userId: auth.userId };
 }
 
-export type MobileAnalyticsStreamer = { id: string; roomId: string; verified: boolean };
+export type MobileAnalyticsStreamer = { id: string; roomId: string; verified: boolean; userId: string };
 
 // mobile/analytics/* の4エンドポイント共通の認可処理。JWTのstreamerIdは信用せず
 // userIdからStreamerを引き直す(resolveUserByMobileTokenの規約を踏襲)。
@@ -110,12 +110,15 @@ export async function resolveMobileAnalyticsContext(
 
   const streamer = await prisma.streamer.findUnique({
     where: { userId: auth.userId },
-    select: { id: true, roomId: true, verified: true },
+    select: { id: true, roomId: true, verified: true, userId: true },
   });
 
   if (!streamer || !streamer.roomId) {
     return { ok: false, response: buildUnregisteredResponse() };
   }
 
-  return { ok: true, streamer: { id: streamer.id, roomId: streamer.roomId, verified: streamer.verified } };
+  return {
+    ok: true,
+    streamer: { id: streamer.id, roomId: streamer.roomId, verified: streamer.verified, userId: streamer.userId },
+  };
 }

@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { MAX_RANGE_DAYS } from "@/lib/range-limits";
+import { requireFeature } from "@/lib/plan/require-feature";
 
 const PERIODS = ["day", "week", "month", "year"] as const;
 export type Period = (typeof PERIODS)[number];
@@ -185,6 +186,29 @@ export function parseListenerQuery(
  */
 export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+// 貢献/ギフト履歴/バトル履歴の3ルート共通のプラン判定。month/year/カスタム範囲と
+// リスナー名フィルタはPRO/ULTRA限定機能なので、パース成功後にここでrequireFeatureへ渡す。
+// resolveMobileAnalyticsContext()のstreamer.userIdをそのまま渡せる(userIdはStreamerが
+// 1:1で持つ列なのでJWTのuserIdと同一)。
+export async function requireHistoryPlan(
+  userId: string,
+  params: { range: RangeQuery; listenerQuery: string | null }
+): Promise<NextResponse | null> {
+  const usesExtendedRange =
+    params.range.mode === "custom" || params.range.period === "month" || params.range.period === "year";
+  if (usesExtendedRange) {
+    const denied = await requireFeature(userId, "mobile.history.extendedRange");
+    if (denied) return denied;
+  }
+
+  if (params.listenerQuery !== null) {
+    const denied = await requireFeature(userId, "mobile.history.listenerFilter");
+    if (denied) return denied;
+  }
+
+  return null;
 }
 
 export function parseLimit(

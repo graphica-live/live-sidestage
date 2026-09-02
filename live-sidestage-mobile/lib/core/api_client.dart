@@ -523,6 +523,32 @@ class LiveAnalyticsApi {
     await _send('DELETE', '/api/mobile/account', null, token: token);
   }
 
+  /// Google Play購入フローの開始。サーバーが発行する[obfuscatedAccountId]を
+  /// `GooglePlayPurchaseParam.applicationUserName`へそのまま渡す(横流し防止のため)。
+  ///
+  /// 既に有効なプランを持つユーザーが呼ぶと409(isForbiddenではなくApiException)になる —
+  /// これは「エラー」ではなく「復元不要、既に反映済み」を意味する。呼び出し側
+  /// (billing_service.dart)はstatusCode 409を専用に扱うこと。
+  Future<String> initGoogleBilling({required String token}) async {
+    final data = await _send('POST', '/api/mobile/billing/google/init', const {}, token: token);
+    return data['obfuscatedAccountId'] as String;
+  }
+
+  /// Google Playの購入トークンをサーバーへ送って検証・反映する。
+  /// 成功後は[fetchAccountStatus]で最新のeffectivePlanを取り直すこと(このAPI自体は
+  /// 更新後のプランを返さない)。
+  Future<void> verifyGooglePurchase({
+    required String token,
+    required String purchaseToken,
+  }) async {
+    await _send(
+      'POST',
+      '/api/mobile/billing/google/verify-purchase',
+      {'purchaseToken': purchaseToken},
+      token: token,
+    );
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }

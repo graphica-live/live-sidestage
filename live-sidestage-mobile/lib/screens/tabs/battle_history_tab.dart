@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/account_status_store.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/battle_activity.dart';
 import '../../core/gift_activity.dart';
+import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
 import '../../models/battle_summary.dart';
 import '../../models/gift_ranking_entry.dart';
@@ -199,10 +201,13 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   }
 
   Future<void> _openCustomRangeFilter() async {
+    final planGate = PlanGate(context.read<AccountStatusStore>().status);
     final result = await showCustomRangeFilterSheet(
       context,
       initial: _customRange,
       initialListenerQuery: _listenerQuery,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      listenerFilterAllowed: planGate.canUseListenerFilter,
     );
     if (result == null) return;
     final previousQuery = _listenerQuery;
@@ -318,6 +323,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   Widget build(BuildContext context) {
     final result = _result;
     final battles = result?.battles ?? const [];
+    final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -328,6 +334,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
             selection: _selection,
             rangeLabel: _rangeLabel,
             onChanged: _onPeriodChanged,
+            extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
             enabled: !_loading,
             customRangeActive: _customRange != null,
             filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
