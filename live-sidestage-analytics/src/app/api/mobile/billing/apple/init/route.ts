@@ -3,12 +3,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveActiveMobileUser } from "@/lib/mobile-auth";
 import { prisma } from "@/lib/prisma";
 import { isEntitlementRowValid } from "@/lib/plan/effective-entitlement";
+import { isAppleBillingConfigured } from "@/lib/apple-store-server";
 
 export const dynamic = "force-dynamic";
 
 const PENDING_INTENT_TTL_MS = 60 * 60 * 1000; // 1時間
 
 export async function POST(req: NextRequest) {
+  // 必須環境変数が揃っていない状態でintentだけ発行すると、購入自体は成立するのに
+  // verify-purchase/webhookの署名検証が全滅する(Design Modeレビュー指摘、HIGH)。
+  // 導線自体をここで止める。
+  if (!isAppleBillingConfigured()) {
+    return NextResponse.json({ error: "現在この機能はご利用いただけません" }, { status: 503 });
+  }
+
   const auth = await resolveActiveMobileUser(req);
   if (!auth) return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
 

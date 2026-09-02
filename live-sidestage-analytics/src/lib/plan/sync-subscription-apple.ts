@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   getAllSubscriptionStatuses,
@@ -6,6 +7,11 @@ import {
 } from "@/lib/apple-store-server";
 import { planForAppleProductId } from "./mobile-store-products";
 import { detectMultiProvider } from "./detect-multi-provider";
+
+// Prismaのunique constraint違反(P2002)かどうかを判定する(Stripe版sync-subscription.tsと同じ)。
+function isUniqueConstraintError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
 
 // App Store ServerのSubscriptionStatus。1=ACTIVE, 2=EXPIRED, 3=BILLING_RETRY,
 // 4=BILLING_GRACE_PERIOD, 5=REVOKED。ACTIVE/BILLING_GRACE_PERIODのみentitlement維持。
@@ -96,14 +102,39 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
     throw new Error(`apple transaction ${originalTransactionId}: no matching PendingPurchaseIntent yet`);
   }
 
-  await prisma.$transaction([
-    prisma.subscription.create({
-      data: { userId: intent.userId, appleAppAccountToken: appAccountToken, ...data },
-    }),
-    prisma.pendingPurchaseIntent.update({
-      where: { id: intent.id },
-      data: { consumedAt: fetchStartedAt },
-    }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.subscription.create({
+        data: { userId: intent.userId, appleAppAccountToken: appAccountToken, ...data },
+      }),
+      prisma.pendingPurchaseIntent.update({
+        where: { id: intent.id },
+        data: { consumedAt: fetchStartedAt },
+      }),
+    ]);
+  } catch (error) {
+    // iOS版は起動時のunfinishedTransactions回収(_recoverUnfinishedTransactions)と
+    // purchaseStreamの両方が同じtransactionを検証しうるため、Stripe/Google版よりも
+    // createの並行衝突が起きやすい(実装後レビュー指摘、HIGH — 修正前は初回購入直後に
+    // 高確率でユーザー可視のエラーになっていた)。userIdに一意制約は無いため、ここで
+    // 起きうるP2002は複合unique(provider, providerSubscriptionId)の衝突のみ。
+    if (isUniqueConstraintError(error)) {
+      const raceRow = await prisma.subscription.findUnique({
+        where: {
+          provider_providerSubscriptionId: { provider: "APPLE", providerSubscriptionId: originalTransactionId },
+        },
+        select: { id: true },
+      });
+      if (raceRow) {
+        await prisma.subscription.update({ where: { id: raceRow.id }, data });
+        // intentは敗者側なので未消費のままになるが、consumedAt: nullのままでも次回の
+        // 横流し防止判定には影響しない(勝者側で既にSubscription行が本人名義で存在する
+        // ため、以後のverify-purchaseはexisting分岐に入りintent照合自体を通らない)。
+        await detectMultiProvider(intent.userId);
+        return;
+      }
+    }
+    throw error;
+  }
   await detectMultiProvider(intent.userId);
 }
