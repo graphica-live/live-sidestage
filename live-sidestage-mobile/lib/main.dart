@@ -62,7 +62,7 @@ Future<void> main() async {
 /// **`ColorScheme.fromSeed`任せにしない**(Material3のトーンパレット生成がseed色を
 /// 意図せずシフトする問題は2026-09-01の実機確認で既知のため、数値を直接指定する)。
 /// フォントは見出し/ボタンにZen Maru Gothic、本文・ラベル/データ表示にZen Kaku Gothic Newを使う。
-ThemeData _buildTheme(Brightness brightness) {
+ThemeData buildAppTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
   const accent = Color(0xFF9B6BFF); // KosaiPalette.c2
   const amber = Color(0xFFFF7A59); // KosaiPalette.c1
@@ -214,8 +214,8 @@ class LiveSidestageApp extends StatelessWidget {
           final themeMode = context.watch<ThemeModeStore>().themeMode;
           return MaterialApp(
             title: 'LIVE Sidestage',
-            theme: _buildTheme(Brightness.light),
-            darkTheme: _buildTheme(Brightness.dark),
+            theme: buildAppTheme(Brightness.light),
+            darkTheme: buildAppTheme(Brightness.dark),
             themeMode: themeMode,
             // 詳細フィルタの日付・時刻ピッカー(showDatePicker/showTimePicker)を日本語表示にする。
             // アプリ本体は元々全画面日本語だが、ピッカーはこの設定が無いと英語表示になる。

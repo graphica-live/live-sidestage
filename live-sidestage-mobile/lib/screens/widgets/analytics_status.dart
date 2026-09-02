@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// 貢献/ギフト履歴/バトル履歴タブ共通のエラー表示。`FeatureStatusBar`と同じ
-/// 視覚言語(赤・装飾シャドウ無し)。取得失敗時にリストの代わりに出す。
+/// 貢献/ギフト履歴/バトル履歴タブ共通のエラー表示。
+///
+/// 光彩(Kosai)では画面幅いっぱいの帯ではなく、他のカードと同じ16dpの内側に
+/// 角丸14dpで置く。**色は状態伝達色のまま**(装飾グラデーションは使わない)。
 class AnalyticsErrorBanner extends StatelessWidget {
   const AnalyticsErrorBanner({super.key, required this.message, required this.onRetry});
 
@@ -10,14 +12,19 @@ class AnalyticsErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final error = Theme.of(context).colorScheme.error;
     return Container(
       width: double.infinity,
-      color: Colors.red.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: error.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Row(
         children: [
           Expanded(
-            child: SelectableText(message, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            child: SelectableText(message, style: TextStyle(color: error, fontSize: 12)),
           ),
           TextButton(onPressed: onRetry, child: const Text('再試行')),
         ],
@@ -34,13 +41,18 @@ class VerifiedLockNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       width: double.infinity,
-      color: Colors.grey.withValues(alpha: 0.12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: const Text(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: sub.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(
         'TikTokアカウント連携が未完了です。',
-        style: TextStyle(fontSize: 12, color: Colors.grey),
+        style: TextStyle(fontSize: 11.5, color: sub),
       ),
     );
   }
@@ -57,7 +69,11 @@ class EmptyListNotice extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Center(
-        child: Text(message, style: TextStyle(color: Theme.of(context).disabledColor)),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
       ),
     );
   }

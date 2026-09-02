@@ -506,6 +506,10 @@ class _BattleCard extends StatelessWidget {
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      // セグメントはスコア行の下に名前を持つので、既定の中央揃えだと
+                      // 区切りの「–」がスコアより下へずれる。上端で揃えて、区切り自体を
+                      // スコア行(=アバターの高さ)の中で中央に置く。
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Flexible(
                           child: _ScoreSegment(
@@ -520,7 +524,9 @@ class _BattleCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        Padding(
+                        Container(
+                          height: many ? 19 : 26,
+                          alignment: Alignment.center,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Text(
                             '–',

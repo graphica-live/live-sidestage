@@ -130,7 +130,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       // (`subscription-screen-kosai/spec.md`)。
       appBar: AppBar(),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        // 最後の「購入を復元」がジェスチャーバーに重なるので、端末の下部インセットを足す。
+        padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + MediaQuery.viewPaddingOf(context).bottom),
         children: [
           // ListView側で横16dpを持っているので、見出しは横paddingを持たない
           // `GradientText` を直に置く(`KosaiSectionHeading`だと32dpになる)。

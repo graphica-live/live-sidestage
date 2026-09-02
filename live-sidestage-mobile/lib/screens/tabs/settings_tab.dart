@@ -168,8 +168,8 @@ class SettingsTab extends StatelessWidget {
         ListPanel(
           children: [
             _SettingValueRow(
-              title: '小さいバトルを隠すしきい値',
-              subtitle: 'バトル履歴タブの「◯コイン未満を非表示」の基準',
+              title: '小さいバトルを隠す',
+              subtitle: 'バトル履歴タブで非表示にする下限',
               value: '${battleFilter.threshold}コイン',
               accent: true,
               onTap: () => showKosaiValueSheet(
