@@ -80,6 +80,16 @@ export class WebcastPushConnection extends (TikTokLiveConnection as new (...args
                     case 'WebcastEnvelopeMessage':
                         this.emit(WebcastEvent.ENVELOPE, simplifiedObj);
                         break;
+                    // Added 2.1.1-beta2 (live-sidestage fork, not part of upstream): the schema for
+                    // these two message types already existed (WebcastLinkmicBattleTaskMessage) or was
+                    // added in this fork (WebcastLinkMicBattleItemCard), but neither had a case here,
+                    // so WebcastPushConnection (used by analytics/desktop) never emitted them.
+                    case 'WebcastLinkmicBattleTaskMessage':
+                        this.emit(WebcastEvent.LINK_MIC_BATTLE_TASK, simplifiedObj);
+                        break;
+                    case 'WebcastLinkMicBattleItemCard':
+                        this.emit(WebcastEvent.LINK_MIC_BATTLE_ITEM_CARD, simplifiedObj);
+                        break;
                 }
             });
     }

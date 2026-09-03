@@ -17,6 +17,8 @@ analytics は Docker ビルドの context が `live-sidestage-analytics` ディ�
 5. 各プロジェクトで `npm install tiktok-live-connector`（lockfile 更新）を実行する
 6. `shared/tiktok-live-connector/` と3プロジェクトの `vendor/*.tgz` + `package.json` + `package-lock.json` をまとめて commit する
 
+**バトルイベント対応(グローブ・ボーナスミッション・初ギフトx倍等)** は [BATTLE-EVENTS.md](./BATTLE-EVENTS.md) を参照。
+
 ---
 
 A Node.js library to receive live stream events such as comments and gifts in realtime

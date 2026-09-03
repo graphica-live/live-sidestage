@@ -320,6 +320,9 @@ enum MultiplierType {
     MULTIPLIER_TYPE_CRITICAL_STRIKE = 1;
     MULTIPLIER_TYPE_TOP_2 = 2;
     MULTIPLIER_TYPE_TOP_3 = 3;
+    // Custom addition (live-sidestage fork): observed on gifts crit-boosted by a vault glove
+    // (WebcastLinkMicBattleItemCard card_type=12). Not present in upstream.
+    MULTIPLIER_TYPE_VAULT_GLOVE_CRITICAL_STRIKE = 4;
 }
 
 enum LinkmicGiftExpressionStrategy {

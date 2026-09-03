@@ -17,6 +17,7 @@ import {
     WebcastLinkMessage,
     WebcastLinkMicArmies,
     WebcastLinkMicBattle,
+    WebcastLinkMicBattleItemCard,
     WebcastLinkMicBattlePunishFinish,
     WebcastLinkmicBattleTaskMessage,
     WebcastLinkMicFanTicketMethod,
@@ -93,6 +94,9 @@ export enum WebcastEvent {
 
     // Added 2.0.8-beta1
     SUPER_FAN = 'superFan',
+
+    // Added 2.1.1-beta2 (live-sidestage fork, not part of upstream)
+    LINK_MIC_BATTLE_ITEM_CARD = 'linkMicBattleItemCard',
 }
 
 
@@ -160,6 +164,9 @@ export type ClientEventMap = {
     [WebcastEvent.ROOM_VERIFY]: EventHandler<RoomVerifyMessage>,
     [WebcastEvent.LINK_LAYER]: EventHandler<WebcastLinkLayerMessage>,
     [WebcastEvent.ROOM_PIN]: EventHandler<WebcastRoomPinMessage>,
+
+    // Added 2.1.1-beta2 (live-sidestage fork, not part of upstream)
+    [WebcastEvent.LINK_MIC_BATTLE_ITEM_CARD]: EventHandler<WebcastLinkMicBattleItemCard>,
 };
 
 export const WebcastEventMap: Record<BasicWebcastEventMessage, keyof ClientEventMap> = {
@@ -199,7 +206,10 @@ export const WebcastEventMap: Record<BasicWebcastEventMessage, keyof ClientEvent
     'WebcastLinkMessage': WebcastEvent.LINK_MESSAGE,
     'RoomVerifyMessage': WebcastEvent.ROOM_VERIFY,
     'WebcastLinkLayerMessage': WebcastEvent.LINK_LAYER,
-    'WebcastRoomPinMessage': WebcastEvent.ROOM_PIN
+    'WebcastRoomPinMessage': WebcastEvent.ROOM_PIN,
+
+    // Added 2.1.1-beta2 (live-sidestage fork, not part of upstream)
+    'WebcastLinkMicBattleItemCard': WebcastEvent.LINK_MIC_BATTLE_ITEM_CARD,
 };
 
 
