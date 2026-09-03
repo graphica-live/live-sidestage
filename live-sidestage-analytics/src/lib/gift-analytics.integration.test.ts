@@ -88,15 +88,6 @@ describe("queryGifts", () => {
     expect(result).toEqual({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
   });
 
-  it("自分がhidden指定したギフトは自分の集計から除外される", async () => {
-    const gift = await makeGift({ uniqueId: "user_hide", nickname: "非表示対象", totalDiamonds: 777, receivedAt: new Date("2026-08-15T09:15:00Z") });
-    await prisma.giftEdit.create({
-      data: { giftId: gift.id, streamerId, giftName: gift.giftName, totalDiamonds: gift.totalDiamonds, hidden: true },
-    });
-
-    const { users } = await queryGifts(roomId, streamerId, { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } });
-    expect(users.find((u) => u.uniqueId === "user_hide")).toBeUndefined();
-  });
 
   it("listenerQueryはuniqueId/nicknameの部分一致(大小文字無視)で絞り込む", async () => {
     await makeGift({ uniqueId: "Taro_Listener", nickname: "たろう", totalDiamonds: 10, receivedAt: new Date("2026-08-15T09:20:00Z") });

@@ -214,7 +214,6 @@ export default function AnalyticsPage() {
   const [hideLowDiamond, setHideLowDiamond] = useState(true);
   const [verified, setVerified] = useState<boolean | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [customStart, setCustomStart] = useState(() => {
     const d = new Date(); d.setHours(0, 0, 0, 0); return toLocalDatetimeString(d);
@@ -743,25 +742,6 @@ export default function AnalyticsPage() {
               </button>
             )}
 
-            {viewMode === "ranking" && (
-              <button
-                onClick={async () => {
-                  if (!confirm(`${formatPeriodLabel(period, currentDate)} のデータを自分の表示からのみ非表示にします。同じTikTok IDの他の登録者には影響しません。よろしいですか？`)) return;
-                  setDeleting(true);
-                  try {
-                    await fetch(`/api/analytics/gifts?period=${period}&date=${currentDate}`, { method: "DELETE" });
-                    await fetchData(period, currentDate);
-                  } finally {
-                    setDeleting(false);
-                  }
-                }}
-                disabled={deleting || (data?.users.length === 0)}
-                className="btn-ghost flex items-center gap-1 text-xs text-red-600 dark:text-red-400 hover:text-red-300 disabled:opacity-30"
-                title={`この${period === "day" ? "日" : period === "week" ? "週" : period === "month" ? "月" : "年"}のデータを自分の表示からのみ非表示にする(他の登録者には影響しません)`}
-              >
-                {deleting ? "処理中..." : "🙈 非表示"}
-              </button>
-            )}
           </div>
         </div>
 

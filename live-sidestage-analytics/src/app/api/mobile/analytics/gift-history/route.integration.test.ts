@@ -1,5 +1,5 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
-// hidden除外・hasMoreの詳細ロジックは queryGiftHistory 側(src/lib/gift-history.integration.test.ts)
+// hasMoreの詳細ロジックは queryGiftHistory 側(src/lib/gift-history.integration.test.ts)
 // で検証済みなので、ここではルートハンドラの配線(認可・クエリパース・レスポンス整形)を確認する。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";

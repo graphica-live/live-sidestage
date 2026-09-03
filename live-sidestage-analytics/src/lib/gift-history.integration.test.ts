@@ -1,6 +1,6 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // GiftEditのDBスキーマ・オリジナルデータ非破壊・上書き表示の一連の流れを検証する。
-// ギフトデータは同じtiktokId(=同じTiktokRoom)を登録した全員で共有されるが、編集/非表示は
+// ギフトデータは同じtiktokId(=同じTiktokRoom)を登録した全員で共有されるが、編集は
 // streamerId単位で分離され、編集した本人にしか見えないことも検証する。
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import type { Prisma } from "@prisma/client";
@@ -22,7 +22,7 @@ beforeAll(async () => {
   });
   streamerId = streamer.id;
 
-  // 同じtiktokId(=同じroom)を登録した2人目のユーザー。編集/非表示の分離検証に使う。
+  // 同じtiktokId(=同じroom)を登録した2人目のユーザー。編集の分離検証に使う。
   const user2 = await prisma.user.create({ data: { email: `itest-gift-history-2-${Date.now()}@local.test` } });
   const streamer2 = await prisma.streamer.create({
     data: { userId: user2.id, tiktokId: STREAMER_TIKTOK_ID, verificationCode: "x", verified: true, roomId },
@@ -67,14 +67,11 @@ async function readAsViewer(giftId: string, viewerStreamerId: string) {
       id: true,
       giftName: true,
       totalDiamonds: true,
-      edits: { where: { streamerId: viewerStreamerId }, select: { giftName: true, totalDiamonds: true, hidden: true } },
+      edits: { where: { streamerId: viewerStreamerId }, select: { giftName: true, totalDiamonds: true } },
     },
   });
   const edit = row.edits[0] ?? null;
-  return {
-    ...applyGiftEdit({ ...row, edit: edit ? { giftName: edit.giftName, totalDiamonds: edit.totalDiamonds } : null }),
-    hidden: edit?.hidden ?? false,
-  };
+  return applyGiftEdit({ ...row, edit: edit ? { giftName: edit.giftName, totalDiamonds: edit.totalDiamonds } : null });
 }
 
 describe("GiftEdit", () => {
@@ -151,42 +148,11 @@ describe("GiftEdit", () => {
     expect(asOther.giftName).toBe("Rose"); // 編集していない側にはオリジナルのまま見える
     expect(asOther.edited).toBe(false);
   });
-
-  it("非表示(hidden)にしても共有データ自体は消えず、他人の閲覧には影響しない", async () => {
-    const gift = await makeGift();
-    await prisma.giftEdit.create({
-      data: { giftId: gift.id, streamerId, giftName: gift.giftName, totalDiamonds: gift.totalDiamonds, hidden: true },
-    });
-
-    const asHider = await readAsViewer(gift.id, streamerId);
-    const asOther = await readAsViewer(gift.id, streamerId2);
-    const original = await prisma.gift.findUniqueOrThrow({ where: { id: gift.id } });
-
-    expect(asHider.hidden).toBe(true);
-    expect(asOther.hidden).toBe(false);
-    expect(original).not.toBeNull(); // 実データは削除されていない
-  });
 });
 
 // 他のdescribeブロックと同じroomIdを共有するため、dayKeyを"2026-08-16"に固定して
 // GiftEditテスト側が作る"2026-08-15"のギフトと混ざらないようにする。
 describe("queryGiftHistory", () => {
-  it("非表示(hidden)行はDBクエリ側で除外され、limitを消費しない", async () => {
-    const g1 = await makeGift({ dayKey: "2026-08-16", receivedAt: new Date("2026-08-16T10:00:00Z"), totalDiamonds: 10 });
-    const g2 = await makeGift({ dayKey: "2026-08-16", receivedAt: new Date("2026-08-16T10:01:00Z"), totalDiamonds: 20 });
-    const g3 = await makeGift({ dayKey: "2026-08-16", receivedAt: new Date("2026-08-16T10:02:00Z"), totalDiamonds: 30 });
-    await prisma.giftEdit.create({
-      data: { giftId: g2.id, streamerId, giftName: g2.giftName, totalDiamonds: g2.totalDiamonds, hidden: true },
-    });
-
-    // limit=2だが非表示なのはg2だけなので、g1とg3の2件がちゃんと返る(g2がlimitを消費してg1しか返らない、では駄目)。
-    const result = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: "2026-08-16", lte: "2026-08-16" } }, 2);
-
-    expect(result.events.map((e) => e.id)).toEqual([g3.id, g1.id]); // receivedAt降順
-    expect(result.hasMore).toBe(false);
-    expect(result.total).toEqual({ count: 2, diamonds: 40 });
-  });
-
   it("limitちょうどならhasMore=false、超過があればtrueになる", async () => {
     const dayKey = "2026-08-17";
     await makeGift({ dayKey, receivedAt: new Date("2026-08-17T10:00:00Z") });
@@ -200,17 +166,6 @@ describe("queryGiftHistory", () => {
     const over = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 2);
     expect(over.events).toHaveLength(2);
     expect(over.hasMore).toBe(true);
-  });
-
-  it("他のviewerの非表示設定は自分の閲覧結果に影響しない", async () => {
-    const dayKey = "2026-08-18";
-    const gift = await makeGift({ dayKey, receivedAt: new Date("2026-08-18T10:00:00Z") });
-    await prisma.giftEdit.create({
-      data: { giftId: gift.id, streamerId: streamerId2, giftName: gift.giftName, totalDiamonds: gift.totalDiamonds, hidden: true },
-    });
-
-    const asOwner = await queryGiftHistory(roomId, streamerId, { dayKey: { gte: dayKey, lte: dayKey } }, 10);
-    expect(asOwner.events.map((e) => e.id)).toContain(gift.id);
   });
 
   it("dayKey範囲外のギフトは含まれない", async () => {
