@@ -1025,7 +1025,7 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     expect(battle.opponentScore).toBeNull();
   });
 
-  it("queryBattleContributorsは確定済みならGiftを見ずスナップショットをダイヤ降順で返す", async () => {
+  it("queryBattleContributorsは自room participantのgiftEventsが無ければ(Phase2a以前の確定行)旧contributorsスナップショットをダイヤ降順で返す", async () => {
     const startedAt = new Date("2026-09-01T14:00:00Z");
     await prisma.tiktokBattle.create({ data: finalBattleData("contrib_finalized", startedAt) });
     await finalGift({
@@ -1060,6 +1060,120 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_live");
 
     expect(result!.contributors.map((c) => [c.uniqueId, c.totalDiamonds])).toEqual([["live_fan", 12]]);
+  });
+
+  it("queryBattleContributorsは自room participantのgiftEventsがあれば新経路(Phase2c)を読み、旧contributorsは無視する", async () => {
+    const startedAt = new Date("2026-09-01T16:00:00Z");
+    await prisma.tiktokBattle.create({ data: finalBattleData("contrib_giftevents", startedAt) });
+    const history = await createHistory("contrib_giftevents", startedAt, [
+      { uniqueId: "legacy_only", nickname: "旧経路の人", totalDiamonds: 99999 },
+    ]);
+    const selfParticipant = await prisma.battleHistoryParticipant.update({
+      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: SELF_ANCHOR } },
+      data: { roomId: finalRoomId },
+    });
+    await prisma.battleHistoryGiftEvent.createMany({
+      data: [
+        {
+          participantId: selfParticipant.id,
+          occurredAt: new Date(startedAt.getTime() + 60 * 1000),
+          senderUniqueIdSnapshot: "combo_fan",
+          senderNicknameSnapshot: "コンボ太郎(旧名)",
+          senderTiktokUserId: null,
+          giftId: 1,
+          giftNameSnapshot: "Rose",
+          repeatCount: 3,
+          diamondCount: 1,
+          totalDiamonds: 3,
+          sourceGiftId: "src_1",
+        },
+        {
+          // 同一送信者の2件目。改名後の新しいnicknameが採用されるべき(occurredAtが最新)。
+          participantId: selfParticipant.id,
+          occurredAt: new Date(startedAt.getTime() + 120 * 1000),
+          senderUniqueIdSnapshot: "combo_fan",
+          senderNicknameSnapshot: "コンボ太郎(新名)",
+          senderTiktokUserId: null,
+          giftId: 2,
+          giftNameSnapshot: "Galaxy",
+          repeatCount: 5,
+          diamondCount: 1000,
+          totalDiamonds: 5000,
+          sourceGiftId: "src_2",
+        },
+      ],
+    });
+
+    const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_giftevents");
+
+    expect(result).not.toBeNull();
+    // 旧contributors(legacy_only, 99999)は無視され、giftEventsから集計した1名だけが返る。
+    expect(result!.contributors).toEqual([
+      {
+        uniqueId: "combo_fan",
+        nickname: "コンボ太郎(新名)",
+        profileImageUrl: null,
+        giftCount: 8, // Σ repeatCount = 3 + 5
+        totalDiamonds: 5003, // Σ totalDiamonds = 3 + 5000
+        lastGiftAt: new Date(startedAt.getTime() + 120 * 1000).toISOString(),
+      },
+    ]);
+  });
+
+  it("queryBattleContributorsはteam戦で味方(別room)のgiftEventsを混入しない", async () => {
+    const startedAt = new Date("2026-09-01T17:00:00Z");
+    await prisma.tiktokBattle.create({ data: finalBattleData("contrib_teammate", startedAt) });
+    const history = await createHistory("contrib_teammate", startedAt, []);
+    const selfParticipant = await prisma.battleHistoryParticipant.update({
+      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: SELF_ANCHOR } },
+      data: { roomId: finalRoomId },
+    });
+    // 味方: isSelfかもしれないが自room(finalRoomId)ではない別roomを監視できていたケース。
+    const teammateRoom = await prisma.tiktokRoom.create({ data: { tiktokId: `teammate_${Date.now()}` } });
+    const teammate = await prisma.battleHistoryParticipant.create({
+      data: {
+        battleHistoryId: history.id,
+        side: "self",
+        position: 1,
+        anchorId: "teammate_anchor",
+        tiktokId: null,
+        displayId: "snap_teammate",
+        nickName: "確定味方",
+        roomId: teammateRoom.id,
+      },
+    });
+    await prisma.battleHistoryGiftEvent.create({
+      data: {
+        participantId: selfParticipant.id,
+        occurredAt: new Date(startedAt.getTime() + 60 * 1000),
+        senderUniqueIdSnapshot: "self_fan",
+        senderNicknameSnapshot: "自分のファン",
+        giftId: 1,
+        giftNameSnapshot: "Rose",
+        repeatCount: 1,
+        diamondCount: 1,
+        totalDiamonds: 1,
+        sourceGiftId: "src_self",
+      },
+    });
+    await prisma.battleHistoryGiftEvent.create({
+      data: {
+        participantId: teammate.id,
+        occurredAt: new Date(startedAt.getTime() + 60 * 1000),
+        senderUniqueIdSnapshot: "teammate_fan",
+        senderNicknameSnapshot: "味方のファン",
+        giftId: 1,
+        giftNameSnapshot: "Rose",
+        repeatCount: 1,
+        diamondCount: 9999,
+        totalDiamonds: 9999,
+        sourceGiftId: "src_teammate",
+      },
+    });
+
+    const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_teammate");
+
+    expect(result!.contributors.map((c) => c.uniqueId)).toEqual(["self_fan"]);
   });
 
   it("listenerQueryは確定済み(貢献者スナップショット)と未確定(Gift)の両方から一致を拾う", async () => {
