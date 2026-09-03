@@ -65,7 +65,6 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
     teamId: p.teamId,
     teamName: p.team?.name ?? null,
     registered: links.has(p.roomId),
-    verified: links.get(p.roomId)?.verified ?? false,
     listenerStatus: statuses.get(p.roomId)?.listenerStatus ?? null,
     avatarOffsetX: p.avatarOffsetX,
     avatarOffsetY: p.avatarOffsetY,

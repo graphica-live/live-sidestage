@@ -1,12 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import Link from "next/link";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
-
-// BIO認証ゲート無効化中。復活時はtrueに戻す。
-const BIO_VERIFICATION_GATE_ENABLED = false;
 
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -212,7 +208,6 @@ export default function AnalyticsPage() {
   const [battlesLoading, setBattlesLoading] = useState(false);
   const [openBattleId, setOpenBattleId] = useState<string | null>(null);
   const [hideLowDiamond, setHideLowDiamond] = useState(true);
-  const [verified, setVerified] = useState<boolean | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -247,7 +242,6 @@ export default function AnalyticsPage() {
         if (res.ok) {
           const json = await res.json();
           setData(json);
-          if (typeof json.verified === "boolean") setVerified(json.verified);
           setLastRefreshed(new Date());
         }
       } finally {
@@ -270,7 +264,6 @@ export default function AnalyticsPage() {
       if (res.ok) {
         const json = await res.json();
         setHistoryData(json);
-        if (typeof json.verified === "boolean") setVerified(json.verified);
         setLastRefreshed(new Date());
       }
     } finally {
@@ -291,7 +284,6 @@ export default function AnalyticsPage() {
       if (res.ok) {
         const json = await res.json();
         setBattlesData(json);
-        if (typeof json.verified === "boolean") setVerified(json.verified);
         setLastRefreshed(new Date());
       }
     } finally {
@@ -708,12 +700,9 @@ export default function AnalyticsPage() {
                     downloadHistoryCSV(filteredEvents, period, currentDate);
                   }
                 }}
-                disabled={
-                  (BIO_VERIFICATION_GATE_ENABLED && verified === false) ||
-                  (viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0)
-                }
+                disabled={viewMode === "ranking" ? sortedFiltered.length === 0 : filteredEvents.length === 0}
                 className="btn-ghost flex items-center gap-1 text-xs disabled:opacity-30"
-                title={BIO_VERIFICATION_GATE_ENABLED && verified === false ? "BIO認証完了後に利用できます" : "CSV出力"}
+                title="CSV出力"
               >
                 <DownloadIcon />
                 <span className="hidden sm:inline">CSV</span>
@@ -742,14 +731,9 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Stats bar + Table: コイン数・ギフト履歴はBIO認証完了まですりガラス表示 */}
+        {/* Stats bar + Table */}
         <div className="relative">
-          {BIO_VERIFICATION_GATE_ENABLED && verified === false && <VerifyGate />}
-          <div
-            className={`space-y-4 ${
-              BIO_VERIFICATION_GATE_ENABLED && verified === false ? "blur-sm select-none pointer-events-none" : ""
-            }`}
-          >
+          <div className="space-y-4">
         {viewMode === "ranking" && data && (
           <div className="flex gap-4 text-xs text-gray-400 flex-wrap">
             <span>
@@ -1191,23 +1175,6 @@ export default function AnalyticsPage() {
       onClose={() => setOpenBattleId(null)}
     />
     </>
-  );
-}
-
-function VerifyGate() {
-  return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center px-4">
-      <div className="bg-panel/90 border border-border rounded-xl px-6 py-5 text-center shadow-xl backdrop-blur-sm max-w-xs">
-        <div className="text-2xl mb-2">🔒</div>
-        <p className="text-sm font-semibold text-white mb-1">BIO認証で解除されます</p>
-        <p className="text-xs text-gray-400 mb-3">
-          コイン数・ギフト履歴はTikTokのBIO認証が完了すると表示されます。オーバーレイは認証前でも利用できます。
-        </p>
-        <Link href="/setup" className="btn-primary text-xs inline-block px-4 py-2">
-          今すぐ認証する
-        </Link>
-      </div>
-    </div>
   );
 }
 

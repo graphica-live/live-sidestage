@@ -80,7 +80,9 @@
 - **loading**: compに描かれていない → 未定義。既存の`CircularProgressIndicator`表示を維持しつつ、光彩の配色に合わせる(アクセントは`c2`程度)
 - **empty**: compに描かれていない → 未定義。既存`EmptyListNotice`の文言・配置を維持
 - **error**: compに描かれていない → 未定義。既存`AnalyticsErrorBanner`を維持
-- **verified=false(ロック通知)**: compに描かれていない → 未定義。既存`VerifiedLockNotice`を維持
+- **verified=false(ロック通知)**: compに描かれていない → 未定義。**`VerifiedLockNotice`は撤去した**
+  (2026-09-03)。BIO認証をどの機能の前提にもしない方針のためUIから存在を消した。
+  compの要素を落としたわけではない
 - **長文ニックネーム**: 1行省略(ellipsis)。comp通り
 - **件数が多い場合**: comp上は6件だが、実際は`ListView`で可変件数。スクロールで対応(comp通りの構造を維持すれば自然に成立)
 

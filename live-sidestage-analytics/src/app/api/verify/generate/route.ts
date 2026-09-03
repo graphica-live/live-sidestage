@@ -42,8 +42,9 @@ export async function POST(req: NextRequest) {
   }
 
   // 登録は無条件で許可する(他アカウントとの重複登録も可)。
-  // 実データ(コイン数・ギフト履歴)のBIO認証ゲートはUI側(analytics/page.tsx の
-  // BIO_VERIFICATION_GATE_ENABLED)で現在無効化中。復活時はこのコメントも合わせて戻す。
+  // BIO認証(Streamer.verified)はどの機能の前提にもしない方針。ここで発行するコードは
+  // /api/verify/* の実装として残しているだけで、認証結果を条件にした表示制御は
+  // analytics/page.tsx から撤去済み。
   const code = generateVerificationCode();
 
   const streamer = await prisma.streamer.upsert({

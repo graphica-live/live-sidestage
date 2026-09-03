@@ -109,6 +109,7 @@ comp `.chip-row` を正とする。既存 `PeriodSelectorBar` の**API・状態�
 - **loading**: comp未定義。既存の `CircularProgressIndicator`(アクセント c2)を維持。
 - **empty**: comp未定義。既存 `EmptyListNotice` の文言・配置を維持。
 - **error**: comp未定義。既存 `AnalyticsErrorBanner`(赤・12dp)を維持。
-- **verified=false**: comp未定義。既存 `VerifiedLockNotice` を維持。
+- **verified=false**: 状態そのものを廃止。`VerifiedLockNotice` は撤去した(2026-09-03)。
+  BIO認証はどの機能の前提でもないので、未認証を理由にした表示の出し分けをしない。
 - **無効(disabled)**: comp未定義。不透明度0.45で示し、**押下自体は禁止しない**(既存の
   「onPressedをnullにしない」方針を維持し、理由をスナックバーで伝える)。
