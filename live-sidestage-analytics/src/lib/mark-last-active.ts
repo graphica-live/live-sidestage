@@ -21,7 +21,11 @@ const THROTTLE_MS = 24 * 60 * 60 * 1000;
 // 監視停止中でなければ実質no-opなので毎回呼んでもコストは軽い)。
 export async function markLastActive(userId: string): Promise<void> {
   try {
-    await reviveSuspendedMonitoring(userId);
+    const streamer = await prisma.streamer.findUnique({
+      where: { userId },
+      select: { roomId: true },
+    });
+    if (streamer?.roomId) await reviveSuspendedMonitoring(streamer.roomId);
   } catch (err) {
     console.error("[mark-last-active] 監視復活処理に失敗:", err);
   }
@@ -39,6 +43,21 @@ export async function markLastActive(userId: string): Promise<void> {
   }
 }
 
+// オーバーレイ(OBSブラウザソース)は overlayToken でStreamerに紐づき、Userを経由しない。
+// markLastActive()(ログイン・トークン検証)とは別経路のアクセスなので、roomIdを
+// 直接受け取れる形でも公開する(呼び出し元: GET /api/overlay/[kind]。
+// resolveStreamerByOverlayToken()がroomIdまで返すため、Streamerの再取得は挟まない。
+// server.jsのsocket.io overlayToken認証も同じロジックをJSで複製して同様に扱う)。
+// スロットルは掛けない(markLastActive由来のrevive同様、監視停止中でなければ実質
+// no-opなので毎回呼んでもコストは軽い)。
+export async function reviveSuspendedMonitoringForRoom(roomId: string): Promise<void> {
+  try {
+    await reviveSuspendedMonitoring(roomId);
+  } catch (err) {
+    console.error("[mark-last-active] オーバーレイ経由の監視復活処理に失敗:", err);
+  }
+}
+
 // ユーザーが監視停止(monitoringSuspended)されたRoomに紐づいている場合、アクティブ化を
 // 検知した時点で即座に監視を復活させる。低価値クリーンアップ(tiktok-low-value-cleanup.ts)
 // 由来・NOT_FOUND判定(tiktok-room-cleanup.ts)由来のどちらの停止も同じフラグ・同じ経路で
@@ -50,15 +69,9 @@ export async function markLastActive(userId: string): Promise<void> {
 // 最初の実在確認で古いstreakを引き継いでしまい、TikTok側が実際には復帰していても
 // 誤って早期に再停止しかねない。低価値クリーンアップ由来の停止ではこれらは元々null
 // なのでリセットしても影響しない。
-async function reviveSuspendedMonitoring(userId: string): Promise<void> {
-  const streamer = await prisma.streamer.findUnique({
-    where: { userId },
-    select: { roomId: true },
-  });
-  if (!streamer?.roomId) return;
-
+async function reviveSuspendedMonitoring(roomId: string): Promise<void> {
   await prisma.tiktokRoom.updateMany({
-    where: { id: streamer.roomId, monitoringSuspended: true },
+    where: { id: roomId, monitoringSuspended: true },
     data: {
       monitoringSuspended: false,
       unhealthySince: null,

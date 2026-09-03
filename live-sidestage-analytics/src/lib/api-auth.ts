@@ -1,12 +1,23 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveStreamerIdByOverlayToken } from "@/lib/overlay";
 import { hashApiKey } from "@/lib/agency/agency";
 
-export async function resolveStreamerByOverlayToken(req: NextRequest): Promise<{ id: string } | null> {
+// resolveStreamerIdByOverlayToken()(id のみ返す)ではなく直接1回のfindUniqueで
+// roomIdまで取る(Code Modeレビューで指摘: 呼び出し元でid判明後にroomId目的で
+// もう一度Streamerを取得する二重取得を避けるため)。
+export async function resolveStreamerByOverlayToken(
+  req: NextRequest
+): Promise<{ id: string; roomId: string | null } | null> {
   const token = req.nextUrl.searchParams.get("token");
-  const streamerId = await resolveStreamerIdByOverlayToken(token);
-  return streamerId ? { id: streamerId } : null;
+  if (!token) return null;
+
+  // verified未完了でもオーバーレイは即時利用可能にする(コイン数/ギフト履歴の表示制限とは別軸)。
+  const streamer = await prisma.streamer.findUnique({
+    where: { overlayToken: token },
+    select: { id: true, roomId: true },
+  });
+
+  return streamer;
 }
 
 export async function resolveStreamerByApiKey(req: NextRequest): Promise<{ id: string; roomId: string | null } | null> {
