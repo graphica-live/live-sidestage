@@ -234,7 +234,6 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             onOpenCustomRangeFilter: _openCustomRangeFilter,
             onShiftCustomRange: _shiftOutOfCustomRange,
           ),
-          if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
           if (_loading && result == null)
             const Padding(

@@ -14,13 +14,25 @@ const OK: TiktokProfileResult = {
   profile: { avatarUrl: "https://p16.tiktokcdn.com/x", nickname: null, userId: null },
 };
 const NOT_FOUND: TiktokProfileResult = { ok: false, reason: "NOT_FOUND" };
+/** TikTok が user_not_found を明示した NOT_FOUND。 */
+const NOT_FOUND_EXPLICIT: TiktokProfileResult = {
+  ok: false,
+  reason: "NOT_FOUND",
+  explicitNotFound: true,
+};
 const RATE_LIMITED: TiktokProfileResult = { ok: false, reason: "RATE_LIMITED" };
 const ERROR: TiktokProfileResult = { ok: false, reason: "ERROR" };
 
 describe("classifyExistenceResult", () => {
   it("ok:trueならストリークを0/nullにリセットする", () => {
     const c = classifyExistenceResult({ notFoundStreak: 2, notFoundFirstAt: NOW }, OK, NOW);
-    expect(c).toEqual({ notFoundStreak: 0, notFoundFirstAt: null, outcome: "exists", shouldSuspend: false });
+    expect(c).toEqual({
+      notFoundStreak: 0,
+      notFoundFirstAt: null,
+      outcome: "exists",
+      shouldSuspend: false,
+      explicitNotFound: false,
+    });
   });
 
   it("NOT_FOUND初回はstreak=1・firstAt=nowになり、shouldSuspendはfalse", () => {
@@ -77,13 +89,36 @@ describe("classifyExistenceResult", () => {
   it("RATE_LIMITEDは判定不能としてstreak/firstAtを変化させない", () => {
     const current = { notFoundStreak: 2, notFoundFirstAt: NOW };
     const c = classifyExistenceResult(current, RATE_LIMITED, NOW);
-    expect(c).toEqual({ ...current, outcome: "inconclusive", shouldSuspend: false });
+    expect(c).toEqual({
+      ...current,
+      outcome: "inconclusive",
+      shouldSuspend: false,
+      explicitNotFound: false,
+    });
   });
 
   it("ERRORは判定不能としてstreak/firstAtを変化させない", () => {
     const current = { notFoundStreak: 1, notFoundFirstAt: NOW };
     const c = classifyExistenceResult(current, ERROR, NOW);
-    expect(c).toEqual({ ...current, outcome: "inconclusive", shouldSuspend: false });
+    expect(c).toEqual({
+      ...current,
+      outcome: "inconclusive",
+      shouldSuspend: false,
+      explicitNotFound: false,
+    });
+  });
+
+  // hostUserId の補完を恒久的に諦めるかの判断材料。**監視停止(shouldSuspend)とは
+  // 独立**で、そちらはストリークと継続時間で守られているぶん粗い NOT_FOUND を許容できるが、
+  // give-up は不可逆なので明示シグナルだけを根拠にする。
+  it("explicitNotFoundはuser_not_foundが明示されたときだけ立つ", () => {
+    const current = { notFoundStreak: 0, notFoundFirstAt: null };
+
+    expect(classifyExistenceResult(current, NOT_FOUND_EXPLICIT, NOW).explicitNotFound).toBe(true);
+    expect(classifyExistenceResult(current, NOT_FOUND, NOW).explicitNotFound).toBe(false);
+    expect(classifyExistenceResult(current, RATE_LIMITED, NOW).explicitNotFound).toBe(false);
+    expect(classifyExistenceResult(current, ERROR, NOW).explicitNotFound).toBe(false);
+    expect(classifyExistenceResult(current, OK, NOW).explicitNotFound).toBe(false);
   });
 
   it("2回目以降のNOT_FOUNDはfirstAtを更新せず引き継ぐ", () => {

@@ -16,8 +16,6 @@ export type ParticipantRow = {
   teamName: string | null;
   /** この配信者が当サービスに会員登録しているか */
   registered: boolean;
-  /** analytics の BIO 認証を通っているか */
-  verified: boolean;
   /** analytics 側の TikTok 接続状態。まだ reconcile が来ていなければ null */
   listenerStatus: string | null;
   avatarOffsetX: number | null;
@@ -443,17 +441,10 @@ export function ParticipantManager({
                       <span className="truncate group-hover:underline">{p.displayName}</span>
                       <PencilIcon />
                     </button>
-                    {p.verified ? (
+                    {p.registered ? (
                       <span
-                        className="shrink-0 rounded-full bg-green-400/10 px-2 py-0.5 text-xs text-green-600 dark:text-green-400"
-                        title="当サービスに会員登録済みで、本人確認(BIO認証)を通っている"
-                      >
-                        本人確認済み
-                      </span>
-                    ) : p.registered ? (
-                      <span
-                        className="shrink-0 rounded-full bg-black/5 dark:bg-white/5 px-2 py-0.5 text-xs text-muted"
-                        title="当サービスに会員登録はあるが、本人確認は済んでいない"
+                        className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs text-gray-400"
+                        title="当サービスに会員登録がある配信者"
                       >
                         会員登録あり
                       </span>

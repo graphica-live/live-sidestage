@@ -9,7 +9,7 @@
 import "dotenv/config";
 import { aggregateDueEvents } from "@/event/aggregate";
 import { activeLeaseTiktokIds, renewClampedLeases } from "@/event/participants";
-import { backfillHostUserIds } from "@/lib/tiktok-host-id";
+import { backfillHostUserIds, backfillStreamerRoomHostIds } from "@/lib/tiktok-host-id";
 import { snapshotDueEventAvatars } from "@/event/avatar-snapshot";
 import { prisma } from "@/lib/prisma";
 
@@ -31,6 +31,20 @@ const RENEW_INTERVAL_MS = Number(process.env.LEASE_RENEW_INTERVAL_MS ?? 60 * 60 
 const HOST_ID_INTERVAL_MS = Number(process.env.TIKTOK_HOST_ID_INTERVAL_MS ?? 60_000);
 
 /**
+ * **Streamer が紐づく全 Room** の hostUserId 補完を回す間隔(上のイベント lease 由来とは別枠)。
+ *
+ * イベント参加中に限らず集める理由は時間制約。hostUserId は「そのハンドルが TikTok 上に
+ * 存在するうち」しか引けず、改名されると旧ハンドルは永久に取得不能になる。改名の検知
+ * (src/lib/tiktok-id-migration.ts)はこの対応表が唯一の materials なので、先回りして集める。
+ *
+ * 一度埋まれば二度と引かないので、負荷は初回の在庫消化が全て。
+ * **0 を指定すると止まる**(TikTok 側のレート制限に困ったときの逃げ道)。
+ */
+const STREAMER_HOST_ID_INTERVAL_MS = Number(
+  process.env.STREAMER_HOST_ID_INTERVAL_MS ?? 5 * 60_000
+);
+
+/**
  * イベントの参加者アイコンをスナップショットする間隔(Event.startAt 到来チェック)。
  * 一度スナップショットしたイベントは対象から外れるので、集計ほど頻繁に回す必要はない。
  */
@@ -41,6 +55,7 @@ let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
 let renewInFlight = false;
 let hostIdInFlight = false;
+let streamerHostIdInFlight = false;
 let avatarSnapshotInFlight = false;
 
 async function tick(): Promise<void> {
@@ -115,6 +130,30 @@ async function hostIdTick(): Promise<void> {
   }
 }
 
+// Streamer が紐づく全 Room の hostUserId 補完(イベント lease 由来とは別枠)。
+//
+// **イベント側の hostIdTick を優先する。** 同じセマフォ・同じサーキットブレーカを共有するので、
+// 両方を同時に走らせると片方が枠を食い合う。イベントは開催中の締切があるぶん優先度が高い。
+async function streamerHostIdTick(): Promise<void> {
+  if (streamerHostIdInFlight || hostIdInFlight || stopping) return;
+
+  streamerHostIdInFlight = true;
+  try {
+    const result = await backfillStreamerRoomHostIds();
+    if (result.filled > 0 || result.aborted) {
+      console.log(
+        `[event-worker] Streamer room の hostUserId を補完 ${result.filled}件 / ` +
+          `失敗 ${result.failed}件 / バックオフ中 ${result.skipped}件` +
+          `${result.aborted ? " (連続失敗で打ち切り)" : ""}`
+      );
+    }
+  } catch (err) {
+    console.error("[event-worker] Streamer room の hostUserId 補完でエラー:", err);
+  } finally {
+    streamerHostIdInFlight = false;
+  }
+}
+
 // イベントのトーナメント表・参加者アイコンを startAt 到来時点で恒久ストレージへスナップショットする。
 // 個々の参加者の失敗はライブ取得への永続フォールバックに任せるので、集計ループには影響させない。
 async function avatarSnapshotTick(): Promise<void> {
@@ -144,6 +183,7 @@ async function shutdown(signal: string) {
   clearInterval(timer);
   clearInterval(renewTimer);
   if (hostIdTimer) clearInterval(hostIdTimer);
+  if (streamerHostIdTimer) clearInterval(streamerHostIdTimer);
   clearInterval(avatarSnapshotTimer);
   await currentTick.catch(() => {});
   await prisma.$disconnect().catch(() => {});
@@ -159,6 +199,10 @@ const timer = setInterval(scheduleTick, INTERVAL_MS);
 const renewTimer = setInterval(() => void renewTick(), RENEW_INTERVAL_MS);
 const hostIdTimer =
   HOST_ID_INTERVAL_MS > 0 ? setInterval(() => void hostIdTick(), HOST_ID_INTERVAL_MS) : null;
+const streamerHostIdTimer =
+  STREAMER_HOST_ID_INTERVAL_MS > 0
+    ? setInterval(() => void streamerHostIdTick(), STREAMER_HOST_ID_INTERVAL_MS)
+    : null;
 const avatarSnapshotTimer = setInterval(() => void avatarSnapshotTick(), AVATAR_SNAPSHOT_INTERVAL_MS);
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
@@ -167,9 +211,13 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 console.log(
   `[event-worker] イベント集計ワーカーを開始した(集計 ${INTERVAL_MS}ms / 監視期限の確認 ${RENEW_INTERVAL_MS}ms / ` +
     `hostUserId の補完 ${HOST_ID_INTERVAL_MS > 0 ? `${HOST_ID_INTERVAL_MS}ms` : "無効"} / ` +
+    `Streamer room の hostUserId 補完 ${
+      STREAMER_HOST_ID_INTERVAL_MS > 0 ? `${STREAMER_HOST_ID_INTERVAL_MS}ms` : "無効"
+    } / ` +
     `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms)`
 );
 scheduleTick();
 void renewTick();
 if (hostIdTimer) void hostIdTick();
+if (streamerHostIdTimer) void streamerHostIdTick();
 void avatarSnapshotTick();

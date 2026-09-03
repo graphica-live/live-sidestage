@@ -30,14 +30,19 @@ export async function POST(req: NextRequest) {
   }
 
   // 登録は無条件で許可する(Web版と同様、他アカウントとの重複登録も可)。
+  //
+  // **verified: true を書かない。** かつてモバイル登録は無条件に verified を立てていたが、
+  // このフローは所有の根拠を1つも確認していない。証明していないものを証明済みとして
+  // 記録すると、将来 BIO 認証を何かの前提に戻したときモバイル経由の全ユーザーが
+  // 無審査で通ってしまう(CLAUDE.md の「User.email はそのメールの所有者であることを
+  // 証明していない」と同型の罠)。BIO 認証は現在どの機能の前提でもないので、
+  // 既定の false のままで機能上の差は無い。
   const apiKey = crypto.randomBytes(32).toString("hex");
   const streamer = await prisma.streamer.create({
     data: {
       userId: user.id,
       tiktokId: cleanTiktokId,
       verificationCode: generateVerificationCode(),
-      verified: true,
-      verifiedAt: new Date(),
       apiKey,
     },
   });

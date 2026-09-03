@@ -391,7 +391,6 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
               ],
             ),
           ),
-          if (result != null && !result.verified) const VerifiedLockNotice(),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
           if (_loading && result == null)
             const Padding(

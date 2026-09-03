@@ -24,7 +24,10 @@ comp caption:
      スコアが両方nullのバトルは**隠さない**(未観測を「小さい」と断定しない)
    - 全件が隠された場合は「しきい値未満のバトルのみです(N件を非表示中)」を
      `EmptyListNotice` 相当で出す(comp未定義。無言で空になる事故を避けるため追加)
-7. **`VerifiedLockNotice`** / **`AnalyticsErrorBanner`**(comp未定義 / 既存維持)
+7. **`AnalyticsErrorBanner`**(comp未定義 / 既存維持)
+   - **`VerifiedLockNotice` は撤去した**(2026-09-03)。comp には元から描かれておらず、
+     既存だから残していただけの要素。BIO 認証をどの機能の前提にもしない方針が決まり、
+     UI から存在を消したため。comp の要素を落としたわけではない
 8. **バトルカード**(comp `.card.flat.battle-card`、1バトル1枚)
    - 背景 card / 角丸18dp / 枠1dp line / padding 14dp / 左右margin 16dp / カード間 12dp
    - **全カード同じ高さ**: 最小高さ142dp、`Column` の縦方向は

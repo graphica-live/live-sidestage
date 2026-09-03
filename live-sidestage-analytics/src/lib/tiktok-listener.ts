@@ -42,6 +42,7 @@ import {
 } from "./tiktok-battle";
 import { ensureAvatarCached } from "./avatar-storage";
 import { materializeBattleHistory } from "./battle-history-finalize";
+import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
 
 export type ListenerStatus =
   | "idle"
@@ -1289,6 +1290,7 @@ function scheduleBattleHistoryFinalize(roomId: string, battleId: string): void {
 
 async function persistBattle(
   roomId: string,
+  tiktokId: string,
   streamerIds: string[],
   parsed: ParsedBattle,
   rawKey: "battle" | "armies",
@@ -1355,6 +1357,12 @@ async function persistBattle(
     ensureAvatarCached("battle_host", anchorId, profile.avatarUrl).catch(() => {});
   }
 
+  // hostProfilesには**両サイド分**のdisplayIdが入っているので、自分のハンドルに一致する
+  // anchorIdを引けばTikTokへ問い合わせずにhostUserIdが埋まる。改名の検知(合流)は
+  // ハンドルが生きているうちにしかhostUserIdを集められないため、拾える機会は全部拾う。
+  // アイコン同様fire-and-forgetで、失敗してもバトル保存には影響させない。
+  fillHostUserIdFromBattle(roomId, tiktokId, state.hostProfiles).catch(() => {});
+
   const notifyKind = battleNotifyDecision(previous, state);
 
   // バトル履歴の確定(非正規化スナップショット)。**購読者の有無とは無関係**に、
@@ -1386,6 +1394,7 @@ async function persistBattle(
 
 function recordBattleEvent(
   roomId: string,
+  tiktokId: string,
   streamerIds: string[],
   parsed: ParsedBattle | null,
   rawKey: "battle" | "armies",
@@ -1395,7 +1404,7 @@ function recordBattleEvent(
   if (!parsed) return;
   const receivedAt = new Date();
   queueBattleWrite(`${roomId}:${parsed.battleId}`, () =>
-    persistBattle(roomId, streamerIds, parsed, rawKey, raw, receivedAt)
+    persistBattle(roomId, tiktokId, streamerIds, parsed, rawKey, raw, receivedAt)
   );
 }
 
@@ -1565,11 +1574,25 @@ async function connectAndAttach(
   // バトル中はチャットが流れない配信もあるので、バトルのイベントもwatchdogの生存判定に含める。
   conn.on("linkMicBattle", (data: unknown) => {
     markAlive();
-    recordBattleEvent(roomId, Array.from(inst.subscriberIds), parseBattleEvent(data), "battle", data);
+    recordBattleEvent(
+      roomId,
+      inst.state.tiktokId,
+      Array.from(inst.subscriberIds),
+      parseBattleEvent(data),
+      "battle",
+      data
+    );
   });
   conn.on("linkMicArmies", (data: unknown) => {
     markAlive();
-    recordBattleEvent(roomId, Array.from(inst.subscriberIds), parseArmiesEvent(data), "armies", data);
+    recordBattleEvent(
+      roomId,
+      inst.state.tiktokId,
+      Array.from(inst.subscriberIds),
+      parseArmiesEvent(data),
+      "armies",
+      data
+    );
   });
 
   conn.on("chat", (data: Record<string, unknown>) => {

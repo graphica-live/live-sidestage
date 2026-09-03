@@ -151,7 +151,7 @@ components:
 
 ### Shadow Vocabulary (observed)
 - **Floating panel** (`shadow-xl`): ドロップダウン、ポップオーバー、モーダル的に前面に出るブロックのみ。
-- **Blur overlay** (`backdrop-blur-sm` + `bg-panel/90`): 認証待ちのすりガラス演出(`VerifyGate`)。
+- **Blur overlay** (`backdrop-blur-sm` + `bg-panel/90`): 撤去済み(`VerifyGate`、2026-09)。他に使用箇所が生じたらここへ記録する。
 
 ## Shapes
 

@@ -21,29 +21,29 @@ export type DbClient = PrismaClient | Prisma.TransactionClient;
 export type StreamerLink = {
   /** 共通 public."User".id。この tiktokId を登録している会員がいれば入る */
   userId: string;
-  /** analytics の BIO 認証を通っているか */
-  verified: boolean;
 };
 
 /**
  * roomId から「その配信者が当サービスに会員登録しているか」を引く。
  *
  * 1つの room は複数の Streamer に共有されうる(同じ tiktokId を複数人が登録できる)ので、
- * 認証済みの登録を優先して1件に畳む。参加者一覧の認証バッジ用。
+ * 1件に畳む。参加者一覧の「会員登録あり」バッジ用。
+ *
+ * **Streamer.verified は読まない。** BIO 認証はどの機能の前提にもしない方針で、
+ * 参加者一覧からも「本人確認済み」バッジを撤去した。列自体は残っているが、
+ * 認証の根拠として表示に出さない(証明していないものを証明済みとして見せない)。
  */
 export async function findStreamerLinks(roomIds: string[]): Promise<Map<string, StreamerLink>> {
   if (roomIds.length === 0) return new Map();
 
-  const rows = await prisma.$queryRaw<
-    { roomId: string; userId: string; verified: boolean }[]
-  >`
-    SELECT DISTINCT ON ("roomId") "roomId", "userId", verified
+  const rows = await prisma.$queryRaw<{ roomId: string; userId: string }[]>`
+    SELECT DISTINCT ON ("roomId") "roomId", "userId"
     FROM public."Streamer"
     WHERE "roomId" = ANY(${roomIds}::text[])
-    ORDER BY "roomId", verified DESC
+    ORDER BY "roomId", "userId"
   `;
 
-  return new Map(rows.map((r) => [r.roomId, { userId: r.userId, verified: r.verified }]));
+  return new Map(rows.map((r) => [r.roomId, { userId: r.userId }]));
 }
 
 export type RoomStatus = {

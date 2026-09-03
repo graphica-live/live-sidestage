@@ -14,7 +14,9 @@ comp caption:
      見出し+サブタイトル構成に揃えるため追加)
 3. **期間フィルタ chip row**: `../_kosai-tokens.md` §5 のとおり(日/週/月/年/カスタム)
 4. **期間ラベル行(◀ ラベル ▶)**: comp未定義 / 既存機能なので残す。§5のとおり
-5. **`VerifiedLockNotice`**(comp未定義 / 既存維持)
+5. **`VerifiedLockNotice`**: **撤去した**(2026-09-03)。comp には元から描かれておらず、
+   既存だから残していただけの要素。BIO 認証をどの機能の前提にもしない方針が決まり、
+   UI から存在を消したため。comp の要素を落としたわけではない
 6. **`AnalyticsErrorBanner`**(comp未定義 / 既存維持)
 7. **注記行**(comp `.note`): 「合計 N件 / M コイン(LIVE Sidestage登録後データ)」
    - 10dp sub / padding 横16dp・上4dp・下8dp

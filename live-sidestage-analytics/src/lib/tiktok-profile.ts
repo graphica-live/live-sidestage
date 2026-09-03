@@ -77,10 +77,24 @@ export function parseUserId(value: unknown): string | null {
  * - `NOT_FOUND` … そのハンドルのユーザーがいない。当分変わらないので長くキャッシュしてよい
  * - `RATE_LIMITED` … TikTok に絞られている。間隔を空けて再試行する
  * - `ERROR` … タイムアウト・ネットワーク・想定外のレスポンス。短めに再試行する
+ *
+ * **`NOT_FOUND` は「TikTok が明示的にいないと言った」とは限らない。** 実装は非 0 の
+ * `statusCode` をまとめてこの理由に落としており、bot 判定・チャレンジページ・一時的な
+ * 異常応答も混ざる。キャッシュの TTL を決める用途にはそれで十分だが、**不可逆な判断の
+ * 根拠にしてはいけない**。そのために `explicitNotFound` を別に持つ。
+ *
+ * `explicitNotFound` は `classifyAccountExistence()` が `MISSING` と判定した
+ * (= `user_not_found` が明示された)ときだけ立つ。判定基準を1箇所に保つため、
+ * ここでは条件を書き写さずその関数を呼ぶ。
  */
 export type TiktokProfileResult =
   | { ok: true; profile: TiktokProfile }
-  | { ok: false; reason: "NOT_FOUND" | "RATE_LIMITED" | "ERROR" };
+  | {
+      ok: false;
+      reason: "NOT_FOUND" | "RATE_LIMITED" | "ERROR";
+      /** TikTok が `user_not_found` を明示した場合だけ true。既定は未設定(= 不明)。 */
+      explicitNotFound?: boolean;
+    };
 
 const ENDPOINT = "https://www.tiktok.com/api-live/user/room/";
 
@@ -402,9 +416,16 @@ export async function fetchTiktokProfile(tiktokId: string): Promise<TiktokProfil
 
   // statusCode がエラーなら「そのユーザーがいない」とみなす。avatar だけ取れないケースも
   // 同じ扱いでよい(どちらも再試行しても当分変わらない)。
+  //
+  // **この丸め方が許されるのはキャッシュ TTL を決めるところまで。** 非 0 には bot 判定や
+  // 一時的な異常応答も混ざるので、不可逆な判断へ使う呼び出し元は `explicitNotFound` を見る。
   const statusCode = (body as { statusCode?: unknown } | null)?.statusCode;
   if (typeof statusCode === "number" && statusCode !== 0) {
-    return { ok: false, reason: "NOT_FOUND" };
+    return {
+      ok: false,
+      reason: "NOT_FOUND",
+      explicitNotFound: classifyAccountExistence(body, tiktokId) === "MISSING",
+    };
   }
   return { ok: false, reason: "ERROR" };
 }

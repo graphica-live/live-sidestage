@@ -34,10 +34,28 @@ access/refresh token は、イベント機能には一切必要ない。
 `TiktokRoom` への**書き込み**は `src/lib/tiktok-room.ts` の
 `ensureRoomForEvent()` / `releaseRoomMonitor()` だけを通す（後述の 5 を参照）。
 
-例外は `hostUserId` の補完だけで、これは `src/lib/tiktok-host-id.ts` の
-`backfillHostUserIds()` を通す（event-worker が回す）。**`monitorUntil` には触らない**ので
+例外は `hostUserId` の補完だけで、これは `src/lib/tiktok-host-id.ts` を通す
+（event-worker が回す）。**`monitorUntil` には触らない**ので
 上のルールの目的（監視期限の上限・検証・他イベントへの干渉）とは衝突しない。
 `hostUserId` は不変値なので `where` に `hostUserId: null` を入れて上書き不能にしてある。
+
+**補完の対象はイベント参加中の room だけではない。** 経路は3つある。
+
+- `backfillHostUserIds(tiktokIds)` — イベントの lease 由来（このドキュメントの担当範囲）
+- `backfillStreamerRoomHostIds()` — **Streamer が紐づく全 room**。改名の検知（`src/lib/tiktok-id-migration.ts`）は
+  ハンドルが生きているうちにしか `hostUserId` を集められないため、イベント参加を待たずに集める
+- `fillHostUserIdFromBattle()` — バトルの `hostProfiles` からの逆引き。**TikTok への問い合わせは増えない**
+
+**書き込みは3経路とも `saveHostUserIdOnce()`（`tiktok-host-id.ts`）を通す。**
+`where` は `HOST_USER_ID_WRITABLE_WHERE`（`hostUserId: null` と
+**`hostUserIdBackfillGaveUpAt: null`**）1箇所に集約してあるので、
+**新しい fill 経路を足すときも条件を書き写さないこと**（書き写すとドリフトで規律が抜ける）。
+
+後者は「TikTok が `user_not_found` を明示した room には二度と書かない」というセキュリティ規律。
+改名で空いたハンドルを第三者が取得したあとに引き直すと第三者の userId を fill-once して
+しまうため（詳細は `schema.prisma` の当該列のコメント）。**このフラグは一方向で、
+`notFoundStreak` と違い connected 復帰でも戻さない。** 補完ジョブは自分が観測した分しか
+記録できないので、先に `tiktok-room-cleanup.ts` が観測したケースもそちらで立てる。
 
 ### 2. `prisma/schema.prisma` は public と event の両方を1ファイルで管理する
 

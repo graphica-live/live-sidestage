@@ -24,12 +24,20 @@ export async function resolveStreamerByApiKey(req: NextRequest): Promise<{ id: s
   const apiKey = req.headers.get("x-api-key");
   if (!apiKey) return null;
 
+  // BIO認証(Streamer.verified)は前提にしない。verifiedを条件にすると、BIO認証を
+  // どの機能の前提にもしない方針に反してTikEffect連携だけが未認証ユーザーへ閉じたままになる。
+  //
+  // **apiKeyの一致はTikTokアカウント所有の証明ではない。** tiktokIdの登録は無条件・
+  // 重複可(他人のtiktokIdを登録すれば同じroomのapiKeyを誰でも取得できる)なので、
+  // verifiedを課しても防御にはならない。ここで露出するデータ(月間MVP/TOP5の
+  // uniqueId・nickname・avatar・コイン数)は、session認証の既存API(gifts等)でも
+  // verified不問で取得できる水準であり、実質的な後退はない。
   const streamer = await prisma.streamer.findUnique({
     where: { apiKey },
-    select: { id: true, verified: true, roomId: true },
+    select: { id: true, roomId: true },
   });
 
-  if (!streamer?.verified) return null;
+  if (!streamer) return null;
 
   return { id: streamer.id, roomId: streamer.roomId };
 }
