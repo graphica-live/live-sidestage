@@ -4,6 +4,12 @@ import { ProxyAgent } from "proxy-agent";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { getOrCreateDeviceId } from "./device-id";
+import {
+  openConnectionInterval,
+  closeConnectionInterval,
+  touchConnectionIntervalHeartbeat,
+} from "./room-connection-log";
+import { randomUUID } from "node:crypto";
 import { emitGiftDrivenOverlayUpdates } from "./overlay";
 import { applyLikeEventInProcess } from "./overlay/like.server";
 import {
@@ -127,6 +133,10 @@ interface ListenerInstance {
   connectPromise: Promise<void> | null;
   reconnectTimer: NodeJS.Timeout | null;
   heartbeatInterval: NodeJS.Timeout | null;
+  // 開いている RoomConnectionInterval.id。「connected」区間の間だけ非null。
+  // 生成はopen呼び出し側(updateState)がclient側で行う(DBのデフォルト生成完了を待つと、
+  // その間に接続が切れた場合にidをどの行に書き戻すべきか決められなくなるため)。
+  connectionIntervalId: string | null;
   // **groupIdが欠落したcombo専用のフォールバック。** キーは `uniqueId:giftId`。
   // 有効なgroupIdを持つcomboはここを通らず、saveComboGift()がDBの確定値から
   // deltaを計算する(プロセスごとに前回値がズレて二重計上するのを防ぐため)。
@@ -246,6 +256,14 @@ function createWriteQueue(label: string) {
     },
   };
 }
+
+// RoomConnectionIntervalのopen/close/heartbeatをroomId単位で直列化する。
+// updateStateはconnected/非connectedの遷移ごとに同期的にconnectionIntervalIdを
+// 確定させるが、実際のDB書き込みは非同期(fire-and-forget)なので、同じroomで
+// 短時間に複数回遷移すると書き込みの完了順が呼び出し順と入れ替わりうる
+// (例: open(A)がまだ処理中にclose(A)→open(B)が先に届く)。直列化しておけば
+// DB上の反映順は常に呼び出し順と一致する。
+const connLogWrites = createWriteQueue("connlog");
 
 export interface GiftLogEntry {
   ts: string;
@@ -781,12 +799,31 @@ function updateState(
   facts: ListenerFacts,
   reason?: string | null
 ) {
+  const previousStatus = inst.state.status;
+  const roomId = inst.state.roomId;
+
   inst.state.status = status;
   inst.state.message = message;
   inst.state.updatedAt = new Date().toISOString();
   inst.state.activity = facts.activity;
   inst.state.health = facts.health;
   inst.state.reason = reason ?? null;
+
+  // RoomConnectionInterval(捕捉率算出用の接続区間ログ)のopen/close。
+  // idはここで同期的に確定させる(DB書き込み自体はconnLogWritesで直列化した非同期処理)。
+  // stopListener()で意図的に止めた場合はここを通らず、stopListener自身がcloseする
+  // (disconnectイベントのハンドラをremoveAllListeners()で先に外すため)。
+  if (status === "connected" && previousStatus !== "connected" && !inst.stopped) {
+    const id = randomUUID();
+    const startedAt = new Date();
+    inst.connectionIntervalId = id;
+    void connLogWrites.run(roomId, () => openConnectionInterval(id, roomId, startedAt));
+  } else if (status !== "connected" && previousStatus === "connected") {
+    const id = inst.connectionIntervalId;
+    const endedAt = new Date();
+    inst.connectionIntervalId = null;
+    if (id) void connLogWrites.run(roomId, () => closeConnectionInterval(id, reason ?? status, endedAt));
+  }
 
   // Manage heartbeat interval
   if (status === "connected") {
@@ -796,6 +833,9 @@ function updateState(
         // heartbeat は「まだ繋がっている」ことの更新なので facts も同じものを書く。
         // 書かないと listenerUpdatedAt だけ新しくなって activity が空の行が残る。
         void persistState(inst.state.roomId, "connected", inst.state.message, FACTS_CONNECTED, null);
+        const id = inst.connectionIntervalId;
+        const heartbeatAt = new Date();
+        if (id) void connLogWrites.run(roomId, () => touchConnectionIntervalHeartbeat(id, heartbeatAt));
       }, 30_000);
     }
   } else {
@@ -1941,16 +1981,18 @@ async function connectAndAttach(
 
   try {
     await conn.connect();
-    if (!isCurrent()) {
+    if (!isCurrent() || inst.stopped) {
       // 待っている間にstopListener()や次のconnectInstance()でinst.connectionが
-      // 差し替わった。もう誰も参照しないconnをここで確実に切断する。
+      // 差し替わった、またはstopListener()で意図的に止められた
+      // (stopListenerはinst.connectionをnullにしないためisCurrent()だけでは検知できない)。
+      // もう誰も参照しないconnをここで確実に切断する。
       try { conn.disconnect?.(); } catch {}
       return;
     }
     inst.reconnectFailureCount = 0;
     updateState(inst, "connected", FACTS_CONNECTED.message, FACTS_CONNECTED, null);
   } catch (err) {
-    if (!isCurrent()) return;
+    if (!isCurrent() || inst.stopped) return;
     if (isAlreadyConnectedError(err)) {
       updateState(inst, "connected", FACTS_CONNECTED.message, FACTS_CONNECTED, null);
       return;
@@ -2046,6 +2088,7 @@ export async function startListener(
     connectPromise: null,
     reconnectTimer: null,
     heartbeatInterval: null,
+    connectionIntervalId: null,
     // 起動時にDBから復元しない。有効なgroupIdを持つcomboはsaveComboGift()が
     // 毎回DBの確定値を引くので前回値を持ち越す必要がなく、groupId欠落comboの
     // キー(`uniqueId:giftId`)はGift行に残らないので元々復元できない。
@@ -2106,6 +2149,16 @@ export async function stopListener(roomId: string, cause: StopListenerCause = "u
     void persistStateAndNotify(inst, "idle", FACTS_IDLE.message, FACTS_IDLE, null);
   }
 
+  // updateState()はdisconnectイベントのハンドラをこの後removeAllListeners()で外すため通らない。
+  // 接続中(connectionIntervalIdが立っている)ならここで確実にcloseする。プロセス終了
+  // (stopAllListeners → process.exit)前に書き込みを終わらせたいのでawaitする。
+  if (inst.connectionIntervalId) {
+    const id = inst.connectionIntervalId;
+    const endedAt = new Date();
+    inst.connectionIntervalId = null;
+    await connLogWrites.run(roomId, () => closeConnectionInterval(id, cause, endedAt));
+  }
+
   if (inst.connection) {
     inst.connection.removeAllListeners?.();
     try {
@@ -2113,7 +2166,12 @@ export async function stopListener(roomId: string, cause: StopListenerCause = "u
     } catch {}
   }
 
-  listeners.delete(roomId);
+  // 上のawait(接続区間close・disconnect)の間に同じroomIdでstartListener()が
+  // 呼ばれ、新しいinstが登録されている可能性がある(このstopListener呼び出し自体が
+  // 元々そのstartListener内のstopListener(roomId, "restart")かもしれない)。
+  // 無条件でdeleteすると、自分より後に作られた新instを消してしまい、新instは
+  // 接続を維持したままlistenersマップから外れた「ゾンビ」になる(gift二重受信の温床)。
+  if (listeners.get(roomId) === inst) listeners.delete(roomId);
 }
 
 /**

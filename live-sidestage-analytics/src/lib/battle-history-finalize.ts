@@ -28,6 +28,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { aggregateGiftUsers } from "@/lib/gift-analytics";
+import { computeCaptureCoverage } from "@/lib/room-connection-log";
 import {
   asTeamEntries,
   mergeMaxScores,
@@ -61,8 +62,7 @@ export type BattleSnapshotParticipant = {
   /** 確定時に観測できていたこのメンバーのスコア。未観測ならnull。 */
   score: string | null;
 
-  // --- Phase2a(新構造dual-write)拡張。captureStatus等の捕捉率系は別サブフェーズで
-  // 未実装のため常にnull(schema上nullable)。 ---
+  // --- Phase2a(新構造dual-write)拡張。 ---
   /** このメンバーの配信room。自分は必ず解決できる。相手はSidestageが別途そのroomを
    * 監視できていた場合のみ解決できる(できなければnull=新構造の個別ギフトイベントは保存不可)。 */
   roomId: string | null;
@@ -76,6 +76,11 @@ export type BattleSnapshotParticipant = {
   isSelf: boolean;
   /** roomId解決できた場合のみ、そのroomでの窓内gift合計diamond。解決不能ならnull。 */
   observedGiftTotal: number | null;
+  /** roomId解決できた場合のみ、RoomConnectionIntervalから算出した捕捉率区分(Phase2b)。
+   * roomId nullなら"unavailable"(監視対象外)、解決できたが接続区間が0件なら"unavailable"(coverage: 0)。 */
+  captureStatus: "complete" | "partial" | "unavailable" | null;
+  /** roomId解決できた場合のみ、窓時間に対する接続区間の被覆率(0.0〜1.0)。roomId nullならnull。 */
+  captureCoverage: number | null;
 };
 
 export type BattleSnapshotContributor = {
@@ -286,8 +291,10 @@ export async function computeBattleSnapshot(
   // src/lib/battle-history.tsのコメント参照)ので、roomIdごとに高々1回のクエリで済む。
   const giftEvents: BattleSnapshotGiftEvent[] = [];
   const observedGiftTotalByAnchorId = new Map<string, number>();
+  const captureByAnchorId = new Map<string, { status: "complete" | "partial" | "unavailable"; coverage: number }>();
   for (const p of participantsBase) {
     if (p.roomId === null) continue;
+    captureByAnchorId.set(p.anchorId, await computeCaptureCoverage(p.roomId, windowStart, windowEnd, now));
     const rows = await prisma.gift.findMany({
       where: { roomId: p.roomId, receivedAt: { gte: windowStart, lte: windowEnd } },
       select: {
@@ -325,10 +332,15 @@ export async function computeBattleSnapshot(
     observedGiftTotalByAnchorId.set(p.anchorId, total);
   }
 
-  const participants: BattleSnapshotParticipant[] = participantsBase.map((p) => ({
-    ...p,
-    observedGiftTotal: p.roomId === null ? null : observedGiftTotalByAnchorId.get(p.anchorId) ?? 0,
-  }));
+  const participants: BattleSnapshotParticipant[] = participantsBase.map((p) => {
+    const capture = p.roomId === null ? null : captureByAnchorId.get(p.anchorId) ?? null;
+    return {
+      ...p,
+      observedGiftTotal: p.roomId === null ? null : observedGiftTotalByAnchorId.get(p.anchorId) ?? 0,
+      captureStatus: capture?.status ?? "unavailable",
+      captureCoverage: capture?.coverage ?? null,
+    };
+  });
 
   // アイテムカード使用(グローブ/ハンマー等)は自room(このBattleHistory行が確定させるroom)で
   // 観測したものだけを対象にする。相手roomも監視していた場合、相手側のmaterializeが自分の

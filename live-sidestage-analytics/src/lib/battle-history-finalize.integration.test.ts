@@ -52,6 +52,7 @@ beforeEach(async () => {
   await prisma.battleHistory.deleteMany({ where: { roomId: { in: [selfRoomId, noHostRoomId] } } });
   await prisma.tiktokBattle.deleteMany({ where: { roomId: { in: [selfRoomId, noHostRoomId] } } });
   await prisma.gift.deleteMany({ where: { roomId: { in: [selfRoomId, noHostRoomId] } } });
+  await prisma.roomConnectionInterval.deleteMany({ where: { roomId: { in: [selfRoomId, noHostRoomId] } } });
 });
 
 function battleData(
@@ -129,6 +130,9 @@ describe("computeBattleSnapshot", () => {
         officialScore: "1200",
         isSelf: true,
         observedGiftTotal: 40,
+        // 接続履歴ログ(RoomConnectionInterval)行が無いフィクスチャなのでunavailable/coverage 0。
+        captureStatus: "unavailable",
+        captureCoverage: 0,
       },
       {
         side: "opponent",
@@ -145,6 +149,9 @@ describe("computeBattleSnapshot", () => {
         officialScore: "900",
         isSelf: false,
         observedGiftTotal: null,
+        // roomId未解決なのでcaptureStatus/captureCoverageとも算出不可。
+        captureStatus: "unavailable",
+        captureCoverage: null,
       },
     ]);
     // roomId解決できた自分側だけgiftEventsが複製される(相手roomは未監視なのでnull)
@@ -157,6 +164,20 @@ describe("computeBattleSnapshot", () => {
       ["fan_a", 30, 3],
       ["fan_b", 10, 1],
     ]);
+  });
+
+  it("接続区間ログ(RoomConnectionInterval)が窓を覆っていればcaptureStatus: completeになる", async () => {
+    await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "snap_capture") });
+    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await prisma.roomConnectionInterval.create({
+      data: { roomId: selfRoomId, startedAt: STARTED_AT, endedAt: ENDED_AT },
+    });
+
+    const snapshot = await computeBattleSnapshot(selfRoomId, "snap_capture", NOW);
+    expect(snapshot).not.toBeNull();
+    const self = snapshot!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    expect(self?.captureStatus).toBe("complete");
+    expect(self?.captureCoverage).toBe(1);
   });
 
   // 実データで3陣営以上のバトルを観測できていないため、TikTokのteamArmies由来の
@@ -257,6 +278,9 @@ describe("materializeBattleHistory", () => {
   it("値が安定していれば親子行を一括で作る", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "mat_ok") });
     await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30, repeatCount: 3 });
+    await prisma.roomConnectionInterval.create({
+      data: { roomId: selfRoomId, startedAt: STARTED_AT, endedAt: ENDED_AT },
+    });
 
     const result = await materializeBattleHistory(selfRoomId, "mat_ok", NOW, { stabilityDelayMs: 0 });
     expect(result).toEqual({ finalized: true, action: "created" });
@@ -272,6 +296,12 @@ describe("materializeBattleHistory", () => {
     expect(row!.status).toBe("finished");
     expect(row!.participants).toHaveLength(2);
     expect(row!.contributors.map((c) => c.uniqueId)).toEqual(["fan_a"]);
+    // dual-write先(新構造)のcaptureStatus/captureCoverageがDB列として往復すること
+    // (computeBattleSnapshotのcaptureStatus/captureCoverageがcommitBattleSnapshotの
+    // `...p`spreadで実際に書き込まれることの固定)。
+    const self = row!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    expect(self?.captureStatus).toBe("complete");
+    expect(self?.captureCoverage).toBe(1);
   });
 
   it("60秒の安定性チェックの間に値が変わったら確定しない", async () => {
