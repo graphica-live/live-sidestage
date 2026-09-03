@@ -1119,11 +1119,102 @@ export async function queryBattles(
 
 export type BattleContributor = GiftAnalyticsUser;
 
+/** BattleHistoryGiftEvent 1行分(集計に使う列だけ)。rowsは呼び出し側で
+ * `[{occurredAt:"desc"},{sourceGiftId:"desc"}]` 済みである前提(「最初に見た行を採用」で
+ * nicknameを最新行のものに固定するため)。 */
+export type GiftEventForContribution = {
+  senderUniqueIdSnapshot: string;
+  senderNicknameSnapshot: string;
+  repeatCount: number;
+  totalDiamonds: number;
+  occurredAt: Date;
+  sourceGiftId: string;
+};
+
+/**
+ * BattleHistoryGiftEvent群を送信者ごとに集計し、旧 aggregateGiftUsers と同じ形へ変換する純関数。
+ * 集計規則はaggregateGiftUsers(gift-analytics.ts)に合わせる:
+ * giftCount=ΣrepeatCount, totalDiamonds=ΣtotalDiamonds, lastGiftAt=max(occurredAt),
+ * nickname=最新occurredAt行のsnapshot。sourceGiftIdの重複(書き込み経路上は起きない想定だが
+ * 保険)はSetで弾き、二重計上を防ぐ。profileImageUrlは呼び出し側でresolveAvatarUrlsして埋める。
+ */
+export function aggregateGiftEventsToContributors(rows: GiftEventForContribution[]): BattleContributor[] {
+  const seenSourceIds = new Set<string>();
+  const byUniqueId = new Map<
+    string,
+    { nickname: string; giftCount: number; totalDiamonds: number; lastGiftAt: Date }
+  >();
+  for (const row of rows) {
+    if (seenSourceIds.has(row.sourceGiftId)) continue;
+    seenSourceIds.add(row.sourceGiftId);
+    const existing = byUniqueId.get(row.senderUniqueIdSnapshot);
+    if (existing) {
+      existing.giftCount += row.repeatCount;
+      existing.totalDiamonds += row.totalDiamonds;
+      if (row.occurredAt > existing.lastGiftAt) existing.lastGiftAt = row.occurredAt;
+    } else {
+      byUniqueId.set(row.senderUniqueIdSnapshot, {
+        nickname: row.senderNicknameSnapshot,
+        giftCount: row.repeatCount,
+        totalDiamonds: row.totalDiamonds,
+        lastGiftAt: row.occurredAt,
+      });
+    }
+  }
+  return [...byUniqueId.entries()]
+    .map(([uniqueId, v]) => ({
+      uniqueId,
+      nickname: v.nickname,
+      profileImageUrl: null as string | null,
+      giftCount: v.giftCount,
+      totalDiamonds: v.totalDiamonds,
+      lastGiftAt: v.lastGiftAt.toISOString(),
+    }))
+    .sort((a, b) => {
+      if (b.totalDiamonds !== a.totalDiamonds) return b.totalDiamonds - a.totalDiamonds;
+      if (a.lastGiftAt !== b.lastGiftAt) return a.lastGiftAt < b.lastGiftAt ? 1 : -1;
+      return a.uniqueId < b.uniqueId ? -1 : a.uniqueId > b.uniqueId ? 1 : 0;
+    });
+}
+
+/** Phase2c以前(dual-write開始前)に確定した行向けの旧経路フォールバック。
+ * 新経路(自room participantのgiftEvents)が0件の場合だけ遅延で叩く(常時同時取得しない)。 */
+async function queryLegacyContributors(roomId: string, battleId: string): Promise<BattleContributor[]> {
+  const legacy = await prisma.battleHistory.findUnique({
+    where: { roomId_battleId: { roomId, battleId } },
+    select: {
+      contributors: {
+        select: { uniqueId: true, nickname: true, giftCount: true, totalDiamonds: true, lastGiftAt: true },
+        orderBy: [{ totalDiamonds: "desc" }, { lastGiftAt: "desc" }, { uniqueId: "asc" }],
+      },
+    },
+  });
+  return (legacy?.contributors ?? []).map((c) => ({
+    uniqueId: c.uniqueId,
+    nickname: c.nickname,
+    profileImageUrl: null,
+    giftCount: c.giftCount,
+    totalDiamonds: c.totalDiamonds,
+    lastGiftAt: c.lastGiftAt.toISOString(),
+  }));
+}
+
 /**
  * 展開時に取得する、そのバトル区間だけの貢献者一覧。
  *
  * 確定済み(BattleHistory行がある)なら Gift に触れずスナップショットから返す。
  * 未確定なら従来どおり queryGifts と同じ集計規則でライブ集計する。
+ *
+ * Phase2c(Cutover): 確定済みは新構造(BattleHistoryParticipant配下のBattleHistoryGiftEvent、
+ * Phase2aでdual-write済み)から再構成する。参加者の絞り込みは`isSelf`ではなく
+ * `participant.roomId === このBattleHistory行の自room(=roomId引数)`で行う — isSelfはteam戦
+ * (2v2等)で味方も含んでしまうが、roomIdが自roomに一致するのはresolveParticipantRoomId
+ * (battle-history.ts)の設計上、本人だけ(味方は別roomか未解決null)。DB側のwhereで絞り込み、
+ * 相手/味方roomのgiftEventsは転送しない(事務所配下同士の対戦で無駄な読み取りを避ける)。
+ * バックフィル済みデータはself側全員が自roomのroomIdを持つ場合があるが、giftEventsを
+ * 実際に持つのは本人1人だけなのでflattenしても結果は変わらない。
+ * Phase2a以前に確定した行はgiftEventsが0件になるため、旧`contributors`へフォールバックする
+ * (過去データの表示が空欄化しないための後方互換措置)。
  */
 export async function queryBattleContributors(
   roomId: string,
@@ -1135,29 +1226,40 @@ export async function queryBattleContributors(
     where: { roomId_battleId: { roomId, battleId } },
     select: {
       status: true,
-      // 表示順を保証する。groupByの返り順に依存していた従来と違い、確定済みは明示ソートする。
-      contributors: {
-        select: { uniqueId: true, nickname: true, giftCount: true, totalDiamonds: true, lastGiftAt: true },
-        orderBy: [{ totalDiamonds: "desc" }, { lastGiftAt: "desc" }, { uniqueId: "asc" }],
+      participants: {
+        where: { roomId },
+        select: {
+          giftEvents: {
+            select: {
+              senderUniqueIdSnapshot: true,
+              senderNicknameSnapshot: true,
+              repeatCount: true,
+              totalDiamonds: true,
+              occurredAt: true,
+              sourceGiftId: true,
+            },
+            orderBy: [{ occurredAt: "desc" }, { sourceGiftId: "desc" }],
+          },
+        },
       },
     },
   });
 
   if (finalized) {
+    const selfGiftEventRows = finalized.participants.flatMap((p) => p.giftEvents);
+
+    const contributors =
+      selfGiftEventRows.length > 0
+        ? aggregateGiftEventsToContributors(selfGiftEventRows)
+        : await queryLegacyContributors(roomId, battleId);
+
     // アバターだけは署名付きURLなので保存せず都度解決する(TiktokAvatarAssetはGift非依存の恒久キャッシュ)。
     const avatarUrls = await resolveAvatarUrls(
       "gift_sender",
-      finalized.contributors.map((c) => c.uniqueId)
+      contributors.map((c) => c.uniqueId)
     );
     return {
-      contributors: finalized.contributors.map((c) => ({
-        uniqueId: c.uniqueId,
-        nickname: c.nickname,
-        profileImageUrl: avatarUrls.get(c.uniqueId) ?? null,
-        giftCount: c.giftCount,
-        totalDiamonds: c.totalDiamonds,
-        lastGiftAt: c.lastGiftAt.toISOString(),
-      })),
+      contributors: contributors.map((c) => ({ ...c, profileImageUrl: avatarUrls.get(c.uniqueId) ?? null })),
       status: finalized.status as BattleWindow["status"],
     };
   }

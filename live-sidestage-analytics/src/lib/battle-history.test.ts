@@ -8,9 +8,102 @@ import {
   sumDiamondsPerWindow,
   giftMatchesListenerQuery,
   battleIdsWithGiftInWindow,
+  aggregateGiftEventsToContributors,
   type BattleRow,
+  type GiftEventForContribution,
 } from "./battle-history";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
+
+function giftEvent(overrides: Partial<GiftEventForContribution>): GiftEventForContribution {
+  return {
+    senderUniqueIdSnapshot: "u1",
+    senderNicknameSnapshot: "u1のnickname",
+    repeatCount: 1,
+    totalDiamonds: 1,
+    occurredAt: new Date("2026-09-01T00:00:00Z"),
+    sourceGiftId: "src1",
+    ...overrides,
+  };
+}
+
+describe("aggregateGiftEventsToContributors", () => {
+  it("同一送信者の複数行を合算し、nicknameは最新occurredAt行のものを採る", () => {
+    const rows: GiftEventForContribution[] = [
+      giftEvent({
+        senderUniqueIdSnapshot: "combo_fan",
+        senderNicknameSnapshot: "旧名",
+        repeatCount: 3,
+        totalDiamonds: 3,
+        occurredAt: new Date("2026-09-01T00:01:00Z"),
+        sourceGiftId: "src1",
+      }),
+      giftEvent({
+        senderUniqueIdSnapshot: "combo_fan",
+        senderNicknameSnapshot: "新名",
+        repeatCount: 5,
+        totalDiamonds: 5000,
+        occurredAt: new Date("2026-09-01T00:02:00Z"),
+        sourceGiftId: "src2",
+      }),
+    ];
+    // 呼び出し側はDBで[{occurredAt:"desc"},{sourceGiftId:"desc"}]済みで渡す前提。
+    const sorted = [...rows].sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
+    const result = aggregateGiftEventsToContributors(sorted);
+    expect(result).toEqual([
+      {
+        uniqueId: "combo_fan",
+        nickname: "新名",
+        profileImageUrl: null,
+        giftCount: 8,
+        totalDiamonds: 5003,
+        lastGiftAt: new Date("2026-09-01T00:02:00Z").toISOString(),
+      },
+    ]);
+  });
+
+  it("sourceGiftIdが重複する行は二重計上しない", () => {
+    const rows: GiftEventForContribution[] = [
+      giftEvent({ senderUniqueIdSnapshot: "u1", totalDiamonds: 10, sourceGiftId: "dup" }),
+      giftEvent({ senderUniqueIdSnapshot: "u1", totalDiamonds: 10, sourceGiftId: "dup" }),
+    ];
+    const result = aggregateGiftEventsToContributors(rows);
+    expect(result).toHaveLength(1);
+    expect(result[0].totalDiamonds).toBe(10);
+  });
+
+  it("totalDiamonds降順→lastGiftAt降順→uniqueId昇順でソートする", () => {
+    const rows: GiftEventForContribution[] = [
+      giftEvent({ senderUniqueIdSnapshot: "b", totalDiamonds: 100, sourceGiftId: "s1" }),
+      giftEvent({ senderUniqueIdSnapshot: "a", totalDiamonds: 100, sourceGiftId: "s2" }),
+      giftEvent({ senderUniqueIdSnapshot: "c", totalDiamonds: 200, sourceGiftId: "s3" }),
+    ];
+    const result = aggregateGiftEventsToContributors(rows);
+    expect(result.map((r) => r.uniqueId)).toEqual(["c", "a", "b"]);
+  });
+
+  it("totalDiamondsが同値ならlastGiftAt降順で並べる", () => {
+    const rows: GiftEventForContribution[] = [
+      giftEvent({
+        senderUniqueIdSnapshot: "old_sender",
+        totalDiamonds: 100,
+        occurredAt: new Date("2026-09-01T00:00:00Z"),
+        sourceGiftId: "s1",
+      }),
+      giftEvent({
+        senderUniqueIdSnapshot: "new_sender",
+        totalDiamonds: 100,
+        occurredAt: new Date("2026-09-01T00:05:00Z"),
+        sourceGiftId: "s2",
+      }),
+    ];
+    const result = aggregateGiftEventsToContributors(rows);
+    expect(result.map((r) => r.uniqueId)).toEqual(["new_sender", "old_sender"]);
+  });
+
+  it("空配列なら空を返す", () => {
+    expect(aggregateGiftEventsToContributors([])).toEqual([]);
+  });
+});
 
 function row(hosts: string[], scores: Record<string, string>): BattleRow {
   return { battleId: "b1", hostUserIds: hosts, hostScores: scores };
