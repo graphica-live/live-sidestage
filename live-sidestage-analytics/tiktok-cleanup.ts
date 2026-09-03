@@ -11,6 +11,7 @@ import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { runCleanupCycle } from "@/lib/tiktok-room-cleanup";
 import { runLowValueCleanupCycle } from "@/lib/tiktok-low-value-cleanup";
+import { pruneOldLikeTallies } from "@/lib/overlay/like.server";
 
 // セッションスコープのadvisory lock(pg_try_advisory_xact_lockではない)。トランザクションでは
 // なくプロセス全体を通してロックしたいため。Prismaのコネクションプールと相性が悪く、
@@ -31,6 +32,9 @@ const dryRun = process.env.TIKTOK_CLEANUP_DRY_RUN !== "false";
 // 低価値Room監視停止は判定基準が別物(データ削除はなく監視停止/復活のみ)なので
 // dry-runフラグも分離する。
 const lowValueDryRun = process.env.TIKTOK_LOW_VALUE_DRY_RUN !== "false";
+// LikeTally pruningは実データ削除(誰にも読まれず無期限蓄積するのを防ぐ、7日超過分)。
+// 他の2つと判定基準・削除対象が全く別物なのでdry-runフラグも独立させる。
+const likeTallyPruneDryRun = process.env.LIKE_TALLY_PRUNE_DRY_RUN !== "false";
 
 async function main() {
   const [{ locked }] = await prisma.$queryRaw<{ locked: boolean }[]>`
@@ -49,6 +53,10 @@ async function main() {
     console.log(`[tiktok-low-value-cleanup] 開始 (dryRun=${lowValueDryRun})`);
     const lowValueResult = await runLowValueCleanupCycle({ dryRun: lowValueDryRun });
     console.log("[tiktok-low-value-cleanup] 完了:", JSON.stringify(lowValueResult));
+
+    console.log(`[like-tally-prune] 開始 (dryRun=${likeTallyPruneDryRun})`);
+    const prunedCount = await pruneOldLikeTallies({ olderThanDays: 7, dryRun: likeTallyPruneDryRun });
+    console.log(`[like-tally-prune] 完了: ${prunedCount}件${likeTallyPruneDryRun ? "(対象、未削除)" : "削除"}`);
   } finally {
     await prisma.$queryRaw`SELECT pg_advisory_unlock(${CLEANUP_LOCK_KEY}::bigint)`.catch(() => {});
   }
