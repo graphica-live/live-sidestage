@@ -943,7 +943,6 @@ model Event {
   lifePoints    EventLifePoint[]
   lifeLedger    EventLifeLedger[]
   roomLeases    EventRoomLease[]
-  adjustments   EventScoreAdjustment[]
 
   @@index([status, endAt])
   @@index([ownerUserId])
@@ -1236,25 +1235,6 @@ model EventLifeLedger {
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, subjectType, subjectId])
-  @@schema("event")
-}
-
-// 主催者によるスコア手動補正。
-// gifts は取り込み時点の欠落・重複を後から修復できないため、救済手段を必ず持つ。
-model EventScoreAdjustment {
-  id               String   @id @default(cuid())
-  eventId          String
-  scope            String // "PARTICIPANT" | "TEAM" | "MATCH"
-  scopeId          String
-  listenerUniqueId String? // 特定リスナーへの補正なら
-  diamondDelta     BigInt   @default(0)
-  reason           String   @db.Text
-  createdByUserId  String
-  createdAt        DateTime @default(now())
-
-  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@index([eventId, scope, scopeId])
   @@schema("event")
 }
 
