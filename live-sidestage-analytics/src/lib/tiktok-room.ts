@@ -62,7 +62,8 @@ const MAX_ACTIVE_LEASES = 500;
 
 // normalizeTiktokId は正規化しかしないので、部屋を作る前にここで形式を検証する。
 // TikTokのユーザー名に使える文字は英数字・アンダースコア・ピリオド。
-const TIKTOK_ID_PATTERN = /^[a-z0-9._]{1,64}$/;
+// tiktok-id-migration.ts の入口ガードでも同じ検証に使うため export する。
+export const TIKTOK_ID_PATTERN = /^[a-z0-9._]{1,64}$/;
 
 /** 監視要求が受け付けられなかったとき。status は呼び出し側がHTTPへ写せるように持たせる。 */
 export class RoomMonitorError extends Error {

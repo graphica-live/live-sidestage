@@ -11,6 +11,7 @@ import { aggregateDueEvents } from "@/event/aggregate";
 import { activeLeaseTiktokIds, renewClampedLeases } from "@/event/participants";
 import { backfillHostUserIds, backfillStreamerRoomHostIds } from "@/lib/tiktok-host-id";
 import { snapshotDueEventAvatars } from "@/event/avatar-snapshot";
+import { processPendingMergeJobs } from "@/lib/tiktok-id-migration";
 import { prisma } from "@/lib/prisma";
 
 const INTERVAL_MS = Number(process.env.AGGREGATE_INTERVAL_MS ?? 10_000);
@@ -50,6 +51,13 @@ const STREAMER_HOST_ID_INTERVAL_MS = Number(
  */
 const AVATAR_SNAPSHOT_INTERVAL_MS = Number(process.env.EVENT_AVATAR_SNAPSHOT_INTERVAL_MS ?? 60_000);
 
+/**
+ * TikTok ID変更時の room 合流(src/lib/tiktok-id-migration.ts)を処理する間隔。
+ * 対象は TiktokIdMergeJob(pending)。TikTok への問い合わせを伴うので、集計ループとは別枠にする。
+ */
+const MERGE_TICK_INTERVAL_MS = Number(process.env.TIKTOK_ID_MERGE_TICK_INTERVAL_MS ?? 60_000);
+const MERGE_TICK_MAX_PER_RUN = Number(process.env.TIKTOK_ID_MERGE_MAX_PER_RUN ?? 5);
+
 let inFlight = false;
 let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
@@ -57,6 +65,7 @@ let renewInFlight = false;
 let hostIdInFlight = false;
 let streamerHostIdInFlight = false;
 let avatarSnapshotInFlight = false;
+let mergeTickInFlight = false;
 
 async function tick(): Promise<void> {
   // worker.ts(TikTok接続)には guard がないが、こちらは1周が長くなりうるので必ず持つ。
@@ -175,6 +184,23 @@ async function avatarSnapshotTick(): Promise<void> {
   }
 }
 
+// TikTok ID変更に伴う room 合流ジョブを処理する。TikTok を叩くので失敗しても集計ループには影響させない。
+async function mergeTick(): Promise<void> {
+  if (mergeTickInFlight || stopping) return;
+
+  mergeTickInFlight = true;
+  try {
+    const result = await processPendingMergeJobs(MERGE_TICK_MAX_PER_RUN);
+    if (result.processed > 0) {
+      console.log(`[event-worker] TikTok ID合流ジョブ ${result.processed}件処理`);
+    }
+  } catch (err) {
+    console.error("[event-worker] TikTok ID合流ジョブでエラー:", err);
+  } finally {
+    mergeTickInFlight = false;
+  }
+}
+
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
@@ -185,7 +211,9 @@ async function shutdown(signal: string) {
   if (hostIdTimer) clearInterval(hostIdTimer);
   if (streamerHostIdTimer) clearInterval(streamerHostIdTimer);
   clearInterval(avatarSnapshotTimer);
+  clearInterval(mergeTimer);
   await currentTick.catch(() => {});
+  await mergeTickCurrent.catch(() => {});
   await prisma.$disconnect().catch(() => {});
   console.log("[event-worker] 終了");
   process.exit(0);
@@ -193,6 +221,11 @@ async function shutdown(signal: string) {
 
 function scheduleTick() {
   currentTick = tick();
+}
+
+let mergeTickCurrent: Promise<void> = Promise.resolve();
+function scheduleMergeTick() {
+  mergeTickCurrent = mergeTick();
 }
 
 const timer = setInterval(scheduleTick, INTERVAL_MS);
@@ -204,6 +237,7 @@ const streamerHostIdTimer =
     ? setInterval(() => void streamerHostIdTick(), STREAMER_HOST_ID_INTERVAL_MS)
     : null;
 const avatarSnapshotTimer = setInterval(() => void avatarSnapshotTick(), AVATAR_SNAPSHOT_INTERVAL_MS);
+const mergeTimer = setInterval(scheduleMergeTick, MERGE_TICK_INTERVAL_MS);
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
@@ -214,10 +248,12 @@ console.log(
     `Streamer room の hostUserId 補完 ${
       STREAMER_HOST_ID_INTERVAL_MS > 0 ? `${STREAMER_HOST_ID_INTERVAL_MS}ms` : "無効"
     } / ` +
-    `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms)`
+    `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms / ` +
+    `TikTok ID合流ジョブ ${MERGE_TICK_INTERVAL_MS}ms/最大${MERGE_TICK_MAX_PER_RUN}件)`
 );
 scheduleTick();
 void renewTick();
 if (hostIdTimer) void hostIdTick();
 if (streamerHostIdTimer) void streamerHostIdTick();
 void avatarSnapshotTick();
+scheduleMergeTick();

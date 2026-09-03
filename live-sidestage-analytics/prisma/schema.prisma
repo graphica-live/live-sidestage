@@ -406,6 +406,48 @@ model ListenerEpoch {
   @@schema("public")
 }
 
+// TikTok ID変更(改名)の自動合流(src/lib/tiktok-id-migration.ts)を実行するジョブキュー。
+//
+// Streamer.tiktokIdを書く3経路(mobile POST/PATCH, verify/generate)は判定を一切行わず、
+// この行を1件upsertするだけ。実際の判定・TikTok照会・合流実行はevent-workerのmergeTick()が
+// 非同期で行う(登録APIの同期パスにTikTok照会を置くと、TikTokの不調が新規登録の失敗として
+// 表面化するため。合流は遅延して構わない — 旧データは削除されないので何度でもやり直せる)。
+model TiktokIdMergeJob {
+  id            String   @id @default(cuid())
+  streamerId    String   @unique // pendingの二重積みを構造的に防ぐ
+  tiktokId      String // 積んだ時点のハンドル(正規化前の表示値)
+  status        String   @default("pending") // "pending" | "done" | "failed"
+  attempts      Int      @default(0)
+  lastError     String?
+  nextAttemptAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@schema("public")
+}
+
+// TikTok ID変更の自動合流の実行結果ログ。FKは張らない(EventStanding.subjectIdと同じ扱い)。
+// NO_CANDIDATE以外は全て記録する — サポート問い合わせの唯一の説明手段になるため。
+model TiktokIdMergeLog {
+  id                 String    @id @default(cuid())
+  streamerId         String
+  userId             String // TikTokの数値userId(判定の鍵)
+  outcome            String // MERGED | NO_CANDIDATE | BLOCKED_OLD_HANDLE_ALIVE |
+  //   BLOCKED_HOST_MISMATCH | EVENT_ACTIVE | SELF_NOT_FOUND | DEFERRED
+  oldTiktokId        String?
+  newTiktokId        String
+  oldRoomId          String?
+  survivingRoomId    String?
+  hostUserId         String?
+  hostUserIdFilledAt DateTime?
+  stats              Json? // 移動件数・重複破棄件数・失われたGiftEdit件数等
+  createdAt          DateTime  @default(now())
+
+  @@index([streamerId, createdAt])
+  @@schema("public")
+}
+
 // 事務所・企業向けのアカウント。配信者本人(Streamer)とは独立していて、
 // 自分ではTikTok IDを持たず、監視対象(AgencyWatch)を通してのみデータを参照する。
 //

@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
-import { resolveRoomForStreamer } from "@/lib/tiktok-room";
+import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
+import { upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
 
 // GET: return existing pending code for current user
 export async function GET() {
@@ -47,14 +48,18 @@ export async function POST(req: NextRequest) {
   // analytics/page.tsx から撤去済み。
   const code = generateVerificationCode();
 
-  const streamer = await prisma.streamer.upsert({
-    where: { userId: session.user.id },
-    update: { tiktokId: clean, verificationCode: code, verified: false, verifiedAt: null },
-    create: {
-      userId: session.user.id,
-      tiktokId: clean,
-      verificationCode: code,
-    },
+  const streamer = await prisma.$transaction(async (tx) => {
+    const upserted = await tx.streamer.upsert({
+      where: { userId: session.user.id },
+      update: { tiktokId: clean, verificationCode: code, verified: false, verifiedAt: null },
+      create: {
+        userId: session.user.id,
+        tiktokId: clean,
+        verificationCode: code,
+      },
+    });
+    await upsertTiktokIdMergeJob(tx, upserted.id, normalizeTiktokId(clean));
+    return upserted;
   });
 
   // 同じtiktokIdを共有するTiktokRoomへ即座に紐付ける(Workerのensure loopを待たずに
