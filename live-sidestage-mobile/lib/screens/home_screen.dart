@@ -670,6 +670,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// TikTok ID自動合流の事後通知。デフォルトの自動タイムアウト/スワイプでは
+  /// 既読化しない — 明示的な「閉じる」アクションを押したときだけacknowledgeする
+  /// (押されずに消えたら、次に設定タブを開いたときまた出る)。
+  void _showRecentMergeNoticeIfAny() {
+    final accountStatus = context.read<AccountStatusStore>();
+    final notice = accountStatus.status.recentMerge;
+    if (notice == null) return;
+
+    final token = context.read<SessionController>().session?.token;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(notice.message),
+        duration: const Duration(days: 1), // 自動では消さない。閉じるのはアクション押下のみ
+        action: SnackBarAction(
+          label: '閉じる',
+          onPressed: () {
+            if (token != null) accountStatus.acknowledgeRecentMerge(token: token);
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>().session;
@@ -744,7 +767,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        onDestinationSelected: (index) {
+          setState(() => _tabIndex = index);
+          // 設定タブ(index 5)を開いた時点でTikTok ID自動合流の事後通知が未読なら1回だけ出す。
+          if (index == 5) _showRecentMergeNoticeIfAny();
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.record_voice_over_outlined), selectedIcon: Icon(Icons.record_voice_over), label: 'TTS'),
           NavigationDestination(icon: Icon(Icons.music_note_outlined), selectedIcon: Icon(Icons.music_note), label: 'サウンド'),

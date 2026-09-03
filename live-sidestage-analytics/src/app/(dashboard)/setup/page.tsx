@@ -6,6 +6,13 @@ import Link from "next/link";
 
 type Step = "input" | "code_issued" | "verifying" | "verified" | "already_verified";
 
+type RecentMerge = {
+  id: string;
+  outcome: "MERGED" | "BLOCKED_OLD_HANDLE_ALIVE" | "SELF_NOT_FOUND";
+  oldTiktokId: string | null;
+  giftCount: number | null;
+};
+
 export default function SetupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("input");
@@ -17,6 +24,25 @@ export default function SetupPage() {
   const [issuedApiKey, setIssuedApiKey] = useState("");
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
+  const [recentMerge, setRecentMerge] = useState<RecentMerge | null>(null);
+
+  useEffect(() => {
+    fetch("/api/streamer/recent-merge")
+      .then((r) => r.json())
+      .then((data) => setRecentMerge(data.recentMerge ?? null))
+      .catch(() => {});
+  }, []);
+
+  async function handleDismissMergeBanner() {
+    if (!recentMerge) return;
+    const dismissed = recentMerge;
+    setRecentMerge(null);
+    await fetch("/api/streamer/recent-merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ logId: dismissed.id }),
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     fetch("/api/streamer/api-key")
@@ -133,6 +159,29 @@ export default function SetupPage() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-brand">TikTok IDの設定</h1>
         </div>
+
+        {recentMerge && (
+          <div
+            className={`flex items-start gap-2 rounded-r-xl border p-4 mb-4 ${
+              recentMerge.outcome === "MERGED"
+                ? "border-brand/30 border-l-4 border-l-brand"
+                : "border-gray-400/30 border-l-4 border-l-gray-400"
+            }`}
+          >
+            <p className="flex-1 text-sm leading-relaxed text-gray-200">
+              {recentMerge.outcome === "MERGED"
+                ? `旧ID @${recentMerge.oldTiktokId} のギフト${recentMerge.giftCount ?? 0}件を引き継ぎました`
+                : "引き継げなかったデータがあります。サポートへご連絡ください"}
+            </p>
+            <button
+              onClick={handleDismissMergeBanner}
+              className="rounded-md p-1 text-lg leading-none text-gray-400 hover:bg-white/5 hover:text-white"
+              aria-label="閉じる"
+            >
+              &times;
+            </button>
+          </div>
+        )}
 
         <div className="card space-y-4">
           {step === "already_verified" && (

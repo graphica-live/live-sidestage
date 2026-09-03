@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    background-color: #111111;
+    color: #f0f0f0;
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    margin: 0;
+  }
+  .wrap { width: 100%; max-width: 448px; }
+  .title { text-align: center; margin-bottom: 32px; }
+  .title h1 { font-size: 24px; font-weight: 700; color: #fe2c55; margin: 0; }
+
+  .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background-color: #111111;
+    border: 1px solid rgba(254,44,85,0.3);
+    border-left: 4px solid #fe2c55;
+    border-radius: 0 12px 12px 0;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .banner-text { flex: 1; font-size: 14px; line-height: 1.5; color: #e5e5e5; }
+  .banner-close {
+    background: none; border: none; color: #9ca3af; font-size: 18px;
+    line-height: 1; padding: 4px; cursor: pointer; border-radius: 6px;
+  }
+
+  .banner.blocked { border-left-color: #9ca3af; border-color: rgba(156,163,175,0.3); }
+
+  .card { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 16px; }
+  .card + .card { margin-top: 16px; }
+  .card-label { font-size: 14px; color: #d1d5db; margin-bottom: 4px; }
+  .card-value { font-family: monospace; color: #fe2c55; font-size: 16px; margin-bottom: 12px; }
+  .btn-primary {
+    background-color: #fe2c55; color: white; font-weight: 600;
+    padding: 8px 16px; border-radius: 8px; border: none; width: 100%; font-size: 14px;
+  }
+
+  .caption { text-align: center; color: #6b7280; font-size: 12px; margin-top: 24px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title"><h1>TikTok IDの設定</h1></div>
+
+    <div class="banner">
+      <div class="banner-text">旧ID @alice のギフト120件を引き継ぎました</div>
+      <button class="banner-close">&times;</button>
+    </div>
+
+    <div class="card">
+      <div class="card-label">現在のTikTok ID</div>
+      <div class="card-value">@alice2</div>
+      <button class="btn-primary">TikTok IDを変更する</button>
+    </div>
+
+    <div class="caption">↑ MERGED状態</div>
+
+    <div style="height:40px"></div>
+
+    <div class="banner blocked">
+      <div class="banner-text">引き継げなかったデータがあります。サポートへご連絡ください</div>
+      <button class="banner-close">&times;</button>
+    </div>
+
+    <div class="card">
+      <div class="card-label">現在のTikTok ID</div>
+      <div class="card-value">@alice2</div>
+      <button class="btn-primary">TikTok IDを変更する</button>
+    </div>
+
+    <div class="caption">↑ BLOCKED_OLD_HANDLE_ALIVE / SELF_NOT_FOUND状態</div>
+  </div>
+</body>
+</html>

@@ -443,6 +443,7 @@ model TiktokIdMergeLog {
   hostUserId         String?
   hostUserIdFilledAt DateTime?
   stats              Json? // 移動件数・重複破棄件数・失われたGiftEdit件数等
+  acknowledgedAt     DateTime? // 事後通知バナーを閉じた時刻。nullなら未読
   createdAt          DateTime  @default(now())
 
   @@index([streamerId, createdAt])

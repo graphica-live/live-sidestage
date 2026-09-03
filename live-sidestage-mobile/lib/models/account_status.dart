@@ -30,6 +30,9 @@ class AccountStatus {
   /// だけでPRO/ULTRAユーザーの設定が消える事故になる。
   final bool isFallback;
 
+  /// TikTok ID自動合流の事後通知(未読が無ければnull)。閉じたらacknowledgeMergeNotice()で既読化する。
+  final RecentMergeNotice? recentMerge;
+
   const AccountStatus({
     required this.userId,
     required this.plan,
@@ -40,6 +43,7 @@ class AccountStatus {
     required this.maintenanceMode,
     this.latestVersion,
     this.isFallback = false,
+    this.recentMerge,
   });
 
   /// サーバーから取得できるまで(または取得に失敗したとき)の既定値。
@@ -59,6 +63,20 @@ class AccountStatus {
 
   bool hasFeature(String key) => features.contains(key);
 
+  /// 通知バナーを閉じた直後、次のサーバー再取得を待たずローカルで既読反映するためだけに使う。
+  AccountStatus withoutRecentMerge() => AccountStatus(
+        userId: userId,
+        plan: plan,
+        mobileBetaActive: mobileBetaActive,
+        planLabel: planLabel,
+        features: features,
+        minimumSupportedVersion: minimumSupportedVersion,
+        maintenanceMode: maintenanceMode,
+        latestVersion: latestVersion,
+        isFallback: isFallback,
+        recentMerge: null,
+      );
+
   factory AccountStatus.fromJson(Map<String, dynamic> json) {
     final rawFeatures = json['features'];
     final plan = json['plan'] as String? ?? 'FREE';
@@ -71,6 +89,41 @@ class AccountStatus {
       minimumSupportedVersion: json['minimumSupportedVersion'] as String? ?? '0.0.0',
       latestVersion: json['latestVersion'] as String?,
       maintenanceMode: json['maintenanceMode'] == true,
+      recentMerge: RecentMergeNotice.tryParse(json['recentMerge']),
+    );
+  }
+}
+
+/// TikTok ID自動合流の事後通知バナー(Web版と同一の2パターン)。
+class RecentMergeNotice {
+  final String id;
+  final String outcome; // "MERGED" | "BLOCKED_OLD_HANDLE_ALIVE" | "SELF_NOT_FOUND"
+  final String? oldTiktokId;
+  final int? giftCount;
+
+  const RecentMergeNotice({
+    required this.id,
+    required this.outcome,
+    this.oldTiktokId,
+    this.giftCount,
+  });
+
+  bool get isMerged => outcome == 'MERGED';
+
+  String get message => isMerged
+      ? '旧ID @${oldTiktokId ?? ''} のギフト${giftCount ?? 0}件を引き継ぎました'
+      : '引き継げなかったデータがあります。サポートへご連絡ください';
+
+  static RecentMergeNotice? tryParse(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'];
+    final outcome = json['outcome'];
+    if (id is! String || outcome is! String) return null;
+    return RecentMergeNotice(
+      id: id,
+      outcome: outcome,
+      oldTiktokId: json['oldTiktokId'] as String?,
+      giftCount: json['giftCount'] as int?,
     );
   }
 }
