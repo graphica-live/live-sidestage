@@ -40,7 +40,9 @@ export function isLowValueCleanupDisabled(settingValue: string | null): boolean 
 export type LowValueCandidate = { id: string; tiktokId: string; userIds: string[] };
 
 /**
- * 監視停止判定の対象候補を抽出する。
+ * 監視停止判定の対象候補を抽出する。Streamerが0人の部屋(情報プール目的で
+ * watchedRoomFilter()が監視を続けている部屋)も対象に含む — 課金/アクティブ
+ * watcherが存在しないのと同じ扱いになり、ダイヤ閾値だけで停止判定される。
  *
  * 除外条件: 事務所監視(AgencyWatch)中・イベント監視(monitorUntil)中・既に監視停止済み
  * のRoom。これらはリソースが解放されない(watchedRoomFilter()の他の条件で接続が
@@ -51,7 +53,6 @@ export async function selectLowValueCandidates(now: Date, limit: number): Promis
 
   const rooms = await prisma.tiktokRoom.findMany({
     where: {
-      streamers: { some: {} },
       watches: { none: {} },
       monitoringSuspended: false,
       OR: [{ monitorUntil: null }, { monitorUntil: { lte: now } }],
@@ -121,11 +122,13 @@ export async function suspendLowValueRoom(
   now: Date = new Date()
 ): Promise<LowValueAuditEntry | null> {
   return prisma.$transaction(async (tx) => {
+    // Streamerが0人(情報プール目的で監視継続中の部屋)でもここで弾かない。
+    // userIds=[]ならroomHasPaidWatcher/hasProtectedActiveWatcherは両方falseを返し、
+    // ダイヤ閾値だけで判定される(課金者もアクティブwatcherもいないのと同じ扱い)。
     const streamers = await tx.streamer.findMany({
       where: { roomId: room.id },
       select: { userId: true },
     });
-    if (streamers.length === 0) return null;
 
     const userIds = streamers.map((s) => s.userId);
 

@@ -60,8 +60,13 @@ function newMsgId() {
 }
 
 async function createRoom() {
+  // monitoringSuspended: true は監視対象から外すための隔離。Streamer 0人の部屋も
+  // watchedRoomFilter() の監視対象になったため、これが無いと並行して走る listener 系
+  // テストの getMyRooms() がこの部屋をグローバルに claim して workerId /
+  // listenerStatus を書きに来る。combo の delta 検証には監視は要らない
+  // (このファイルは startListener() を明示的に呼ぶので接続自体はできる)。
   return prisma.tiktokRoom.create({
-    data: { tiktokId: `itest_combo_${suffix()}` },
+    data: { tiktokId: `itest_combo_${suffix()}`, monitoringSuspended: true },
   });
 }
 

@@ -1,5 +1,9 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // バトル履歴の確定処理(BattleHistory系テーブルへのスナップショット保存)を検証する。
+//
+// ここで作る TiktokRoom は monitoringSuspended: true にする。Streamer 0人の部屋も
+// watchedRoomFilter() の監視対象になったため、そのままだと並行して走る listener 系テストの
+// getMyRooms() がこの部屋をグローバルに claim して workerId / listenerStatus を書きに来る。
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
@@ -27,11 +31,13 @@ let noHostRoomId: string;
 
 beforeAll(async () => {
   const selfRoom = await prisma.tiktokRoom.create({
-    data: { tiktokId: SELF_TIKTOK_ID, hostUserId: SELF_ANCHOR_ID },
+    data: { monitoringSuspended: true, tiktokId: SELF_TIKTOK_ID, hostUserId: SELF_ANCHOR_ID },
   });
   selfRoomId = selfRoom.id;
   // hostUserId が未解決(fill-onceのバックフィル待ち)の部屋。
-  const noHostRoom = await prisma.tiktokRoom.create({ data: { tiktokId: NO_HOST_TIKTOK_ID, hostUserId: null } });
+  const noHostRoom = await prisma.tiktokRoom.create({
+    data: { monitoringSuspended: true, tiktokId: NO_HOST_TIKTOK_ID, hostUserId: null },
+  });
   noHostRoomId = noHostRoom.id;
 });
 

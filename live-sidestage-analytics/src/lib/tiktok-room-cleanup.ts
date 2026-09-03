@@ -90,7 +90,6 @@ export async function selectCleanupCandidates(now: Date, limit: number): Promise
     where: {
       listenerStatus: { in: ["retrying", "error"] },
       unhealthySince: { lte: unhealthyCutoff },
-      streamers: { some: {} },
       monitoringSuspended: false,
       OR: [{ lastExistenceCheckAt: null }, { lastExistenceCheckAt: { lte: cooldownCutoff } }],
     },
@@ -243,11 +242,13 @@ export async function suspendNotFoundRoom(
 
     const giftCount = await tx.gift.count({ where: { roomId: room.id } });
 
+    // Streamerが0人(情報プール目的で監視継続中の部屋)でもここで弾かない。tiktok-low-value-cleanup.ts
+    // と同じ扱い: userIds=[]ならroomHasPaidWatcherは常にfalseを返すので、課金ユーザー無しとして
+    // 停止判定を続行する。
     const streamers = await tx.streamer.findMany({
       where: { roomId: room.id },
       select: { userId: true },
     });
-    if (streamers.length === 0) return null;
 
     // 課金ユーザーが1人でも監視しているRoomは、TikTok上NOT_FOUND確定でも自動停止しない。
     if (await roomHasPaidWatcher(streamers.map((s) => s.userId), tx)) {

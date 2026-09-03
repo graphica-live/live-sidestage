@@ -2072,17 +2072,20 @@ export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot
 type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 
 // 接続を維持すべき部屋の条件。次のいずれかが成立していれば対象。
-//  - 配信者本人の登録(Streamer)が1人以上いる — 従来どおり
+//  - monitoringSuspendedがfalse — 配信者(Streamer)の登録有無を問わない。Streamerが0人の
+//    部屋も、tiktok-low-value-cleanup.tsが停止判定するまでは情報をプールし続ける方針
+//    (tiktokIdのハンドル変更でStreamerの紐付けが別Room行へ移った場合に、旧Room行が
+//    Streamer 0人になった瞬間切断されるのを避ける意図もある)
 //  - 事務所の監視対象(AgencyWatch)が1件以上ある
 //  - monitorUntilが未来 — 外部サービス(live-sidestage-event)が期限付きで監視を要求している
-// どれも満たさない部屋(全員が退会/re-registration/監視解除/事務所削除済みで、監視要求も期限切れ)は
+// どれも満たさない部屋(明示的にmonitoringSuspended=trueにされ、監視要求も期限切れ)は
 // 除外され、ensureAllListenersAlive()の第2ループで切断される。
 // 事務所を削除するとwatchはカスケードで消えるため、この条件だけで接続も止まる。
 // nowは呼び出し側が1回だけ評価した時刻を渡す(複数クエリ間で基準時刻がずれないようにするため)。
 export function watchedRoomFilter(now: Date = new Date()): Prisma.TiktokRoomWhereInput {
   return {
     OR: [
-      { streamers: { some: {} }, monitoringSuspended: false },
+      { monitoringSuspended: false },
       { watches: { some: {} } },
       { monitorUntil: { gt: now } },
     ],

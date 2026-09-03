@@ -45,8 +45,11 @@ async function makeGift(overrides: GiftOverrides) {
 beforeAll(async () => {
   const [a, b, e] = await Promise.all([
     prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_A } }),
-    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_B } }),
-    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_EMPTY } }),
+    // B / EMPTY は Streamer も AgencyWatch も付けない集計専用の部屋。Streamer 0人でも
+    // watchedRoomFilter() の監視対象になったため、monitoringSuspended: true で共有プールから
+    // 外す(並行して走る listener 系テストの getMyRooms() に claim させない)。
+    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_B, monitoringSuspended: true } }),
+    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_EMPTY, monitoringSuspended: true } }),
   ]);
   roomA = a.id;
   roomB = b.id;

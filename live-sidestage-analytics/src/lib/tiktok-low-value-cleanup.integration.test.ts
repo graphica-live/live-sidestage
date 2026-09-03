@@ -148,12 +148,12 @@ describe("selectLowValueCandidates", () => {
     await attachStreamer(cooldownNotElapsedRoom.id, u5.id);
   });
 
-  it("Streamerがいて事務所監視/イベント監視/停止済み/クールダウン中でないRoomのみ候補に入る", async () => {
+  it("事務所監視/イベント監視/停止済み/クールダウン中でないRoomが候補に入る(Streamer0人も含む)", async () => {
     const candidates = await selectLowValueCandidates(NOW, 200);
     const ids = candidates.map((c) => c.id);
 
     expect(ids).toContain(eligible.id);
-    expect(ids).not.toContain(noStreamerRoom.id);
+    expect(ids).toContain(noStreamerRoom.id);
     expect(ids).not.toContain(agencyWatchedRoom.id);
     expect(ids).not.toContain(monitorUntilFutureRoom.id);
     expect(ids).not.toContain(alreadySuspendedRoom.id);
@@ -254,10 +254,16 @@ describe("suspendLowValueRoom", () => {
     expect(after.monitoringSuspended).toBe(false);
   });
 
-  it("Streamerが0人のRoomは停止しない", async () => {
+  it("Streamerが0人のRoomも課金者・アクティブwatcher相当がいないのと同じ扱いでダイヤ判定される", async () => {
     const room = await makeRoom({ tag: "empty" });
 
     const entry = await suspendLowValueRoom(room, false, NOW);
-    expect(entry).toBeNull();
+    expect(entry).not.toBeNull();
+    expect(entry?.outcome).toBe("suspended");
+    expect(entry?.watcherCount).toBe(0);
+    expect(entry?.monthlyDiamonds).toBe(0);
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.monitoringSuspended).toBe(true);
   });
 });

@@ -203,9 +203,12 @@ describe("monitorUntilによる期限付き監視", () => {
   const FUTURE = () => new Date(Date.now() + 60 * 60 * 1000);
   const PAST = () => new Date(Date.now() - 60 * 60 * 1000);
 
+  // monitoringSuspended:true で作る。新仕様ではStreamer0人のRoomも既定で監視対象になる
+  // (情報プール方針)ため、trueにしないと「monitorUntilが唯一の監視理由」というこの
+  // describeの検証意図が成立しない。
   async function createRoom(tiktokId: string, monitorUntil: Date | null) {
     return prisma.tiktokRoom.create({
-      data: { tiktokId, monitorUntil },
+      data: { tiktokId, monitorUntil, monitoringSuspended: true },
       select: { id: true },
     });
   }

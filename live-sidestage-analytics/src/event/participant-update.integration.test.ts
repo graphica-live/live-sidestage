@@ -61,16 +61,18 @@ async function newEvent() {
 /**
  * `public."TiktokRoom"` を1行作って参加者を1人ぶら下げる。lease も台帳へ入れる。
  *
- * `TiktokRoom.monitorUntil` は**立てない**（`session-update.integration.test.ts` と同じ）。
- * 未来の期限を入れると `watchedRoomFilter()` の監視対象になり、並行して走る
+ * `TiktokRoom.monitorUntil` は**立てず**、`monitoringSuspended` を **true** にする
+ * （`session-update.integration.test.ts` と同じ）。未来の期限を入れた場合はもちろん、
+ * `watchedRoomFilter()` が「Streamer 0人でも `monitoringSuspended` が false なら監視対象」へ
+ * 変わったため**何も付けない部屋も監視対象になる**。監視対象になると、並行して走る
  * listener 系テストの `getMyRooms()` が未割当の監視対象を**グローバルに**claim して
  * `workerId` を書きに来る。改名の検証には要らないので、共有プールへ足さない。
  */
 async function newParticipant(eventId: string, displayName: string, handle?: string) {
   const tiktokId = handle ?? `${PREFIX}_${uniqueSuffix()}`;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW())
+    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);

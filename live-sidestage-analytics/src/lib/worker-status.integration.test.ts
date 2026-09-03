@@ -22,6 +22,7 @@ async function makeRoom(data: {
   workerId?: number | null;
   monitorUntil?: Date | null;
   listenerStatus?: string | null;
+  monitoringSuspended?: boolean;
 }) {
   const room = await prisma.tiktokRoom.create({
     data: {
@@ -29,6 +30,7 @@ async function makeRoom(data: {
       workerId: data.workerId ?? null,
       monitorUntil: data.monitorUntil ?? null,
       listenerStatus: data.listenerStatus ?? null,
+      monitoringSuspended: data.monitoringSuspended ?? false,
     },
     select: { id: true, tiktokId: true },
   });
@@ -76,17 +78,22 @@ beforeAll(async () => {
   await attachWatch(watchRoom.id, watchRoom.tiktokId);
 
   // イベントの期限付き監視だけがある部屋(Streamer も AgencyWatch も無い)。
+  // monitoringSuspended:true にしておくことで、「monitorUntil が唯一の監視理由」に
+  // なる(そうしないと新仕様ではStreamer/AgencyWatch無しでも既定で監視対象になり、
+  // monitorUntil を過去にずらした後も別の理由で拾われ続けてしまう)。
   eventRoom = await makeRoom({
     tag: "evt",
     workerId: null,
     monitorUntil: new Date(Date.now() + 60 * 60 * 1000),
+    monitoringSuspended: true,
   });
 
-  // どの条件も満たさない部屋。監視対象外なので拾われてはいけない。
+  // どの条件も満たさない部屋(明示的にmonitoringSuspended)。監視対象外なので拾われてはいけない。
   idleRoom = await makeRoom({
     tag: "idl",
     workerId: 0,
     monitorUntil: new Date(Date.now() - 60 * 60 * 1000),
+    monitoringSuspended: true,
   });
 });
 
@@ -125,7 +132,7 @@ describe("fetchAssignedRooms", () => {
     expect(found!.workerId).toBeNull();
   });
 
-  it("どの条件も満たさない部屋(監視期限切れ・登録なし)は拾わない", async () => {
+  it("monitoringSuspendedされ他の条件も満たさない部屋(監視期限切れ・登録なし)は拾わない", async () => {
     const rooms = await fetchAssignedRooms();
     expect(rooms.find((r) => r.roomId === idleRoom.id)).toBeUndefined();
   });

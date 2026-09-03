@@ -199,9 +199,9 @@ describe("selectCleanupCandidates", () => {
     expect(candidates.some((c) => c.id === connectedRoom.id)).toBe(false);
   });
 
-  it("Streamerが1人もいない部屋は拾わない", async () => {
+  it("Streamerが1人もいない部屋も拾う(情報プール方針。改名でハンドルが死んだ旧Roomを永久にretryさせない)", async () => {
     const candidates = await selectCleanupCandidates(NOW, 100);
-    expect(candidates.some((c) => c.id === noStreamerRoom.id)).toBe(false);
+    expect(candidates.some((c) => c.id === noStreamerRoom.id)).toBe(true);
   });
 
   it("既に監視停止済み(monitoringSuspended:true)の部屋は拾わない", async () => {
@@ -329,6 +329,25 @@ describe("suspendNotFoundRoom", () => {
 
     const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(roomAfter.monitoringSuspended).toBe(false);
+  });
+
+  it("Streamerが0人のRoomも停止する(情報プール方針。課金者判定はuserIds=[]でfalse相当になる)", async () => {
+    const room = await makeRoom({
+      tag: "no-streamer-suspend",
+      listenerStatus: "retrying",
+      notFoundStreak: NOT_FOUND_STREAK_REQUIRED,
+      notFoundFirstAt: new Date(NOW.getTime() - 10 * 86_400_000),
+    });
+    // Streamerを付けない。
+
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+
+    expect(entry).not.toBeNull();
+    expect(entry!.outcome).toBe("suspended");
+    expect(entry!.watcherCount).toBe(0);
+
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.monitoringSuspended).toBe(true);
   });
 
   it("TOCTOU再確認: DB上のnotFoundStreakが要件未満に戻っていれば何もせずnullを返す(connected復帰等)", async () => {
