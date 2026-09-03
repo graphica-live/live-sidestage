@@ -318,13 +318,17 @@ model TiktokRoom {
   // それ以降のRoomへ永久に到達しない(lastExistenceCheckAtと同じ理由)。
   hostUserIdAttemptedAt DateTime?
 
-  streamers       Streamer[]
-  gifts           Gift[]
-  battles         TiktokBattle[]
-  battleItemUses  TiktokBattleItemUse[]
-  battleHistories BattleHistory[]
-  watches         AgencyWatch[]
-  likeTallies     LikeTally[]
+  streamers          Streamer[]
+  gifts              Gift[]
+  battles            TiktokBattle[]
+  battleItemUses     TiktokBattleItemUse[]
+  battleBonusMissions TiktokBattleBonusMission[]
+  battleArmiesSnapshots TiktokBattleArmiesSnapshot[]
+  battleHistories    BattleHistory[]
+  watches            AgencyWatch[]
+  likeTallies        LikeTally[]
+  monitorLeases      RoomMonitorLease[]
+  connectionIntervals RoomConnectionInterval[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
@@ -334,6 +338,58 @@ model TiktokRoom {
   // 「同じhostUserIdを持つ別ハンドルのRoom」を探す検索用(tiktok-id-migration)。
   // 改名の検知はこの引き当てが唯一の手段なので、全件スキャンにさせない。
   @@index([hostUserId])
+  @@schema("public")
+}
+
+// Roomの監視理由を独立管理する(TiktokRoom.monitorUntilの単一値では
+// EVENT監視とCOLLAB監視が同じroomへ同時発行された場合に競合・誤解放しうるため新設)。
+//
+// **release操作は必ずreason+referenceIdで絞り込むこと。** roomId単独で操作すると
+// 他reasonのleaseを誤って消してしまう。
+//
+// referenceIdはEVENT用途では既存Event.id。COLLAB用途は**決定的な値**にする
+// (例: `${selfRoomId}:${counterpartTiktokUserId}`)。内部採番の乱数idにしない —
+// 別Workerが同一コラボを両側から検知した場合でも、upsertが同じキーへ収束するようにするため。
+//
+// 移行期間中はTiktokRoom.monitorUntilへのデュアルライトを維持する(euler-usage.ts /
+// tiktok-low-value-cleanup.ts / worker-status.tsの既存の読み手3箇所が動き続けるように)。
+model RoomMonitorLease {
+  id          String    @id @default(cuid())
+  roomId      String
+  reason      String // "EVENT" | "COLLAB"
+  referenceId String
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  releasedAt  DateTime? // null=有効
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, reason, referenceId])
+  @@index([roomId, releasedAt, expiresAt])
+  @@map("room_monitor_leases")
+  @@schema("public")
+}
+
+// Room/listenerの接続区間ログ(Battle非依存の汎用観測)。バトル確定処理の
+// captureStatus/captureCoverage算出(RoomConnectionIntervalの区間unionをbattle windowに
+// 重ねて被覆率を出す)に使う。
+//
+// endedAt:nullは「接続中」を表すが、Worker crash等でこの行が更新されなくなる可能性があるため
+// lastHeartbeatAtを持つ。coverage算出時、lastHeartbeatAtが閾値(例: 90秒)を超えて更新停止していれば
+// その時刻で打ち切ったものとして扱う(でないとcrash後のバトルが偽の100%coverageになる)。
+model RoomConnectionInterval {
+  id               String    @id @default(cuid())
+  roomId           String
+  startedAt        DateTime
+  endedAt          DateTime?
+  disconnectReason String?
+  lastHeartbeatAt  DateTime  @default(now())
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, startedAt])
+  @@index([roomId, endedAt])
+  @@map("room_connection_intervals")
   @@schema("public")
 }
 
@@ -730,6 +786,12 @@ model Gift {
   // 1 = combo可能ギフト。groupId="0" が3591件流入していて、それが実際にcomboなのか
   // 単発ギフトなのかを本番DBだけでは判定できないため、combo キーの設計見直し用に残す。
   giftType        Int?
+  // WebcastGiftMessage.matchInfo(shared/tiktok-live-connectorのfork改造で取得可能になった
+  // バトルアイテム効果の刻印)。multiplierType=0は「倍率なし」を明示する値で、未観測(旧データ・
+  // 取得失敗)はnullのまま区別する。BATTLE-EVENTS.mdのMultiplierType enum: 1=CRITICAL_STRIKE(グローブ crit)
+  // / 2=TOP_2 / 3=TOP_3 / 4=VAULT_GLOVE_CRITICAL_STRIKE(fork独自追加)。
+  multiplierType  Int?
+  multiplierValue Int?
 
   room  TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   edits GiftEdit[]
@@ -873,6 +935,56 @@ model TiktokBattleItemUse {
   @@schema("public")
 }
 
+// バトル中盤のボーナスミッション区間(linkMicBattleTask、taskStart→taskUpdate×n→taskSettle→
+// [報酬区間]→rewardSettleのライフサイクル)。taskUpdate(進捗)は高頻度なため保存しない。
+//
+// **battleIdへFK制約は張らない**(TiktokBattleItemUseと同じ理由)。
+//
+// rewardSumは**observing roomごとの値**(BATTLE-EVENTS.mdに明記の通り「そのルームが区間中に
+// 獲得したボーナスpt合計」)。TiktokBattleと同じく、両サイドを監視している場合は別行として届く。
+model TiktokBattleBonusMission {
+  id     String @id @default(cuid())
+  roomId String
+  battleId String
+
+  targetType     Int // 1=人数系 / 2=実弾pt系 / 8=チーム戦pt系(taskPeriodConfig.targetType)
+  progressTarget Int
+  rewardMultiple Int // 2 or 3
+
+  startedAt       DateTime  // taskStart受信時刻
+  settledAt       DateTime? // taskSettle受信時刻
+  taskResult      Int?      // 0=中間settle / 1=未達成 / 2=達成
+  rewardStartedAt DateTime? // 報酬区間開始目安
+  rewardEndedAt   DateTime? // rewardSettle受信時刻(区間終了の正)
+  rewardSum       Int?      // rewardSettle.sum相当。observing roomごとの値
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, battleId])
+  @@map("tiktok_battle_bonus_missions")
+  @@schema("public")
+}
+
+// linkMicArmies受信の都度追記する時系列スコアスナップショット。TiktokBattle.hostScores
+// (最新値への累積上書き、mergeBattleStateで増える方向のみマージ)と異なり、
+// 「初ギフトx倍」区間の逆算(ギフトのdiamondCountとスコア増分を突き合わせる、BATTLE-EVENTS.md
+// 4節)専用の中間データとして時系列を残す。確定後は逆算結果(BattleHistory.openingMultiplier)
+// のみが恒久化対象で、このテーブル自体はBattleHistory側へ複製しない。
+model TiktokBattleArmiesSnapshot {
+  id         String   @id @default(cuid())
+  roomId     String
+  battleId   String
+  occurredAt DateTime @default(now())
+  anchorId   String // スコア主体。1vs1はbattleItems[].userArmy[]単位、チーム戦はteamArmies[].teamUsers[]単位
+  score      String // 累積スコア。桁数が大きいためString(BattleHistoryParticipant.scoreと同じ理由)
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, battleId, occurredAt])
+  @@map("tiktok_battle_armies_snapshots")
+  @@schema("public")
+}
+
 // バトル履歴タブの確定スナップショット(非正規化キャッシュ)。
 //
 // バトル履歴タブは本来 TiktokBattle から時間窓を求め、その都度 Gift を集計している。
@@ -902,13 +1014,40 @@ model BattleHistory {
   sourceUpdatedAt   DateTime // 集計に使った全room TiktokBattle行のupdatedAt最大値。新旧Worker並走時のCASに使う
   finalizedAt       DateTime // 確定処理を実行した時刻
 
-  room         TiktokRoom                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  participants BattleHistoryParticipant[]
-  contributors BattleHistoryContributor[]
+  // 「初ギフトx倍」区間の逆算結果(TiktokBattleArmiesSnapshotとGiftのdiamondCountの突き合わせ)。
+  // 2/3/null(判定不能または倍率なし)。room非依存のバトル全体の値として1つ持つ
+  // (陣営間で値が食い違う観測が出た場合はBattleHistoryParticipant単位への変更を検討)。
+  openingMultiplier            Int?
+  openingMultiplierBasisGiftId String? // 判定に使ったGift.idの記録用。監査用途、FKは張らない
+
+  room          TiktokRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participants  BattleHistoryParticipant[]
+  contributors  BattleHistoryContributor[]
+  teams         BattleTeam[]
+  bonusMissions BattleHistoryBonusMission[]
 
   @@unique([roomId, battleId])
   @@index([roomId, windowStart])
   @@map("battle_histories")
+  @@schema("public")
+}
+
+// 確定済みバトルの陣営(チーム)。旧構造には存在しなかった概念のため、Phase1移行時は
+// 旧BattleHistoryごとにself/opponent 2チーム分をバックフィル生成する(externalTeamId: null)。
+//
+// externalTeamIdはTikTok teamArmies[].teamIdのコピー。欠落しうる値なのでnullable/非PKにする
+// (内部PKのidとは別に持つ)。
+model BattleTeam {
+  id              String  @id @default(cuid())
+  battleHistoryId String
+  externalTeamId  String?
+  officialScore   String?
+
+  battleHistory BattleHistory              @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
+  participants  BattleHistoryParticipant[]
+
+  @@index([battleHistoryId])
+  @@map("battle_teams")
   @@schema("public")
 }
 
@@ -930,15 +1069,45 @@ model BattleHistoryParticipant {
   nickName        String?
   score           String? // 確定時に観測できていたこのメンバーのスコア(最大30桁なのでString)。未観測ならnull
 
+  // --- 2026-09-03拡張: コラボ相手roomごとの個別貢献者記録に対応するための列 ---
+  // Expand段階につきすべてnullable。Backfillで埋め、Cutoverで読み出し側を切り替える。
+  battleTeamId String? // → BattleTeam.id。旧データはPhase1バックフィルでself/opponent 2チームを生成し紐付ける
+  roomId       String? // 1配信枠(room)=1participant。旧データはbattleHistory.roomId(自room)またはanchorId解決先(相手room)から埋める
+  isSelf       Boolean? // 旧side("self"|"opponent")から導出。正はこちら、sideは後方互換のため書き続ける
+  uniqueIdSnapshot String? // displayIdの後継。avatarUrlと違いTikTokハンドルは失効しないためそのままコピー
+  nicknameSnapshot String? // nickNameの後継
+
+  officialScore    String? // teamArmies由来の公式スコア(既存scoreと役割重複だが新構造の正として保持)
+  observedGiftTotal Int?    // Sidestage観測Gift合計(room単位)
+
+  captureStatus         String? // "complete" | "partial" | "unavailable"
+  captureCoverage       Float?  // 0.0〜1.0
+  captureStartedLateMs  Int?
+  captureEndedEarlyMs   Int?
+  captureGapMs          Int?
+  monitoringStartedAt   DateTime?
+  firstConnectedAt      DateTime?
+  lastDisconnectedAt    DateTime?
+
   battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
+  battleTeam    BattleTeam?   @relation(fields: [battleTeamId], references: [id], onDelete: SetNull)
+
+  giftEvents     BattleHistoryGiftEvent[]
+  itemCardEvents BattleHistoryItemCardEvent[]
+  bonusMissions  BattleHistoryBonusMission[]
 
   @@unique([battleHistoryId, anchorId])
+  @@index([battleTeamId])
   @@map("battle_history_participants")
   @@schema("public")
 }
 
 // 確定済みバトルの貢献者(送信者ごとの合計)。個々のギフトイベントは持たない。
 // **GiftEdit.hidden(閲覧者=Streamer単位の非表示編集)は反映しない**(確定は閲覧者非依存)。
+//
+// **2026-09-03: 後継のBattleHistoryGiftEventへ置き換え中。** 集約値からは個々のギフトイベントを
+// 復元できないため、Contract段階まではこのテーブルも残す(Cutoverで読み出しをGiftEvent基準へ切替後、
+// 別デプロイで削除)。新規の確定処理はこちらへ書き込まず、BattleHistoryGiftEventへ書き込む。
 model BattleHistoryContributor {
   id              String   @id @default(cuid())
   battleHistoryId String
@@ -952,6 +1121,87 @@ model BattleHistoryContributor {
 
   @@unique([battleHistoryId, uniqueId])
   @@map("battle_history_contributors")
+  @@schema("public")
+}
+
+// 確定済みバトルの個々のギフトイベント(いつ・誰が・何を投げたか)。集約せず1ギフト=1行で
+// 復元可能な形にする。通常のGift履歴とはFK/リレーションを張らず切り離す
+// (sourceGiftIdは監査用の文字列参照のみ。Giftが将来変更・削除されてもこの行は影響を受けない)。
+//
+// GiftEdit.hiddenは反映しない(BattleHistoryContributorと同じ確定原則)。一意制約は張らない
+// (1送信者が同一バトル内で複数回投げれば複数行になるのが正しい)。
+model BattleHistoryGiftEvent {
+  id String @id @default(cuid())
+
+  participantId String
+
+  occurredAt             DateTime // Gift.receivedAtのコピー
+  senderUniqueIdSnapshot String   // Gift.uniqueIdのコピー
+  senderNicknameSnapshot String   // Gift.nicknameのコピー
+  senderTiktokUserId     String?  // 将来拡張、当面null(Gift側にuserId列が無いため)
+
+  giftId           Int    // TikTok側ギフト種別ID(Gift.giftIdのコピー)
+  giftNameSnapshot String // Gift.giftNameのコピー(英語名)
+  repeatCount      Int    // Gift.repeatCountのコピー
+  diamondCount     Int    // Gift.diamondCountのコピー
+  totalDiamonds    Int    // Gift.totalDiamondsのコピー
+
+  multiplierType  Int? // Gift.multiplierTypeのコピー
+  multiplierValue Int? // Gift.multiplierValueのコピー
+
+  sourceGiftId String // 複製元Gift.idの記録用。FK/リレーションは張らない(切り離す)
+
+  participant BattleHistoryParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId, occurredAt])
+  @@index([participantId, senderUniqueIdSnapshot])
+  @@map("battle_history_gift_events")
+  @@schema("public")
+}
+
+// 確定済みバトルのアイテムカード使用イベント(誰が・いつ・どちら側で使ったか)。
+// 生観測はTiktokBattleItemUse(実装済み)。確定時にこのroomのwindow内のものだけ複製する。
+model BattleHistoryItemCardEvent {
+  id String @id @default(cuid())
+
+  participantId String
+
+  occurredAt              DateTime // TiktokBattleItemUse.receivedAtのコピー
+  cardType                Int
+  senderUniqueIdSnapshot  String?
+  senderNicknameSnapshot  String?
+  senderTiktokUserId      String? // TiktokBattleItemUse.senderUserIdのコピー
+
+  participant BattleHistoryParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([participantId, occurredAt])
+  @@map("battle_history_item_card_events")
+  @@schema("public")
+}
+
+// 確定済みバトルのボーナスミッション区間。ミッション設定はバトル全体で共有だが、
+// rewardSumはroom別のためparticipant単位で複数行になりうる(TiktokBattleBonusMissionと同じ理由)。
+model BattleHistoryBonusMission {
+  id              String   @id @default(cuid())
+  battleHistoryId String
+  participantId   String
+
+  targetType      Int
+  progressTarget  Int
+  rewardMultiple  Int
+  startedAt       DateTime
+  settledAt       DateTime?
+  taskResult      Int?
+  rewardStartedAt DateTime?
+  rewardEndedAt   DateTime?
+  rewardSum       Int?
+
+  battleHistory BattleHistory            @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
+  participant   BattleHistoryParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([battleHistoryId])
+  @@index([participantId])
+  @@map("battle_history_bonus_missions")
   @@schema("public")
 }
 
