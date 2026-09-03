@@ -4,4 +4,4 @@
 -- 注意: 本番デプロイは `prisma db push --accept-data-loss` を使用しており、このファイルは
 -- 実行されない(db pushはmigrationsフォルダを読まない)。
 
-DROP TABLE "event"."EventScoreAdjustment";
+DROP TABLE IF EXISTS "event"."EventScoreAdjustment";
