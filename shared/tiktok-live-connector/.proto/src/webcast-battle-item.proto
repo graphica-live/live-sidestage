@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+// Custom addition (live-sidestage fork, not part of upstream zerodytrash/TikTok-Live-Connector).
+// WebcastLinkMicBattleItemCard is completely missing from upstream's schema, so decodedData was
+// always {}. Field numbers below were reverse-engineered from real payloads captured during live
+// battles (see tiktok-probe skill's KNOWLEDGE.md) and verified against multiple real samples for
+// every observed card_type. Undefined fields are safely skipped by protobuf, so this definition is
+// intentionally partial -- it captures only what's needed to detect "who used which item against
+// which broadcaster", not every cosmetic field (icon URLs, popup URL, etc.) in the payload.
+//
+// card_type discriminates which slot below is populated:
+//   2  = glove (crit boost) used
+//   4  = periodic "contributors got power-ups" notice -- NOT an item-use event, no sender present
+//   6  = hammer (effect card) used
+//   10 = rank-2 booster used
+//   11 = rank-3 booster used
+//   12 = vault glove (gold glove) used
+// See BattleItemCardType in src/types/battle.ts for the TS-side enum.
+message WebcastLinkMicBattleItemCard {
+    CommonMessageData common = 1;
+    int64 battle_id = 2;
+    int32 card_type = 3;
+
+    BattleItemCard glove_card = 5;
+    BattleItemCard powerup_summary_card = 7;
+    BattleItemCard hammer_card = 9;
+    BattleItemCard top2_booster_card = 13;
+    BattleItemCard top3_booster_card = 14;
+    BattleItemCard vault_glove_card = 15;
+
+    // Common shape across every card_type except 4 (verified against real samples for
+    // card_type 2/6/10/11/12). field 1 (card name/icon info) intentionally omitted: its internal
+    // layout differs between card types (a flat CardInfo for 2/6/12, one extra nesting level for
+    // 10/11) and isn't needed to detect item usage -- card_type already discriminates the item.
+    message BattleItemCard {
+        int64 target_host_user_id = 2; // broadcaster on whose side the item was used
+        BattleItemCardComment comment = 3;
+    }
+
+    message BattleItemCardComment {
+        string comment_key = 1;      // e.g. "pm_mt_boost_send_crit_comment"
+        string comment_template = 2; // e.g. "{0:user} sent 1 boosting glove"
+        BattleItemCardSenderEnvelope sender_envelope = 4;
+    }
+
+    message BattleItemCardSenderEnvelope {
+        BattleItemCardSenderWrapper sender_wrapper = 21;
+    }
+
+    message BattleItemCardSenderWrapper {
+        User sender = 1; // same shape as the existing User message (verified: userId=1, nickname=3, avatar=9, uniqueId=38)
+    }
+}

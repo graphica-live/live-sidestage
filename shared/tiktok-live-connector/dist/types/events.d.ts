@@ -1,4 +1,4 @@
-import { ControlAction, RoomVerifyMessage, WebcastBarrageMessage, WebcastCaptionMessage, WebcastChatMessage, WebcastControlMessage, WebcastEmoteChatMessage, WebcastEnvelopeMessage, WebcastGiftMessage, WebcastGoalUpdateMessage, WebcastHourlyRankMessage, WebcastImDeleteMessage, WebcastInRoomBannerMessage, WebcastLikeMessage, WebcastLinkLayerMessage, WebcastLinkMessage, WebcastLinkMicArmies, WebcastLinkMicBattle, WebcastLinkMicBattlePunishFinish, WebcastLinkmicBattleTaskMessage, WebcastLinkMicFanTicketMethod, WebcastLinkMicMethod, WebcastLiveIntroMessage, WebcastMemberMessage, WebcastMsgDetectMessage, WebcastOecLiveShoppingMessage, WebcastPollMessage, WebcastQuestionNewMessage, WebcastRankTextMessage, WebcastRankUpdateMessage, WebcastRoomMessage, WebcastRoomPinMessage, WebcastRoomUserSeqMessage, WebcastSocialMessage, WebcastUnauthorizedMemberMessage } from '../types/tiktok-schema';
+import { ControlAction, RoomVerifyMessage, WebcastBarrageMessage, WebcastCaptionMessage, WebcastChatMessage, WebcastControlMessage, WebcastEmoteChatMessage, WebcastEnvelopeMessage, WebcastGiftMessage, WebcastGoalUpdateMessage, WebcastHourlyRankMessage, WebcastImDeleteMessage, WebcastInRoomBannerMessage, WebcastLikeMessage, WebcastLinkLayerMessage, WebcastLinkMessage, WebcastLinkMicArmies, WebcastLinkMicBattle, WebcastLinkMicBattleItemCard, WebcastLinkMicBattlePunishFinish, WebcastLinkmicBattleTaskMessage, WebcastLinkMicFanTicketMethod, WebcastLinkMicMethod, WebcastLiveIntroMessage, WebcastMemberMessage, WebcastMsgDetectMessage, WebcastOecLiveShoppingMessage, WebcastPollMessage, WebcastQuestionNewMessage, WebcastRankTextMessage, WebcastRankUpdateMessage, WebcastRoomMessage, WebcastRoomPinMessage, WebcastRoomUserSeqMessage, WebcastSocialMessage, WebcastUnauthorizedMemberMessage } from '../types/tiktok-schema';
 import { DecodedWebcastPushFrame, RoomGiftInfo, RoomInfo, WebcastEventMessage } from '../types/client';
 import TikTokWsClient from '../lib/ws/lib/ws-client';
 export declare enum ControlEvent {
@@ -49,7 +49,8 @@ export declare enum WebcastEvent {
     ROOM_VERIFY = "roomVerify",
     LINK_LAYER = "linkLayer",
     ROOM_PIN = "roomPin",
-    SUPER_FAN = "superFan"
+    SUPER_FAN = "superFan",
+    LINK_MIC_BATTLE_ITEM_CARD = "linkMicBattleItemCard"
 }
 export declare enum ConnectState {
     DISCONNECTED = "DISCONNECTED",
@@ -110,6 +111,7 @@ export declare type ClientEventMap = {
     [WebcastEvent.ROOM_VERIFY]: EventHandler<RoomVerifyMessage>;
     [WebcastEvent.LINK_LAYER]: EventHandler<WebcastLinkLayerMessage>;
     [WebcastEvent.ROOM_PIN]: EventHandler<WebcastRoomPinMessage>;
+    [WebcastEvent.LINK_MIC_BATTLE_ITEM_CARD]: EventHandler<WebcastLinkMicBattleItemCard>;
 };
 export declare const WebcastEventMap: Record<BasicWebcastEventMessage, keyof ClientEventMap>;
 export declare type BasicWebcastEventMessage = keyof Omit<WebcastEventMessage, 'WebcastGiftMessage'>;

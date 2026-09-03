@@ -321,6 +321,11 @@ export declare enum MultiplierType {
     MULTIPLIER_TYPE_CRITICAL_STRIKE = 1,
     MULTIPLIER_TYPE_TOP_2 = 2,
     MULTIPLIER_TYPE_TOP_3 = 3,
+    /**
+     * MULTIPLIER_TYPE_VAULT_GLOVE_CRITICAL_STRIKE - Custom addition (live-sidestage fork): observed on gifts crit-boosted by a vault glove
+     * (WebcastLinkMicBattleItemCard card_type=12). Not present in upstream.
+     */
+    MULTIPLIER_TYPE_VAULT_GLOVE_CRITICAL_STRIKE = 4,
     UNRECOGNIZED = -1
 }
 export declare enum LinkmicGiftExpressionStrategy {
@@ -2843,6 +2848,60 @@ export interface WebcastPushFrame_HeadersEntry {
     key: string;
     value: string;
 }
+/**
+ * Custom addition (live-sidestage fork, not part of upstream zerodytrash/TikTok-Live-Connector).
+ * WebcastLinkMicBattleItemCard is completely missing from upstream's schema, so decodedData was
+ * always {}. Field numbers below were reverse-engineered from real payloads captured during live
+ * battles (see tiktok-probe skill's KNOWLEDGE.md) and verified against multiple real samples for
+ * every observed card_type. Undefined fields are safely skipped by protobuf, so this definition is
+ * intentionally partial -- it captures only what's needed to detect "who used which item against
+ * which broadcaster", not every cosmetic field (icon URLs, popup URL, etc.) in the payload.
+ *
+ * card_type discriminates which slot below is populated:
+ *   2  = glove (crit boost) used
+ *   4  = periodic "contributors got power-ups" notice -- NOT an item-use event, no sender present
+ *   6  = hammer (effect card) used
+ *   10 = rank-2 booster used
+ *   11 = rank-3 booster used
+ *   12 = vault glove (gold glove) used
+ * See BattleItemCardType in src/types/battle.ts for the TS-side enum.
+ */
+export interface WebcastLinkMicBattleItemCard {
+    common: CommonMessageData | undefined;
+    battleId: string;
+    cardType: number;
+    gloveCard: WebcastLinkMicBattleItemCard_BattleItemCard | undefined;
+    powerupSummaryCard: WebcastLinkMicBattleItemCard_BattleItemCard | undefined;
+    hammerCard: WebcastLinkMicBattleItemCard_BattleItemCard | undefined;
+    top2BoosterCard: WebcastLinkMicBattleItemCard_BattleItemCard | undefined;
+    top3BoosterCard: WebcastLinkMicBattleItemCard_BattleItemCard | undefined;
+    vaultGloveCard: WebcastLinkMicBattleItemCard_BattleItemCard | undefined;
+}
+/**
+ * Common shape across every card_type except 4 (verified against real samples for
+ * card_type 2/6/10/11/12). field 1 (card name/icon info) intentionally omitted: its internal
+ * layout differs between card types (a flat CardInfo for 2/6/12, one extra nesting level for
+ * 10/11) and isn't needed to detect item usage -- card_type already discriminates the item.
+ */
+export interface WebcastLinkMicBattleItemCard_BattleItemCard {
+    /** broadcaster on whose side the item was used */
+    targetHostUserId: string;
+    comment: WebcastLinkMicBattleItemCard_BattleItemCardComment | undefined;
+}
+export interface WebcastLinkMicBattleItemCard_BattleItemCardComment {
+    /** e.g. "pm_mt_boost_send_crit_comment" */
+    commentKey: string;
+    /** e.g. "{0:user} sent 1 boosting glove" */
+    commentTemplate: string;
+    senderEnvelope: WebcastLinkMicBattleItemCard_BattleItemCardSenderEnvelope | undefined;
+}
+export interface WebcastLinkMicBattleItemCard_BattleItemCardSenderEnvelope {
+    senderWrapper: WebcastLinkMicBattleItemCard_BattleItemCardSenderWrapper | undefined;
+}
+export interface WebcastLinkMicBattleItemCard_BattleItemCardSenderWrapper {
+    /** same shape as the existing User message (verified: userId=1, nickname=3, avatar=9, uniqueId=38) */
+    sender: User | undefined;
+}
 export interface Message {
     type: string;
     binary: Uint8Array;
@@ -4544,6 +4603,11 @@ export declare const HighScoreControlCfg: MessageFns<HighScoreControlCfg>;
 export declare const HeartbeatMessage: MessageFns<HeartbeatMessage>;
 export declare const WebcastPushFrame: MessageFns<WebcastPushFrame>;
 export declare const WebcastPushFrame_HeadersEntry: MessageFns<WebcastPushFrame_HeadersEntry>;
+export declare const WebcastLinkMicBattleItemCard: MessageFns<WebcastLinkMicBattleItemCard>;
+export declare const WebcastLinkMicBattleItemCard_BattleItemCard: MessageFns<WebcastLinkMicBattleItemCard_BattleItemCard>;
+export declare const WebcastLinkMicBattleItemCard_BattleItemCardComment: MessageFns<WebcastLinkMicBattleItemCard_BattleItemCardComment>;
+export declare const WebcastLinkMicBattleItemCard_BattleItemCardSenderEnvelope: MessageFns<WebcastLinkMicBattleItemCard_BattleItemCardSenderEnvelope>;
+export declare const WebcastLinkMicBattleItemCard_BattleItemCardSenderWrapper: MessageFns<WebcastLinkMicBattleItemCard_BattleItemCardSenderWrapper>;
 export declare const Message: MessageFns<Message>;
 export declare const WebsocketParam: MessageFns<WebsocketParam>;
 export declare const WebcastRoomUserSeqMessage: MessageFns<WebcastRoomUserSeqMessage>;

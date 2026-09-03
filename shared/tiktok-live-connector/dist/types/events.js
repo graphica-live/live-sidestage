@@ -55,6 +55,8 @@ var WebcastEvent;
     WebcastEvent["ROOM_PIN"] = "roomPin";
     // Added 2.0.8-beta1
     WebcastEvent["SUPER_FAN"] = "superFan";
+    // Added 2.1.1-beta2 (live-sidestage fork, not part of upstream)
+    WebcastEvent["LINK_MIC_BATTLE_ITEM_CARD"] = "linkMicBattleItemCard";
 })(WebcastEvent = exports.WebcastEvent || (exports.WebcastEvent = {}));
 var ConnectState;
 (function (ConnectState) {
@@ -97,6 +99,8 @@ exports.WebcastEventMap = {
     'WebcastLinkMessage': WebcastEvent.LINK_MESSAGE,
     'RoomVerifyMessage': WebcastEvent.ROOM_VERIFY,
     'WebcastLinkLayerMessage': WebcastEvent.LINK_LAYER,
-    'WebcastRoomPinMessage': WebcastEvent.ROOM_PIN
+    'WebcastRoomPinMessage': WebcastEvent.ROOM_PIN,
+    // Added 2.1.1-beta2 (live-sidestage fork, not part of upstream)
+    'WebcastLinkMicBattleItemCard': WebcastEvent.LINK_MIC_BATTLE_ITEM_CARD,
 };
 //# sourceMappingURL=events.js.map
