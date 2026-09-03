@@ -11,6 +11,7 @@ import { aggregateDueEvents } from "@/event/aggregate";
 import { activeLeaseTiktokIds, renewClampedLeases } from "@/event/participants";
 import { backfillHostUserIds, backfillStreamerRoomHostIds } from "@/lib/tiktok-host-id";
 import { snapshotDueEventAvatars } from "@/event/avatar-snapshot";
+import { autoFinishOverdueEvents } from "@/event/auto-finish";
 import { prisma } from "@/lib/prisma";
 
 const INTERVAL_MS = Number(process.env.AGGREGATE_INTERVAL_MS ?? 10_000);
@@ -50,6 +51,13 @@ const STREAMER_HOST_ID_INTERVAL_MS = Number(
  */
 const AVATAR_SNAPSHOT_INTERVAL_MS = Number(process.env.EVENT_AVATAR_SNAPSHOT_INTERVAL_MS ?? 60_000);
 
+/**
+ * 開催終了後もRUNNINGのまま放置されたイベントを自動でFINISHEDにする確認間隔。
+ * 猶予(AUTO_FINISH_GRACE_MS、既定2日)そのものに比べれば十分短い頻度でよいので、
+ * 監視期限の延長確認(RENEW_INTERVAL_MS)と同じ1時間おきにする。
+ */
+const AUTO_FINISH_INTERVAL_MS = Number(process.env.EVENT_AUTO_FINISH_INTERVAL_MS ?? 60 * 60 * 1000);
+
 let inFlight = false;
 let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
@@ -57,6 +65,7 @@ let renewInFlight = false;
 let hostIdInFlight = false;
 let streamerHostIdInFlight = false;
 let avatarSnapshotInFlight = false;
+let autoFinishInFlight = false;
 
 async function tick(): Promise<void> {
   // worker.ts(TikTok接続)には guard がないが、こちらは1周が長くなりうるので必ず持つ。
@@ -175,6 +184,24 @@ async function avatarSnapshotTick(): Promise<void> {
   }
 }
 
+// 開催終了(endAt到来)+猶予を過ぎてもRUNINGのまま放置されたイベントをFINISHEDへ遷移させる。
+// 集計・監視のロジックには影響しない(表示上の状態合わせ)。
+async function autoFinishTick(): Promise<void> {
+  if (autoFinishInFlight || stopping) return;
+
+  autoFinishInFlight = true;
+  try {
+    const result = await autoFinishOverdueEvents();
+    if (result.finished > 0) {
+      console.log(`[event-worker] 開催終了後放置されていたイベントを自動終了 ${result.finished}件`);
+    }
+  } catch (err) {
+    console.error("[event-worker] イベントの自動終了でエラー:", err);
+  } finally {
+    autoFinishInFlight = false;
+  }
+}
+
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
@@ -185,6 +212,7 @@ async function shutdown(signal: string) {
   if (hostIdTimer) clearInterval(hostIdTimer);
   if (streamerHostIdTimer) clearInterval(streamerHostIdTimer);
   clearInterval(avatarSnapshotTimer);
+  clearInterval(autoFinishTimer);
   await currentTick.catch(() => {});
   await prisma.$disconnect().catch(() => {});
   console.log("[event-worker] 終了");
@@ -204,6 +232,7 @@ const streamerHostIdTimer =
     ? setInterval(() => void streamerHostIdTick(), STREAMER_HOST_ID_INTERVAL_MS)
     : null;
 const avatarSnapshotTimer = setInterval(() => void avatarSnapshotTick(), AVATAR_SNAPSHOT_INTERVAL_MS);
+const autoFinishTimer = setInterval(() => void autoFinishTick(), AUTO_FINISH_INTERVAL_MS);
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
@@ -214,10 +243,12 @@ console.log(
     `Streamer room の hostUserId 補完 ${
       STREAMER_HOST_ID_INTERVAL_MS > 0 ? `${STREAMER_HOST_ID_INTERVAL_MS}ms` : "無効"
     } / ` +
-    `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms)`
+    `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms / ` +
+    `開催終了後の自動終了 ${AUTO_FINISH_INTERVAL_MS}ms)`
 );
 scheduleTick();
 void renewTick();
 if (hostIdTimer) void hostIdTick();
 if (streamerHostIdTimer) void streamerHostIdTick();
 void avatarSnapshotTick();
+void autoFinishTick();

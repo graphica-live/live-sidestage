@@ -113,17 +113,18 @@ describe("registerParticipant の実在確認", () => {
     expect(await prisma.eventParticipant.count({ where: { eventId: event.id } })).toBe(1);
   });
 
-  it("判定できなかったら登録を通し、existence は UNVERIFIED になる(fail-open)", async () => {
+  it("判定できなかったら登録を拒否する(fail-closed)", async () => {
     const event = await createEvent();
     const tiktokId = testTiktokId();
 
-    const result = await registerParticipant(
-      { eventId: event.id, rawTiktokId: tiktokId },
-      { checker: stubChecker("UNVERIFIED") }
-    );
+    await expect(
+      registerParticipant(
+        { eventId: event.id, rawTiktokId: tiktokId },
+        { checker: stubChecker("UNVERIFIED") }
+      )
+    ).rejects.toMatchObject({ status: 503 });
 
-    expect(result.existence).toBe("UNVERIFIED");
-    expect(await prisma.eventParticipant.count({ where: { eventId: event.id } })).toBe(1);
+    expect(await prisma.eventParticipant.count({ where: { eventId: event.id } })).toBe(0);
   });
 
   it("kill switch を立てたら TikTok を叩かずに登録する", async () => {
@@ -203,13 +204,13 @@ describe("registerParticipant の表示名フォールバック", () => {
     expect(participant.displayName).toBe("主催者が入れた名前");
   });
 
-  it("ニックネームが取れなければ TikTok ID にフォールバックする(UNVERIFIED)", async () => {
+  it("実在は確認できたがニックネームが取れなければ TikTok ID にフォールバックする", async () => {
     const event = await createEvent();
     const tiktokId = testTiktokId();
 
     const result = await registerParticipant(
       { eventId: event.id, rawTiktokId: tiktokId },
-      { checker: stubChecker("UNVERIFIED") }
+      { checker: stubChecker("EXISTS") }
     );
 
     const participant = await prisma.eventParticipant.findUniqueOrThrow({

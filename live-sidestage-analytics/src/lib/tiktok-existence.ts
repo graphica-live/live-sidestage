@@ -1,19 +1,23 @@
 // TikTok アカウントの実在確認に、呼び出しの間引きを被せる層。
 //
-// イベントの参加者登録(`src/event/participants.ts`)から使う。**主催者の操作に同期して
-// 外へ出る唯一の経路**なので、`tiktok-avatar.ts` と同じ守り方をしておく:
-// キャッシュ・同時要求の集約・同時実行上限・サーキットブレーカ。
+// イベント参加者登録・Streamer登録(Web/モバイル)・事務所監視対象(AgencyWatch)追加の
+// 全tiktokid入力経路から使う共通ゲート。**外部(TikTok)へ問い合わせに行く唯一の経路**なので、
+// `tiktok-avatar.ts` と同じ守り方をしておく: キャッシュ・同時要求の集約・同時実行上限・
+// サーキットブレーカ。
 //
 // `fetchTiktokProfile()` はプロキシなしの単一データセンターIPで、avatar キャッシュ(閲覧契機)・
 // hostUserId 補完(event-worker)・room cleanup(日次)と**同じ枠を共用している**。
 // ここが撃ちすぎると、そちらまで巻き添えでレート制限に入る。
 //
-// **判定できなかったとき(`UNVERIFIED`)は登録を通す(fail-open)。** 実在確認は打ち間違いの
-// 救済であって参加資格の審査ではない。TikTok 側の障害でイベント運営が止まるほうが被害が大きい。
+// **判定できなかったとき(`UNVERIFIED`)も登録を拒否する(fail-closed)。** 実在しないID・
+// テスト用の適当な文字列がそのまま登録され、誰も配信しない room を無期限に監視し続ける
+// 実害（プロキシ・Euler署名枠の消費）のほうを重く見た明示的な判断。代償は、TikTok側の
+// レート制限・障害・サーキットブレーカ開放中は登録そのものが止まること。止めたくなったら
+// `TIKTOK_EXISTENCE_CHECK_DISABLED=1` で確認自体を切る。
 
 import { type AccountExistence, type AccountExistenceCheck, checkAccountExistence } from "./tiktok-profile";
 
-/** 主催者を待たせる上限。fail-open なので、粘るより早く諦めるほうがよい。 */
+/** 呼び出し元を待たせる上限。fail-closed なので、粘りすぎると登録操作全体を長時間ブロックする。 */
 const TIMEOUT_MS = 3_000;
 
 /** 実在を確認できた結果を持ち回す時間。 */
@@ -26,11 +30,15 @@ const EXISTS_TTL_MS = 6 * 60 * 60 * 1000;
 const MISSING_TTL_MS = 5 * 60 * 1000;
 
 /**
- * 同時に投げる外向きリクエストの上限。
+ * 同時に投げる外向きリクエストの上限。全tiktokid入力経路(イベント参加者登録・Streamer登録・
+ * AgencyWatch追加)が共有する枠。
  *
  * 枠が空くのを **`SLOT_WAIT_MS` だけ待つ**。待たずに諦めると、並行 POST を投げるだけで
  * 確認を素通しできてしまう(UI は1件ずつでも API は並行に叩ける)。
- * それでも空かなければ `UNVERIFIED` で通す — 主催者を無制限に待たせない。
+ * **それでも空かなければ `UNVERIFIED` を返し、fail-closed により登録そのものを拒否する**
+ * (主催者を無制限に待たせない代償)。全経路合わせて3件以上の登録が同時に来ると、
+ * TikTok側が正常でも一部が待ち時間切れで503になりうる。頻発するようなら
+ * `MAX_CONCURRENCY`/`SLOT_WAIT_MS` の見直しを検討すること。
  */
 const MAX_CONCURRENCY = 2;
 
@@ -47,12 +55,13 @@ const CIRCUIT_OPEN_MS = 5 * 60 * 1000;
 /**
  * 実在確認そのものを止める避難口。
  *
- * TikTok 側の仕様変更で実在アカウントまで `MISSING` になったとき、コードを直さずに
- * 確認を外せるようにしておく(前例: `TIKTOK_AVATAR_DISABLED`)。
+ * TikTok 側の仕様変更で実在アカウントまで `MISSING`/`UNVERIFIED` になったとき、コードを
+ * 直さずに確認を外せるようにしておく(前例: `TIKTOK_AVATAR_DISABLED`)。fail-closed なので
+ * ここを切らない限り、判定できないID・存在しないIDは全経路で登録できない。
  * 止めても登録はできる — 確認を挟まなくなるだけ。
  */
 export function isExistenceCheckDisabled(): boolean {
-  return process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK === "0";
+  return process.env.TIKTOK_EXISTENCE_CHECK_DISABLED === "1";
 }
 
 type Entry = { verdict: AccountExistence; nickname: string | null; expiresAt: number };
@@ -148,7 +157,8 @@ export function createExistenceChecker(options?: {
   }
 
   async function load(tiktokId: string): Promise<AccountExistenceCheck> {
-    // 枠が空かないまま待ち時間を使い切ったら、確認を諦めて通す(fail-open)。
+    // 枠が空かないまま待ち時間を使い切ったら UNVERIFIED を返す。呼び出し元は
+    // fail-closed なのでこれは「登録を拒否する」ことを意味する(通す、ではない)。
     if (!(await acquireSlot())) return { verdict: "UNVERIFIED", nickname: null };
     try {
       const result = await fetchExistence(tiktokId, { timeoutMs });
@@ -210,3 +220,26 @@ export const existenceChecker: ExistenceChecker =
   globalForExistence.__existenceChecker ?? createExistenceChecker();
 
 if (process.env.NODE_ENV !== "production") globalForExistence.__existenceChecker = existenceChecker;
+
+export type ExistenceGateResult =
+  | { ok: true; nickname: string | null }
+  | { ok: false; reason: "MISSING" | "UNVERIFIED" };
+
+/**
+ * 全tiktokid入力経路(Streamer登録・AgencyWatch追加・イベント参加者登録)が共通で使う
+ * fail-closed ゲート。**例外は投げない**(checker.check自体が投げない契約 + kill switch
+ * 判定のみ)。呼び出し側は `ok: false` を 400/503 相当のエラーへ写す。
+ *
+ * `TIKTOK_EXISTENCE_CHECK_DISABLED=1` のときは確認自体をスキップし、常に通す
+ * (`ok: true, nickname: null`)。
+ */
+export async function requireExistingTiktokAccount(
+  tiktokId: string,
+  checker: ExistenceChecker = existenceChecker
+): Promise<ExistenceGateResult> {
+  if (isExistenceCheckDisabled()) return { ok: true, nickname: null };
+
+  const result = await checker.check(tiktokId);
+  if (result.verdict === "EXISTS") return { ok: true, nickname: result.nickname };
+  return { ok: false, reason: result.verdict === "MISSING" ? "MISSING" : "UNVERIFIED" };
+}

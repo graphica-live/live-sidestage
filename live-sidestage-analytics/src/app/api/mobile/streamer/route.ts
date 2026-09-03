@@ -4,6 +4,21 @@ import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { resolveUserByMobileToken, signMobileToken } from "@/lib/mobile-auth";
 import { resolveRoomForStreamer } from "@/lib/tiktok-room";
+import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
+
+async function checkTiktokExistenceOrError(tiktokId: string): Promise<NextResponse | null> {
+  const existence = await requireExistingTiktokAccount(tiktokId);
+  if (existence.ok) return null;
+  return NextResponse.json(
+    {
+      error:
+        existence.reason === "MISSING"
+          ? "このTikTok IDのアカウントが見つかりません。IDを確認してください"
+          : "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください",
+    },
+    { status: existence.reason === "MISSING" ? 400 : 503 }
+  );
+}
 
 export async function POST(req: NextRequest) {
   const auth = resolveUserByMobileToken(req);
@@ -28,6 +43,9 @@ export async function POST(req: NextRequest) {
   if (user.streamer) {
     return NextResponse.json({ error: "既にTikTokアカウントが登録されています" }, { status: 409 });
   }
+
+  const existenceError = await checkTiktokExistenceOrError(cleanTiktokId);
+  if (existenceError) return existenceError;
 
   // 登録は無条件で許可する(Web版と同様、他アカウントとの重複登録も可)。
   //
@@ -87,6 +105,13 @@ export async function PATCH(req: NextRequest) {
   }
   if (!user.streamer) {
     return NextResponse.json({ error: "TikTokアカウントが未登録です" }, { status: 404 });
+  }
+
+  // tiktokIdが変わらない更新(再送信・冪等リトライ)は実在確認を通さない。
+  // 既に登録済みのIDを再送するだけの操作をTikTok側の障害で止める理由がない。
+  if (cleanTiktokId !== user.streamer.tiktokId) {
+    const existenceError = await checkTiktokExistenceOrError(cleanTiktokId);
+    if (existenceError) return existenceError;
   }
 
   const streamer = await prisma.streamer.update({

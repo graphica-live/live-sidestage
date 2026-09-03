@@ -90,7 +90,7 @@ function readFeederSlot(value: unknown): FeederSwapSlot | null {
 
 /**
  * 接続の交換(winner feeder edge swap)機能のfeature flag。**既定オフ**
- * (`EVENT_PARTICIPANT_EXISTENCE_CHECK` 等の既存フラグとは極性が逆 — こちらは
+ * (`TIKTOK_EXISTENCE_CHECK_DISABLED` 等の既存キルスイッチとは極性が逆 — こちらは
  * 新機能なので、段階的デプロイ(reader先行→writer/UI後追い)が完了するまで
  * 明示的に有効化するまで閉じておく。`src/event/CLAUDE.md` のデプロイ計画を参照)。
  */

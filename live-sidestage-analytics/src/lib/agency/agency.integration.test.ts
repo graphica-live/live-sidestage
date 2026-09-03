@@ -2,6 +2,8 @@
 // 事務所まわりの認可境界(他事務所のデータに触れない)と、発行・上限・重複の扱いを検証する。
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
+import type { ExistenceChecker } from "@/lib/tiktok-existence";
+import type { AccountExistence } from "@/lib/tiktok-profile";
 import {
   addWatch,
   createAgency,
@@ -17,6 +19,18 @@ import {
 // resolveWorkerForRoom() はWORKER_COUNTを要求する。接続そのものはWorkerプロセスの仕事なので、
 // ここではWorker数だけ与えて割当が走ることを許す。
 vi.stubEnv("WORKER_COUNT", "1");
+
+// addWatch は実在確認(requireExistingTiktokAccount)を通す。テスト用の合成IDは
+// TikTok上に実在しないので、実際のAPIを叩かせず決め打ちの checker を注入する。
+function stubChecker(verdict: AccountExistence = "EXISTS"): ExistenceChecker {
+  return {
+    async check() {
+      return { verdict, nickname: null };
+    },
+    size: () => 0,
+  };
+}
+const existsChecker = { checker: stubChecker("EXISTS") };
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -101,7 +115,7 @@ describe("createAgency", () => {
 describe("addWatch", () => {
   it("監視対象を追加するとTiktokRoomが作られ、担当Workerが割り当たる", async () => {
     const tiktokId = trackRoom("add");
-    const result = await addWatch(agencyA.agencyId, tiktokId, "Aチーム");
+    const result = await addWatch(agencyA.agencyId, tiktokId, "Aチーム", existsChecker);
 
     expect(result.ok).toBe(true);
 
@@ -112,16 +126,16 @@ describe("addWatch", () => {
 
   it("同じIDの重複追加はduplicateで拒否する", async () => {
     const tiktokId = trackRoom("dup");
-    await addWatch(agencyA.agencyId, tiktokId, null);
+    await addWatch(agencyA.agencyId, tiktokId, null, existsChecker);
 
-    const again = await addWatch(agencyA.agencyId, `@${tiktokId.toUpperCase()}`, null);
+    const again = await addWatch(agencyA.agencyId, `@${tiktokId.toUpperCase()}`, null, existsChecker);
     expect(again).toMatchObject({ ok: false, code: "duplicate" });
   });
 
   it("別事務所は同じライバーを独立して監視でき、部屋は共有される", async () => {
     const tiktokId = trackRoom("shared");
-    expect((await addWatch(agencyA.agencyId, tiktokId, null)).ok).toBe(true);
-    expect((await addWatch(agencyB.agencyId, tiktokId, null)).ok).toBe(true);
+    expect((await addWatch(agencyA.agencyId, tiktokId, null, existsChecker)).ok).toBe(true);
+    expect((await addWatch(agencyB.agencyId, tiktokId, null, existsChecker)).ok).toBe(true);
 
     const rooms = await prisma.tiktokRoom.findMany({ where: { tiktokId: tiktokId.toLowerCase() } });
     expect(rooms).toHaveLength(1);
@@ -143,12 +157,32 @@ describe("addWatch", () => {
     expect(created).toEqual([]);
   });
 
+  it("TikTok上に実在しないIDはnot_foundで拒否し、部屋を作らない", async () => {
+    const tiktokId = trackRoom("missing");
+    const result = await addWatch(agencyA.agencyId, tiktokId, null, {
+      checker: stubChecker("MISSING"),
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "not_found" });
+    expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId: tiktokId.toLowerCase() } })).toBeNull();
+  });
+
+  it("実在確認が判定できないときはunverifiedで拒否する(fail-closed)", async () => {
+    const tiktokId = trackRoom("unverified");
+    const result = await addWatch(agencyA.agencyId, tiktokId, null, {
+      checker: stubChecker("UNVERIFIED"),
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "unverified" });
+    expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId: tiktokId.toLowerCase() } })).toBeNull();
+  });
+
   it("maxWatchTargetsを超える追加はlimitで拒否する", async () => {
     const limited = await makeAgency("上限テスト事務所");
     await prisma.agency.update({ where: { id: limited.agencyId }, data: { maxWatchTargets: 1 } });
 
-    expect((await addWatch(limited.agencyId, trackRoom("lim1"), null)).ok).toBe(true);
-    expect(await addWatch(limited.agencyId, trackRoom("lim2"), null)).toMatchObject({
+    expect((await addWatch(limited.agencyId, trackRoom("lim1"), null, existsChecker)).ok).toBe(true);
+    expect(await addWatch(limited.agencyId, trackRoom("lim2"), null, existsChecker)).toMatchObject({
       ok: false,
       code: "limit",
     });
@@ -158,7 +192,7 @@ describe("addWatch", () => {
 describe("認可境界", () => {
   it("listWatches/listWatchedRoomsは自分の監視対象しか返さない", async () => {
     const onlyA = trackRoom("onlya");
-    await addWatch(agencyA.agencyId, onlyA, null);
+    await addWatch(agencyA.agencyId, onlyA, null, existsChecker);
 
     const bWatches = await listWatches(agencyB.agencyId);
     expect(bWatches.some((w) => w.tiktokId === onlyA)).toBe(false);
@@ -168,7 +202,7 @@ describe("認可境界", () => {
   });
 
   it("他事務所のwatchは削除できない", async () => {
-    const added = await addWatch(agencyA.agencyId, trackRoom("idor"), null);
+    const added = await addWatch(agencyA.agencyId, trackRoom("idor"), null, existsChecker);
     expect(added.ok).toBe(true);
     const watchId = added.ok ? added.watch.id : "";
 
@@ -180,7 +214,7 @@ describe("認可境界", () => {
 describe("deleteAgency", () => {
   it("削除すると監視対象も消え、そのアカウントからは引けなくなる", async () => {
     const doomed = await makeAgency("削除される事務所");
-    await addWatch(doomed.agencyId, trackRoom("del"), null);
+    await addWatch(doomed.agencyId, trackRoom("del"), null, existsChecker);
     expect(await prisma.agencyWatch.count({ where: { agencyId: doomed.agencyId } })).toBe(1);
 
     expect(await deleteAgency(doomed.agencyId)).toBe(true);

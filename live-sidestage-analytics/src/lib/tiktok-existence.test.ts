@@ -267,20 +267,20 @@ describe("createExistenceChecker の呼び出し制御", () => {
 });
 
 describe("isExistenceCheckDisabled", () => {
-  it("EVENT_PARTICIPANT_EXISTENCE_CHECK=0 のときだけ止める", () => {
-    const original = process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK;
+  it("TIKTOK_EXISTENCE_CHECK_DISABLED=1 のときだけ止める", () => {
+    const original = process.env.TIKTOK_EXISTENCE_CHECK_DISABLED;
     try {
-      delete process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK;
+      delete process.env.TIKTOK_EXISTENCE_CHECK_DISABLED;
       expect(isExistenceCheckDisabled()).toBe(false);
 
-      process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK = "1";
+      process.env.TIKTOK_EXISTENCE_CHECK_DISABLED = "0";
       expect(isExistenceCheckDisabled()).toBe(false);
 
-      process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK = "0";
+      process.env.TIKTOK_EXISTENCE_CHECK_DISABLED = "1";
       expect(isExistenceCheckDisabled()).toBe(true);
     } finally {
-      if (original === undefined) delete process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK;
-      else process.env.EVENT_PARTICIPANT_EXISTENCE_CHECK = original;
+      if (original === undefined) delete process.env.TIKTOK_EXISTENCE_CHECK_DISABLED;
+      else process.env.TIKTOK_EXISTENCE_CHECK_DISABLED = original;
     }
   });
 });
