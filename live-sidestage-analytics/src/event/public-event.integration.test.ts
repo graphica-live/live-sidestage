@@ -82,9 +82,12 @@ describe("findPublicParticipantTiktokId", () => {
     const owner = `${PREFIX}_owner_${uniqueSuffix()}`;
     const event = await createEvent("PRIVATE", owner);
     const roomId = (
+      // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
+      // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
+      // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
       await prisma.$queryRaw<{ id: string }[]>`
-        INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt")
-        VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, NOW())
+        INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
+        VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, NOW(), true)
         RETURNING id
       `
     )[0].id;
@@ -125,9 +128,12 @@ describe("loadBracket", () => {
 
     async function makeParticipant(activity: string) {
       const room = (
+        // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
+        // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
+        // グローバルに claim して listenerActivity を上書きしうる（ここで固定した live/offline が壊れる）。
         await prisma.$queryRaw<{ id: string }[]>`
-          INSERT INTO public."TiktokRoom" (id, "tiktokId", "listenerActivity", "createdAt")
-          VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, ${activity}, NOW())
+          INSERT INTO public."TiktokRoom" (id, "tiktokId", "listenerActivity", "createdAt", "monitoringSuspended")
+          VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, ${activity}, NOW(), true)
           RETURNING id
         `
       )[0].id;

@@ -1,6 +1,11 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // queryBattles() の DB 依存部分(相手roomの解決、opponent.count)を検証する。
 // 純粋関数(resolveBattleScore等)のユニットテストは battle-history.test.ts 側にある。
+//
+// ここで作る TiktokRoom は全て monitoringSuspended: true にする。Streamer 0人の部屋も
+// watchedRoomFilter() の監視対象になったため、そのままだと並行して走る listener 系テストの
+// getMyRooms() がこれらの部屋をグローバルに claim して workerId / listenerStatus を書きに来る。
+// バトル履歴の検証に監視は要らないので、共有プールへ足さない。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
@@ -19,11 +24,11 @@ beforeAll(async () => {
   // selfRoom.hostUserId をあえて未解決(null)にする。resolveBattleScore が必ず
   // "unknown" を返す状態を作り、opponent.count が otherRoomIds(others.length > 0 分岐)
   // 経由で決まるケースだけを切り出して検証するため。
-  const selfRoom = await prisma.tiktokRoom.create({ data: { tiktokId: SELF_TIKTOK_ID, hostUserId: null } });
+  const selfRoom = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: SELF_TIKTOK_ID, hostUserId: null } });
   selfRoomId = selfRoom.id;
-  const opponentB = await prisma.tiktokRoom.create({ data: { tiktokId: OPPONENT_B_TIKTOK_ID, hostUserId: "host_b" } });
+  const opponentB = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: OPPONENT_B_TIKTOK_ID, hostUserId: "host_b" } });
   opponentBRoomId = opponentB.id;
-  const opponentC = await prisma.tiktokRoom.create({ data: { tiktokId: OPPONENT_C_TIKTOK_ID, hostUserId: "host_c" } });
+  const opponentC = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: OPPONENT_C_TIKTOK_ID, hostUserId: "host_c" } });
   opponentCRoomId = opponentC.id;
 });
 
@@ -135,17 +140,17 @@ describe("queryBattles teams (2vs2)", () => {
 
   beforeAll(async () => {
     const selfRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: SELF_TEAMS_TIKTOK_ID, hostUserId: "host_self" },
+      data: { monitoringSuspended: true, tiktokId: SELF_TEAMS_TIKTOK_ID, hostUserId: "host_self" },
     });
     selfTeamsRoomId = selfRoom.id;
-    const ally = await prisma.tiktokRoom.create({ data: { tiktokId: ALLY_TIKTOK_ID, hostUserId: "host_b" } });
+    const ally = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: ALLY_TIKTOK_ID, hostUserId: "host_b" } });
     allyRoomId = ally.id;
     const opponentC = await prisma.tiktokRoom.create({
-      data: { tiktokId: OPPONENT_C_TEAMS_TIKTOK_ID, hostUserId: "host_c" },
+      data: { monitoringSuspended: true, tiktokId: OPPONENT_C_TEAMS_TIKTOK_ID, hostUserId: "host_c" },
     });
     opponentCTeamsRoomId = opponentC.id;
     const opponentD = await prisma.tiktokRoom.create({
-      data: { tiktokId: OPPONENT_D_TEAMS_TIKTOK_ID, hostUserId: "host_d" },
+      data: { monitoringSuspended: true, tiktokId: OPPONENT_D_TEAMS_TIKTOK_ID, hostUserId: "host_d" },
     });
     opponentDTeamsRoomId = opponentD.id;
   });
@@ -286,11 +291,11 @@ describe("queryBattles multi(hostTeamsが2チームに解決できない乱戦)"
   let opponentFRoomId: string;
 
   beforeAll(async () => {
-    const selfRoom = await prisma.tiktokRoom.create({ data: { tiktokId: SELF_MULTI_TIKTOK_ID, hostUserId: "host_self" } });
+    const selfRoom = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: SELF_MULTI_TIKTOK_ID, hostUserId: "host_self" } });
     selfMultiRoomId = selfRoom.id;
-    const opponentE = await prisma.tiktokRoom.create({ data: { tiktokId: OPPONENT_E_TIKTOK_ID, hostUserId: "host_e" } });
+    const opponentE = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: OPPONENT_E_TIKTOK_ID, hostUserId: "host_e" } });
     opponentERoomId = opponentE.id;
-    const opponentF = await prisma.tiktokRoom.create({ data: { tiktokId: OPPONENT_F_TIKTOK_ID, hostUserId: "host_f" } });
+    const opponentF = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: OPPONENT_F_TIKTOK_ID, hostUserId: "host_f" } });
     opponentFRoomId = opponentF.id;
   });
 
@@ -414,11 +419,11 @@ describe("queryBattles teams(3陣営以上)", () => {
 
   beforeAll(async () => {
     const selfRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: SELF_TRI_TIKTOK_ID, hostUserId: "host_tri_self" },
+      data: { monitoringSuspended: true, tiktokId: SELF_TRI_TIKTOK_ID, hostUserId: "host_tri_self" },
     });
     selfTriRoomId = selfRoom.id;
     for (const [hostUserId, tiktokId] of Object.entries(TRI_TIKTOK_IDS)) {
-      const room = await prisma.tiktokRoom.create({ data: { tiktokId, hostUserId } });
+      const room = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId, hostUserId } });
       otherTriRoomIds.push(room.id);
     }
   });
@@ -537,16 +542,16 @@ describe("queryBattles selfTeam/opponentTeamのtiktokId解決はバトルごと�
 
   beforeAll(async () => {
     const selfRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: SELF_DUP_TIKTOK_ID, hostUserId: "host_self_dup" },
+      data: { monitoringSuspended: true, tiktokId: SELF_DUP_TIKTOK_ID, hostUserId: "host_self_dup" },
     });
     selfDupRoomId = selfRoom.id;
     // 同じ人物のハンドル変更前後を2つのroom行として持つ(hostUserIdが同じ、tiktokIdだけ違う)。
     const oldHandle = await prisma.tiktokRoom.create({
-      data: { tiktokId: OLD_HANDLE_TIKTOK_ID, hostUserId: SHARED_HOST_USER_ID },
+      data: { monitoringSuspended: true, tiktokId: OLD_HANDLE_TIKTOK_ID, hostUserId: SHARED_HOST_USER_ID },
     });
     oldHandleRoomId = oldHandle.id;
     const newHandle = await prisma.tiktokRoom.create({
-      data: { tiktokId: NEW_HANDLE_TIKTOK_ID, hostUserId: SHARED_HOST_USER_ID },
+      data: { monitoringSuspended: true, tiktokId: NEW_HANDLE_TIKTOK_ID, hostUserId: SHARED_HOST_USER_ID },
     });
     newHandleRoomId = newHandle.id;
   });
@@ -636,7 +641,7 @@ describe("queryBattles listenerQuery", () => {
   let listenerRoomId: string;
 
   beforeAll(async () => {
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: LISTENER_ROOM_TIKTOK_ID, hostUserId: null } });
+    const room = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: LISTENER_ROOM_TIKTOK_ID, hostUserId: null } });
     listenerRoomId = room.id;
   });
 
@@ -828,7 +833,7 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
   let finalRoomId: string;
 
   beforeAll(async () => {
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: FINAL_TIKTOK_ID, hostUserId: SELF_ANCHOR } });
+    const room = await prisma.tiktokRoom.create({ data: { monitoringSuspended: true, tiktokId: FINAL_TIKTOK_ID, hostUserId: SELF_ANCHOR } });
     finalRoomId = room.id;
   });
 

@@ -21,8 +21,12 @@ function tiktokId(tag: string) {
 }
 
 async function makeRoom() {
+  // monitoringSuspended: true は監視対象から外すための隔離。Streamer 0人の部屋も
+  // watchedRoomFilter() の監視対象になったため、これが無いと並行して走る listener 系
+  // テストの getMyRooms() がこの部屋をグローバルに claim し、listenerStatus /
+  // unhealthySince を上書きして検証を壊す。
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: tiktokId("r") },
+    data: { tiktokId: tiktokId("r"), monitoringSuspended: true },
     select: { id: true },
   });
   roomIds.push(room.id);

@@ -28,10 +28,17 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
 
   const room = await upsertRoom(normalized);
 
-  await prisma.streamer.update({
-    where: { id: streamerId },
-    data: { roomId: room.id },
-  });
+  // watchedRoomFilter()はもうStreamer有無を見ない(Streamer0人のRoomも低価値クリーンアップの
+  // 判定まで監視を続ける情報プール方針)ため、Streamerを新規に紐付けただけではmonitoringSuspended
+  // は自動で戻らない。ここで明示的に戻さないと、過去に監視停止されたRoomへ新規登録した
+  // ユーザーは、次に markLastActive()(ログイン時)が呼ばれるまでデータが貯まらない。
+  await prisma.$transaction([
+    prisma.streamer.update({ where: { id: streamerId }, data: { roomId: room.id } }),
+    prisma.tiktokRoom.updateMany({
+      where: { id: room.id, monitoringSuspended: true },
+      data: { monitoringSuspended: false },
+    }),
+  ]);
 
   return room.id;
 }
@@ -40,7 +47,7 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
 // イベントによる期限付きの監視要求(TiktokRoom.monitorUntil)
 //
 // 会員登録(Streamer)のない配信者でも、イベント開催中だけは配信開始を監視する。
-// getMyRooms()(tiktok-listener.ts)が `streamers: { some: {} }` か
+// getMyRooms()(tiktok-listener.ts)が `monitoringSuspended: false` か
 // `monitorUntil > now` のどちらかを満たす部屋を担当するので、ここで
 // monitorUntil を立てれば次のreconcile(最大60秒)で接続が始まる。
 //
@@ -168,10 +175,13 @@ export async function ensureRoomForEvent(
 }
 
 /**
- * 監視要求を解除する。実際の切断は次のreconcile(最大60秒)で行われる。
+ * 監視要求を解除する。
  *
- * 部屋とギフトは消さない — 後からその部屋を指定した会員登録(Streamer)があれば
- * `streamers: { some: {} }` 側の条件で監視が再開される。
+ * **解除しても即座には切断されない。** `watchedRoomFilter()` は「Streamerの登録有無」を
+ * 見なくなり `monitoringSuspended: false` を主条件にしているため、他に監視理由(AgencyWatch・
+ * 他イベントのmonitorUntil)が無い部屋でも、tiktok-low-value-cleanup.ts が停止判定するまでは
+ * 情報プールとして接続が維持され続ける(情報プール方針)。部屋とギフトは消さない — 後から
+ * その部屋を指定した会員登録(Streamer)があっても無くても、監視継続の判断はこのフラグ1本。
  */
 export async function releaseRoomMonitor(roomId: string): Promise<number> {
   const updated = await prisma.tiktokRoom.updateMany({

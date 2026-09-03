@@ -245,7 +245,12 @@ describe("GET /api/mobile/analytics/ranking", () => {
     });
 
     it("他部屋のギフトは混ざらない", async () => {
-      const otherRoom = await prisma.tiktokRoom.create({ data: { tiktokId: "itest_mobile_ranking_other" } });
+      // Streamer を付けない他人の部屋。Streamer 0人でも watchedRoomFilter() の監視対象に
+      // なったため、monitoringSuspended: true で共有プールから外す(並行して走る listener 系
+      // テストの getMyRooms() に claim させない)。
+      const otherRoom = await prisma.tiktokRoom.create({
+        data: { tiktokId: "itest_mobile_ranking_other", monitoringSuspended: true },
+      });
       await prisma.gift.create({
         data: {
           roomId: otherRoom.id,

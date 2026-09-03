@@ -55,9 +55,12 @@ const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
 async function createRoom(tiktokId: string): Promise<string> {
+  // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
+  // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
+  // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW())
+    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);

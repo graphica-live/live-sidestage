@@ -4,8 +4,12 @@ import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "./prisma";
 import { recordEulerSignUsage } from "./euler-usage";
 
-async function createRoom(tiktokId: string) {
-  return prisma.tiktokRoom.create({ data: { tiktokId } });
+// monitoringSuspended: true は監視対象から外すための隔離。Streamer 0人・有効な
+// monitorUntil 無しの部屋も watchedRoomFilter() の監視対象になったため、そのままだと
+// 並行して走る listener 系テストの getMyRooms() がグローバルに claim してくる。
+// 署名消費のスナップショット検証に監視は要らないので共有プールへ足さない。
+async function createRoom(tiktokId: string, monitoringSuspended = false) {
+  return prisma.tiktokRoom.create({ data: { tiktokId, monitoringSuspended } });
 }
 
 async function createStreamerOn(roomId: string, tiktokId: string, emailPrefix: string) {
@@ -114,7 +118,8 @@ describe("recordEulerSignUsage", () => {
 
   it("期限切れ・解放済み・ARCHIVEDのイベント監視要求はeventIdsに含めない", async () => {
     const tiktokId = `itest_euler_lease_exclude_${Date.now()}`;
-    const room = await createRoom(tiktokId);
+    // Streamer も有効な monitorUntil も付かない部屋なので、共有プールから外しておく。
+    const room = await createRoom(tiktokId, true);
     cleanupRoomIds.push(room.id);
 
     const owner = await createOwnerUser();

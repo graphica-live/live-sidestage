@@ -17,8 +17,15 @@ import { FACTS_CONNECTED, FACTS_IDLE, factsForReconnect } from "./listener-state
 const roomIds: string[] = [];
 
 async function makeRoom() {
+  // monitoringSuspended: true は監視対象から外すための隔離。Streamer 0人の部屋も
+  // watchedRoomFilter() の監視対象になったため、これが無いと並行して走る listener 系
+  // テストの getMyRooms() がこの部屋をグローバルに claim し、listenerStatus /
+  // listenerRevision を上書きして fencing の検証を壊す。
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: `itestfence${Math.random().toString(36).slice(2, 10)}`.toLowerCase() },
+    data: {
+      tiktokId: `itestfence${Math.random().toString(36).slice(2, 10)}`.toLowerCase(),
+      monitoringSuspended: true,
+    },
     select: { id: true },
   });
   roomIds.push(room.id);

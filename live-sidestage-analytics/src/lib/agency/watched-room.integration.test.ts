@@ -12,8 +12,13 @@ const createdRoomIds: string[] = [];
 const createdUserIds: string[] = [];
 const createdAgencyIds: string[] = [];
 
-async function createRoom(prefix: string) {
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: `itest_watched_${prefix}_${suffix()}` } });
+async function createRoom(prefix: string, opts: { monitoringSuspended?: boolean } = {}) {
+  const room = await prisma.tiktokRoom.create({
+    data: {
+      tiktokId: `itest_watched_${prefix}_${suffix()}`,
+      monitoringSuspended: opts.monitoringSuspended ?? false,
+    },
+  });
   createdRoomIds.push(room.id);
   return room;
 }
@@ -45,13 +50,19 @@ afterEach(async () => {
 });
 
 describe("watchedRoomFilter", () => {
-  it("StreamerもAgencyWatchも無い部屋は接続対象外", async () => {
+  it("StreamerもAgencyWatchも無い新規の部屋もmonitoringSuspendedがfalseなら接続対象(情報プール方針)", async () => {
     const room = await createRoom("bare");
+    expect(await isWatched(room.id)).toBe(true);
+  });
+
+  it("monitoringSuspendedがtrueの部屋(Streamer/AgencyWatch無し)は接続対象外", async () => {
+    const room = await createRoom("suspended_bare");
+    await prisma.tiktokRoom.update({ where: { id: room.id }, data: { monitoringSuspended: true } });
     expect(await isWatched(room.id)).toBe(false);
   });
 
   it("Streamerが0人でもAgencyWatchがあれば接続対象になる", async () => {
-    const room = await createRoom("agency_only");
+    const room = await createRoom("agency_only", { monitoringSuspended: true });
     const agency = await createAgency();
     await prisma.agencyWatch.create({
       data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
@@ -64,7 +75,7 @@ describe("watchedRoomFilter", () => {
   });
 
   it("AgencyWatchを削除すると接続対象から外れる", async () => {
-    const room = await createRoom("revoke");
+    const room = await createRoom("revoke", { monitoringSuspended: true });
     const agency = await createAgency();
     const watch = await prisma.agencyWatch.create({
       data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
@@ -77,7 +88,7 @@ describe("watchedRoomFilter", () => {
   });
 
   it("事務所ごと削除すると監視もカスケードで消え、接続対象から外れる", async () => {
-    const room = await createRoom("agency_deleted");
+    const room = await createRoom("agency_deleted", { monitoringSuspended: true });
     const agency = await createAgency();
     await prisma.agencyWatch.create({
       data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
@@ -92,7 +103,7 @@ describe("watchedRoomFilter", () => {
   });
 
   it("片方の事務所が消えても、もう片方が監視していれば接続を続ける", async () => {
-    const room = await createRoom("mixed");
+    const room = await createRoom("mixed", { monitoringSuspended: true });
     const gone = await createAgency();
     const active = await createAgency();
     await prisma.agencyWatch.create({
