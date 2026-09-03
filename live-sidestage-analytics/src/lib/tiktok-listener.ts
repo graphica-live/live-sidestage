@@ -1,4 +1,5 @@
-import { WebcastPushConnection } from "tiktok-live-connector";
+import { WebcastPushConnection, getBattleItemCard, getBattleItemCardSender } from "tiktok-live-connector";
+import type { WebcastLinkMicBattleItemCard } from "tiktok-live-connector";
 import { ProxyAgent } from "proxy-agent";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
@@ -160,6 +161,10 @@ interface ListenerInstance {
   // (comboはdelta=0になるので元々弾かれる)。実データで1件確認済み。
   recentGiftMsgIds: Set<string>;
   recentGiftMsgIdOrder: string[];
+  // バトルアイテム使用ログ版。連打(グローブ連打等)が起きうるうえ、TikTok側の再送は
+  // gift/chatと同じ仕組みなので同様に必要。
+  recentBattleItemMsgIds: Set<string>;
+  recentBattleItemMsgIdOrder: string[];
   // like版のdedup FIFO。desktop 5ウィジェット移植で追加。
   recentLikeMsgIds: Set<string>;
   recentLikeMsgIdOrder: string[];
@@ -178,6 +183,9 @@ const CHAT_DEDUP_CACHE_SIZE = 3000;
 
 // ギフトはコメントよりずっと流量が少ないので、同じ再送バッチを覆うのに必要な枠も小さい。
 const GIFT_DEDUP_CACHE_SIZE = 1000;
+
+// バトルアイテム使用はギフトよりさらに流量が少ない(グローブ連打でも配信規模を考えれば少数)。
+const BATTLE_ITEM_DEDUP_CACHE_SIZE = 500;
 
 // likeはchat並み以上に流量が多いので、CHAT_DEDUP_CACHE_SIZEと同水準にする。
 const LIKE_DEDUP_CACHE_SIZE = 3000;
@@ -907,6 +915,10 @@ function resolveEventTime(data: Record<string, unknown>): { time: Date; source: 
 // Webが起動しなくなる。非uniqueなindexなら重複があっても必ず作成できる。
 const GIFT_DEDUP_WINDOW_MS = 5 * 60_000;
 
+// バトルアイテム使用ログも同じ理由(roomIdが永続ID、db pushがコンテナ起動時実行)でunique制約を避け、
+// 時刻窓で弾く。
+const BATTLE_ITEM_DEDUP_WINDOW_MS = 5 * 60_000;
+
 // GiftのINSERT行を組み立てる。saveGift()とsaveComboGift()で共有する。
 // dedupキー(orderId/groupId/msgId)だけは経路ごとに扱いが違うので呼び出し側から渡す。
 function buildGiftRow(
@@ -1007,6 +1019,79 @@ async function saveGift(
       return "duplicate";
     }
     console.error("[listener] gift save error:", err);
+    return "error";
+  }
+}
+
+// getBattleItemCardSender()が返すのは生のprotobuf User(simplifyObjectはネスト内のsenderを
+// 平坦化しない)なので、Gift保存で使うgetPreferredPictureFormat相当の選択を自前で行う。
+// data-converter.ts の getPreferredPictureFormat と同じ優先順位(100x100 webp > jpeg > shrink無し > 先頭)。
+function pickProfilePictureUrl(urls: readonly string[] | undefined): string | null {
+  if (!urls || urls.length === 0) return null;
+  return (
+    urls.find((u) => u.includes("100x100") && u.includes(".webp")) ||
+    urls.find((u) => u.includes("100x100") && u.includes(".jpeg")) ||
+    urls.find((u) => !u.includes("shrink")) ||
+    urls[0]
+  );
+}
+
+type BattleItemSaveResult = "saved" | "duplicate" | "error";
+
+// バトルアイテム使用ログの保存。comboのような累計tickではなく「使用ごとに1回」の
+// 離散イベントなので、saveComboGiftのようなdelta計算は不要 — saveGift(non-combo)と同型。
+async function saveBattleItemUse(
+  roomId: string,
+  message: WebcastLinkMicBattleItemCard,
+  receivedAt: Date
+): Promise<BattleItemSaveResult> {
+  const card = getBattleItemCard(message);
+  if (!card) {
+    // cardTypeに対応するスロットが取れない = 未知cardType(将来TikTokが追加した種別)。
+    // POWER_UP_SUMMARY(4)はcard自体は取れるがsenderが無く、次のガードで落ちる。
+    console.warn(`[battle-item] unknown/unpopulated cardType=${message.cardType} room=${roomId}`);
+    return "duplicate";
+  }
+  const sender = getBattleItemCardSender(card);
+  if (!sender) return "duplicate"; // POWER_UP_SUMMARY等、sender自体を持たない周期通知
+
+  const msgId = resolveMsgId(message as unknown as Record<string, unknown>);
+
+  try {
+    if (msgId) {
+      const duplicate = await prisma.tiktokBattleItemUse.findFirst({
+        where: {
+          roomId,
+          msgId,
+          receivedAt: { gte: new Date(receivedAt.getTime() - BATTLE_ITEM_DEDUP_WINDOW_MS) },
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        console.log(
+          `[battle-item] dedup: msgId=${msgId} は直近${BATTLE_ITEM_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, cardType=${message.cardType})`
+        );
+        return "duplicate";
+      }
+    }
+
+    await prisma.tiktokBattleItemUse.create({
+      data: {
+        roomId,
+        battleId: message.battleId,
+        cardType: message.cardType,
+        senderUserId: sender.userId ?? "",
+        senderUniqueId: sender.uniqueId ?? "",
+        senderNickname: sender.nickname ?? "",
+        senderProfilePictureUrl: pickProfilePictureUrl(sender.profilePicture?.url),
+        targetHostUserId: card.targetHostUserId,
+        msgId,
+        receivedAt,
+      },
+    });
+    return "saved";
+  } catch (err: unknown) {
+    console.error("[listener] battle item use save error:", { roomId, msgId, cardType: message.cardType, err });
     return "error";
   }
 }
@@ -1595,6 +1680,34 @@ async function connectAndAttach(
     );
   });
 
+  conn.on("linkMicBattleItemCard", (data: unknown) => {
+    markAlive();
+    const message = data as WebcastLinkMicBattleItemCard;
+    const { time: eventTime } = resolveEventTime(data as Record<string, unknown>);
+    const msgId = resolveMsgId(data as Record<string, unknown>);
+
+    // 同一プロセスへの再送はgift/chatと同じ理由(DB照会だけでは同一tickの再送を防げない)で
+    // 保存前にFIFOへ記録する。
+    const fifoRecorded = msgId
+      ? rememberMsgId(
+          inst.recentBattleItemMsgIds,
+          inst.recentBattleItemMsgIdOrder,
+          msgId,
+          BATTLE_ITEM_DEDUP_CACHE_SIZE
+        )
+      : true;
+    if (!fifoRecorded) {
+      console.log("[battle-item] dedup: duplicate msgId skipped (listener instance)", { roomId, msgId });
+      return;
+    }
+
+    saveBattleItemUse(roomId, message, eventTime).then((result) => {
+      if (result === "error" && msgId) {
+        forgetMsgId(inst.recentBattleItemMsgIds, inst.recentBattleItemMsgIdOrder, msgId);
+      }
+    });
+  });
+
   conn.on("chat", (data: Record<string, unknown>) => {
     const msgId = resolveMsgId(data);
     if (
@@ -1947,6 +2060,8 @@ export async function startListener(
     recentChatMsgIdOrder: [],
     recentGiftMsgIds: new Set(),
     recentGiftMsgIdOrder: [],
+    recentBattleItemMsgIds: new Set(),
+    recentBattleItemMsgIdOrder: [],
     recentLikeMsgIds: new Set(),
     recentLikeMsgIdOrder: [],
     pendingLikes: new Map(),

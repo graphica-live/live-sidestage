@@ -321,6 +321,7 @@ model TiktokRoom {
   streamers       Streamer[]
   gifts           Gift[]
   battles         TiktokBattle[]
+  battleItemUses  TiktokBattleItemUse[]
   battleHistories BattleHistory[]
   watches         AgencyWatch[]
   likeTallies     LikeTally[]
@@ -833,6 +834,41 @@ model TiktokBattle {
   @@index([roomId, startedAt])
   @@index([battleId])
   @@map("tiktok_battles")
+  @@schema("public")
+}
+
+// バトル中のアイテム使用ログ(グローブ/ハンマー/ブースター/金グローブ)。1回の使用=1行。
+// TiktokBattleが「現在のバトル状態」を1行に集約するのに対し、こちらは時系列の離散イベント。
+//
+// **battleIdへFK制約は張らない。** TiktokBattle行の作成前(バトル開始検知の取りこぼし・受信順序)
+// にアイテム使用イベントが先着することがあり、Giftと同じ「roomId経由の緩い関連付け」思想を踏襲する。
+model TiktokBattleItemUse {
+  id     String @id @default(cuid())
+  roomId String
+  battleId String // TikTokのbattleId。TiktokBattle.battleIdと同じ文字列だが直接のFKは張らない
+
+  // WebcastLinkMicBattleItemCard.cardType(shared/tiktok-live-connectorのBattleItemCardType)
+  // 2=glove / 6=hammer / 10=top2booster / 11=top3booster / 12=vaultGlove。
+  // POWER_UP_SUMMARY(4、周期通知でsenderなし)は保存対象外(ハンドラ側でスキップ)。
+  cardType Int
+
+  senderUserId            String // sender.userId(安定ID)。targetHostUserIdと同じ系列で突合できるようにする
+  senderUniqueId          String // 可変ハンドル。空になりうる(proto既定値)
+  senderNickname          String
+  senderProfilePictureUrl String?
+  targetHostUserId        String // 使用対象の配信者anchorId
+
+  // TikTok common.msgId。resolveMsgId()が既定値"0"等を弾いてnullにする。
+  // dedupは(roomId, msgId)の5分window方式(Gift/saveGiftと同じ思想。理由はtiktok-listener.tsのGIFT_DEDUP_WINDOW_MS参照)。
+  msgId String?
+
+  receivedAt DateTime @default(now())
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, battleId])
+  @@index([roomId, msgId])
+  @@map("tiktok_battle_item_uses")
   @@schema("public")
 }
 
