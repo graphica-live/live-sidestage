@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
 import { upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
+import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
 
 // GET: return existing pending code for current user
 export async function GET() {
@@ -40,6 +41,21 @@ export async function POST(req: NextRequest) {
 
   if (!clean) {
     return NextResponse.json({ error: "TikTok IDを入力してください" }, { status: 400 });
+  }
+
+  // TikTok上に実在しないIDは登録させない(fail-closed)。テスト用の適当な文字列や
+  // 打ち間違いが登録され、誰も配信しない room を無期限に監視し続ける実害を防ぐ。
+  const existence = await requireExistingTiktokAccount(clean);
+  if (!existence.ok) {
+    return NextResponse.json(
+      {
+        error:
+          existence.reason === "MISSING"
+            ? "このTikTok IDのアカウントが見つかりません。IDを確認してください"
+            : "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください",
+      },
+      { status: existence.reason === "MISSING" ? 400 : 503 }
+    );
   }
 
   // 登録は無条件で許可する(他アカウントとの重複登録も可)。

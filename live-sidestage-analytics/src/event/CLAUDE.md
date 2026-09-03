@@ -102,22 +102,26 @@ commit するまでの間に、別の解除経路が「lease 0件」と数えて
 ### 5.5. 実在しない TikTok ID を弾く判断を「非 0 の statusCode」に広げない
 
 参加者登録は `api-live/user/room/` を1回引いて、実在しないハンドルを 400 で弾く
-（`src/lib/tiktok-existence.ts` → `classifyAccountExistence()`）。守ること:
+（`src/lib/tiktok-existence.ts` → `classifyAccountExistence()`）。同じゲート
+（`requireExistingTiktokAccount()`）を Streamer 登録（Web/モバイル）・事務所監視対象
+（AgencyWatch）追加でも共有している。守ること:
 
 - **拒否の根拠は `USER_NOT_FOUND_STATUS_CODE`（`19881007`）と `message: "user_not_found"` だけ。**
   実測（2026-08-24）で、実在は `statusCode: 0`、不存在は専用コードを返すことを確認している。
   非 0 をまとめて「いない」にすると、**レート制限や bot 判定で実在アカウントが一斉に弾かれ、
-  イベントの参加者登録がまるごと止まる**（`tiktok-room-cleanup.ts` が同じシグナルに
+  全経路の登録がまるごと止まる**（`tiktok-room-cleanup.ts` が同じシグナルに
   3回・3日・異常率のガードを積んでいるのはこのため）
-- **判定できなければ通す（fail-open）。** 実在確認は打ち間違いの救済であって参加資格の審査ではない。
-  結果は `RegisterResult.existence` で返し、`UNVERIFIED` なら UI が警告を出す
+- **判定できなくても拒否する（fail-closed）。** 実在しないID・テスト用の適当な文字列が
+  そのまま登録され、誰も配信しない room を無期限に監視し続ける実害（プロキシ・Euler署名枠の
+  消費）のほうを重く見た判断。結果は `RegisterResult.existence`（`"VERIFIED" | "DISABLED"`）で
+  返し、拒否時は 400（`MISSING`）/ 503（`UNVERIFIED`）を返す
 - **avatar を実在の根拠にしない。** `parseProfileResponse()` は avatar URL の検証に落ちると
   null を返すので、CDN のホストが変わると実在確認まで壊れる。`classifyAccountExistence()` は
   `data.user` しか見ない
 - 呼び出しの間引き（キャッシュ・in-flight 集約・同時実行上限2・サーキットブレーカ）を外さない。
   `fetchTiktokProfile()` はプロキシなしの単一データセンターIPで、avatar キャッシュ・
   `hostUserId` 補完・room cleanup と**同じ枠を共用している**
-- 止めたくなったら `EVENT_PARTICIPANT_EXISTENCE_CHECK=0`
+- 止めたくなったら `TIKTOK_EXISTENCE_CHECK_DISABLED=1`（全経路が同時に確認をスキップする）
 
 ### 6. `ensureRoomForEvent()` の上限と検証を外さない
 
@@ -323,6 +327,16 @@ API は列挙値でありさえすればどこからどこへでも飛ばせた�
 
 - `SCHEDULED`（開催準備中）⇄ `RUNNING` ⇄ `FINISHED` ⇄ `ARCHIVED`。飛び越えは 409
 - 同じ status への PATCH は**冪等に 200**。副作用は起こさない（二重クリック・別タブ）
+
+**`endAt` + 2日を過ぎても `RUNNING` のまま放置されたイベントは、event-worker が自動で
+`FINISHED` へ遷移させる**（`src/event/auto-finish.ts` の `autoFinishOverdueEvents()`、
+1時間ごと）。**これは表示上の状態合わせでしかない** — 集計の打ち切りは今までどおり
+`finalizedAt`、room 監視の終了は今までどおり `monitorUntil`（このどちらも上の
+「終了判定に status を使わない」原則のとおり status を見ない）。ここで書き換えるのは
+`Event.status` 列だけで、集計・監視ロジックには影響しない。対象は `RUNNING` だけ
+（`SCHEDULED` のまま放置されたイベントは対象外 — 一度も開催中にならなかった意味が変わる）。
+**`updatedAt` も猶予より前であることを要求する** — 主催者が結果修正のため手動で
+`FINISHED` → `RUNNING` へ戻した直後にサイレントに再 `FINISHED` 化しないため。
 
 **`RUNNING` への遷移はすべて（`SCHEDULED` からも `FINISHED` からも）同じ扱いにする。**
 

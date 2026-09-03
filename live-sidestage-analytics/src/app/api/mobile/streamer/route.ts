@@ -4,11 +4,30 @@ import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { resolveUserByMobileToken, signMobileToken } from "@/lib/mobile-auth";
 import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
-import {
-  checkNewHandleAtEntry,
-  fillHostUserIdAtEntryIfEligible,
-  upsertTiktokIdMergeJob,
-} from "@/lib/tiktok-id-migration";
+import { fillHostUserIdAtEntryIfEligible, upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
+import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
+
+/**
+ * 入口の実在確認(書き込み前、fail-closed)。通ったら TikTok の userId を返す —
+ * room 自動合流の fill-once 判断(`fillHostUserIdAtEntryIfEligible`)に使う。
+ */
+async function checkTiktokExistence(
+  tiktokId: string
+): Promise<{ error: NextResponse; userId?: undefined } | { error: null; userId: string | null }> {
+  const existence = await requireExistingTiktokAccount(tiktokId);
+  if (existence.ok) return { error: null, userId: existence.userId };
+  return {
+    error: NextResponse.json(
+      {
+        error:
+          existence.reason === "MISSING"
+            ? "このTikTok IDのアカウントが見つかりません。IDを確認してください"
+            : "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください",
+      },
+      { status: existence.reason === "MISSING" ? 400 : 503 }
+    ),
+  };
+}
 
 export async function POST(req: NextRequest) {
   const auth = resolveUserByMobileToken(req);
@@ -34,15 +53,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "既にTikTokアカウントが登録されています" }, { status: 409 });
   }
 
-  // 入口の実在確認(書き込み前)。MISSING(明示的なuser_not_found)だけ拒否する(fail-open)。
   const normalized = normalizeTiktokId(cleanTiktokId);
-  const entryCheck = await checkNewHandleAtEntry(normalized);
-  if (entryCheck.rejected) {
-    return NextResponse.json(
-      { error: "そのTikTok IDは見つかりません。数分後に再試行してください" },
-      { status: 400 }
-    );
-  }
+  const entryCheck = await checkTiktokExistence(normalized);
+  if (entryCheck.error) return entryCheck.error;
 
   // 登録は無条件で許可する(Web版と同様、他アカウントとの重複登録も可)。
   //
@@ -111,14 +124,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "TikTokアカウントが未登録です" }, { status: 404 });
   }
 
-  // 入口の実在確認(書き込み前)。MISSING(明示的なuser_not_found)だけ拒否する(fail-open)。
   const normalized = normalizeTiktokId(cleanTiktokId);
-  const entryCheck = await checkNewHandleAtEntry(normalized);
-  if (entryCheck.rejected) {
-    return NextResponse.json(
-      { error: "そのTikTok IDは見つかりません。数分後に再試行してください" },
-      { status: 400 }
-    );
+
+  // tiktokIdが変わらない更新(再送信・冪等リトライ)は実在確認を通さない。
+  // 既に登録済みのIDを再送するだけの操作をTikTok側の障害で止める理由がない。
+  let entryUserId: string | null = null;
+  if (cleanTiktokId !== user.streamer.tiktokId) {
+    const entryCheck = await checkTiktokExistence(normalized);
+    if (entryCheck.error) return entryCheck.error;
+    entryUserId = entryCheck.userId;
   }
 
   const streamer = await prisma.$transaction(async (tx) => {
@@ -132,8 +146,8 @@ export async function PATCH(req: NextRequest) {
 
   // 新しいtiktokIdに対応するTiktokRoomへ付け替える。
   const roomId = await resolveRoomForStreamer(streamer.id);
-  if (entryCheck.userId) {
-    await fillHostUserIdAtEntryIfEligible(roomId, entryCheck.userId);
+  if (entryUserId) {
+    await fillHostUserIdAtEntryIfEligible(roomId, entryUserId);
   }
 
   return NextResponse.json({

@@ -3,7 +3,6 @@ import { prisma } from "./prisma";
 import { saveHostUserIdOnce } from "./tiktok-host-id";
 import { normalizeTiktokId, resolveRoomForStreamer, TIKTOK_ID_PATTERN } from "./tiktok-room";
 import { fetchTiktokProfile, checkAccountExistence } from "./tiktok-profile";
-import { isStreamerRegistrationExistenceCheckDisabled } from "./tiktok-existence";
 
 // TikTok ID(ハンドル)変更に伴うデータ合流の正本。
 //
@@ -148,24 +147,10 @@ export async function upsertTiktokIdMergeJob(
   });
 }
 
-/**
- * 新ハンドルの入口実在確認(仕様0)。**書き込み前に呼ぶ。**
- *
- * - `MISSING`(user_not_found明示) → 拒否
- * - `UNVERIFIED`(レート制限・障害) → **通す(fail-open)**。打ち間違い防止であって
- *   セキュリティ境界ではなく、TikTok 側の不調で新規登録を丸ごと止める方が被害が大きい
- * - `EXISTS` → 通す。取れた userId を返す(呼び出し側の fill-once 判断に使う)
- */
-export type EntryExistenceCheck =
-  | { rejected: false; userId: string | null }
-  | { rejected: true };
-
-export async function checkNewHandleAtEntry(tiktokId: string): Promise<EntryExistenceCheck> {
-  if (isStreamerRegistrationExistenceCheckDisabled()) return { rejected: false, userId: null };
-  const check = await checkAccountExistence(tiktokId);
-  if (check.verdict === "MISSING") return { rejected: true };
-  return { rejected: false, userId: check.userId };
-}
+// 新ハンドルの入口実在確認は `requireExistingTiktokAccount`(src/lib/tiktok-existence.ts)へ
+// 一本化した。かつてここに fail-open の `checkNewHandleAtEntry` を置いていたが、実在確認を
+// 全経路 fail-closed へ統一した際に重複した(キルスイッチも2種類に割れていた)。
+// 入口で取れた userId はゲートの戻り値(`ExistenceGateResult.userId`)から受け取る。
 
 /**
  * 入口での hostUserId fill を、新規作成 room または Gift 0件の room に限定して行う。

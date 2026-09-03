@@ -8,6 +8,8 @@ const STATUS_BY_CODE = {
   limit: 400,
   duplicate: 409,
   conflict: 409,
+  not_found: 400,
+  unverified: 503,
 } as const;
 
 export async function GET() {

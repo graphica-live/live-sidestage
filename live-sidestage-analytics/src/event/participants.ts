@@ -35,10 +35,12 @@ export class ParticipantError extends Error {
  * TikTok 側でアカウントの実在を確認できたか。
  *
  * - `VERIFIED` … 実在を確認した
- * - `UNVERIFIED` … 確認できなかった(TikTok の障害・レート制限・想定外の応答)。**登録は通す**
- * - `DISABLED` … 確認自体を止めている(`EVENT_PARTICIPANT_EXISTENCE_CHECK=0`)
+ * - `DISABLED` … 確認自体を止めている(`TIKTOK_EXISTENCE_CHECK_DISABLED=1`)
+ *
+ * 判定できなかった(`UNVERIFIED`)場合はここへ来ず、登録・変更そのものを拒否する
+ * (fail-closed。理由は下の `registerParticipant` のコメント参照)。
  */
-export type ExistenceOutcome = "VERIFIED" | "UNVERIFIED" | "DISABLED";
+export type ExistenceOutcome = "VERIFIED" | "DISABLED";
 
 export type RegisterResult = {
   participantId: string;
@@ -58,9 +60,11 @@ export type RegisterResult = {
  * analytics 側に room がなければ作らせ、イベント終了+猶予まで配信開始監視を要求する。
  * 既存 room があればそれを再利用する(同じ配信者のギフトが分裂しないように)。
  *
- * **TikTok 上に実在しないハンドルは弾く。** 打ち間違いをそのまま登録すると、誰も配信しない
- * room を監視し続けたうえに、主催者は開催中まで気づけない。ただし判定できなかったときは
- * 通す(fail-open) — TikTok 側の障害でイベントの参加者登録が止まるほうが被害が大きい。
+ * **TikTok 上に実在しないハンドルは弾く。判定できなかったときも弾く(fail-closed)。**
+ * 打ち間違い・テスト用の適当な文字列をそのまま登録すると、誰も配信しない room を無期限に
+ * 監視し続け、主催者は開催中まで気づけない実害の方を重く見た判断。代償は、TikTok 側の
+ * 障害・レート制限・サーキットブレーカ開放中は参加者登録そのものが止まること。
+ * 止めたくなったら `TIKTOK_EXISTENCE_CHECK_DISABLED=1` で確認自体を切る。
  */
 export async function registerParticipant(
   input: {
@@ -115,10 +119,12 @@ export async function registerParticipant(
   // TikTok への問い合わせは、ローカルで弾ける検証を全部通してから1回だけ行う。
   // (重複・上限・チーム不正で落ちる登録では外へ出さない)
   const existence = await resolveExistence(tiktokId, deps);
-  if (existence.verdict === "MISSING") {
+  if (!existence.ok) {
     throw new ParticipantError(
-      "この TikTok ID のアカウントが TikTok 上に見つからない。ID を確認すること。",
-      400
+      existence.reason === "MISSING"
+        ? "この TikTok ID のアカウントが TikTok 上に見つからない。ID を確認すること。"
+        : "TikTok 上の実在確認ができなかった。しばらくしてから再試行すること。",
+      existence.reason === "MISSING" ? 400 : 503
     );
   }
 
@@ -176,12 +182,7 @@ export async function registerParticipant(
       roomId: leased.roomId,
       createdRoom: leased.created,
       leaseClamped: lease.clamped,
-      existence:
-        existence.verdict === "EXISTS"
-          ? "VERIFIED"
-          : existence.verdict === "DISABLED"
-            ? "DISABLED"
-            : "UNVERIFIED",
+      existence: existence.outcome,
     };
   } catch (err) {
     // event スキーマ側の書き込みが失敗したら、確保した監視要求を戻す。
@@ -206,26 +207,32 @@ export async function registerParticipant(
  * 実在(`EXISTS`)が確認できたときは、同じ問い合わせで取れたニックネームも一緒に返す
  * (表示名フォールバックに使う。登録経路からの新規の問い合わせは増やさない)。
  *
+ * fail-closed: `EXISTS` 以外(`MISSING`・`UNVERIFIED`・チェック自体の例外)はすべて
+ * `ok: false` にする。`DISABLED`(kill switch)だけは `ExistenceOutcome` を主催者へ
+ * 返す都合上ここで判定し、汎用ゲート(`requireExistingTiktokAccount`)は使わない。
+ *
  * 間引き(キャッシュ・同時実行上限・サーキットブレーカ)は `tiktok-existence.ts` が持つ。
- * ここは kill switch の解釈だけ。
  */
 async function resolveExistence(
   tiktokId: string,
   deps: { checker?: ExistenceChecker; existenceDisabled?: boolean }
-): Promise<{
-  verdict: "EXISTS" | "MISSING" | "UNVERIFIED" | "DISABLED";
-  nickname: string | null;
-}> {
+): Promise<
+  | { ok: true; outcome: ExistenceOutcome; nickname: string | null }
+  | { ok: false; reason: "MISSING" | "UNVERIFIED" }
+> {
   const disabled = deps.existenceDisabled ?? isExistenceCheckDisabled();
-  if (disabled) return { verdict: "DISABLED", nickname: null };
+  if (disabled) return { ok: true, outcome: "DISABLED", nickname: null };
 
   const checker = deps.checker ?? existenceChecker;
   try {
-    return await checker.check(tiktokId);
+    const result = await checker.check(tiktokId);
+    if (result.verdict === "EXISTS") {
+      return { ok: true, outcome: "VERIFIED", nickname: result.nickname };
+    }
+    return { ok: false, reason: result.verdict === "MISSING" ? "MISSING" : "UNVERIFIED" };
   } catch (err) {
-    // checker は例外を投げない契約だが、投げても登録は止めない(fail-open)。
     console.error(`[participants] @${tiktokId} の実在確認に失敗:`, err);
-    return { verdict: "UNVERIFIED", nickname: null };
+    return { ok: false, reason: "UNVERIFIED" };
   }
 }
 
@@ -379,18 +386,15 @@ export async function updateParticipant(
     }
 
     const existence = await resolveExistence(newTiktokId!, deps);
-    if (existence.verdict === "MISSING") {
+    if (!existence.ok) {
       throw new ParticipantError(
-        "この TikTok ID のアカウントが TikTok 上に見つからない。ID を確認すること。",
-        400
+        existence.reason === "MISSING"
+          ? "この TikTok ID のアカウントが TikTok 上に見つからない。ID を確認すること。"
+          : "TikTok 上の実在確認ができなかった。しばらくしてから再試行すること。",
+        existence.reason === "MISSING" ? 400 : 503
       );
     }
-    existenceOutcome =
-      existence.verdict === "EXISTS"
-        ? "VERIFIED"
-        : existence.verdict === "DISABLED"
-          ? "DISABLED"
-          : "UNVERIFIED";
+    existenceOutcome = existence.outcome;
 
     const event = await prisma.event.findUnique({
       where: { id: input.eventId },

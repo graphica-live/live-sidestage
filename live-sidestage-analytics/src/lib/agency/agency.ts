@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeTiktokId, upsertRoom } from "@/lib/tiktok-room";
 import { getWorkerCount, resolveWorkerForRoom } from "@/lib/tiktok-listener";
+import { type ExistenceChecker, requireExistingTiktokAccount } from "@/lib/tiktok-existence";
 import { isValidNormalizedTiktokId } from "./params";
 
 // 企業向けAPIキーは平文で保存しない。参照は常にキー本体のSHA-256で引く。
@@ -161,14 +162,19 @@ export async function listWatches(agencyId: string): Promise<WatchRecord[]> {
 
 export type AddWatchResult =
   | { ok: true; watch: WatchRecord }
-  | { ok: false; code: "invalid" | "limit" | "duplicate" | "conflict"; error: string };
+  | {
+      ok: false;
+      code: "invalid" | "limit" | "duplicate" | "conflict" | "not_found" | "unverified";
+      error: string;
+    };
 
 // 監視対象を追加する。src/app/api/listener/start/route.ts と同じく、ここでは部屋の解決と
 // 担当Workerの割当までを行い、実際のTikTok接続は担当Workerのensureループ(最大60秒間隔)が拾う。
 export async function addWatch(
   agencyId: string,
   rawTiktokId: string,
-  rawLabel: string | null
+  rawLabel: string | null,
+  deps: { checker?: ExistenceChecker } = {}
 ): Promise<AddWatchResult> {
   const normalized = normalizeTiktokId(rawTiktokId ?? "");
   if (!normalized) {
@@ -179,6 +185,20 @@ export async function addWatch(
       ok: false,
       code: "invalid",
       error: "TikTok IDの形式が正しくありません(英数字・アンダースコア・ドットの2〜24文字)。",
+    };
+  }
+
+  // TikTok上に実在しないIDは監視対象に追加させない(fail-closed)。誰も配信しない部屋を
+  // 無期限に監視し続ける実害を防ぐ。
+  const existence = await requireExistingTiktokAccount(normalized, deps.checker);
+  if (!existence.ok) {
+    return {
+      ok: false,
+      code: existence.reason === "MISSING" ? "not_found" : "unverified",
+      error:
+        existence.reason === "MISSING"
+          ? "このTikTok IDのアカウントが見つかりません。IDを確認してください。"
+          : "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください。",
     };
   }
 
