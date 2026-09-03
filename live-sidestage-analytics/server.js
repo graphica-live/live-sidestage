@@ -147,6 +147,28 @@ app.prepare().then(() => {
     return err;
   };
 
+  // src/lib/mark-last-active.ts の reviveSuspendedMonitoring() と同じロジック。
+  // server.js はTSモジュールをrequireできないためここに複製する(上のisAllowedHostと同じ理由)。
+  // OBSがoverlayTokenでsocket接続した = 配信者が実際に使っている証拠として、監視停止
+  // (monitoringSuspended)を能動的に復活させる。呼び出し元でroomIdまで取得済みのため
+  // Streamerの再取得はしない(Code Modeレビューで指摘)。
+  const reviveSuspendedMonitoringForRoom = async (roomId) => {
+    try {
+      await prisma.tiktokRoom.updateMany({
+        where: { id: roomId, monitoringSuspended: true },
+        data: {
+          monitoringSuspended: false,
+          unhealthySince: null,
+          notFoundStreak: 0,
+          notFoundFirstAt: null,
+          lastExistenceCheckAt: null,
+        },
+      });
+    } catch (err) {
+      console.error("[socket] 監視復活処理に失敗:", err);
+    }
+  };
+
   io.use(async (socket, next) => {
     const { token, apiKey } = socket.handshake.query ?? {};
 
@@ -155,11 +177,12 @@ app.prepare().then(() => {
         // verified未完了でもオーバーレイは即時利用可能にする。
         const streamer = await prisma.streamer.findFirst({
           where: { overlayToken: token },
-          select: { id: true },
+          select: { id: true, roomId: true },
         });
         if (!streamer) return next(unauthorizedError("INVALID_OVERLAY_TOKEN"));
         socket.data.streamerId = streamer.id;
         socket.data.room = `overlay:${streamer.id}`;
+        if (streamer.roomId) void reviveSuspendedMonitoringForRoom(streamer.roomId);
         return next();
       } catch (err) {
         console.error("[socket] auth error:", err);
