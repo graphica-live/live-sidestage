@@ -123,6 +123,12 @@ describe("computeBattleSnapshot", () => {
         displayId: "self_handle",
         nickName: "じぶん",
         score: "1200",
+        roomId: selfRoomId,
+        uniqueIdSnapshot: "self_handle",
+        nicknameSnapshot: "じぶん",
+        officialScore: "1200",
+        isSelf: true,
+        observedGiftTotal: 40,
       },
       {
         side: "opponent",
@@ -133,7 +139,18 @@ describe("computeBattleSnapshot", () => {
         displayId: "opp_handle",
         nickName: "あいて",
         score: "900",
+        roomId: null,
+        uniqueIdSnapshot: "opp_handle",
+        nicknameSnapshot: "あいて",
+        officialScore: "900",
+        isSelf: false,
+        observedGiftTotal: null,
       },
+    ]);
+    // roomId解決できた自分側だけgiftEventsが複製される(相手roomは未監視なのでnull)
+    expect(snapshot!.giftEvents.map((g) => [g.senderUniqueIdSnapshot, g.totalDiamonds]).sort()).toEqual([
+      ["fan_a", 30],
+      ["fan_b", 10],
     ]);
     // totalDiamonds降順に明示ソートされている
     expect(snapshot!.contributors.map((c) => [c.uniqueId, c.totalDiamonds, c.giftCount])).toEqual([
@@ -183,13 +200,21 @@ describe("computeBattleSnapshot", () => {
     const stored = await prisma.battleHistoryParticipant.findMany({
       where: { battleHistory: { roomId: selfRoomId, battleId: "snap_tri" } },
       orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
-      select: { anchorId: true, teamIndex: true, score: true },
+      select: { anchorId: true, teamIndex: true, score: true, battleTeamId: true },
     });
-    expect(stored).toEqual([
+    expect(stored.map((p) => ({ anchorId: p.anchorId, teamIndex: p.teamIndex, score: p.score }))).toEqual([
       { anchorId: SELF_ANCHOR_ID, teamIndex: 0, score: "1200" },
       { anchorId: "finalize_host_x", teamIndex: 1, score: "900" },
       { anchorId: "finalize_host_y", teamIndex: 2, score: "700" },
     ]);
+    // dual-write先(新構造)のBattleTeamが3陣営分作られ、各participantが別々の自陣営BattleTeamへ紐づくこと
+    // (BattleTeamはteamIndex列を持たないので、1:1対応は「3人とも非null・3件とも別id」で確認する)。
+    expect(stored.every((p) => p.battleTeamId !== null)).toBe(true);
+    expect(new Set(stored.map((p) => p.battleTeamId))).toHaveProperty("size", 3);
+    const teams = await prisma.battleTeam.findMany({
+      where: { battleHistory: { roomId: selfRoomId, battleId: "snap_tri" } },
+    });
+    expect(teams).toHaveLength(3);
   });
 
   it("自分側のhostUserIdが未解決なら確定しない(nullを返す)", async () => {
@@ -253,13 +278,16 @@ describe("materializeBattleHistory", () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "mat_unstable") });
     await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
 
-    // 1回目と2回目の計算の間に遅延Gift INSERTが届く状況を再現する
+    // 1回目と2回目の計算の間に遅延Gift INSERTが届く状況を再現する。
+    // Phase2a以降computeBattleSnapshotはparticipant毎のgift/item-use/bonus-mission問い合わせを
+    // 追加で行うため1回目の計算自体が数十msかかりうる。1回目実行中に紛れ込ませないよう、
+    // 2回目計算(stabilityDelayMs=300後)の直前で確実に間に合う150msに余裕を持たせる。
     const inserted = new Promise<void>((resolve) => {
       setTimeout(() => {
         void makeGift(selfRoomId, { uniqueId: "fan_late", nickname: "レイト", totalDiamonds: 7 }).then(() =>
           resolve()
         );
-      }, 20);
+      }, 150);
     });
 
     const result = await materializeBattleHistory(selfRoomId, "mat_unstable", NOW, { stabilityDelayMs: 300 });
@@ -298,6 +326,13 @@ describe("materializeBattleHistory", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].participants).toHaveLength(2);
     expect(rows[0].contributors).toHaveLength(1);
+
+    // dual-write先(新構造)の子行も再実行で重複しないこと(cascade delete→再作成の経路を通す)。
+    const giftEvents = await prisma.battleHistoryGiftEvent.findMany({
+      where: { participant: { battleHistoryId: rows[0].id } },
+    });
+    expect(giftEvents).toHaveLength(1);
+    expect(giftEvents[0].senderUniqueIdSnapshot).toBe("fan_a");
   });
 });
 
