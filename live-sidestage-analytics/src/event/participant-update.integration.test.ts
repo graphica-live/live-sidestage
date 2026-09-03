@@ -33,7 +33,7 @@ function stubChecker(verdict: AccountExistence): ExistenceChecker & { calls: str
     calls,
     async check(tiktokId: string) {
       calls.push(tiktokId);
-      return { verdict, nickname: null };
+      return { verdict, nickname: null, userId: null };
     },
     size: () => 0,
   };
@@ -555,7 +555,7 @@ describe("updateParticipant の TikTok ID 訂正", () => {
       async check() {
         reached();
         await barrier;
-        return { verdict: "EXISTS", nickname: null };
+        return { verdict: "EXISTS", nickname: null, userId: null };
       },
       size: () => 0,
     };
@@ -602,7 +602,7 @@ describe("updateParticipant の TikTok ID 訂正", () => {
       async check() {
         reached();
         await barrier;
-        return { verdict: "EXISTS", nickname: null };
+        return { verdict: "EXISTS", nickname: null, userId: null };
       },
       size: () => 0,
     };

@@ -20,7 +20,7 @@ function stubChecker(verdict: AccountExistence): ExistenceChecker & { calls: str
     calls,
     async check(tiktokId: string) {
       calls.push(tiktokId);
-      return { verdict, nickname: null };
+      return { verdict, nickname: null, userId: null };
     },
     size: () => 0,
   };
@@ -175,7 +175,7 @@ describe("registerParticipant の表示名フォールバック", () => {
 
     const result = await registerParticipant(
       { eventId: event.id, rawTiktokId: tiktokId },
-      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "テスト配信者" }) }
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "テスト配信者", userId: null }) }
     );
 
     const participant = await prisma.eventParticipant.findUniqueOrThrow({
@@ -194,7 +194,7 @@ describe("registerParticipant の表示名フォールバック", () => {
         rawTiktokId: tiktokId,
         displayName: "主催者が入れた名前",
       },
-      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "テスト配信者" }) }
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "テスト配信者", userId: null }) }
     );
 
     const participant = await prisma.eventParticipant.findUniqueOrThrow({
@@ -240,7 +240,7 @@ describe("registerParticipant の表示名フォールバック", () => {
 
     const result = await registerParticipant(
       { eventId: event.id, rawTiktokId: tiktokId },
-      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: longNickname }) }
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: longNickname, userId: null }) }
     );
 
     const participant = await prisma.eventParticipant.findUniqueOrThrow({
@@ -255,7 +255,7 @@ describe("registerParticipant の表示名フォールバック", () => {
 
     const result = await registerParticipant(
       { eventId: event.id, rawTiktokId: tiktokId },
-      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "改行\n入り" }) }
+      { checker: stubCheckerWithNickname({ verdict: "EXISTS", nickname: "改行\n入り", userId: null }) }
     );
 
     const participant = await prisma.eventParticipant.findUniqueOrThrow({
@@ -287,7 +287,7 @@ describe("登録の補償が他の登録の監視を止めないこと", () => {
       async check() {
         reached();
         await barrier;
-        return { verdict: "EXISTS", nickname: null };
+        return { verdict: "EXISTS", nickname: null, userId: null };
       },
       size: () => 0,
     };

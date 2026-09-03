@@ -13,7 +13,7 @@ function stubFetch(verdicts: AccountExistence[] | AccountExistence) {
     fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
       const verdict = fixed ?? queue!.shift() ?? "UNVERIFIED";
-      return { verdict, nickname: null };
+      return { verdict, nickname: null, userId: null };
     },
   };
 }
@@ -27,7 +27,7 @@ function stubFetchWithChecks(checks: AccountExistenceCheck[]) {
     calls,
     fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
-      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null };
+      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null, userId: null };
     },
   };
 }
@@ -49,7 +49,7 @@ function deferredFetch() {
     fn: (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
       return new Promise<AccountExistenceCheck>((resolve) => {
-        resolvers.push((verdict) => resolve({ verdict, nickname: null }));
+        resolvers.push((verdict) => resolve({ verdict, nickname: null, userId: null }));
       });
     },
   };
@@ -104,21 +104,21 @@ describe("createExistenceChecker のキャッシュ", () => {
   });
 
   it("EXISTS のニックネームもキャッシュに残り、2回目のヒットでも同じ値が返る", async () => {
-    const fetcher = stubFetchWithChecks([{ verdict: "EXISTS", nickname: "テスト配信者" }]);
+    const fetcher = stubFetchWithChecks([{ verdict: "EXISTS", nickname: "テスト配信者", userId: null }]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者" });
+    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者", userId: null });
     // キャッシュヒット。fetch を引き直さずに同じ nickname が返る。
-    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者" });
+    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者", userId: null });
     expect(fetcher.calls).toEqual(["someone"]);
   });
 
   it("MISSING の nickname は常に null で覚える", async () => {
-    const fetcher = stubFetchWithChecks([{ verdict: "MISSING", nickname: null }]);
+    const fetcher = stubFetchWithChecks([{ verdict: "MISSING", nickname: null, userId: null }]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null });
-    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null });
+    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null, userId: null });
+    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null, userId: null });
     expect(fetcher.calls).toEqual(["nobody"]);
   });
 
@@ -190,7 +190,7 @@ describe("createExistenceChecker の呼び出し制御", () => {
 
     const pending = [checker.check("a"), checker.check("b"), checker.check("c")];
 
-    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null });
+    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null });
     expect(fetcher.calls).toEqual(["a", "b"]);
 
     fetcher.resolvers[0]("EXISTS");
@@ -254,14 +254,14 @@ describe("createExistenceChecker の呼び出し制御", () => {
       },
     });
 
-    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null });
+    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null });
   });
 
   it("空のハンドルは外へ出さない", async () => {
     const fetcher = stubFetch("EXISTS");
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null });
+    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null });
     expect(fetcher.calls).toEqual([]);
   });
 });
