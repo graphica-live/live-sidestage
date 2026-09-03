@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { BATTLE_ACTION, type HostProfiles, type HostTeams } from "@/lib/tiktok-battle";
 import { getDateRange } from "@/lib/gift-analytics";
-import { queryGifts, resolveHiddenGiftIds, type GiftAnalyticsUser } from "@/lib/gift-analytics";
+import { queryGifts, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
 
@@ -593,12 +593,10 @@ async function scanMatchingBattleIds(
       .map((w) => ({ battleId: w.battleId, start: w.window.start, end: w.window.end }));
 
     if (diamondWindows.length > 0) {
-      const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
       const gifts = await prisma.gift.findMany({
         where: {
           roomId,
           OR: diamondWindows.map((w) => ({ receivedAt: { gte: w.start, lte: w.end } })),
-          ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
         },
         select: { receivedAt: true, uniqueId: true, nickname: true },
         orderBy: { receivedAt: "asc" },
@@ -623,10 +621,9 @@ async function scanMatchingBattleIds(
 }
 
 /**
- * ownBattles(表示対象として確定したバトル)から表示用アイテムを組み立てる。固定6クエリ
- * (N+1にしない): (1) 同 battleId の他 room 行 (2) 他 room の TiktokRoom (3) 非表示ギフトID
- * (4) ダイヤ集計対象のGift (5) 相手アイコンのTiktokAvatarAsset。(3)〜(5)はダイヤ集計対象・
- * 相手アイコンが1件も無ければ実行しない。
+ * ownBattles(表示対象として確定したバトル)から表示用アイテムを組み立てる。固定5クエリ
+ * (N+1にしない): (1) 同 battleId の他 room 行 (2) 他 room の TiktokRoom (3) ダイヤ集計対象のGift
+ * (4) 相手アイコンのTiktokAvatarAsset。(3)〜(4)はダイヤ集計対象・相手アイコンが1件も無ければ実行しない。
  */
 /**
  * 左右split表示1メンバー分を組み立てる。selfHostUserId本人はselfTiktokIdで補う(自room由来なので確実)。
@@ -805,12 +802,10 @@ async function buildBattleListItems(
 
   let diamondsByBattleId = new Map<string, number>();
   if (diamondWindows.length > 0) {
-    const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
     const gifts = await prisma.gift.findMany({
       where: {
         roomId,
         OR: diamondWindows.map((w) => ({ receivedAt: { gte: w.start, lte: w.end } })),
-        ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
       },
       select: { receivedAt: true, totalDiamonds: true },
       orderBy: { receivedAt: "asc" },
@@ -1109,7 +1104,7 @@ export type BattleContributor = GiftAnalyticsUser;
  * 展開時に取得する、そのバトル区間だけの貢献者一覧。
  *
  * 確定済み(BattleHistory行がある)なら Gift に触れずスナップショットから返す。
- * 未確定なら従来どおり queryGifts と同じ集計・除外規則(GiftEdit.hiddenを反映)でライブ集計する。
+ * 未確定なら従来どおり queryGifts と同じ集計規則でライブ集計する。
  */
 export async function queryBattleContributors(
   roomId: string,

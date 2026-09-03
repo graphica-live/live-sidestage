@@ -55,15 +55,6 @@ export type GiftAnalyticsUser = {
   lastGiftAt: string;
 };
 
-/** viewerStreamerIdが「非表示」にしたギフト(GiftEdit.hidden)のIDを返す。非表示は閲覧者本人のview以外には一切影響しない。 */
-export async function resolveHiddenGiftIds(roomId: string, viewerStreamerId: string): Promise<string[]> {
-  const hiddenEdits = await prisma.giftEdit.findMany({
-    where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
-    select: { giftId: true },
-  });
-  return hiddenEdits.map((e) => e.giftId);
-}
-
 /** Giftの集計に使う where。queryGifts と確定処理(battle-history-finalize.ts)で共有する。 */
 export type GiftAggregateWhere = {
   roomId: string;
@@ -78,8 +69,8 @@ export type GiftAggregateWhere = {
  * という二段階を1箇所にまとめたもの。groupBy 単独では nickname が取れず、素朴に findMany すると
  * 全件を持ってくることになるため、この形が正本。
  *
- * `viewerStreamerId` に依存しない(非表示ギフトの除外は呼び出し側が `where.id.notIn` で渡す)。
- * バトル履歴の確定処理は閲覧者非依存で集計する必要があるので、除外を引数で外せる形にしてある。
+ * `viewerStreamerId` に依存しない。バトル履歴の確定処理は閲覧者非依存で集計する必要があるので、
+ * viewerStreamerIdを引数で外せる形にしてある。
  *
  * `resolveAvatars: false` を渡すと自前ストレージの署名付きURL解決(S3 presign)を省く。
  * 確定処理は署名付きURLを保存しない(24時間で失効する)ため、その分の往復を避ける。
@@ -134,7 +125,6 @@ export async function aggregateGiftUsers(
 }
 
 // roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
-// viewerStreamerId: 閲覧者本人が「非表示」にしたギフト(GiftEdit.hidden)を除外するために使う。
 // listenerQuery: リスナー名(uniqueId/nicknameの部分一致)による絞り込み。指定時は「一致する
 // uniqueIdの集合」を先に求め、その集合に対して(listenerQuery条件を外した)通常の集計を行う
 // 2段階クエリにする。表示名条件をgroupByのwhereへ直接混ぜると、対象ユーザーが期間中に
@@ -145,11 +135,8 @@ export async function queryGifts(
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
   listenerQuery?: string | null
 ): Promise<{ users: GiftAnalyticsUser[]; total: { giftCount: number; totalDiamonds: number } }> {
-  const hiddenIds = await resolveHiddenGiftIds(roomId, viewerStreamerId);
-
   const baseWhere: GiftAggregateWhere = {
     roomId,
-    ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
     ...where,
   };
 

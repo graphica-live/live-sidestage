@@ -59,11 +59,7 @@ export type GiftHistoryEvent = {
 };
 
 // roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
-// viewerStreamerId: 閲覧者本人のGiftEdit(リネーム・非表示)を適用するために使う。他の登録者の編集は見えない。
-//
-// **hidden除外はDBクエリのwhere句で行う(取得後にfilterしない)。** limit件を取ってから非表示行を
-// 弾く実装だと、非表示行がlimitを消費して表示可能な件数が減り、totalも「取得できたページ内の合計」に
-// なってしまう(queryGifts()と同じ理由でここも先に除外する)。
+// viewerStreamerId: 閲覧者本人のGiftEdit(リネーム)を適用するために使う。他の登録者の編集は見えない。
 export async function queryGiftHistory(
   roomId: string,
   viewerStreamerId: string,
@@ -71,18 +67,11 @@ export async function queryGiftHistory(
   limit: number,
   listenerQuery?: string | null
 ): Promise<{ events: GiftHistoryEvent[]; total: { count: number; diamonds: number }; hasMore: boolean }> {
-  const hiddenEdits = await prisma.giftEdit.findMany({
-    where: { streamerId: viewerStreamerId, hidden: true, gift: { roomId } },
-    select: { giftId: true },
-  });
-  const hiddenIds = hiddenEdits.map((e) => e.giftId);
-
   // イベント単位の一覧なので、そのイベント自身のuniqueId/nicknameが一致するかで素直に
   // フィルタしてよい(queryGiftsのような表示名変更による過少集計問題はここには当てはまらない
   // — 各行は「受信当時の記録」をそのまま出す一覧のため)。
   const fullWhere = {
     roomId,
-    ...(hiddenIds.length > 0 ? { id: { notIn: hiddenIds } } : {}),
     ...(listenerQuery
       ? {
           OR: [

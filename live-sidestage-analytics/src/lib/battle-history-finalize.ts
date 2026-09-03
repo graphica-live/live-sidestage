@@ -196,7 +196,7 @@ export async function computeBattleSnapshot(
     }))
   );
 
-  // 貢献者は閲覧者非依存(GiftEdit.hiddenを見ない)で集計する。確定は全閲覧者で共有される。
+  // 貢献者は閲覧者非依存で集計する。確定は全閲覧者で共有される。
   // アバターの署名付きURLは保存しないので解決も省く。
   const { users, total } = await aggregateGiftUsers(
     { roomId, receivedAt: { gte: windowStart, lte: windowEnd } },
