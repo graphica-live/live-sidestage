@@ -29,14 +29,20 @@
 import { prisma } from "@/lib/prisma";
 import { aggregateGiftUsers } from "@/lib/gift-analytics";
 import {
+  asTeamEntries,
   mergeMaxScores,
   resolveBattleScore,
   resolveBattleSides,
   resolveBattleWindow,
   resolveParticipantIdentity,
+  resolveParticipantRoomId,
   type BattleRow,
 } from "@/lib/battle-history";
 import type { HostProfiles } from "@/lib/tiktok-battle";
+
+/** BattleHistoryGiftEvent等の子行createManyを分割する単位。Postgresのbind数上限対策
+ * (1バトルのギフト送信回数は数百〜数千になりうる)。Prismaの自動分割に依存しない。 */
+const GIFT_EVENT_CHUNK_SIZE = 1000;
 
 /** 安定性チェックの待ち時間。1回目と2回目の計算の間隔。 */
 export const STABILITY_DELAY_MS = 60 * 1000;
@@ -54,6 +60,22 @@ export type BattleSnapshotParticipant = {
   nickName: string | null;
   /** 確定時に観測できていたこのメンバーのスコア。未観測ならnull。 */
   score: string | null;
+
+  // --- Phase2a(新構造dual-write)拡張。captureStatus等の捕捉率系は別サブフェーズで
+  // 未実装のため常にnull(schema上nullable)。 ---
+  /** このメンバーの配信room。自分は必ず解決できる。相手はSidestageが別途そのroomを
+   * 監視できていた場合のみ解決できる(できなければnull=新構造の個別ギフトイベントは保存不可)。 */
+  roomId: string | null;
+  /** displayIdの後継。同一値をコピーするだけ(新構造での正としての位置づけ)。 */
+  uniqueIdSnapshot: string | null;
+  /** nickNameの後継。同一値をコピーするだけ。 */
+  nicknameSnapshot: string | null;
+  /** scoreの後継。同一値をコピーするだけ。 */
+  officialScore: string | null;
+  /** teamIndex===0の導出値。 */
+  isSelf: boolean;
+  /** roomId解決できた場合のみ、そのroomでの窓内gift合計diamond。解決不能ならnull。 */
+  observedGiftTotal: number | null;
 };
 
 export type BattleSnapshotContributor = {
@@ -62,6 +84,55 @@ export type BattleSnapshotContributor = {
   giftCount: number;
   totalDiamonds: number;
   lastGiftAt: Date;
+};
+
+/** BattleHistoryGiftEvent 1行分。participantId確定前なのでanchorIdで紐付ける。 */
+export type BattleSnapshotGiftEvent = {
+  participantAnchorId: string;
+  occurredAt: Date;
+  senderUniqueIdSnapshot: string;
+  senderNicknameSnapshot: string;
+  giftId: number;
+  giftNameSnapshot: string;
+  repeatCount: number;
+  diamondCount: number;
+  totalDiamonds: number;
+  multiplierType: number | null;
+  multiplierValue: number | null;
+  sourceGiftId: string;
+};
+
+/** BattleHistoryItemCardEvent 1行分。自room(snapshot.roomId)で観測したものだけを対象にする
+ * (両room監視時の重複複製を避けるため)。使用対象(targetHostUserId)でparticipantへ配る。 */
+export type BattleSnapshotItemCardEvent = {
+  participantAnchorId: string;
+  occurredAt: Date;
+  cardType: number;
+  senderUniqueIdSnapshot: string | null;
+  senderNicknameSnapshot: string | null;
+  senderTiktokUserId: string | null;
+};
+
+/** BattleHistoryBonusMission 1行分。roomId解決できたparticipantのみ対象。 */
+export type BattleSnapshotBonusMission = {
+  participantAnchorId: string;
+  targetType: number;
+  progressTarget: number;
+  rewardMultiple: number;
+  startedAt: Date;
+  settledAt: Date | null;
+  taskResult: number | null;
+  rewardStartedAt: Date | null;
+  rewardEndedAt: Date | null;
+  rewardSum: number | null;
+};
+
+/** BattleTeam 1行分。teamIndexでBattleSnapshotParticipant.teamIndexと対応づける
+ * (BattleTeam自体はteamIndex列を持たないため、作成順=factions順で紐付ける)。 */
+export type BattleSnapshotTeam = {
+  teamIndex: number;
+  externalTeamId: string | null;
+  officialScore: string | null;
 };
 
 export type BattleSnapshot = {
@@ -78,6 +149,10 @@ export type BattleSnapshot = {
   sourceUpdatedAt: Date;
   participants: BattleSnapshotParticipant[];
   contributors: BattleSnapshotContributor[];
+  teams: BattleSnapshotTeam[];
+  giftEvents: BattleSnapshotGiftEvent[];
+  itemCardEvents: BattleSnapshotItemCardEvent[];
+  bonusMissions: BattleSnapshotBonusMission[];
 };
 
 export type MaterializeResult =
@@ -179,22 +254,140 @@ export async function computeBattleSnapshot(
   // メンバー個別のスコアは faction の合計からは復元できないので、ここで anchorId 単位に引き直す。
   const merged = mergeMaxScores(rows);
 
-  const participants: BattleSnapshotParticipant[] = factions.flatMap((faction) =>
-    faction.anchorIds.map((anchorId, position) => ({
-      side: (faction.index === 0 ? "self" : "opponent") as "self" | "opponent",
-      teamIndex: faction.index,
-      position,
-      ...resolveParticipantIdentity(
+  const participantsBase = factions.flatMap((faction) =>
+    faction.anchorIds.map((anchorId, position) => {
+      const identity = resolveParticipantIdentity(
         anchorId,
         hostProfiles,
         otherRoomIdsForBattle,
         otherRoomById,
         selfHostUserId,
         selfTiktokId
-      ),
-      score: merged.get(anchorId)?.toString() ?? null,
-    }))
+      );
+      const score = merged.get(anchorId)?.toString() ?? null;
+      return {
+        side: (faction.index === 0 ? "self" : "opponent") as "self" | "opponent",
+        teamIndex: faction.index,
+        position,
+        ...identity,
+        score,
+        roomId: resolveParticipantRoomId(anchorId, otherRoomIdsForBattle, otherRoomById, selfHostUserId, roomId),
+        uniqueIdSnapshot: identity.displayId,
+        nicknameSnapshot: identity.nickName,
+        officialScore: score,
+        isSelf: faction.index === 0,
+      };
+    })
   );
+
+  // roomId解決できたparticipantについてのみ、そのroomの生gift行を窓内で読み取り、
+  // BattleHistoryGiftEvent用の行とobservedGiftTotalを作る(自room・相手roomとも同じクエリ形)。
+  // resolveParticipantRoomIdは「1 room = 1 participant」を前提にしている(schema設計上の前提、
+  // src/lib/battle-history.tsのコメント参照)ので、roomIdごとに高々1回のクエリで済む。
+  const giftEvents: BattleSnapshotGiftEvent[] = [];
+  const observedGiftTotalByAnchorId = new Map<string, number>();
+  for (const p of participantsBase) {
+    if (p.roomId === null) continue;
+    const rows = await prisma.gift.findMany({
+      where: { roomId: p.roomId, receivedAt: { gte: windowStart, lte: windowEnd } },
+      select: {
+        id: true,
+        uniqueId: true,
+        nickname: true,
+        giftId: true,
+        giftName: true,
+        repeatCount: true,
+        diamondCount: true,
+        totalDiamonds: true,
+        multiplierType: true,
+        multiplierValue: true,
+        receivedAt: true,
+      },
+    });
+    let total = 0;
+    for (const g of rows) {
+      total += g.totalDiamonds;
+      giftEvents.push({
+        participantAnchorId: p.anchorId,
+        occurredAt: g.receivedAt,
+        senderUniqueIdSnapshot: g.uniqueId,
+        senderNicknameSnapshot: g.nickname,
+        giftId: g.giftId,
+        giftNameSnapshot: g.giftName,
+        repeatCount: g.repeatCount,
+        diamondCount: g.diamondCount,
+        totalDiamonds: g.totalDiamonds,
+        multiplierType: g.multiplierType,
+        multiplierValue: g.multiplierValue,
+        sourceGiftId: g.id,
+      });
+    }
+    observedGiftTotalByAnchorId.set(p.anchorId, total);
+  }
+
+  const participants: BattleSnapshotParticipant[] = participantsBase.map((p) => ({
+    ...p,
+    observedGiftTotal: p.roomId === null ? null : observedGiftTotalByAnchorId.get(p.anchorId) ?? 0,
+  }));
+
+  // アイテムカード使用(グローブ/ハンマー等)は自room(このBattleHistory行が確定させるroom)で
+  // 観測したものだけを対象にする。相手roomも監視していた場合、相手側のmaterializeが自分の
+  // BattleHistory行で同じイベントをもう一度複製するので、targetHostUserId(使用対象)一致で
+  // participantへ配る(schema comment通り「このroomのwindow内のものだけ複製する」)。
+  const itemUseRows = await prisma.tiktokBattleItemUse.findMany({
+    where: { roomId, battleId, receivedAt: { gte: windowStart, lte: windowEnd } },
+    select: {
+      cardType: true,
+      senderUserId: true,
+      senderUniqueId: true,
+      senderNickname: true,
+      targetHostUserId: true,
+      receivedAt: true,
+    },
+  });
+  const participantAnchorIds = new Set(participants.map((p) => p.anchorId));
+  const itemCardEvents: BattleSnapshotItemCardEvent[] = itemUseRows
+    .filter((r) => participantAnchorIds.has(r.targetHostUserId))
+    .map((r) => ({
+      participantAnchorId: r.targetHostUserId,
+      occurredAt: r.receivedAt,
+      cardType: r.cardType,
+      senderUniqueIdSnapshot: r.senderUniqueId || null,
+      senderNicknameSnapshot: r.senderNickname || null,
+      senderTiktokUserId: r.senderUserId || null,
+    }));
+
+  // ボーナスミッションはroomId解決できたparticipantのみ(観測roomごとの進捗のため)。
+  const bonusMissions: BattleSnapshotBonusMission[] = [];
+  for (const p of participants) {
+    if (p.roomId === null) continue;
+    const rows = await prisma.tiktokBattleBonusMission.findMany({
+      where: { roomId: p.roomId, battleId },
+      select: {
+        targetType: true,
+        progressTarget: true,
+        rewardMultiple: true,
+        startedAt: true,
+        settledAt: true,
+        taskResult: true,
+        rewardStartedAt: true,
+        rewardEndedAt: true,
+        rewardSum: true,
+      },
+    });
+    for (const r of rows) {
+      bonusMissions.push({ participantAnchorId: p.anchorId, ...r });
+    }
+  }
+
+  // BattleTeamはfactions順(=teamIndex順)で1件ずつ作る。externalTeamIdはteamArmies由来の
+  // hostTeams(kind==="teams"のときだけ意味を持つ。1v1/solo/multiはteamの概念が無いのでnull)。
+  const teamOf = new Map(asTeamEntries(own.hostTeams));
+  const teams: BattleSnapshotTeam[] = factions.map((faction) => ({
+    teamIndex: faction.index,
+    externalTeamId: resolved.kind === "teams" ? teamOf.get(faction.anchorIds[0]) ?? null : null,
+    officialScore: faction.score,
+  }));
 
   // 貢献者は閲覧者非依存で集計する。確定は全閲覧者で共有される。
   // アバターの署名付きURLは保存しないので解決も省く。
@@ -235,6 +428,10 @@ export async function computeBattleSnapshot(
     sourceUpdatedAt,
     participants,
     contributors,
+    teams,
+    giftEvents,
+    itemCardEvents,
+    bonusMissions,
   };
 }
 
@@ -251,7 +448,10 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
     a.opponentScore !== b.opponentScore ||
     a.selfTotalDiamonds !== b.selfTotalDiamonds ||
     a.participants.length !== b.participants.length ||
-    a.contributors.length !== b.contributors.length
+    a.contributors.length !== b.contributors.length ||
+    a.giftEvents.length !== b.giftEvents.length ||
+    a.itemCardEvents.length !== b.itemCardEvents.length ||
+    a.bonusMissions.length !== b.bonusMissions.length
   ) {
     return false;
   }
@@ -267,7 +467,9 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
       x.anchorId !== y.anchorId ||
       x.tiktokId !== y.tiktokId ||
       x.displayId !== y.displayId ||
-      x.nickName !== y.nickName
+      x.nickName !== y.nickName ||
+      x.roomId !== y.roomId ||
+      x.observedGiftTotal !== y.observedGiftTotal
     ) {
       return false;
     }
@@ -287,6 +489,16 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
     }
   }
 
+  // giftEventsは複数roomからの取得順であり並び順が安定している保証が無いため、
+  // sourceGiftId(=元Gift.id)の集合比較にする(遅延Gift INSERTを安定性判定に反映させたい
+  // 主目的には十分)。
+  const giftIds = (snapshot: BattleSnapshot) => snapshot.giftEvents.map((g) => g.sourceGiftId).sort();
+  const aGiftIds = giftIds(a);
+  const bGiftIds = giftIds(b);
+  for (let i = 0; i < aGiftIds.length; i++) {
+    if (aGiftIds[i] !== bGiftIds[i]) return false;
+  }
+
   return true;
 }
 
@@ -300,6 +512,11 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
  *   確定された)なら上書きしない。デプロイ時に新旧Workerが並走し、新Workerが書いた確定値を
  *   旧Workerの遅れた計算が踏み潰すのを防ぐ。
  */
+/** commitBattleSnapshotのtransaction timeout。既定(5秒)だと数百〜数千件のgiftEvents
+ * createManyを含む確定処理が容易に超過するため、src/event/reopen-aggregation.tsの
+ * MUTATION_TX_OPTIONSと同水準まで延ばす。 */
+const COMMIT_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
+
 export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date): Promise<MaterializeResult> {
   try {
     return await prisma.$transaction(async (tx): Promise<MaterializeResult> => {
@@ -333,8 +550,13 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         if (updateResult.count === 0) {
           return { finalized: false, reason: "stale" };
         }
+        // battleHistoryParticipant削除はonDelete: CascadeでgiftEvents/itemCardEvents/
+        // bonusMissionsも道連れに消える。battleTeamはparticipant.battleTeamIdがonDelete:
+        // SetNullなので、参加者削除より先に消しても後でも実害はないが、対称性のため
+        // 参加者削除の後に置く。
         await tx.battleHistoryParticipant.deleteMany({ where: { battleHistoryId: existing.id } });
         await tx.battleHistoryContributor.deleteMany({ where: { battleHistoryId: existing.id } });
+        await tx.battleTeam.deleteMany({ where: { battleHistoryId: existing.id } });
         battleHistoryId = existing.id;
         action = "updated";
       } else {
@@ -346,9 +568,24 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         action = "created";
       }
 
+      // BattleTeamはteamIndex列を持たないため、factions順(=snapshot.teams順)に個別createして
+      // 生成idをteamIndexへ紐付ける(件数は陣営数=通常2〜数件なのでcreateManyにする必要はない)。
+      const teamIdByIndex = new Map<number, string>();
+      for (const team of snapshot.teams) {
+        const row = await tx.battleTeam.create({
+          data: { battleHistoryId, externalTeamId: team.externalTeamId, officialScore: team.officialScore },
+          select: { id: true },
+        });
+        teamIdByIndex.set(team.teamIndex, row.id);
+      }
+
       if (snapshot.participants.length > 0) {
         await tx.battleHistoryParticipant.createMany({
-          data: snapshot.participants.map((p) => ({ battleHistoryId, ...p })),
+          data: snapshot.participants.map((p) => ({
+            battleHistoryId,
+            ...p,
+            battleTeamId: teamIdByIndex.get(p.teamIndex) ?? null,
+          })),
         });
       }
       if (snapshot.contributors.length > 0) {
@@ -357,8 +594,48 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         });
       }
 
+      // giftEvents/itemCardEvents/bonusMissionsはparticipantId(子行FK)が要るので、
+      // createMany後にunique制約(battleHistoryId, anchorId)でid引き直す。
+      if (snapshot.giftEvents.length > 0 || snapshot.itemCardEvents.length > 0 || snapshot.bonusMissions.length > 0) {
+        const createdParticipants = await tx.battleHistoryParticipant.findMany({
+          where: { battleHistoryId },
+          select: { id: true, anchorId: true },
+        });
+        const participantIdByAnchorId = new Map(createdParticipants.map((p) => [p.anchorId, p.id]));
+
+        const giftEventRows = snapshot.giftEvents.flatMap((g) => {
+          const participantId = participantIdByAnchorId.get(g.participantAnchorId);
+          if (!participantId) return [];
+          const { participantAnchorId: _participantAnchorId, ...rest } = g;
+          return [{ participantId, ...rest }];
+        });
+        for (let i = 0; i < giftEventRows.length; i += GIFT_EVENT_CHUNK_SIZE) {
+          await tx.battleHistoryGiftEvent.createMany({ data: giftEventRows.slice(i, i + GIFT_EVENT_CHUNK_SIZE) });
+        }
+
+        const itemCardEventRows = snapshot.itemCardEvents.flatMap((e) => {
+          const participantId = participantIdByAnchorId.get(e.participantAnchorId);
+          if (!participantId) return [];
+          const { participantAnchorId: _participantAnchorId, ...rest } = e;
+          return [{ participantId, ...rest }];
+        });
+        if (itemCardEventRows.length > 0) {
+          await tx.battleHistoryItemCardEvent.createMany({ data: itemCardEventRows });
+        }
+
+        const bonusMissionRows = snapshot.bonusMissions.flatMap((m) => {
+          const participantId = participantIdByAnchorId.get(m.participantAnchorId);
+          if (!participantId) return [];
+          const { participantAnchorId: _participantAnchorId, ...rest } = m;
+          return [{ participantId, battleHistoryId, ...rest }];
+        });
+        if (bonusMissionRows.length > 0) {
+          await tx.battleHistoryBonusMission.createMany({ data: bonusMissionRows });
+        }
+      }
+
       return { finalized: true, action };
-    });
+    }, COMMIT_TX_OPTIONS);
   } catch (err) {
     // @@unique([roomId, battleId]) の競合。並行materializeがほぼ同時にcreateした場合に起きる。
     // 先に入ったほうの確定値を尊重し、こちらは諦める(確定は最適化なので実害はない)。

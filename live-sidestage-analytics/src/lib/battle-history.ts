@@ -66,7 +66,7 @@ function asScoreEntries(value: unknown): [string, string][] {
 }
 
 /** hostTeams(anchorId -> teamId)から妥当なエントリだけを取り出す。値は非空文字列であることのみ検証。 */
-function asTeamEntries(value: unknown): [string, string][] {
+export function asTeamEntries(value: unknown): [string, string][] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
   return Object.entries(value as Record<string, unknown>).flatMap(([anchorId, teamId]) =>
     typeof teamId === "string" && teamId.length > 0 ? [[anchorId, teamId] as [string, string]] : []
@@ -671,6 +671,25 @@ export function resolveParticipantIdentity(
     displayId: profile?.displayId ?? null,
     nickName: profile?.nickName ?? null,
   };
+}
+
+/**
+ * Phase2a(新構造dual-write)専用。参加者(anchorId)が所属するTiktokRoom.idを解決する。
+ * resolveParticipantIdentityのtiktokId解決と同じ「hostUserId一致マッチ」を使うが、
+ * 一致候補が2件以上ある(曖昧)場合は解決失敗としてnullに倒す(先勝ちにしない)。
+ * 自分ならselfRoomId、相手はSidestageがそのroomを別途監視できていた場合のみ解決できる
+ * (できなければ新構造ではその参加者の個々のギフトイベントを保存できない=null)。
+ */
+export function resolveParticipantRoomId(
+  anchorId: string,
+  candidateRoomIds: string[],
+  otherRoomById: Map<string, { tiktokId: string; hostUserId: string | null }>,
+  selfHostUserId: string | null,
+  selfRoomId: string
+): string | null {
+  if (anchorId === selfHostUserId) return selfRoomId;
+  const matches = [...new Set(candidateRoomIds)].filter((roomId) => otherRoomById.get(roomId)?.hostUserId === anchorId);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function buildParticipant(
