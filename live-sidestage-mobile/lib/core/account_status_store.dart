@@ -89,6 +89,21 @@ class AccountStatusStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 事後通知SnackBarの「閉じる」操作。サーバーへ既読化を送りつつ、次のrefreshを
+  /// 待たずローカル状態からも即座に消す(でないと再度設定タブを開くたびに出続ける)。
+  Future<void> acknowledgeRecentMerge({required String token}) async {
+    final notice = status.recentMerge;
+    if (notice == null) return;
+    status = status.withoutRecentMerge();
+    notifyListeners();
+    try {
+      await _api.acknowledgeMergeNotice(token: token, logId: notice.id);
+    } catch (_) {
+      // ベストエフォート。失敗してもUIは閉じたままでよい(次回起動時に再取得すれば
+      // まだ未読ならまた表示されるだけで、既読化の再送を強制する必要はない)。
+    }
+  }
+
   /// ログアウト時に呼ぶ。次のユーザーのAuthGateが古い状態を一瞬でも見ないようにする。
   void reset() {
     _requestedUserId = null;

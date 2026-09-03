@@ -844,3 +844,48 @@ export async function processPendingMergeJobs(
 
   return { processed: jobs.length };
 }
+
+// 事後通知バナー(Phase 3/4)。ユーザーに見せるのは合流成立(MERGED)と、
+// サポートへの誘導が要るブロック系(BLOCKED_OLD_HANDLE_ALIVE / SELF_NOT_FOUND)のみ。
+// EVENT_ACTIVE・DEFERRED・NO_CANDIDATE・BLOCKED_HOST_MISMATCH は一時保留または
+// 正常系(ハンドル再利用)なので通知しない。
+
+const NOTIFIABLE_OUTCOMES = ["MERGED", "BLOCKED_OLD_HANDLE_ALIVE", "SELF_NOT_FOUND"] as const;
+
+export type RecentMergeNotice = {
+  id: string;
+  outcome: (typeof NOTIFIABLE_OUTCOMES)[number];
+  oldTiktokId: string | null;
+  giftCount: number | null;
+};
+
+/** streamer の直近の未読(acknowledgedAt=null)な通知対象ログを1件だけ返す。複数溜まっていても最新1件のみ。 */
+export async function getRecentUnacknowledgedMerge(
+  streamerId: string
+): Promise<RecentMergeNotice | null> {
+  const log = await prisma.tiktokIdMergeLog.findFirst({
+    where: {
+      streamerId,
+      acknowledgedAt: null,
+      outcome: { in: [...NOTIFIABLE_OUTCOMES] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!log) return null;
+
+  const stats = log.stats as { giftsMoved?: number } | null;
+  return {
+    id: log.id,
+    outcome: log.outcome as RecentMergeNotice["outcome"],
+    oldTiktokId: log.oldTiktokId,
+    giftCount: log.outcome === "MERGED" ? (stats?.giftsMoved ?? null) : null,
+  };
+}
+
+/** バナーの閉じる操作で呼ぶ。streamerId が一致する行のみ既読化する(他人のログを既読化できないように)。 */
+export async function acknowledgeMergeLog(streamerId: string, logId: string): Promise<void> {
+  await prisma.tiktokIdMergeLog.updateMany({
+    where: { id: logId, streamerId },
+    data: { acknowledgedAt: new Date() },
+  });
+}

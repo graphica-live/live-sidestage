@@ -8,7 +8,13 @@
 // NULL同士が「一致」と評価され、旧roomのGiftが1件も移動されず全滅する。
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { absorbRooms, fillHostUserIdAtEntryIfEligible, upsertTiktokIdMergeJob } from "./tiktok-id-migration";
+import {
+  absorbRooms,
+  fillHostUserIdAtEntryIfEligible,
+  upsertTiktokIdMergeJob,
+  getRecentUnacknowledgedMerge,
+  acknowledgeMergeLog,
+} from "./tiktok-id-migration";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 function handle(tag: string) {
@@ -20,6 +26,7 @@ const userIds: string[] = [];
 const eventIds: string[] = [];
 const agencyIds: string[] = [];
 const streamerJobStreamerIds: string[] = [];
+const mergeLogStreamerIds: string[] = [];
 
 async function makeRoom(tag: string, hostUserId: string | null = null) {
   const room = await prisma.tiktokRoom.create({
@@ -67,6 +74,7 @@ async function makeGift(roomId: string, overrides: { orderId?: string | null; to
 }
 
 afterAll(async () => {
+  await prisma.tiktokIdMergeLog.deleteMany({ where: { streamerId: { in: mergeLogStreamerIds } } });
   await prisma.tiktokIdMergeJob.deleteMany({ where: { streamerId: { in: streamerJobStreamerIds } } });
   await prisma.eventParticipant.deleteMany({ where: { eventId: { in: eventIds } } });
   await prisma.eventRoomLease.deleteMany({ where: { eventId: { in: eventIds } } });
@@ -425,5 +433,103 @@ describe("upsertTiktokIdMergeJob — ジョブのライフサイクル", () => {
     expect(job?.status).toBe("pending");
     expect(job?.tiktokId).toBe("handle2");
     expect(job?.attempts).toBe(0);
+  });
+});
+
+describe("getRecentUnacknowledgedMerge / acknowledgeMergeLog — 事後通知バナー", () => {
+  it("未読ログがなければ null を返す", async () => {
+    const room = await makeRoom("noticeroom0");
+    const streamer = await makeStreamer(room.id, room.tiktokId);
+    mergeLogStreamerIds.push(streamer.id);
+
+    const notice = await getRecentUnacknowledgedMerge(streamer.id);
+    expect(notice).toBeNull();
+  });
+
+  it("MERGEDログの giftsMoved を giftCount として返す", async () => {
+    const room = await makeRoom("noticeroom1");
+    const streamer = await makeStreamer(room.id, room.tiktokId);
+    mergeLogStreamerIds.push(streamer.id);
+
+    await prisma.tiktokIdMergeLog.create({
+      data: {
+        streamerId: streamer.id,
+        userId: "notice-uid-1",
+        outcome: "MERGED",
+        oldTiktokId: "alice",
+        newTiktokId: room.tiktokId,
+        stats: { giftsMoved: 42 },
+      },
+    });
+
+    const notice = await getRecentUnacknowledgedMerge(streamer.id);
+    expect(notice?.outcome).toBe("MERGED");
+    expect(notice?.oldTiktokId).toBe("alice");
+    expect(notice?.giftCount).toBe(42);
+  });
+
+  it("複数未読ログがあっても最新1件のみ返す", async () => {
+    const room = await makeRoom("noticeroom2");
+    const streamer = await makeStreamer(room.id, room.tiktokId);
+    mergeLogStreamerIds.push(streamer.id);
+
+    await prisma.tiktokIdMergeLog.create({
+      data: { streamerId: streamer.id, userId: "u", outcome: "MERGED", newTiktokId: room.tiktokId, oldTiktokId: "old1" },
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    await prisma.tiktokIdMergeLog.create({
+      data: { streamerId: streamer.id, userId: "u", outcome: "MERGED", newTiktokId: room.tiktokId, oldTiktokId: "old2" },
+    });
+
+    const notice = await getRecentUnacknowledgedMerge(streamer.id);
+    expect(notice?.oldTiktokId).toBe("old2");
+  });
+
+  it("NO_CANDIDATE / EVENT_ACTIVE / BLOCKED_HOST_MISMATCH は通知対象外", async () => {
+    const room = await makeRoom("noticeroom3");
+    const streamer = await makeStreamer(room.id, room.tiktokId);
+    mergeLogStreamerIds.push(streamer.id);
+
+    for (const outcome of ["NO_CANDIDATE", "EVENT_ACTIVE", "BLOCKED_HOST_MISMATCH", "DEFERRED"]) {
+      await prisma.tiktokIdMergeLog.create({
+        data: { streamerId: streamer.id, userId: "u", outcome, newTiktokId: room.tiktokId },
+      });
+    }
+
+    const notice = await getRecentUnacknowledgedMerge(streamer.id);
+    expect(notice).toBeNull();
+  });
+
+  it("acknowledgeMergeLog で既読化すると以後返らない", async () => {
+    const room = await makeRoom("noticeroom4");
+    const streamer = await makeStreamer(room.id, room.tiktokId);
+    mergeLogStreamerIds.push(streamer.id);
+
+    const log = await prisma.tiktokIdMergeLog.create({
+      data: { streamerId: streamer.id, userId: "u", outcome: "MERGED", newTiktokId: room.tiktokId, oldTiktokId: "old" },
+    });
+
+    await acknowledgeMergeLog(streamer.id, log.id);
+
+    const notice = await getRecentUnacknowledgedMerge(streamer.id);
+    expect(notice).toBeNull();
+  });
+
+  it("acknowledgeMergeLog は streamerId が一致しない行を既読化しない(他人のログ保護)", async () => {
+    const room1 = await makeRoom("noticeroom5a");
+    const streamer1 = await makeStreamer(room1.id, room1.tiktokId);
+    mergeLogStreamerIds.push(streamer1.id);
+    const room2 = await makeRoom("noticeroom5b");
+    const streamer2 = await makeStreamer(room2.id, room2.tiktokId);
+    mergeLogStreamerIds.push(streamer2.id);
+
+    const log = await prisma.tiktokIdMergeLog.create({
+      data: { streamerId: streamer1.id, userId: "u", outcome: "MERGED", newTiktokId: room1.tiktokId, oldTiktokId: "old" },
+    });
+
+    await acknowledgeMergeLog(streamer2.id, log.id);
+
+    const notice = await getRecentUnacknowledgedMerge(streamer1.id);
+    expect(notice?.id).toBe(log.id);
   });
 });

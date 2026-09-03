@@ -578,6 +578,12 @@ class LiveAnalyticsApi {
     );
   }
 
+  /// 事後通知SnackBarの「閉じる」操作。他の既読化と同様ベストエフォート
+  /// (失敗してもUIは閉じたままでよい。次回起動時に再表示されるだけ)。
+  Future<void> acknowledgeMergeNotice({required String token, required String logId}) async {
+    await _send('POST', '/api/mobile/recent-merge/ack', {'logId': logId}, token: token);
+  }
+
   Future<Map<String, dynamic>> _post(String path, Map<String, String> body, {String? token}) {
     return _send('POST', path, body, token: token);
   }

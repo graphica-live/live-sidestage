@@ -9,6 +9,8 @@ import {
   getMobileMinSupportedVersion,
   isMobileMaintenanceMode,
 } from "@/lib/mobile-settings";
+import { prisma } from "@/lib/prisma";
+import { getRecentUnacknowledgedMerge } from "@/lib/tiktok-id-migration";
 
 // このレスポンスはUser個別の課金状態を含むため、CDN/共有キャッシュは不可。
 export const dynamic = "force-dynamic";
@@ -19,13 +21,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   }
 
-  const [plan, betaStatuses, minimumSupportedVersion, latestVersion, maintenanceMode] = await Promise.all([
-    getUserPlan(auth.userId),
-    getBetaStatuses(),
-    getMobileMinSupportedVersion(),
-    getMobileLatestVersion(),
-    isMobileMaintenanceMode(),
-  ]);
+  const [plan, betaStatuses, minimumSupportedVersion, latestVersion, maintenanceMode, streamer] =
+    await Promise.all([
+      getUserPlan(auth.userId),
+      getBetaStatuses(),
+      getMobileMinSupportedVersion(),
+      getMobileLatestVersion(),
+      isMobileMaintenanceMode(),
+      prisma.streamer.findUnique({ where: { userId: auth.userId }, select: { id: true } }),
+    ]);
+
+  const recentMerge = streamer ? await getRecentUnacknowledgedMerge(streamer.id) : null;
 
   // 実プランはβで書き換えない。featureの許可判定だけがβ領域のバイパスを考慮する。
   // ここは同期計算(DBは上のPromise.allで1回ずつしか叩かない)。
@@ -47,6 +53,7 @@ export async function GET(req: NextRequest) {
       minimumSupportedVersion,
       latestVersion,
       maintenanceMode,
+      recentMerge,
     },
     { headers: { "Cache-Control": "private, no-store" } }
   );
