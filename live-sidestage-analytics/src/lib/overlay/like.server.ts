@@ -43,9 +43,16 @@ export function crossedMilestones(previousTotal: number, newTotal: number, inter
   return Array.from({ length: to - from }, (_, i) => (from + i + 1) * interval);
 }
 
-/** 古い日付のLikeTally行を削除する(誰にも読まれず無期限に蓄積するのを防ぐ)。 */
-export async function pruneOldLikeTallies(olderThanDays = 7): Promise<number> {
+/** 古い日付のLikeTally行を削除する(誰にも読まれず無期限に蓄積するのを防ぐ)。
+ * dryRun=trueのときは削除せず対象件数だけ数える(tiktok-cleanup.ts等の安全側デフォルトに合わせる)。 */
+export async function pruneOldLikeTallies(
+  options: { olderThanDays?: number; dryRun?: boolean } = {}
+): Promise<number> {
+  const { olderThanDays = 7, dryRun = false } = options;
   const cutoff = jstDateKey(-olderThanDays);
+  if (dryRun) {
+    return prisma.likeTally.count({ where: { dayKey: { lt: cutoff } } });
+  }
   const result = await prisma.likeTally.deleteMany({ where: { dayKey: { lt: cutoff } } });
   return result.count;
 }
