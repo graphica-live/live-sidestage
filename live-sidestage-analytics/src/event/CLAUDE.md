@@ -626,9 +626,8 @@ TikTok の `BattleAction` は `FINISH`(5) と `CUT_SHORT`(6) を区別する。�
 ままなので、数えると `finalizedAt` が永久に立たない。
 
 `ARCHIVED` は `aggregationWindow`（`aggregate.ts`）の対象外なので、作り直しても集計が回らない
-（ダイアログで案内している）。`EventScoreAdjustment.scope=MATCH` と
-`EventContribution.scope=MATCH` は `EventMatch` への FK なしのソフト参照。前者は未使用、
-後者は次の全再集計で入れ替わる（`ARCHIVED` では残る）。破棄時に手で消す必要はない。
+（ダイアログで案内している）。`EventContribution.scope=MATCH` は `EventMatch` への FK なしの
+ソフト参照で、次の全再集計で入れ替わる（`ARCHIVED` では残る）。破棄時に手で消す必要はない。
 
 **ロック順序は全経路で advisory lock が先。** 破棄側が「ロック → 行削除」なので、
 `[matchId]` API が「行更新 → `reopenAggregation` の中でロック」だと逆順でデッドロックする。
@@ -1383,9 +1382,6 @@ TikTokスコア（hostScore）は候補単位のまま合算しない（`GameDet
 | 4 ✅ | バトルトーナメント（battle 検知 → マッチ照合 → 勝敗確定 → トーナメント表）※実 payload での検証は未 |
 | 5 ✅ | デスマッチ（ライフポイント、対戦カードの個別追加、引き分け） |
 | 6 | 都道府県UI（日本地図） |
-
-`EventScoreAdjustment`（主催者による手動補正）はモデルだけあって未使用 —
-集計に効かせるコードと管理UIは同時に入れること。
 
 公開ページの順位表は `STANDING_HEADINGS` で種目ごとに見出しを変えている
 （デスマッチは集計が回っていれば「ライフ」表示に差し替わる）。`FORMAT_PENDING_NOTES` は
