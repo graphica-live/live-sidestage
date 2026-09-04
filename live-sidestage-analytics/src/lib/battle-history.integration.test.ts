@@ -1208,4 +1208,36 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     // startedAt降順(確定済みのほうが新しい)
     expect(battles.map((b) => b.battleId)).toEqual(["q_finalized", "q_live"]);
   });
+
+  it("listenerQueryは新経路(自room participantのgiftEvents)からも一致を拾う(旧contributorsには居なくても)", async () => {
+    const range = { start: new Date("2026-09-04T00:00:00Z"), end: new Date("2026-09-05T00:00:00Z") };
+    const startedAt = new Date("2026-09-04T10:00:00Z");
+
+    await prisma.tiktokBattle.create({ data: finalBattleData("q_giftevents", startedAt) });
+    const history = await createHistory("q_giftevents", startedAt, [
+      { uniqueId: "legacy_unrelated", nickname: "旧経路だけの無関係者", totalDiamonds: 1 },
+    ]);
+    const selfParticipant = await prisma.battleHistoryParticipant.update({
+      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: SELF_ANCHOR } },
+      data: { roomId: finalRoomId },
+    });
+    await prisma.battleHistoryGiftEvent.create({
+      data: {
+        participantId: selfParticipant.id,
+        occurredAt: new Date(startedAt.getTime() + 60 * 1000),
+        senderUniqueIdSnapshot: "hanako_giftevent",
+        senderNicknameSnapshot: "はなこ(新経路)",
+        giftId: 1,
+        giftNameSnapshot: "Rose",
+        repeatCount: 1,
+        diamondCount: 1,
+        totalDiamonds: 1,
+        sourceGiftId: "src_hanako",
+      },
+    });
+
+    const { battles } = await queryBattles(finalRoomId, VIEWER, range, { listenerQuery: "hanako" });
+
+    expect(battles.map((b) => b.battleId)).toEqual(["q_giftevents"]);
+  });
 });

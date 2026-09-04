@@ -521,6 +521,12 @@ async function listFinalizedBattleIds(roomId: string, battleIds: string[]): Prom
  *
  * 確定済みバトルの貢献者は「最新のニックネーム1件」に畳まれているため、バトル進行中に
  * 使っていた旧ニックネームでは一致しない(仕様変化。未確定バトルは従来どおりGiftを都度検索する)。
+ *
+ * Phase3(Contract前段): 新構造(自room participant配下のBattleHistoryGiftEvent)と
+ * 旧`BattleHistoryContributor`の両方を検索し、一致battleIdの和集合を返す。新経路は
+ * queryBattleContributors(Phase2c)と同じ絞り込み(participant.roomId===自room)を使う。
+ * 旧経路は「Phase2a以前に確定した行(giftEventsが無い)」を拾うためのフォールバックで、
+ * dual-write停止・旧テーブル削除(Contract完了)時にこの関数ごと単純化できる。
  */
 async function matchFinalizedBattleIds(
   roomId: string,
@@ -529,17 +535,29 @@ async function matchFinalizedBattleIds(
 ): Promise<Set<string>> {
   if (battleIds.length === 0) return new Set();
   const pattern = escapeLikePattern(listenerQuery);
-  const rows = await prisma.battleHistoryContributor.findMany({
-    where: {
-      battleHistory: { roomId, battleId: { in: battleIds } },
-      OR: [
-        { uniqueId: { contains: pattern, mode: Prisma.QueryMode.insensitive } },
-        { nickname: { contains: pattern, mode: Prisma.QueryMode.insensitive } },
-      ],
-    },
-    select: { battleHistory: { select: { battleId: true } } },
-  });
-  return new Set(rows.map((r) => r.battleHistory.battleId));
+  const insensitiveContains = { contains: pattern, mode: Prisma.QueryMode.insensitive };
+
+  const [giftEventRows, legacyRows] = await Promise.all([
+    prisma.battleHistoryGiftEvent.findMany({
+      where: {
+        participant: { roomId, battleHistory: { roomId, battleId: { in: battleIds } } },
+        OR: [{ senderUniqueIdSnapshot: insensitiveContains }, { senderNicknameSnapshot: insensitiveContains }],
+      },
+      select: { participant: { select: { battleHistory: { select: { battleId: true } } } } },
+    }),
+    prisma.battleHistoryContributor.findMany({
+      where: {
+        battleHistory: { roomId, battleId: { in: battleIds } },
+        OR: [{ uniqueId: insensitiveContains }, { nickname: insensitiveContains }],
+      },
+      select: { battleHistory: { select: { battleId: true } } },
+    }),
+  ]);
+
+  const matched = new Set<string>();
+  for (const r of giftEventRows) matched.add(r.participant.battleHistory.battleId);
+  for (const r of legacyRows) matched.add(r.battleHistory.battleId);
+  return matched;
 }
 
 async function scanMatchingBattleIds(
