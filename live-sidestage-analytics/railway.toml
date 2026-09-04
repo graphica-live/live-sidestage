@@ -5,3 +5,13 @@ dockerfilePath = "Dockerfile"
 [deploy]
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+# worker1/2/3 が「web の prisma db push でスキーマが追いつく」のを待つための窓。
+# 7サービスは同一イメージの共有ではなく各自が独立に Dockerfile をビルドするので、
+# 起動タイミングに分単位のずれが出る。web はさらに起動後に移行スクリプトと db push を
+# 走らせるため、既定の 300 秒では worker 側が待ち切れずに healthcheck 失敗となる
+# (2026-09-04 worker3 が P2022 で 503 を返し続けデプロイ失敗)。
+# worker.ts は 5秒周期の reconcile でスキーマ到着後に自力で ready になるため、
+# 窓さえ広げれば自動復帰する。旧コンテナは新コンテナが healthy になるまで生き続けるので、
+# 延長によるダウンタイムのコストは無い。
+healthcheckTimeout = 1800
