@@ -106,6 +106,31 @@ let watchdogTimer: NodeJS.Timeout | null = null;
 let shuttingDown = false;
 let reconcileRunning = false;
 
+// DBスキーマの反映は web の起動時(Dockerfile の CMD にある `prisma db push`)だけが行う。
+// 7サービスは同一イメージの共有ではなく各自が独立にビルドされるため、schema.prisma を含む
+// デプロイでは worker が web より先に起動しうる。そのとき worker は「このビルドが要求する
+// 列/テーブルがDBにまだ無い」状態でクエリを投げ、P2021/P2022 で失敗する。
+//
+// **これは異常ではなく待ちである。** 下の reconcile が5秒周期で再試行し、web の db push が
+// 済んだ周回で ready へ復帰する。素のスタックトレースだけだと「壊れた」のか「待っている」のか
+// 運用側から判別できないため、この状態と分かる文言に差し替える(動作そのものは変えない)。
+const SCHEMA_LAG_ERROR_CODES = new Set(["P2021", "P2022"]);
+
+function schemaLagMessage(err: unknown): string | null {
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  if (typeof code !== "string" || !SCHEMA_LAG_ERROR_CODES.has(code)) return null;
+
+  const detail =
+    err instanceof Error
+      ? err.message
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line.includes("does not exist"))
+      : undefined;
+
+  return `DB schema is behind this build (${code}${detail ? `: ${detail}` : ""}) — waiting for web's prisma db push; retrying every ${UNREADY_RECONCILE_INTERVAL_MS / 1000}s`;
+}
+
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
@@ -205,14 +230,19 @@ async function main() {
       );
     }
   } catch (err) {
+    const schemaLag = schemaLagMessage(err);
     lastReconcile = {
       at: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
       roomCount: null,
       startFailures: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: schemaLag ?? (err instanceof Error ? err.message : String(err)),
     };
-    console.error("[worker] resumeAllListeners failed — staying unready:", err);
+    if (schemaLag) {
+      console.warn(`[worker] ${schemaLag} (staying unready)`);
+    } else {
+      console.error("[worker] resumeAllListeners failed — staying unready:", err);
+    }
   }
 
   scheduleReconcile();
