@@ -161,7 +161,7 @@ async function connectTikTokLive(userId) {
     ttsConn = null;
   }
 
-  const { WebcastPushConnection, TikTokWebClient } = require('tiktok-live-connector');
+  const { WebcastPushConnection, TikTokWebClient } = require('TLC-sidestage');
   const { loadSettings } = require('./server');
   const signApiKey = (loadSettings().ttsSignApiKey || '').trim() || undefined;
 
