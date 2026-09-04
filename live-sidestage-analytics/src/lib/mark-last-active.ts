@@ -69,8 +69,8 @@ export async function reviveSuspendedMonitoringForRoom(roomId: string): Promise<
 // 最初の実在確認で古いstreakを引き継いでしまい、TikTok側が実際には復帰していても
 // 誤って早期に再停止しかねない。低価値クリーンアップ由来の停止ではこれらは元々null
 // なのでリセットしても影響しない。
-async function reviveSuspendedMonitoring(roomId: string): Promise<void> {
-  await prisma.tiktokRoom.updateMany({
+export async function reviveSuspendedMonitoring(roomId: string): Promise<number> {
+  const updated = await prisma.tiktokRoom.updateMany({
     where: { id: roomId, monitoringSuspended: true },
     data: {
       monitoringSuspended: false,
@@ -80,4 +80,5 @@ async function reviveSuspendedMonitoring(roomId: string): Promise<void> {
       lastExistenceCheckAt: null,
     },
   });
+  return updated.count;
 }

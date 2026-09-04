@@ -85,6 +85,13 @@ class WebcastPushConnection extends lib_1.TikTokLiveConnection {
                 case 'WebcastLinkMicBattleItemCard':
                     this.emit(events_1.WebcastEvent.LINK_MIC_BATTLE_ITEM_CARD, simplifiedObj);
                     break;
+                // Added (live-sidestage fork, not part of upstream): collab (linkMic, not battle)
+                // join/leave notifications. Schema (WebcastLinkLayerMessage) already existed but had
+                // no case here, so WebcastPushConnection never emitted it — consumers had to fall back
+                // to decodedData.
+                case 'WebcastLinkLayerMessage':
+                    this.emit(events_1.WebcastEvent.LINK_LAYER, simplifiedObj);
+                    break;
             }
         });
     }
