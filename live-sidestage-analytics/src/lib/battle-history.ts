@@ -522,11 +522,7 @@ async function listFinalizedBattleIds(roomId: string, battleIds: string[]): Prom
  * 確定済みバトルの貢献者は「最新のニックネーム1件」に畳まれているため、バトル進行中に
  * 使っていた旧ニックネームでは一致しない(仕様変化。未確定バトルは従来どおりGiftを都度検索する)。
  *
- * Phase3(Contract前段): 新構造(自room participant配下のBattleHistoryGiftEvent)と
- * 旧`BattleHistoryContributor`の両方を検索し、一致battleIdの和集合を返す。新経路は
- * queryBattleContributors(Phase2c)と同じ絞り込み(participant.roomId===自room)を使う。
- * 旧経路は「Phase2a以前に確定した行(giftEventsが無い)」を拾うためのフォールバックで、
- * dual-write停止・旧テーブル削除(Contract完了)時にこの関数ごと単純化できる。
+ * 参加者の絞り込みはqueryBattleContributorsと同じ(participant.roomId===自room)。
  */
 async function matchFinalizedBattleIds(
   roomId: string,
@@ -537,27 +533,15 @@ async function matchFinalizedBattleIds(
   const pattern = escapeLikePattern(listenerQuery);
   const insensitiveContains = { contains: pattern, mode: Prisma.QueryMode.insensitive };
 
-  const [giftEventRows, legacyRows] = await Promise.all([
-    prisma.battleHistoryGiftEvent.findMany({
-      where: {
-        participant: { roomId, battleHistory: { roomId, battleId: { in: battleIds } } },
-        OR: [{ senderUniqueIdSnapshot: insensitiveContains }, { senderNicknameSnapshot: insensitiveContains }],
-      },
-      select: { participant: { select: { battleHistory: { select: { battleId: true } } } } },
-    }),
-    prisma.battleHistoryContributor.findMany({
-      where: {
-        battleHistory: { roomId, battleId: { in: battleIds } },
-        OR: [{ uniqueId: insensitiveContains }, { nickname: insensitiveContains }],
-      },
-      select: { battleHistory: { select: { battleId: true } } },
-    }),
-  ]);
+  const giftEventRows = await prisma.battleHistoryGiftEvent.findMany({
+    where: {
+      participant: { roomId, battleHistory: { roomId, battleId: { in: battleIds } } },
+      OR: [{ senderUniqueIdSnapshot: insensitiveContains }, { senderNicknameSnapshot: insensitiveContains }],
+    },
+    select: { participant: { select: { battleHistory: { select: { battleId: true } } } } },
+  });
 
-  const matched = new Set<string>();
-  for (const r of giftEventRows) matched.add(r.participant.battleHistory.battleId);
-  for (const r of legacyRows) matched.add(r.battleHistory.battleId);
-  return matched;
+  return new Set(giftEventRows.map((r) => r.participant.battleHistory.battleId));
 }
 
 async function scanMatchingBattleIds(
@@ -1195,44 +1179,19 @@ export function aggregateGiftEventsToContributors(rows: GiftEventForContribution
     });
 }
 
-/** Phase2c以前(dual-write開始前)に確定した行向けの旧経路フォールバック。
- * 新経路(自room participantのgiftEvents)が0件の場合だけ遅延で叩く(常時同時取得しない)。 */
-async function queryLegacyContributors(roomId: string, battleId: string): Promise<BattleContributor[]> {
-  const legacy = await prisma.battleHistory.findUnique({
-    where: { roomId_battleId: { roomId, battleId } },
-    select: {
-      contributors: {
-        select: { uniqueId: true, nickname: true, giftCount: true, totalDiamonds: true, lastGiftAt: true },
-        orderBy: [{ totalDiamonds: "desc" }, { lastGiftAt: "desc" }, { uniqueId: "asc" }],
-      },
-    },
-  });
-  return (legacy?.contributors ?? []).map((c) => ({
-    uniqueId: c.uniqueId,
-    nickname: c.nickname,
-    profileImageUrl: null,
-    giftCount: c.giftCount,
-    totalDiamonds: c.totalDiamonds,
-    lastGiftAt: c.lastGiftAt.toISOString(),
-  }));
-}
-
 /**
  * 展開時に取得する、そのバトル区間だけの貢献者一覧。
  *
  * 確定済み(BattleHistory行がある)なら Gift に触れずスナップショットから返す。
  * 未確定なら従来どおり queryGifts と同じ集計規則でライブ集計する。
  *
- * Phase2c(Cutover): 確定済みは新構造(BattleHistoryParticipant配下のBattleHistoryGiftEvent、
- * Phase2aでdual-write済み)から再構成する。参加者の絞り込みは`isSelf`ではなく
- * `participant.roomId === このBattleHistory行の自room(=roomId引数)`で行う — isSelfはteam戦
- * (2v2等)で味方も含んでしまうが、roomIdが自roomに一致するのはresolveParticipantRoomId
- * (battle-history.ts)の設計上、本人だけ(味方は別roomか未解決null)。DB側のwhereで絞り込み、
- * 相手/味方roomのgiftEventsは転送しない(事務所配下同士の対戦で無駄な読み取りを避ける)。
- * バックフィル済みデータはself側全員が自roomのroomIdを持つ場合があるが、giftEventsを
- * 実際に持つのは本人1人だけなのでflattenしても結果は変わらない。
- * Phase2a以前に確定した行はgiftEventsが0件になるため、旧`contributors`へフォールバックする
- * (過去データの表示が空欄化しないための後方互換措置)。
+ * 確定済みはBattleHistoryParticipant配下のBattleHistoryGiftEventから再構成する。参加者の
+ * 絞り込みは`isSelf`ではなく`participant.roomId === このBattleHistory行の自room(=roomId引数)`
+ * で行う — isSelfはteam戦(2v2等)で味方も含んでしまうが、roomIdが自roomに一致するのは
+ * resolveParticipantRoomId(battle-history.ts)の設計上、本人だけ(味方は別roomか未解決null)。
+ * DB側のwhereで絞り込み、相手/味方roomのgiftEventsは転送しない(事務所配下同士の対戦で
+ * 無駄な読み取りを避ける)。バックフィル済みデータはself側全員が自roomのroomIdを持つ場合が
+ * あるが、giftEventsを実際に持つのは本人1人だけなのでflattenしても結果は変わらない。
  */
 export async function queryBattleContributors(
   roomId: string,
@@ -1265,11 +1224,7 @@ export async function queryBattleContributors(
 
   if (finalized) {
     const selfGiftEventRows = finalized.participants.flatMap((p) => p.giftEvents);
-
-    const contributors =
-      selfGiftEventRows.length > 0
-        ? aggregateGiftEventsToContributors(selfGiftEventRows)
-        : await queryLegacyContributors(roomId, battleId);
+    const contributors = aggregateGiftEventsToContributors(selfGiftEventRows);
 
     // アバターだけは署名付きURLなので保存せず都度解決する(TiktokAvatarAssetはGift非依存の恒久キャッシュ)。
     const avatarUrls = await resolveAvatarUrls(

@@ -1022,7 +1022,6 @@ model BattleHistory {
 
   room          TiktokRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   participants  BattleHistoryParticipant[]
-  contributors  BattleHistoryContributor[]
   teams         BattleTeam[]
   bonusMissions BattleHistoryBonusMission[]
 
@@ -1102,33 +1101,11 @@ model BattleHistoryParticipant {
   @@schema("public")
 }
 
-// 確定済みバトルの貢献者(送信者ごとの合計)。個々のギフトイベントは持たない。
-// **GiftEdit.hidden(閲覧者=Streamer単位の非表示編集)は反映しない**(確定は閲覧者非依存)。
-//
-// **2026-09-03: 後継のBattleHistoryGiftEventへ置き換え中。** 集約値からは個々のギフトイベントを
-// 復元できないため、Contract段階まではこのテーブルも残す(Cutoverで読み出しをGiftEvent基準へ切替後、
-// 別デプロイで削除)。新規の確定処理はこちらへ書き込まず、BattleHistoryGiftEventへ書き込む。
-model BattleHistoryContributor {
-  id              String   @id @default(cuid())
-  battleHistoryId String
-  uniqueId        String
-  nickname        String
-  giftCount       Int
-  totalDiamonds   Int
-  lastGiftAt      DateTime
-
-  battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
-
-  @@unique([battleHistoryId, uniqueId])
-  @@map("battle_history_contributors")
-  @@schema("public")
-}
-
 // 確定済みバトルの個々のギフトイベント(いつ・誰が・何を投げたか)。集約せず1ギフト=1行で
 // 復元可能な形にする。通常のGift履歴とはFK/リレーションを張らず切り離す
 // (sourceGiftIdは監査用の文字列参照のみ。Giftが将来変更・削除されてもこの行は影響を受けない)。
 //
-// GiftEdit.hiddenは反映しない(BattleHistoryContributorと同じ確定原則)。一意制約は張らない
+// GiftEdit.hiddenは反映しない(確定は閲覧者非依存)。一意制約は張らない
 // (1送信者が同一バトル内で複数回投げれば複数行になるのが正しい)。
 model BattleHistoryGiftEvent {
   id String @id @default(cuid())

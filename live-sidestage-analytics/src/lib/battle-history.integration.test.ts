@@ -884,11 +884,14 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     });
   }
 
-  /** 確定済み行を直接作る(値をライブ集計とわざと変えて、どちらを読んだか判別できるようにする)。 */
+  /**
+   * 確定済み行を直接作る(値をライブ集計とわざと変えて、どちらを読んだか判別できるようにする)。
+   * giftEventsは自room(self participant)にネストして作る(新構造。旧BattleHistoryContributorはPhase3で削除済み)。
+   */
   async function createHistory(
     battleId: string,
     startedAt: Date,
-    contributors: { uniqueId: string; nickname: string; totalDiamonds: number }[]
+    giftEvents: { uniqueId: string; nickname: string; totalDiamonds: number }[]
   ) {
     return prisma.battleHistory.create({
       data: {
@@ -911,6 +914,20 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
               tiktokId: FINAL_TIKTOK_ID,
               displayId: "snap_self",
               nickName: "確定自分",
+              roomId: finalRoomId,
+              giftEvents: {
+                create: giftEvents.map((c, i) => ({
+                  occurredAt: new Date(startedAt.getTime() + (i + 1) * 60 * 1000),
+                  senderUniqueIdSnapshot: c.uniqueId,
+                  senderNicknameSnapshot: c.nickname,
+                  giftId: 1,
+                  giftNameSnapshot: "Rose",
+                  repeatCount: 1,
+                  diamondCount: c.totalDiamonds,
+                  totalDiamonds: c.totalDiamonds,
+                  sourceGiftId: `src_${battleId}_${c.uniqueId}`,
+                })),
+              },
             },
             {
               side: "opponent",
@@ -922,16 +939,14 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
             },
           ],
         },
-        contributors: {
-          create: contributors.map((c) => ({
-            uniqueId: c.uniqueId,
-            nickname: c.nickname,
-            giftCount: 1,
-            totalDiamonds: c.totalDiamonds,
-            lastGiftAt: new Date(startedAt.getTime() + 60 * 1000),
-          })),
-        },
       },
+    });
+  }
+
+  /** createHistoryが作ったself participantを取得する(giftEvents追加createの土台に使う)。 */
+  async function getSelfParticipant(historyId: string) {
+    return prisma.battleHistoryParticipant.findUniqueOrThrow({
+      where: { battleHistoryId_anchorId: { battleHistoryId: historyId, anchorId: SELF_ANCHOR } },
     });
   }
 
@@ -1025,26 +1040,23 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     expect(battle.opponentScore).toBeNull();
   });
 
-  it("queryBattleContributorsは自room participantのgiftEventsが無ければ(Phase2a以前の確定行)旧contributorsスナップショットをダイヤ降順で返す", async () => {
+  it("queryBattleContributorsは確定済みならgiftEventsが0件でも空配列を返し、Giftを再読しない", async () => {
     const startedAt = new Date("2026-09-01T14:00:00Z");
     await prisma.tiktokBattle.create({ data: finalBattleData("contrib_finalized", startedAt) });
+    // 確定済みの窓に入るGiftがあっても、確定行はスナップショット(giftEvents)しか読まない。
     await finalGift({
       uniqueId: "gift_only_user",
       nickname: "Gift側だけの人",
       totalDiamonds: 5,
       receivedAt: new Date(startedAt.getTime() + 60 * 1000),
     });
-    await createHistory("contrib_finalized", startedAt, [
-      { uniqueId: "snap_small", nickname: "少額", totalDiamonds: 10 },
-      { uniqueId: "snap_big", nickname: "多額", totalDiamonds: 500 },
-    ]);
+    await createHistory("contrib_finalized", startedAt, []);
 
     const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_finalized");
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe("finished");
-    expect(result!.contributors.map((c) => c.uniqueId)).toEqual(["snap_big", "snap_small"]);
-    expect(result!.contributors.map((c) => c.totalDiamonds)).toEqual([500, 10]);
+    expect(result!.contributors).toEqual([]);
   });
 
   it("queryBattleContributorsは未確定ならGiftのライブ集計へフォールバックする", async () => {
@@ -1062,16 +1074,11 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     expect(result!.contributors.map((c) => [c.uniqueId, c.totalDiamonds])).toEqual([["live_fan", 12]]);
   });
 
-  it("queryBattleContributorsは自room participantのgiftEventsがあれば新経路(Phase2c)を読み、旧contributorsは無視する", async () => {
+  it("queryBattleContributorsは自room participantのgiftEventsから集計する(nickname最新採用・重複送信者の合算)", async () => {
     const startedAt = new Date("2026-09-01T16:00:00Z");
     await prisma.tiktokBattle.create({ data: finalBattleData("contrib_giftevents", startedAt) });
-    const history = await createHistory("contrib_giftevents", startedAt, [
-      { uniqueId: "legacy_only", nickname: "旧経路の人", totalDiamonds: 99999 },
-    ]);
-    const selfParticipant = await prisma.battleHistoryParticipant.update({
-      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: SELF_ANCHOR } },
-      data: { roomId: finalRoomId },
-    });
+    const history = await createHistory("contrib_giftevents", startedAt, []);
+    const selfParticipant = await getSelfParticipant(history.id);
     await prisma.battleHistoryGiftEvent.createMany({
       data: [
         {
@@ -1107,7 +1114,6 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_giftevents");
 
     expect(result).not.toBeNull();
-    // 旧contributors(legacy_only, 99999)は無視され、giftEventsから集計した1名だけが返る。
     expect(result!.contributors).toEqual([
       {
         uniqueId: "combo_fan",
@@ -1124,10 +1130,7 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     const startedAt = new Date("2026-09-01T17:00:00Z");
     await prisma.tiktokBattle.create({ data: finalBattleData("contrib_teammate", startedAt) });
     const history = await createHistory("contrib_teammate", startedAt, []);
-    const selfParticipant = await prisma.battleHistoryParticipant.update({
-      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: SELF_ANCHOR } },
-      data: { roomId: finalRoomId },
-    });
+    const selfParticipant = await getSelfParticipant(history.id);
     // 味方: isSelfかもしれないが自room(finalRoomId)ではない別roomを監視できていたケース。
     const teammateRoom = await prisma.tiktokRoom.create({ data: { tiktokId: `teammate_${Date.now()}` } });
     const teammate = await prisma.battleHistoryParticipant.create({
@@ -1176,7 +1179,7 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     expect(result!.contributors.map((c) => c.uniqueId)).toEqual(["self_fan"]);
   });
 
-  it("listenerQueryは確定済み(貢献者スナップショット)と未確定(Gift)の両方から一致を拾う", async () => {
+  it("listenerQueryは確定済み(giftEventsスナップショット)と未確定(Gift)の両方から一致を拾う", async () => {
     const range = { start: new Date("2026-09-03T00:00:00Z"), end: new Date("2026-09-04T00:00:00Z") };
     const finalizedStart = new Date("2026-09-03T10:00:00Z");
     const liveStart = new Date("2026-09-03T09:00:00Z");
@@ -1186,7 +1189,7 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     await prisma.tiktokBattle.create({ data: finalBattleData("q_live", liveStart) });
     await prisma.tiktokBattle.create({ data: finalBattleData("q_nomatch", otherStart) });
 
-    // 確定済み側: 一致する貢献者はスナップショットにだけ居る(Giftには居ない)
+    // 確定済み側: 一致する貢献者はgiftEventsスナップショットにだけ居る(Giftには居ない)
     await createHistory("q_finalized", finalizedStart, [
       { uniqueId: "Hanako_Snapshot", nickname: "はなこ", totalDiamonds: 100 },
     ]);
@@ -1209,18 +1212,13 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     expect(battles.map((b) => b.battleId)).toEqual(["q_finalized", "q_live"]);
   });
 
-  it("listenerQueryは新経路(自room participantのgiftEvents)からも一致を拾う(旧contributorsには居なくても)", async () => {
+  it("listenerQueryは自room participantのgiftEventsから一致を拾う", async () => {
     const range = { start: new Date("2026-09-04T00:00:00Z"), end: new Date("2026-09-05T00:00:00Z") };
     const startedAt = new Date("2026-09-04T10:00:00Z");
 
     await prisma.tiktokBattle.create({ data: finalBattleData("q_giftevents", startedAt) });
-    const history = await createHistory("q_giftevents", startedAt, [
-      { uniqueId: "legacy_unrelated", nickname: "旧経路だけの無関係者", totalDiamonds: 1 },
-    ]);
-    const selfParticipant = await prisma.battleHistoryParticipant.update({
-      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: SELF_ANCHOR } },
-      data: { roomId: finalRoomId },
-    });
+    const history = await createHistory("q_giftevents", startedAt, []);
+    const selfParticipant = await getSelfParticipant(history.id);
     await prisma.battleHistoryGiftEvent.create({
       data: {
         participantId: selfParticipant.id,
