@@ -566,8 +566,11 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         // bonusMissionsも道連れに消える。battleTeamはparticipant.battleTeamIdがonDelete:
         // SetNullなので、参加者削除より先に消しても後でも実害はないが、対称性のため
         // 参加者削除の後に置く。
+        // BattleHistoryContributor(旧構造)へのdeleteMany/createManyはPhase3(Contract前段)で
+        // 停止済み。読み出し側(queryBattleContributors/matchFinalizedBattleIds)は新構造
+        // (giftEvents)優先+旧テーブルフォールバックのままなので、Phase2a以前の既存行は
+        // 引き続き読めるが、以後この確定処理では旧テーブルへ新規行を書かない。
         await tx.battleHistoryParticipant.deleteMany({ where: { battleHistoryId: existing.id } });
-        await tx.battleHistoryContributor.deleteMany({ where: { battleHistoryId: existing.id } });
         await tx.battleTeam.deleteMany({ where: { battleHistoryId: existing.id } });
         battleHistoryId = existing.id;
         action = "updated";
@@ -600,12 +603,6 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
           })),
         });
       }
-      if (snapshot.contributors.length > 0) {
-        await tx.battleHistoryContributor.createMany({
-          data: snapshot.contributors.map((c) => ({ battleHistoryId, ...c })),
-        });
-      }
-
       // giftEvents/itemCardEvents/bonusMissionsはparticipantId(子行FK)が要るので、
       // createMany後にunique制約(battleHistoryId, anchorId)でid引き直す。
       if (snapshot.giftEvents.length > 0 || snapshot.itemCardEvents.length > 0 || snapshot.bonusMissions.length > 0) {
