@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { MAX_LEASE_DAYS } from "./room-lease";
+import { reviveSuspendedMonitoring } from "./mark-last-active";
 
 // TikTokのユーザー名は大文字小文字を区別しないため、部屋(TiktokRoom)のキーとしては
 // 正規化した値を使う。Streamer.tiktokId自体はユーザー入力値のまま表示用に残す。
@@ -210,6 +211,75 @@ export async function upsertRoom(tiktokId: string): Promise<{ id: string }> {
         select: { id: true },
       });
       if (existing) return existing;
+    }
+    throw err;
+  }
+}
+
+export type CollabWatchResult = {
+  roomId: string;
+  tiktokId: string;
+  /** この呼び出しで monitoringSuspended: true → false に書き換えたか(= 休止中だった) */
+  resumed: boolean;
+};
+
+// コラボ経由で新規発見できるroomの上限。ensureRoomForEvent()のMAX_ACTIVE_LEASESと同じ理由
+// (TikTok接続はプロキシ・Euler署名APIの枠を消費する有限リソース)に加え、コラボ由来のroomも
+// 監視対象になる(=次のreconcileでlinkLayerを購読する)ため、コラボが連鎖するとStreamer登録の
+// 意図から離れて無制限に広がりうる(実装後レビューで指摘)。上限は「既に監視中のroom総数」で
+// 判定するソフトリミット(同時作成で数件超過しうるが、接続資源の暴走を止めるのが目的で厳密な
+// 数え上げは要件ではない)。
+const MAX_COLLAB_DISCOVERED_ROOMS = 500;
+
+/**
+ * コラボ(linkMic)相手を監視対象へ入れる。tiktok-listener.ts の linkLayer ハンドラから呼ぶ
+ * (呼び出し元でStreamer登録済みのroomからの検知に限定済み — 未登録roomからの連鎖発見は
+ * 呼び出し元で止めている)。
+ *
+ * - 未登録(TiktokRoomが無い) → 上限未満なら新規作成する。新規行の monitoringSuspended は既定
+ *   false なのでそのまま監視対象になる(resumed: false)。上限に達している場合は作成せず null
+ * - 登録済み・監視中(monitoringSuspended: false) → 何もしない(resumed: false)。resolveRoomForStreamer()と
+ *   同じく、AgencyWatch/monitorUntilが理由で監視中の場合もここでは関知しない
+ *   (watchedRoomFilter()のOR条件のどれか1つでも満たせばよいため)
+ * - 登録済み・休止中(monitoringSuspended: true) → false に書き換える(resumed: true)。
+ *   NOT_FOUND判定用フィールドもreviveSuspendedMonitoring()が併せてリセットする
+ *   (残したままだと復活直後の実在確認で古いstreakを引き継ぎ、誤って早期に再停止しうるため)
+ *
+ * tiktokId の形式が不正(TIKTOK_ID_PATTERN)な場合は何もせず null を返す — コラボ相手の
+ * displayId は TikTok 側の値をそのまま受け取るだけの経路で、主催者入力のような検証は
+ * 要らないはずだが、万一空文字・記号混じりが来ても部屋を作らないための最低限のガード。
+ */
+export async function ensureRoomWatchedForCollab(rawTiktokId: string): Promise<CollabWatchResult | null> {
+  const tiktokId = normalizeTiktokId(rawTiktokId);
+  if (!TIKTOK_ID_PATTERN.test(tiktokId)) return null;
+
+  const existing = await prisma.tiktokRoom.findUnique({
+    where: { tiktokId },
+    select: { id: true },
+  });
+
+  if (existing) {
+    const resumedCount = await reviveSuspendedMonitoring(existing.id);
+    return { roomId: existing.id, tiktokId, resumed: resumedCount > 0 };
+  }
+
+  // 上限判定は「新規作成になる」場合のみ(既存roomの監視再開は総数を増やさないため対象外)。
+  const watchedCount = await prisma.tiktokRoom.count({ where: { monitoringSuspended: false } });
+  if (watchedCount >= MAX_COLLAB_DISCOVERED_ROOMS) {
+    console.warn(
+      `[collab] 監視中room数が上限(${MAX_COLLAB_DISCOVERED_ROOMS})に達しているため、コラボ相手の新規room作成をスキップした`,
+      { tiktokId }
+    );
+    return null;
+  }
+
+  try {
+    const room = await prisma.tiktokRoom.create({ data: { tiktokId }, select: { id: true } });
+    return { roomId: room.id, tiktokId, resumed: false };
+  } catch (err) {
+    // findUnique と create の間に別リクエストが同じ部屋を作った場合。
+    if ((err as { code?: string })?.code === "P2002") {
+      return ensureRoomWatchedForCollab(rawTiktokId);
     }
     throw err;
   }

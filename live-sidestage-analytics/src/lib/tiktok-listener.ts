@@ -50,6 +50,8 @@ import {
 import { ensureAvatarCached } from "./avatar-storage";
 import { materializeBattleHistory } from "./battle-history-finalize";
 import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
+import { isCollabJoinSource, parseCollabGroupChange } from "./tiktok-collab";
+import { ensureRoomWatchedForCollab, normalizeTiktokId } from "./tiktok-room";
 
 export type ListenerStatus =
   | "idle"
@@ -1533,6 +1535,38 @@ function recordBattleEvent(
   );
 }
 
+/**
+ * コラボ(linkMic)への参加を検知し、相手roomを監視対象へ入れる。
+ *
+ * `linkLayer`(`WebcastLinkLayerMessage`)の`messageType:18`(groupChangeContent)のうち、
+ * `source`が参加確定(招待への承諾)を示すものだけを処理する。userInfosは受信時点の
+ * コラボメンバー全員(own含む)のスナップショットで、差分ではない — 詳細は
+ * tiktok-collab.ts / tiktok-probe/KNOWLEDGE.md 参照。自分自身のtiktokIdは除外する。
+ *
+ * 監視対象への追加はfire-and-forget。失敗してもlinkLayerイベント自体の処理(watchdog等)は
+ * 継続させる — 監視対象追加はベストエフォートの付随処理であって、取りこぼしても
+ * 次のコラボ参加イベントで再試行される(ensureRoomWatchedForCollab()は冪等)。
+ */
+function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unknown): void {
+  const parsed = parseCollabGroupChange(data);
+  if (!parsed || !isCollabJoinSource(parsed.source)) return;
+
+  if (parsed.displayIds.length === 0) {
+    // 参加確定(AGREE)なのにuserInfosが空 = payload構造が想定と変わった疑い。
+    // 判定自体は通っているため例外にはならず、気づかないまま機能停止しうる(実装後レビューで指摘)。
+    console.warn("[collab] 参加確定イベントだがdisplayIdsが空。payload構造の変化を疑う", { roomId });
+    return;
+  }
+
+  for (const displayId of parsed.displayIds) {
+    if (normalizeTiktokId(displayId) === ownTiktokId) continue; // 自分自身(own room)は除外
+
+    ensureRoomWatchedForCollab(displayId).catch((err) => {
+      console.error("[collab] コラボ相手の監視対象追加に失敗", { roomId, displayId, err });
+    });
+  }
+}
+
 // ── バトル終了通知の転送 ──────────────────────────────────────────────────────
 //
 // listener状態の転送(上のlistenerNotifyQueue)と同じ理由で、共有forwardToWebには
@@ -1718,6 +1752,20 @@ async function connectAndAttach(
       "armies",
       data
     );
+  });
+
+  // コラボ(linkMic本体。バトルでない)の参加・離脱通知。fork独自追加のイベント
+  // (shared/tiktok-live-connector/CHANGELOG.md 1.1.0参照)。
+  //
+  // 検知はStreamer登録済み(subscriberIdsが空でない)roomからの通知に限定する。コラボ由来で
+  // 新規発見したroomも次のreconcileで監視対象になり同じlinkLayerを購読するため、ここを
+  // 限定しないとコラボの連鎖に沿って無制限に監視対象が広がる(実装後レビューで指摘。
+  // AgencyWatch/イベントmonitorUntil由来のroomでも同様に広がりうるが、Streamer登録という
+  // 最も安価な判定だけでも連鎖の起点を大きく絞れる)。
+  conn.on("linkLayer", (data: unknown) => {
+    markAlive();
+    if (inst.subscriberIds.size === 0) return;
+    recordCollabGroupChange(roomId, inst.state.tiktokId, data);
   });
 
   conn.on("linkMicBattleItemCard", (data: unknown) => {
