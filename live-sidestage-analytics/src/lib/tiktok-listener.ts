@@ -1478,6 +1478,36 @@ async function persistBattle(
     });
   }
 
+  // スコア推移の時系列収集。linkMicBattle/linkMicArmiesどちらもcollectHosts()経由で
+  // parsed.hostScoresを持つが、変化があったanchorId分だけ書く(無変化イベントまで
+  // 書くと行数が際限なく膨らむ上、時系列再現には変化点だけで足りるため)。
+  const changedScoreEntries = Object.entries(parsed.hostScores).filter(
+    ([anchorId, score]) => previous?.hostScores[anchorId] !== score
+  );
+  if (changedScoreEntries.length > 0) {
+    try {
+      await prisma.tiktokBattleArmiesSnapshot.createMany({
+        data: changedScoreEntries.map(([anchorId, score]) => ({
+          roomId,
+          battleId: parsed.battleId,
+          occurredAt: receivedAt,
+          anchorId,
+          score,
+        })),
+      });
+    } catch (err) {
+      // 握りつぶす。ここで投げるとpersistBattle自体がrejectし、後続の
+      // scheduleBattleHistoryFinalize/enqueueBattleNotifyが実行されなくなる
+      // (battleNotifyDecisionは既にupdate済みのstateを見るため、次イベントでも
+      // "ended"を二度と返さない)。アバターキャッシュと同じfire-and-forget原則。
+      console.error("[tiktok-listener] armies snapshot write failed", {
+        roomId,
+        battleId: parsed.battleId,
+        err,
+      });
+    }
+  }
+
   // アイコンの恒久化はfire-and-forget。DB書き込みが終わった後に呼ぶことで
   // write queueの直列化(同じbattleIdの後続イベント処理)をブロックしない。
   for (const [anchorId, profile] of Object.entries(state.hostProfiles)) {
