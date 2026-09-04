@@ -161,3 +161,16 @@ conn.on('linkMicBattleTask', (msg) => {
 
 同時多発ギフト・comboの連打では増分の切り分けが難しくなるため、判定は単発かつ`diamondCount`が大きめの
 ギフトのタイミングで行うのが安全(小粒ギフトはArmies更新間隔とのズレで誤差が出やすい)。
+
+## 5. 相手陣営の個別貢献者(ギフター)情報について(利用側=analyticsの既知制約)
+
+- `anchorInfo`は両陣営分が自roomの受信だけで同時に届くため、**相手ホストの名前・ハンドル・アイコンは
+  相手が未登録でも取れる**(live-sidestage-analyticsの`hostProfiles`、2026-08-27本番実証済み)
+- ただし**相手陣営へギフトを送った視聴者個々の情報(誰が何をいくつ投げたか)はTikTok側が自room配信に
+  同報しない**。取得するには相手roomにも別途接続して`gift`イベントを受信する必要がある
+- **live-sidestage-analyticsは現状この相手room接続を行っておらず、個別貢献者明細
+  (`BattleHistoryGiftEvent`)は自陣・相手陣とも常に0件**(2026-09-05 本番DB実測、全1113 participant中
+  giftEvent 0件。`roomId`/`observedGiftTotal`/`captureStatus`等、2026-09-03に追加された対応列もPhase1
+  バックフィル未実施で全participant null)
+- 現状取得できるのは陣営合計スコア(`hostScores`)とホストのプロフィールのみ。ギフター個別の内訳は
+  スキーマの受け皿はあるが実装が稼働しておらず取得不可

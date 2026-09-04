@@ -172,14 +172,19 @@ async function reconcileOnce() {
       console.log(`[worker] ready (recovered by reconcile, rooms=${roomCount})`);
     }
   } catch (err) {
+    const schemaLag = schemaLagMessage(err);
     lastReconcile = {
       at: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
       roomCount: null,
       startFailures: null,
-      error: err instanceof Error ? err.message : String(err),
+      error: schemaLag ?? (err instanceof Error ? err.message : String(err)),
     };
-    console.error("[worker] ensureAllListenersAlive failed:", err);
+    if (schemaLag) {
+      console.warn(`[worker] ${schemaLag}`);
+    } else {
+      console.error("[worker] ensureAllListenersAlive failed:", err);
+    }
   } finally {
     reconcileRunning = false;
   }
