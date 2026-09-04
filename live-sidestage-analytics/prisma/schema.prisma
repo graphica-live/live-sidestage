@@ -227,7 +227,7 @@ model TiktokRoom {
   id                String    @id @default(cuid())
   tiktokId          String    @unique // 正規化済み(小文字化・trim・先頭@除去)
   deviceId          String?
-  workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定し固定)
+  workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定するが既定値にすぎない。worker-guardianの死亡移送・コラボ自己申告(ensureRoomWatchedForCollab)がhashと無関係な値を書くため、この列の値が常に正)
   proxyKey          String? // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
   listenerStatus    String?
   listenerMessage   String?
@@ -331,7 +331,7 @@ model TiktokRoom {
   connectionIntervals RoomConnectionInterval[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
-  // 期限切れの監視要求が蓄積しても60秒ごとのreconcileが重くならないようにする。
+  // 期限切れの監視要求が蓄積しても30秒ごとのreconcileが重くならないようにする。
   @@index([workerId, monitorUntil])
   // tiktok-room-cleanup.tsの候補抽出クエリ用(listenerStatus + unhealthySince の複合条件)。
   @@index([listenerStatus, unhealthySince])

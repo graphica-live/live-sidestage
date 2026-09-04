@@ -12,7 +12,7 @@ import { roomHasPaidWatcher } from "./plan/room-has-paid-watcher";
 // watchedRoomFilter()(tiktok-listener.ts)がこのフラグを見てWorker接続を切るだけで、
 // Streamer/GiftEdit/overlayToken/apiKey/Gift/BattleHistoryは全て残る。ユーザーが
 // 再ログイン・再アクセスすると markLastActive() が自動でフラグを戻し、次のreconcile
-// (60秒間隔)で監視が復活する。不可逆な操作が無いため、既存のNOT_FOUND削除ほど
+// (30秒間隔)で監視が復活する。不可逆な操作が無いため、既存のNOT_FOUND削除ほど
 // 慎重な安全弁(needs_review・削除件数の異常検知)は必要ない。
 //
 // チェック順序は「安い判定→高い判定」。課金判定・アクティブ判定はインデックス済みの

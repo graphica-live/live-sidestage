@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   });
 
   // Webプロセスはリスナーを持たないため担当Workerへの割当のみ行う。
-  // 実際の接続開始は担当Workerのensure loop(最大60秒間隔)が拾う。
+  // 実際の接続開始は担当Workerのensure loop(最大30秒間隔)が拾う。
   resolveRoomForStreamer(streamer.id)
     .then((roomId) => resolveWorkerForRoom(roomId, getWorkerCount()))
     .catch((err) => console.error("[verify] worker assignment failed:", err));

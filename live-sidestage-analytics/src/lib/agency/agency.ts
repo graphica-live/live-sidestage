@@ -169,7 +169,7 @@ export type AddWatchResult =
     };
 
 // 監視対象を追加する。src/app/api/listener/start/route.ts と同じく、ここでは部屋の解決と
-// 担当Workerの割当までを行い、実際のTikTok接続は担当Workerのensureループ(最大60秒間隔)が拾う。
+// 担当Workerの割当までを行い、実際のTikTok接続は担当Workerのensureループ(最大30秒間隔)が拾う。
 export async function addWatch(
   agencyId: string,
   rawTiktokId: string,

@@ -97,8 +97,8 @@ const healthServer = createServer((req, res) => {
 });
 
 // 定常時のreconcile間隔。unready(=担当部屋を起動できていない)の間だけ短くして、
-// DB復旧からready復帰までの空白を詰める。60秒のままだと復旧を最大1分待たされる。
-const RECONCILE_INTERVAL_MS = 60_000;
+// DB復旧からready復帰までの空白を詰める。30秒のままだと復旧を最大30秒待たされる。
+const RECONCILE_INTERVAL_MS = 30_000;
 const UNREADY_RECONCILE_INTERVAL_MS = 5_000;
 
 let reconcileTimer: NodeJS.Timeout | null = null;

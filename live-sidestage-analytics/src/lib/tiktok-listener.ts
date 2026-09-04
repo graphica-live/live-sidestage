@@ -149,6 +149,9 @@ interface ListenerInstance {
   subscriberIds: Set<string>;
   stopped: boolean;
   lastEventAt: number;
+  // このインスタンスをlistenersに登録したepoch ms。ensureAllListenersAlive()が
+  // 「担当外なので切断」と誤判定しないための猶予に使う(下記コメント参照)。
+  createdAt: number;
   // watchdogが「実イベントが届かない」ことを理由に強制再接続を発動した連続回数。
   // markAlive()(chat/gift/member/roomUser/social/likeのいずれか)が発火すると0にリセットされる。
   // scheduleReconnect()側の再接続には一切関与しない(watchdog経由のconnectInstance呼び出しのみが対象)。
@@ -1588,12 +1591,45 @@ function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unkn
     return;
   }
 
+  // 自分(このWorkerプロセス)のWORKER_INDEXを取れないなら自己割当を諦めて既存動作
+  // (workerId未設定で作成、次のreconcileのハッシュ割当を待つ)にフォールバックする。
+  // ここでthrowするとlinkLayerのイベント処理全体(watchdogのmarkAlive等)を巻き込むため、
+  // 例外は握って以前の挙動に落とす。
+  let ownWorkerIndex: number | undefined;
+  try {
+    ownWorkerIndex = getWorkerConfig().index;
+  } catch (err) {
+    console.error("[collab] getWorkerConfig失敗。自己割当なしで従来どおり処理を続ける", err);
+  }
+
   for (const displayId of parsed.displayIds) {
     if (normalizeTiktokId(displayId) === ownTiktokId) continue; // 自分自身(own room)は除外
 
-    ensureRoomWatchedForCollab(displayId).catch((err) => {
-      console.error("[collab] コラボ相手の監視対象追加に失敗", { roomId, displayId, err });
-    });
+    ensureRoomWatchedForCollab(displayId, ownWorkerIndex)
+      .then((result) => {
+        // created===trueのときだけ即キックする。この分岐は「その部屋のTiktokRoom行を
+        // このプロセスが初めて作った」場合にのみ通り、以後同じtiktokIdへ何度
+        // recordCollabGroupChangeが呼ばれてもensureRoomWatchedForCollab()は
+        // 既存行(existing)分岐に落ちてcreated:falseを返す(DBのunique制約が
+        // 二重作成自体を防ぐため)。したがって二重キック・再接続ループは起こらない
+        // — startListener()を「新規作成の瞬間に1回だけ」しか呼ばない設計そのものが
+        // ガードになっている。
+        // ownWorkerIndexが取れていない(getWorkerConfig失敗)ときはDB上のworkerIdもnullのまま
+        // 作成されているため、ここでキックすると次のreconcileが別workerへhash割当した際に
+        // 二重接続(最大1周回ぶんのgift二重受信)を招く。そのケースは即キックせず従来どおり
+        // reconcileに委ねる。
+        if (!result || !result.created || ownWorkerIndex === undefined) return;
+        return startListener(result.roomId, result.tiktokId, []).catch((err) => {
+          console.error("[collab] 新規コラボroomの即時接続に失敗。次のreconcileで拾われる", {
+            roomId: result.roomId,
+            tiktokId: result.tiktokId,
+            err,
+          });
+        });
+      })
+      .catch((err) => {
+        console.error("[collab] コラボ相手の監視対象追加に失敗", { roomId, displayId, err });
+      });
   }
 }
 
@@ -2174,6 +2210,7 @@ export async function startListener(
     subscriberIds: new Set(subscriberIds),
     stopped: false,
     lastEventAt: Date.now(),
+    createdAt: Date.now(),
     watchdogTriggerCount: 0,
     watchdogBackoffUntil: 0,
     reconnectFailureCount: 0,
@@ -2428,7 +2465,7 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
   return { roomCount: rooms.length, startFailures };
 }
 
-// ギフトカタログ(gift/list/)を取りにいくための部屋を1つ選ぶ。worker.tsの60秒ループから使う。
+// ギフトカタログ(gift/list/)を取りにいくための部屋を1つ選ぶ。worker.tsの30秒ループから使う。
 //
 // **ライブ中かどうかは問わない。** fetchAvailableGifts()はHTTPだけで済み、WS接続を必要としない。
 // 「接続成功後」に置くと、担当している配信が全部オフラインのあいだカタログが永久に空のままになり、
@@ -2467,12 +2504,13 @@ export async function stopAllListeners() {
   await Promise.all(roomIds.map((id) => stopListener(id, "shutdown")));
 }
 
-// 60秒間隔で呼ばれるreconcileループ。以下をすべてここで一貫処理する:
+// 30秒間隔で呼ばれるreconcileループ。以下をすべてここで一貫処理する:
 //  - まだ接続していない担当部屋の起動
 //  - 購読者(subscriberIds)が変わった部屋の更新(再接続はしない)
 //  - 購読者がゼロになった/担当替えで自分の担当でなくなった部屋の切断
 //    (tiktokId変更による旧部屋の切断・Streamer削除・Worker再編のすべてがこの1箇所を通る)
 export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
+  const reconcileStartedAt = Date.now();
   const rooms = await getMyRooms();
   const myRoomIds = new Set(rooms.map((r) => r.id));
 
@@ -2491,14 +2529,24 @@ export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
   }
 
   for (const roomId of Array.from(listeners.keys())) {
-    if (!myRoomIds.has(roomId)) {
-      console.log(`[listener] ensureAlive: tearing down orphaned/reassigned room ${roomId}`);
-      // teardownの失敗は readiness に計上しない。切断できなかった部屋が残るだけで、
-      // 担当部屋の受信が止まるわけではないため。
-      await stopListener(roomId).catch((err) =>
-        console.error(`[listener] ensureAlive teardown failed for ${roomId}:`, err)
-      );
-    }
+    if (myRoomIds.has(roomId)) continue;
+
+    const inst = listeners.get(roomId);
+    // getMyRooms()のDBスナップショット取得後に作られたlistenerは、このスナップショットに
+    // 含まれていないだけで「担当外」と確定したわけではない(コラボ検知の自己割当即キック等、
+    // reconcile実行中の並行書き込みが原因でありうる)。次周回でDB上のworkerIdどおり
+    // 正規にassignedへ入るため、ここでは切断せず見送るのが安全側。
+    // Date.now()の分解能はミリ秒。reconcileStartedAt取得と即キックのstartListenerが
+    // 同一msに収まることがある(ローカルDBが高速なテスト環境で実測)ため、境界は安全側
+    // (見送る方)に倒して`>=`にする。
+    if (inst && inst.createdAt >= reconcileStartedAt) continue;
+
+    console.log(`[listener] ensureAlive: tearing down orphaned/reassigned room ${roomId}`);
+    // teardownの失敗は readiness に計上しない。切断できなかった部屋が残るだけで、
+    // 担当部屋の受信が止まるわけではないため。
+    await stopListener(roomId).catch((err) =>
+      console.error(`[listener] ensureAlive teardown failed for ${roomId}:`, err)
+    );
   }
 
   return { roomCount: rooms.length, startFailures };

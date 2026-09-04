@@ -173,7 +173,7 @@ Railway で analytics と同じリポジトリ・同じ Root Directory（`live-s
 
 1. `/events` で新しいイベントを作る（`status` は `SCHEDULED`、`visibility` は既定で `PRIVATE`）
 2. 参加者を1人登録する → `TiktokRoom.monitorUntil` が立つ
-3. **最大60秒待つ。** TikTok 接続の worker の reconcile が拾って接続を開始する。
+3. **最大30秒待つ。** TikTok 接続の worker の reconcile が拾って接続を開始する。
    参加者一覧の監視状態が `connecting` → `connected` に変わる
 4. イベントを `RUNNING` にする（開催準備チェックを通る必要がある。出場者が足りない、
    トーナメントなのに表が無い、のいずれかなら 409 で弾かれ、管理画面に残タスクが出る）
@@ -262,7 +262,7 @@ analytics ブランドの `/login` ではなく `/event/login`（「LIVE Sidesta
 - 既にその配信者の room があれば**再利用**する。同じ配信者のギフトが分裂しないため
 - なければ room を新規作成する。この room は会員登録(`Streamer`)を持たないが、
   `monitorUntil` が未来の間だけ Worker の担当に含まれる（`getMyRooms()` の `OR` 条件）
-- 監視の開始・停止は Worker の reconcile ループ(60秒間隔)で反映される。UI にもそう出す
+- 監視の開始・停止は Worker の reconcile ループ(30秒間隔)で反映される。UI にもそう出す
 - 期限が切れると監視は止まるが、**受信済みのギフトと room は残る**。後からその配信者が会員登録すれば
   `streamers` 条件で監視が再開される
 

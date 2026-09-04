@@ -23,6 +23,7 @@ describe("ensureRoomWatchedForCollab", () => {
 
     expect(result!.tiktokId).toBe(id);
     expect(result!.resumed).toBe(false);
+    expect(result!.created).toBe(true);
 
     const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: result!.roomId } });
     expect(room.monitoringSuspended).toBe(false);
@@ -36,7 +37,7 @@ describe("ensureRoomWatchedForCollab", () => {
     roomIds.push(room.id);
 
     const result = await ensureRoomWatchedForCollab(id);
-    expect(result).toEqual({ roomId: room.id, tiktokId: id, resumed: false });
+    expect(result).toEqual({ roomId: room.id, tiktokId: id, resumed: false, created: false });
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.monitoringSuspended).toBe(false);
@@ -50,7 +51,7 @@ describe("ensureRoomWatchedForCollab", () => {
     roomIds.push(room.id);
 
     const result = await ensureRoomWatchedForCollab(id);
-    expect(result).toEqual({ roomId: room.id, tiktokId: id, resumed: true });
+    expect(result).toEqual({ roomId: room.id, tiktokId: id, resumed: true, created: false });
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.monitoringSuspended).toBe(false);
@@ -64,11 +65,36 @@ describe("ensureRoomWatchedForCollab", () => {
     roomIds.push(room.id);
 
     const result = await ensureRoomWatchedForCollab(`@${normalized.toUpperCase()}`);
-    expect(result).toEqual({ roomId: room.id, tiktokId: normalized, resumed: true });
+    expect(result).toEqual({ roomId: room.id, tiktokId: normalized, resumed: true, created: false });
   });
 
   it("不正な形式(記号・空文字)はnullを返し、部屋を作らない", async () => {
     expect(await ensureRoomWatchedForCollab("")).toBeNull();
     expect(await ensureRoomWatchedForCollab("has space")).toBeNull();
+  });
+
+  it("workerIdを渡すと新規作成時にそのworkerIdで作成する", async () => {
+    const id = tiktokId("worker");
+    const result = await ensureRoomWatchedForCollab(id, 2);
+    expect(result).not.toBeNull();
+    roomIds.push(result!.roomId);
+    expect(result!.created).toBe(true);
+
+    const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: result!.roomId } });
+    expect(room.workerId).toBe(2);
+  });
+
+  it("既存roomの再開時はworkerIdを渡してもDBのworkerIdを上書きしない", async () => {
+    const id = tiktokId("keepworker");
+    const room = await prisma.tiktokRoom.create({
+      data: { tiktokId: id, monitoringSuspended: true, workerId: 1 },
+    });
+    roomIds.push(room.id);
+
+    const result = await ensureRoomWatchedForCollab(id, 2); // 別workerが検知した想定
+    expect(result!.created).toBe(false);
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.workerId).toBe(1); // 上書きされていない
   });
 });
