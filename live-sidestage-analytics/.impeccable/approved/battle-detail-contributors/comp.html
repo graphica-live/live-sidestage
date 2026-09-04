@@ -1,0 +1,702 @@
+<title>対戦相手の貢献者</title>
+<style>
+  :root{
+    --bg:#111111; --panel:#1a1a1a; --panel-2:#161616; --border:#2a2a2a; --border-soft:rgba(255,255,255,.1);
+    --text:#f0f0f0; --text-white:#ffffff; --muted:#9a9ea6; --faint:#6b6f76;
+    --brand:#fe2c55; --brand-hover:#e91e50;
+    --success:#4ade80; --warning:#eab308; --error:#f87171; --gold:#f5c451;
+    --row-hover:rgba(255,255,255,.02);
+    --fc-self:#fe4d4d; --fc-1:#4d9fff; --fc-2:#ffa64d; --fc-3:#b98aff;
+    --radius-sm:8px; --radius-lg:12px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{padding:32px 16px 80px;}
+  ::selection{background:rgba(254,44,85,.35);color:var(--text-white);}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:9999px;border:2px solid var(--panel);background-clip:padding-box;}
+  ::-webkit-scrollbar-thumb:hover{background:#3a3a3a;background-clip:padding-box;}
+  * { scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+  button{font:inherit;}
+  button:focus-visible, [tabindex]:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px;}
+  .col-score,.col-diamond,.contrib-value,.gift-log-time,.gift-log-value,.team-vs{font-variant-numeric:tabular-nums;}
+  .page-title{max-width:960px;margin:0 auto 28px;color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
+  .stage{max-width:520px;margin:0 auto;}
+
+  /* ---- モーダルカード(既存構造踏襲) ---- */
+  .modal{
+    position:relative;border:1px solid var(--border-soft);background:var(--panel);
+    border-radius:var(--radius-lg);padding:20px;
+  }
+  .close-btn{
+    position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:9999px;
+    display:flex;align-items:center;justify-content:center;color:var(--muted);border:none;background:transparent;
+    transition:background-color .12s,color .12s;
+  }
+  .close-btn:hover{background:rgba(255,255,255,.06);color:var(--text-white);}
+  .head-time{font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums;}
+
+  .versus-row{margin-top:10px;display:flex;align-items:stretch;justify-content:space-between;gap:10px;}
+  .versus-left{display:flex;align-items:stretch;gap:10px;min-width:0;flex:1;}
+  .side{
+    position:relative;display:flex;align-items:center;gap:9px;min-width:0;flex:1;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;
+  }
+  .win-badge{
+    position:absolute;top:-8px;right:10px;display:inline-flex;align-items:center;justify-content:center;
+    padding:1px 7px;font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--gold);
+    background:#000; border:1px solid var(--gold);border-radius:4px;
+    text-shadow:0 0 6px rgba(245,196,81,.55);box-shadow:0 0 8px rgba(245,196,81,.3);
+  }
+  .side.opponent .win-badge{right:auto;left:10px;}
+  .side.opponent{flex-direction:row-reverse;text-align:right;}
+  .avatar{
+    width:34px;height:34px;border-radius:9999px;background:var(--bg);flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--faint);overflow:hidden;
+    border:1.5px solid var(--border);
+  }
+  .side .avatar{border-color:var(--fc-self);}
+  .side.opponent .avatar{border-color:var(--fc-1);}
+  .avatar img{width:100%;height:100%;object-fit:cover;}
+  .side-name{font-weight:600;font-size:14px;color:var(--text-white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
+  .side-handle{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+  .versus-x{
+    display:flex;align-items:center;justify-content:center;flex:none;width:26px;height:26px;align-self:center;
+    font-size:10px;font-weight:700;color:var(--faint);font-family:var(--mono);
+    border:1px solid var(--border);border-radius:9999px;background:var(--bg);
+  }
+  .status-live{font-size:10.5px;font-weight:600;color:var(--brand);flex:none;letter-spacing:.03em;}
+
+  /* 上部対戦表〜下部貢献欄まで、左右分割線を1本で貫通させる(個人戦=1vs1vs1vs1は対象外) */
+  .matchup{position:relative;z-index:0;}
+  .matchup-line{position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:1px;background:var(--border);}
+
+  .score-flag{
+    display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:9999px;
+    font-size:9px;font-weight:700;color:var(--warning);border:1px solid var(--warning);flex:none;cursor:default;
+  }
+
+  /* ---- 貢献者セクション ---- */
+  .contrib-section{margin-top:20px;padding-top:16px;}
+  .contrib-heading{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;}
+  .contrib-heading .label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+  .contrib-heading .hint{font-size:10.5px;color:var(--faint);}
+
+  /* モバイル用タブ(sm未満のみ表示) */
+  .side-tabs{display:flex;gap:6px;margin-bottom:12px;}
+  .side-tab{
+    flex:1;border:1px solid var(--border);background:transparent;color:var(--muted);
+    font-size:11px;padding:7px 8px;border-radius:var(--radius-sm);cursor:pointer;font-family:var(--sans);
+    display:flex;align-items:center;justify-content:center;gap:5px;transition:border-color .12s,color .12s,background-color .12s;
+  }
+  .side-tab.active{border-color:var(--brand);color:var(--text-white);background:rgba(254,44,85,.08);}
+  .cap-dot{width:6px;height:6px;border-radius:9999px;flex:none;}
+  .cap-dot.complete{background:var(--success);}
+  .cap-dot.partial{background:var(--warning);}
+  .cap-dot.unavailable{background:var(--faint);}
+
+  /* subgrid: 列見出し/セレクタ枠/本文の3行を両カラムで強制的に揃える(片方だけセレクタが無い場合の高さズレ対策) */
+  .contrib-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:0;}
+  .contrib-col{display:grid;grid-template-rows:subgrid;grid-row:1 / span 3;min-width:0;}
+  .contrib-grid .contrib-col:first-child{padding-right:16px;}
+  .contrib-grid .contrib-col:last-child{padding-left:16px;border-left:1px solid var(--border);}
+  .col-head{display:flex;flex-direction:column;gap:7px;margin-bottom:10px;min-height:22px;}
+  .col-head-top{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  .col-title{
+    font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    text-transform:uppercase;letter-spacing:.02em;
+  }
+  .cap-badge{
+    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:500;padding:2px 7px;border-radius:9999px;flex:none;
+    border:1px solid var(--border);color:var(--faint);
+  }
+  .cap-badge.partial{color:var(--warning);border-color:rgba(234,179,8,.35);background:rgba(234,179,8,.06);}
+  .cap-badge.unavailable{color:var(--faint);border-color:var(--border);}
+
+  /* 陣営列ごとのスコア/実弾(左右対称。セレクタで個人選択中はその人自身の値へ切替) */
+  .col-head-stats{display:flex;align-items:baseline;gap:9px;font-family:var(--mono);}
+  /* トータルのバトルスコア(陣営単位、正確な値)は陣営色で塗る。実弾(🪙)=貢献欄側の値は中立色のまま区別する */
+  .col-score{font-size:15px;font-weight:700;color:var(--faint);}
+  .col-score.fc-self{color:var(--fc-self);}
+  .col-score.fc-1{color:var(--fc-1);}
+  .col-score.fc-2{color:var(--fc-2);}
+  .col-score.fc-3{color:var(--fc-3);}
+  .col-diamond{font-size:11px;font-weight:500;color:var(--muted);display:inline-flex;align-items:center;gap:4px;}
+  .col-diamond.unavailable{color:var(--faint);}
+
+  .contrib-list{display:flex;flex-direction:column;gap:1px;max-height:260px;overflow-y:auto;overflow-x:hidden;}
+  .contrib-row{
+    display:flex;align-items:center;gap:9px;font-size:12.5px;padding:6px 6px;width:100%;min-height:34px;
+    background:transparent;border:none;color:inherit;font-family:inherit;text-align:left;cursor:pointer;border-radius:6px;
+    transition:background-color .1s;
+  }
+  .contrib-row:hover{background:var(--row-hover);}
+  .contrib-row:active{background:rgba(255,255,255,.045);}
+  .contrib-avatar{
+    width:23px;height:23px;border-radius:9999px;background:var(--panel-2);flex:none;overflow:hidden;
+    border:1.5px solid var(--border);
+  }
+  .contrib-row.fc-self .contrib-avatar{border-color:color-mix(in srgb, var(--fc-self) 55%, var(--border));}
+  .contrib-row.fc-1 .contrib-avatar{border-color:color-mix(in srgb, var(--fc-1) 55%, var(--border));}
+  .contrib-row.fc-2 .contrib-avatar{border-color:color-mix(in srgb, var(--fc-2) 55%, var(--border));}
+  .contrib-row.fc-3 .contrib-avatar{border-color:color-mix(in srgb, var(--fc-3) 55%, var(--border));}
+  .contrib-avatar img{width:100%;height:100%;object-fit:cover;}
+  .contrib-name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0;}
+  .contrib-handle{color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:none;}
+  .contrib-value{margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;flex:none;}
+  .contrib-caret{width:12px;height:12px;flex:none;color:var(--faint);transition:transform .15s;}
+  .contrib-row[aria-expanded="true"] .contrib-caret{transform:rotate(90deg);color:var(--muted);}
+
+  .gift-log{
+    display:flex;flex-direction:column;gap:0;margin:0 0 4px 31px;padding-left:11px;border-left:1px solid var(--border);
+  }
+  .gift-log-row{display:flex;align-items:baseline;gap:8px;font-size:10.5px;padding:3.5px 0;}
+  .gift-log-time{font-family:var(--mono);color:var(--faint);flex:none;font-size:10px;}
+  .gift-log-name{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .gift-log-value{margin-left:auto;font-family:var(--mono);color:var(--text);flex:none;font-size:10.5px;}
+
+  .empty-note{
+    font-size:11px;color:var(--faint);padding:22px 8px;text-align:center;border:1px dashed var(--border);border-radius:var(--radius-sm);
+    line-height:1.5;
+  }
+  .partial-note{font-size:10.5px;color:var(--faint);margin-top:10px;padding-top:9px;border-top:1px dashed var(--border);line-height:1.5;}
+
+  @media (max-width:479px){
+    .contrib-grid{grid-template-columns:1fr;}
+    .contrib-col{display:none;}
+    .contrib-col.active{display:block;}
+    .side-tabs{display:flex;}
+  }
+  @media (min-width:480px){
+    .side-tabs{display:none;}
+  }
+
+  /* ---- パターン集 ---- */
+  .variants-title{max-width:960px;margin:56px auto 16px;color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
+  .variants{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;}
+  .variant-card{border:1px solid var(--border-soft);background:var(--panel);border-radius:var(--radius-lg);padding:16px;}
+  .variant-label{font-size:11px;color:var(--muted);margin-bottom:10px;}
+
+  .multi-note{
+    font-size:12px;color:var(--muted);text-align:center;padding:14px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  }
+  .multi-note b{color:var(--text-white);font-weight:600;display:block;margin-bottom:4px;font-size:13px;}
+
+  /* ---- 陣営数パターン(常に2列固定 + 複数人陣営はセレクタで絞り込み) ---- */
+  .team-versus{display:flex;align-items:stretch;justify-content:center;gap:8px;margin-bottom:14px;}
+  .team-col{
+    position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;flex:1;
+    border:1px solid var(--border);background:var(--panel-2);border-radius:var(--radius-sm);padding:9px 6px;
+  }
+  .team-member{display:flex;align-items:center;gap:5px;min-width:0;}
+  .team-avatar{width:19px;height:19px;border-radius:9999px;background:var(--bg);flex:none;border:1.5px solid var(--border);}
+  .team-name{font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:88px;}
+  .team-vs{
+    display:flex;align-items:center;justify-content:center;flex:none;align-self:center;
+    width:22px;height:22px;font-size:9.5px;font-weight:700;color:var(--faint);font-family:var(--mono);
+    border:1px solid var(--border);border-radius:9999px;background:var(--panel);
+  }
+  .team-cols{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:0;}
+  .team-cols>div{display:grid;grid-template-rows:subgrid;grid-row:1 / span 3;min-width:0;}
+  .team-cols>div:first-child{padding-right:14px;}
+  .team-cols>div:last-child{padding-left:14px;border-left:1px solid var(--border);}
+  .team-versus-quad{
+    position:relative;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;
+  }
+  .team-versus-quad .team-col{padding:10px 6px;}
+  .team-vs-center{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    display:flex;align-items:center;justify-content:center;width:24px;height:24px;
+    font-size:9.5px;font-weight:700;color:var(--faint);font-family:var(--mono);
+    border:1px solid var(--border);border-radius:9999px;background:var(--panel);z-index:1;
+  }
+  .team-name.fc-self{color:var(--fc-self);}
+  .team-name.fc-1{color:var(--fc-1);}
+  .team-name.fc-2{color:var(--fc-2);}
+  .team-name.fc-3{color:var(--fc-3);}
+
+  /* 陣営カラー: 自陣営=赤固定(--fc-self)。相手陣営はスコア高い順に青→橙→紫（最大4陣営=1vs1vs1vs1想定） */
+  .fc-dot{width:6px;height:6px;border-radius:9999px;flex:none;background:currentColor;}
+  .col-title.fc-self,.col-title.fc-1,.col-title.fc-2,.col-title.fc-3{display:flex;align-items:center;gap:5px;}
+  .col-title.fc-self{color:var(--fc-self);}
+  .col-title.fc-1{color:var(--fc-1);}
+  .col-title.fc-2{color:var(--fc-2);}
+  .col-title.fc-3{color:var(--fc-3);}
+  .contrib-row.fc-self .contrib-caret{color:var(--fc-self);}
+  .contrib-row.fc-1 .contrib-caret{color:var(--fc-1);}
+  .contrib-row.fc-2 .contrib-caret{color:var(--fc-2);}
+  .contrib-row.fc-3 .contrib-caret{color:var(--fc-3);}
+  .contrib-row[aria-expanded="true"].fc-self .contrib-caret,
+  .contrib-row[aria-expanded="true"].fc-1 .contrib-caret,
+  .contrib-row[aria-expanded="true"].fc-2 .contrib-caret,
+  .contrib-row[aria-expanded="true"].fc-3 .contrib-caret{color:inherit;}
+
+  /* 複数人陣営の参加者セレクタ（既定=陣営全体合算）。折返し禁止+横スクロールで高さを常に1行に固定する */
+  .side-select{display:flex;gap:5px;flex-wrap:nowrap;overflow-x:auto;margin-bottom:10px;min-height:24px;scrollbar-width:thin;}
+  .side-select-spacer{min-height:24px;margin-bottom:10px;}
+  .side-select button{flex:none;
+    border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10.5px;font-weight:500;
+    padding:4px 8px;border-radius:9999px;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:5px;
+    transition:border-color .12s,color .12s,background-color .12s;
+  }
+  .side-select button:hover{color:var(--text);border-color:#3a3a3a;}
+  .side-select button .fc-dot{opacity:.45;}
+  .side-select button.active{color:var(--text-white);background:rgba(255,255,255,.06);}
+  .side-select button.active.fc-self{border-color:var(--fc-self);}
+  .side-select button.active.fc-1{border-color:var(--fc-1);}
+  .side-select button.active.fc-2{border-color:var(--fc-2);}
+  .side-select button.active.fc-3{border-color:var(--fc-3);}
+  .side-select button.active .fc-dot{opacity:1;}
+</style>
+
+<div class="page-title">BattleDetailModal — 貢献者セクション（対戦相手陣営を含む）</div>
+
+<div class="stage">
+  <div class="modal">
+    <button class="close-btn" aria-label="閉じる">✕</button>
+
+    <div class="head-time">2026/9/5 21:14:02</div>
+
+    <div class="matchup">
+    <div class="matchup-line"></div>
+    <div class="versus-row">
+      <div class="versus-left">
+        <div class="side">
+          <span class="win-badge">WIN</span>
+          <div class="avatar">自</div>
+          <div>
+            <div class="side-name">自分</div>
+          </div>
+        </div>
+        <div class="versus-x">VS</div>
+        <div class="side opponent">
+          <div class="avatar"><img src="https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/placeholder~c5_100x100.jpeg" alt="" onerror="this.parentElement.textContent='相'"></div>
+          <div>
+            <div class="side-name">ましろ🌙配信</div>
+            <div class="side-handle">@mashiro_live</div>
+          </div>
+        </div>
+      </div>
+      <span class="status-live">LIVE</span>
+    </div>
+
+    <div class="contrib-section">
+      <div class="contrib-heading">
+        <span class="label">貢献者</span>
+        <span class="hint">🪙降順</span>
+      </div>
+
+      <div class="side-tabs">
+        <button class="side-tab active" data-tab="self">自分</button>
+        <button class="side-tab" data-tab="opponent"><span class="cap-dot partial"></span>ましろ🌙配信</button>
+      </div>
+
+      <div class="contrib-grid">
+        <div class="contrib-col active" data-col="self">
+          <div class="col-head">
+            <div class="col-head-top">
+              <span class="col-title fc-self"><span class="fc-dot"></span>自分</span>
+            </div>
+            <div class="col-head-stats">
+              <span class="col-score fc-self">128,400</span>
+              <span class="col-diamond">🪙86,900</span>
+            </div>
+          </div>
+          <div class="contrib-list">
+            <button type="button" class="contrib-row fc-self" aria-expanded="true" data-target="log-yukino">
+              <svg class="contrib-caret" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4V4z"/></svg>
+              <div class="contrib-avatar"><img src="" alt="" onerror="this.style.display='none'"></div>
+              <span class="contrib-name">ゆきの</span>
+              <span class="contrib-value">🪙24,000</span>
+            </button>
+            <div class="gift-log" id="log-yukino">
+              <div class="gift-log-row"><span class="gift-log-time">21:08:41</span><span class="gift-log-name">GG</span><span class="gift-log-value">🪙1(×1)</span></div>
+              <div class="gift-log-row"><span class="gift-log-time">21:09:03</span><span class="gift-log-name">パーティークラウン</span><span class="gift-log-value">🪙5,000(×2)</span></div>
+              <div class="gift-log-row"><span class="gift-log-time">21:11:52</span><span class="gift-log-name">TikTok</span><span class="gift-log-value">🪙1(×1)</span></div>
+              <div class="gift-log-row"><span class="gift-log-time">21:13:20</span><span class="gift-log-name">ユニバース</span><span class="gift-log-value">🪙13,999(×1)</span></div>
+            </div>
+            <button type="button" class="contrib-row fc-self" aria-expanded="false" data-target="log-rin">
+              <svg class="contrib-caret" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4V4z"/></svg>
+              <div class="contrib-avatar"></div>
+              <span class="contrib-name">rin_5</span>
+              <span class="contrib-value">🪙19,800</span>
+            </button>
+            <div class="gift-log" id="log-rin" hidden></div>
+            <button type="button" class="contrib-row fc-self" aria-expanded="false" data-target="log-tanukichi">
+              <svg class="contrib-caret" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4V4z"/></svg>
+              <div class="contrib-avatar"></div>
+              <span class="contrib-name">たぬきち</span>
+              <span class="contrib-value">🪙12,500</span>
+            </button>
+            <div class="gift-log" id="log-tanukichi" hidden></div>
+            <button type="button" class="contrib-row fc-self" aria-expanded="false" data-target="log-komugi">
+              <svg class="contrib-caret" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4V4z"/></svg>
+              <div class="contrib-avatar"></div>
+              <span class="contrib-name">こむぎ食堂</span>
+              <span class="contrib-value">🪙8,100</span>
+            </button>
+            <div class="gift-log" id="log-komugi" hidden></div>
+          </div>
+        </div>
+
+        <div class="contrib-col" data-col="opponent">
+          <div class="col-head">
+            <div class="col-head-top">
+              <span class="col-title fc-1"><span class="fc-dot"></span>ましろ🌙配信</span>
+              <span class="cap-badge partial"><span class="cap-dot partial"></span>一部</span>
+            </div>
+            <div class="col-head-stats">
+              <span class="col-score fc-1">96,200</span>
+              <span class="col-diamond">🪙21,200<span class="score-flag" title="一部期間のみ観測">!</span></span>
+            </div>
+          </div>
+          <div class="contrib-list">
+            <button type="button" class="contrib-row fc-1" aria-expanded="false" data-target="log-mikan">
+              <svg class="contrib-caret" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4V4z"/></svg>
+              <div class="contrib-avatar"></div>
+              <span class="contrib-name">みかん箱</span>
+              <span class="contrib-value">🪙15,200</span>
+            </button>
+            <div class="gift-log" id="log-mikan" hidden></div>
+            <button type="button" class="contrib-row fc-1" aria-expanded="false" data-target="log-hoshimi">
+              <svg class="contrib-caret" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4V4z"/></svg>
+              <div class="contrib-avatar"></div>
+              <span class="contrib-name">星見</span>
+              <span class="contrib-value">🪙6,000</span>
+            </button>
+            <div class="gift-log" id="log-hoshimi" hidden></div>
+          </div>
+          <div class="partial-note">観測開始が遅れたため一部期間のみ集計（19:02〜）</div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<div class="variants-title">captureStatus パターン集</div>
+<div class="variants">
+  <div class="variant-card">
+    <div class="variant-label">complete — 相手roomが全期間監視対象</div>
+    <div class="col-head">
+      <span class="col-title">ぴかりん配信部</span>
+    </div>
+    <div class="contrib-list">
+      <div class="contrib-row"><div class="contrib-avatar"></div><span class="contrib-name">あずき</span><span class="contrib-value">🪙31,000</span></div>
+      <div class="contrib-row"><div class="contrib-avatar"></div><span class="contrib-name">ノア</span><span class="contrib-value">🪙9,400</span></div>
+    </div>
+  </div>
+
+  <div class="variant-card">
+    <div class="variant-label">partial — 観測が途中から/途中まで</div>
+    <div class="col-head">
+      <span class="col-title">ましろ🌙配信</span>
+      <span class="cap-badge partial"><span class="cap-dot partial"></span>一部</span>
+    </div>
+    <div class="contrib-list">
+      <div class="contrib-row"><div class="contrib-avatar"></div><span class="contrib-name">みかん箱</span><span class="contrib-value">🪙15,200</span></div>
+    </div>
+    <div class="partial-note">観測開始が遅れたため一部期間のみ集計（19:02〜）</div>
+  </div>
+
+  <div class="variant-card">
+    <div class="variant-label">unavailable — 相手roomが監視対象外</div>
+    <div class="col-head">
+      <span class="col-title">名無し配信</span>
+      <span class="cap-badge unavailable"><span class="cap-dot unavailable"></span>未観測</span>
+    </div>
+    <div class="empty-note">相手の配信データは観測できませんでした</div>
+  </div>
+
+</div>
+
+<div class="variants-title">陣営数パターン（常に2列固定。複数人陣営はセレクタで絞り込み）</div>
+<div class="variants">
+  <div class="variant-card" style="grid-column:1/-1">
+    <div class="variant-label">1 vs 2 — 相手陣営2人、初期は陣営全体合算（セレクタ操作可）</div>
+    <div class="matchup">
+    <div class="matchup-line"></div>
+    <div class="team-versus">
+      <div class="team-col">
+        <span class="win-badge">WIN</span>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">自分</span></div>
+      </div>
+      <span class="team-vs">VS</span>
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">ましろ🌙配信</span></div>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">こたろう</span></div>
+      </div>
+    </div>
+    <div class="team-cols">
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-self"><span class="fc-dot"></span>自分</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-self">102,400</span>
+            <span class="col-diamond">🪙24,000</span>
+          </div>
+        </div>
+        <div class="side-select-spacer" aria-hidden="true"></div>
+        <div class="contrib-list">
+          <div class="contrib-row fc-self"><div class="contrib-avatar"></div><span class="contrib-name">ゆきの</span><span class="contrib-value">🪙24,000</span></div>
+        </div>
+      </div>
+      <div class="js-live-col" data-opp-title="ましろ🌙配信 他1人">
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-1 js-col-title"><span class="fc-dot"></span>ましろ🌙配信 他1人</span>
+            <span class="cap-badge partial js-cap-badge"><span class="cap-dot partial"></span>一部</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-1 js-col-score">89,300</span>
+            <span class="col-diamond js-col-diamond">🪙21,200<span class="score-flag" title="一部期間のみ観測">!</span></span>
+          </div>
+        </div>
+        <div class="side-select js-side-select">
+          <button type="button" class="active fc-1"
+            data-title="ましろ🌙配信 他1人" data-badge="partial" data-badge-label="一部" data-score="89,300" data-diamond="🪙21,200" data-flag="1"
+            data-rows='<div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">みかん箱</span><span class="contrib-value">🪙15,200</span></div><div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">星見</span><span class="contrib-value">🪙6,000</span></div>'
+          ><span class="fc-dot"></span>陣営全体合算</button>
+          <button type="button" class="fc-1"
+            data-title="ましろ🌙配信" data-badge="" data-badge-label="" data-score="47,400" data-diamond="🪙15,200" data-flag="0"
+            data-rows='<div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">みかん箱</span><span class="contrib-value">🪙15,200</span></div>'
+          ><span class="fc-dot"></span>ましろ🌙配信</button>
+          <button type="button" class="fc-1"
+            data-title="こたろう" data-badge="partial" data-badge-label="一部" data-score="41,900" data-diamond="🪙6,000" data-flag="1"
+            data-rows='<div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">星見</span><span class="contrib-value">🪙6,000</span></div>'
+          ><span class="fc-dot"></span>こたろう</button>
+        </div>
+        <div class="contrib-list js-contrib-list">
+          <div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">みかん箱</span><span class="contrib-value">🪙15,200</span></div>
+          <div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">星見</span><span class="contrib-value">🪙6,000</span></div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <div class="variant-card">
+    <div class="variant-label">1 vs 3 — 相手陣営unavailable、セレクタごと空状態</div>
+    <div class="matchup">
+    <div class="matchup-line"></div>
+    <div class="team-versus">
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">自分</span></div>
+      </div>
+      <span class="team-vs">VS</span>
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">ぴかりん配信部</span></div>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">こたろう</span></div>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">Rui_official</span></div>
+      </div>
+    </div>
+    <div class="team-cols">
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-self"><span class="fc-dot"></span>自分</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-self">102,400</span>
+            <span class="col-diamond">🪙24,000</span>
+          </div>
+        </div>
+        <div class="side-select-spacer" aria-hidden="true"></div>
+        <div class="contrib-list">
+          <div class="contrib-row fc-self"><div class="contrib-avatar"></div><span class="contrib-name">ゆきの</span><span class="contrib-value">🪙24,000</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-1"><span class="fc-dot"></span>ぴかりん配信部 他2人</span>
+            <span class="cap-badge unavailable"><span class="cap-dot unavailable"></span>未観測</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-1">—</span>
+            <span class="col-diamond unavailable">—</span>
+          </div>
+        </div>
+        <div class="side-select-spacer" aria-hidden="true"></div>
+        <div class="empty-note">相手の配信データは観測できませんでした</div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <div class="variant-card">
+    <div class="variant-label">2 vs 2 — 自陣営2人・相手陣営2人、両方セレクタ</div>
+    <div class="matchup">
+    <div class="matchup-line"></div>
+    <div class="team-versus">
+      <div class="team-col">
+        <span class="win-badge">WIN</span>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">自分</span></div>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">るな配信</span></div>
+      </div>
+      <span class="team-vs">VS</span>
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">ましろ🌙配信</span></div>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name">こたろう</span></div>
+      </div>
+    </div>
+    <div class="team-cols">
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-self"><span class="fc-dot"></span>自分 他1人</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-self">118,200</span>
+            <span class="col-diamond">🪙43,800</span>
+          </div>
+        </div>
+        <div class="side-select">
+          <button class="active fc-self"><span class="fc-dot"></span>陣営全体合算</button>
+          <button class="fc-self"><span class="fc-dot"></span>自分</button>
+          <button class="fc-self"><span class="fc-dot"></span>るな配信</button>
+        </div>
+        <div class="contrib-list">
+          <div class="contrib-row fc-self"><div class="contrib-avatar"></div><span class="contrib-name">ゆきの</span><span class="contrib-value">🪙24,000</span></div>
+          <div class="contrib-row fc-self"><div class="contrib-avatar"></div><span class="contrib-name">rin_5</span><span class="contrib-value">🪙19,800</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-1"><span class="fc-dot"></span>ましろ🌙配信 他1人</span>
+            <span class="cap-badge partial"><span class="cap-dot partial"></span>一部</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-1">89,300</span>
+            <span class="col-diamond">🪙15,200<span class="score-flag" title="一部期間のみ観測">!</span></span>
+          </div>
+        </div>
+        <div class="side-select">
+          <button class="active fc-1"><span class="fc-dot"></span>陣営全体合算</button>
+          <button class="fc-1"><span class="fc-dot"></span>ましろ🌙配信</button>
+          <button class="fc-1"><span class="fc-dot"></span>こたろう</button>
+        </div>
+        <div class="contrib-list">
+          <div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">みかん箱</span><span class="contrib-value">🪙15,200</span></div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <div class="variant-card" style="grid-column:1/-1">
+    <div class="variant-label">1 vs 1 vs 1 vs 1(4陣営・個人戦) — 常に2列。相手側だけセレクタで表示中の1人を切替、初期値=自分以外の最高スコア者</div>
+    <div class="team-versus-quad">
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name fc-self">自分</span></div>
+      </div>
+      <div class="team-col">
+        <span class="win-badge">WIN</span>
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name fc-1">ぴかりん配信部</span></div>
+      </div>
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name fc-2">ましろ🌙配信</span></div>
+      </div>
+      <div class="team-col">
+        <div class="team-member"><div class="team-avatar"></div><span class="team-name fc-3">Rui_official</span></div>
+      </div>
+      <span class="team-vs-center">VS</span>
+    </div>
+    <div class="team-cols">
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-self"><span class="fc-dot"></span>自分</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-self">102,400</span>
+            <span class="col-diamond">🪙24,000</span>
+          </div>
+        </div>
+        <div class="side-select-spacer" aria-hidden="true"></div>
+        <div class="contrib-list">
+          <div class="contrib-row fc-self"><div class="contrib-avatar"></div><span class="contrib-name">ゆきの</span><span class="contrib-value">🪙24,000</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="col-head">
+          <div class="col-head-top">
+            <span class="col-title fc-1"><span class="fc-dot"></span>ぴかりん配信部</span>
+            <span class="cap-badge"><span class="cap-dot complete"></span>完全</span>
+          </div>
+          <div class="col-head-stats">
+            <span class="col-score fc-1">118,300</span>
+            <span class="col-diamond">🪙40,400</span>
+          </div>
+        </div>
+        <div class="side-select">
+          <button class="active fc-1"><span class="fc-dot"></span>ぴかりん配信部(1位)</button>
+          <button class="fc-2"><span class="fc-dot"></span>ましろ🌙配信(2位)</button>
+          <button class="fc-3"><span class="fc-dot"></span>Rui_official(3位)</button>
+        </div>
+        <div class="contrib-list">
+          <div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">あずき</span><span class="contrib-value">🪙31,000</span></div>
+          <div class="contrib-row fc-1"><div class="contrib-avatar"></div><span class="contrib-name">ノア</span><span class="contrib-value">🪙9,400</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="partial-note">相手側セレクタは合算しない（個人戦のため陣営という単位が無い）。選択した1人の貢献者リストへ丸ごと差し替わる</div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.js-side-select').forEach(function(select){
+    select.querySelectorAll('button').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        select.querySelectorAll('button').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+
+        var col = select.closest('.js-live-col');
+        var dot = '<span class="fc-dot"></span>';
+
+        col.querySelector('.js-col-title').innerHTML = dot + btn.dataset.title;
+
+        var badgeEl = col.querySelector('.js-cap-badge');
+        if (btn.dataset.badge) {
+          badgeEl.style.display = '';
+          badgeEl.className = 'cap-badge js-cap-badge ' + btn.dataset.badge;
+          badgeEl.innerHTML = '<span class="cap-dot ' + btn.dataset.badge + '"></span>' + btn.dataset.badgeLabel;
+        } else {
+          badgeEl.style.display = 'none';
+        }
+
+        col.querySelector('.js-col-score').textContent = btn.dataset.score;
+
+        var flagHtml = btn.dataset.flag === '1' ? '<span class="score-flag" title="一部期間のみ観測">!</span>' : '';
+        col.querySelector('.js-col-diamond').innerHTML = btn.dataset.diamond + flagHtml;
+
+        col.querySelector('.js-contrib-list').innerHTML = btn.dataset.rows;
+      });
+    });
+  });
+
+  document.querySelectorAll('.side-tab').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.side-tab').forEach(function(b){ b.classList.remove('active'); });
+      document.querySelectorAll('.contrib-col').forEach(function(c){ c.classList.remove('active'); });
+      btn.classList.add('active');
+      var col = document.querySelector('.contrib-col[data-col="'+btn.dataset.tab+'"]');
+      if (col) col.classList.add('active');
+    });
+  });
+
+  document.querySelectorAll('.contrib-row[data-target]').forEach(function(row){
+    row.addEventListener('click', function(){
+      var log = document.getElementById(row.dataset.target);
+      var expanded = row.getAttribute('aria-expanded') === 'true';
+      row.setAttribute('aria-expanded', String(!expanded));
+      if (log) log.hidden = expanded;
+    });
+  });
+</script>

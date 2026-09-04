@@ -22,6 +22,7 @@ function giftEvent(overrides: Partial<GiftEventForContribution>): GiftEventForCo
     totalDiamonds: 1,
     occurredAt: new Date("2026-09-01T00:00:00Z"),
     sourceGiftId: "src1",
+    giftNameSnapshot: "Rose",
     ...overrides,
   };
 }
@@ -57,6 +58,20 @@ describe("aggregateGiftEventsToContributors", () => {
         giftCount: 8,
         totalDiamonds: 5003,
         lastGiftAt: new Date("2026-09-01T00:02:00Z").toISOString(),
+        giftEvents: [
+          {
+            occurredAt: new Date("2026-09-01T00:01:00Z").toISOString(),
+            giftName: "Rose",
+            totalDiamonds: 3,
+            repeatCount: 3,
+          },
+          {
+            occurredAt: new Date("2026-09-01T00:02:00Z").toISOString(),
+            giftName: "Rose",
+            totalDiamonds: 5000,
+            repeatCount: 5,
+          },
+        ],
       },
     ]);
   });
