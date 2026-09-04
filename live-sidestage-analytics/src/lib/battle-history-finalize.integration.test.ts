@@ -295,11 +295,17 @@ describe("materializeBattleHistory", () => {
     expect(row!.selfTotalDiamonds).toBe(30);
     expect(row!.status).toBe("finished");
     expect(row!.participants).toHaveLength(2);
-    expect(row!.contributors.map((c) => c.uniqueId)).toEqual(["fan_a"]);
+    // 旧構造(BattleHistoryContributor)へのdual-writeはPhase3 Step2で停止済み。
+    expect(row!.contributors).toHaveLength(0);
+    // 新構造(BattleHistoryGiftEvent)に貢献者データが書かれていること。
+    const self = row!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    const giftEvents = await prisma.battleHistoryGiftEvent.findMany({
+      where: { participantId: self!.id },
+    });
+    expect(giftEvents.map((g) => g.senderUniqueIdSnapshot)).toEqual(["fan_a"]);
     // dual-write先(新構造)のcaptureStatus/captureCoverageがDB列として往復すること
     // (computeBattleSnapshotのcaptureStatus/captureCoverageがcommitBattleSnapshotの
     // `...p`spreadで実際に書き込まれることの固定)。
-    const self = row!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
     expect(self?.captureStatus).toBe("complete");
     expect(self?.captureCoverage).toBe(1);
   });
@@ -355,7 +361,8 @@ describe("materializeBattleHistory", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].participants).toHaveLength(2);
-    expect(rows[0].contributors).toHaveLength(1);
+    // 旧構造(BattleHistoryContributor)へのdual-writeはPhase3 Step2で停止済み。
+    expect(rows[0].contributors).toHaveLength(0);
 
     // dual-write先(新構造)の子行も再実行で重複しないこと(cascade delete→再作成の経路を通す)。
     const giftEvents = await prisma.battleHistoryGiftEvent.findMany({
