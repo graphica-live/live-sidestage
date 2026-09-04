@@ -1,6 +1,6 @@
 {
     "name": "TLC-sidestage",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "private": true,
     "description": "live-sidestage internal fork of tiktok-live-connector (based on zerodytrash/TikTok-Live-Connector).",
     "main": "./dist/index.js",
