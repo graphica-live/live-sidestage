@@ -159,11 +159,6 @@ describe("computeBattleSnapshot", () => {
       ["fan_a", 30],
       ["fan_b", 10],
     ]);
-    // totalDiamonds降順に明示ソートされている
-    expect(snapshot!.contributors.map((c) => [c.uniqueId, c.totalDiamonds, c.giftCount])).toEqual([
-      ["fan_a", 30, 3],
-      ["fan_b", 10, 1],
-    ]);
   });
 
   it("接続区間ログ(RoomConnectionInterval)が窓を覆っていればcaptureStatus: completeになる", async () => {
@@ -287,7 +282,7 @@ describe("materializeBattleHistory", () => {
 
     const row = await prisma.battleHistory.findUnique({
       where: { roomId_battleId: { roomId: selfRoomId, battleId: "mat_ok" } },
-      include: { participants: true, contributors: true },
+      include: { participants: true },
     });
     expect(row).not.toBeNull();
     expect(row!.selfScore).toBe("1200");
@@ -295,15 +290,13 @@ describe("materializeBattleHistory", () => {
     expect(row!.selfTotalDiamonds).toBe(30);
     expect(row!.status).toBe("finished");
     expect(row!.participants).toHaveLength(2);
-    // 旧構造(BattleHistoryContributor)へのdual-writeはPhase3 Step2で停止済み。
-    expect(row!.contributors).toHaveLength(0);
-    // 新構造(BattleHistoryGiftEvent)に貢献者データが書かれていること。
+    // 貢献者データは新構造(BattleHistoryGiftEvent)に書かれる。
     const self = row!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
     const giftEvents = await prisma.battleHistoryGiftEvent.findMany({
       where: { participantId: self!.id },
     });
     expect(giftEvents.map((g) => g.senderUniqueIdSnapshot)).toEqual(["fan_a"]);
-    // dual-write先(新構造)のcaptureStatus/captureCoverageがDB列として往復すること
+    // captureStatus/captureCoverageがDB列として往復すること
     // (computeBattleSnapshotのcaptureStatus/captureCoverageがcommitBattleSnapshotの
     // `...p`spreadで実際に書き込まれることの固定)。
     expect(self?.captureStatus).toBe("complete");
@@ -357,14 +350,12 @@ describe("materializeBattleHistory", () => {
 
     const rows = await prisma.battleHistory.findMany({
       where: { roomId: selfRoomId, battleId: "mat_idempotent" },
-      include: { participants: true, contributors: true },
+      include: { participants: true },
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].participants).toHaveLength(2);
-    // 旧構造(BattleHistoryContributor)へのdual-writeはPhase3 Step2で停止済み。
-    expect(rows[0].contributors).toHaveLength(0);
 
-    // dual-write先(新構造)の子行も再実行で重複しないこと(cascade delete→再作成の経路を通す)。
+    // 子行も再実行で重複しないこと(cascade delete→再作成の経路を通す)。
     const giftEvents = await prisma.battleHistoryGiftEvent.findMany({
       where: { participant: { battleHistoryId: rows[0].id } },
     });

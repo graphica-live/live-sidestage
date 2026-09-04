@@ -1,4 +1,4 @@
-// バトル履歴の確定テーブル(BattleHistory / BattleHistoryParticipant / BattleHistoryContributor)の
+// バトル履歴の確定テーブル(BattleHistory / BattleHistoryParticipant / BattleHistoryGiftEvent等)の
 // バックフィル。既存の終了済みバトルを、確定処理と同じロジックでまとめてスナップショット化する。
 //
 // **本番DBへの実行はユーザーの明示的な指示があってから行うこと**(書き込みを伴う)。

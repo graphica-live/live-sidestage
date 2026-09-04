@@ -27,7 +27,6 @@
 // 数秒古い」程度に限られる、という従来の想定はこの変更で崩れうる。
 
 import { prisma } from "@/lib/prisma";
-import { aggregateGiftUsers } from "@/lib/gift-analytics";
 import { computeCaptureCoverage } from "@/lib/room-connection-log";
 import {
   asTeamEntries,
@@ -81,14 +80,6 @@ export type BattleSnapshotParticipant = {
   captureStatus: "complete" | "partial" | "unavailable" | null;
   /** roomId解決できた場合のみ、窓時間に対する接続区間の被覆率(0.0〜1.0)。roomId nullならnull。 */
   captureCoverage: number | null;
-};
-
-export type BattleSnapshotContributor = {
-  uniqueId: string;
-  nickname: string;
-  giftCount: number;
-  totalDiamonds: number;
-  lastGiftAt: Date;
 };
 
 /** BattleHistoryGiftEvent 1行分。participantId確定前なのでanchorIdで紐付ける。 */
@@ -153,7 +144,6 @@ export type BattleSnapshot = {
   /** 集計に使った全room TiktokBattle行のupdatedAt最大値。並行materialize時のCASに使う。 */
   sourceUpdatedAt: Date;
   participants: BattleSnapshotParticipant[];
-  contributors: BattleSnapshotContributor[];
   teams: BattleSnapshotTeam[];
   giftEvents: BattleSnapshotGiftEvent[];
   itemCardEvents: BattleSnapshotItemCardEvent[];
@@ -401,28 +391,10 @@ export async function computeBattleSnapshot(
     officialScore: faction.score,
   }));
 
-  // 貢献者は閲覧者非依存で集計する。確定は全閲覧者で共有される。
-  // アバターの署名付きURLは保存しないので解決も省く。
-  const { users, total } = await aggregateGiftUsers(
-    { roomId, receivedAt: { gte: windowStart, lte: windowEnd } },
-    { resolveAvatars: false }
-  );
-
-  const contributors: BattleSnapshotContributor[] = users
-    .map((u) => ({
-      uniqueId: u.uniqueId,
-      nickname: u.nickname,
-      giftCount: u.giftCount,
-      totalDiamonds: u.totalDiamonds,
-      lastGiftAt: new Date(u.lastGiftAt),
-    }))
-    // groupByの返り順は保証されないので、安定性チェックの比較と読み出し順の両方のために明示ソートする。
-    .sort(
-      (a, b) =>
-        b.totalDiamonds - a.totalDiamonds ||
-        b.lastGiftAt.getTime() - a.lastGiftAt.getTime() ||
-        a.uniqueId.localeCompare(b.uniqueId)
-    );
+  // selfTotalDiamondsはself participant(必ずroomId===roomIdに解決される)のobservedGiftTotal
+  // と同じ集計(自room・窓内のGift.totalDiamonds合計、GiftEdit非適用)なので、上のgiftEventsループで
+  // 算出済みの値をそのまま使う(aggregateGiftUsers([roomId, window])での再集計は不要)。
+  const selfTotalDiamonds = observedGiftTotalByAnchorId.get(selfHostUserId) ?? 0;
 
   const sourceUpdatedAt = [own.updatedAt, ...others.map((o) => o.updatedAt)].reduce((max, d) =>
     d.getTime() > max.getTime() ? d : max
@@ -436,10 +408,9 @@ export async function computeBattleSnapshot(
     status: windowInfo.status,
     selfScore: resolved.selfScore,
     opponentScore: resolved.kind === "1v1" ? resolved.opponentScore : null,
-    selfTotalDiamonds: total.totalDiamonds,
+    selfTotalDiamonds,
     sourceUpdatedAt,
     participants,
-    contributors,
     teams,
     giftEvents,
     itemCardEvents,
@@ -460,7 +431,6 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
     a.opponentScore !== b.opponentScore ||
     a.selfTotalDiamonds !== b.selfTotalDiamonds ||
     a.participants.length !== b.participants.length ||
-    a.contributors.length !== b.contributors.length ||
     a.giftEvents.length !== b.giftEvents.length ||
     a.itemCardEvents.length !== b.itemCardEvents.length ||
     a.bonusMissions.length !== b.bonusMissions.length
@@ -482,20 +452,6 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
       x.nickName !== y.nickName ||
       x.roomId !== y.roomId ||
       x.observedGiftTotal !== y.observedGiftTotal
-    ) {
-      return false;
-    }
-  }
-
-  for (let i = 0; i < a.contributors.length; i++) {
-    const x = a.contributors[i];
-    const y = b.contributors[i];
-    if (
-      x.uniqueId !== y.uniqueId ||
-      x.nickname !== y.nickname ||
-      x.giftCount !== y.giftCount ||
-      x.totalDiamonds !== y.totalDiamonds ||
-      x.lastGiftAt.getTime() !== y.lastGiftAt.getTime()
     ) {
       return false;
     }
@@ -566,10 +522,7 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         // bonusMissionsも道連れに消える。battleTeamはparticipant.battleTeamIdがonDelete:
         // SetNullなので、参加者削除より先に消しても後でも実害はないが、対称性のため
         // 参加者削除の後に置く。
-        // BattleHistoryContributor(旧構造)へのdeleteMany/createManyはPhase3(Contract前段)で
-        // 停止済み。読み出し側(queryBattleContributors/matchFinalizedBattleIds)は新構造
-        // (giftEvents)優先+旧テーブルフォールバックのままなので、Phase2a以前の既存行は
-        // 引き続き読めるが、以後この確定処理では旧テーブルへ新規行を書かない。
+        // 旧構造BattleHistoryContributorはPhase3(Contract)で削除済み(新構造giftEventsに一本化)。
         await tx.battleHistoryParticipant.deleteMany({ where: { battleHistoryId: existing.id } });
         await tx.battleTeam.deleteMany({ where: { battleHistoryId: existing.id } });
         battleHistoryId = existing.id;
