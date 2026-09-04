@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { simplifyObject } from "tiktok-live-connector";
+import { simplifyObject } from "TLC-sidestage";
 import { resolveMsgId } from "./tiktok-listener";
 
 /**

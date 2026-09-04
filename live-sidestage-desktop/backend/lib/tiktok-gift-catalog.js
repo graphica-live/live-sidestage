@@ -19,7 +19,7 @@
 // カタログは SQLite にも保存する。以前あった辞書アセット（`gift-name-ja.js`）を廃止したので、
 // **起動直後・オフラインで日本語名を出せる供給源がここしかない**。
 
-const { WebcastPushConnection } = require('tiktok-live-connector');
+const { WebcastPushConnection } = require('TLC-sidestage');
 const { firstDefinedString, hasJapaneseText } = require('./utils');
 const { TIKTOK_GIFT_CACHE_TTL_MS, TIKTOK_JA_LOCALE_CLIENT_PARAMS } = require('./constants');
 const tiktokState = require('./tiktok-state');
