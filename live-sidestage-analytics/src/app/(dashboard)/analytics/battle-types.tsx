@@ -20,6 +20,14 @@ export interface BattleParticipant {
   avatarUrl: string | null;
 }
 
+/** 陣営(teamIndex)単位の内訳。3陣営以上もそのまま表現する。solo/unknownのときのみBattleListItem.teamsがnull。 */
+export interface BattleTeam {
+  index: number;
+  isSelf: boolean;
+  score: string | null;
+  participants: BattleParticipant[];
+}
+
 export interface BattleListItem {
   battleId: string;
   startedAt: string;
@@ -31,9 +39,20 @@ export interface BattleListItem {
    */
   selfTeam: BattleParticipant[] | null;
   opponentTeam: BattleParticipant[] | null;
+  /** 陣営ごとの内訳(3陣営以上をそのまま表現する)。solo/unknownのときのみnull。 */
+  teams: BattleTeam[] | null;
   selfScore: string | null;
   opponentScore: string | null;
   selfTotalDiamonds: number;
+}
+
+export type BattleTeamCaptureStatus = "complete" | "partial" | "unavailable";
+
+export interface BattleContributorGiftEvent {
+  occurredAt: string;
+  giftName: string;
+  totalDiamonds: number;
+  repeatCount: number;
 }
 
 export interface BattleContributor {
@@ -43,11 +62,50 @@ export interface BattleContributor {
   giftCount: number;
   totalDiamonds: number;
   lastGiftAt: string;
+  /** 時系列ギフト明細(貢献者行クリック展開用)。ライブ中(未確定バトル)は常に空配列。 */
+  giftEvents: BattleContributorGiftEvent[];
+}
+
+/** 陣営内1参加者(room)分の貢献者内訳。参加者セレクタで個別に絞り込むときに使う。 */
+export interface BattleTeamParticipantContributors {
+  anchorId: string;
+  displayName: string;
+  captureStatus: BattleTeamCaptureStatus | null;
+  partialNote: string | null;
+  battleScore: string | null;
+  observedGiftTotal: number;
+  contributors: BattleContributor[];
+}
+
+/** 陣営(teamIndex)単位の貢献者一覧。 */
+export interface BattleTeamContributors {
+  index: number;
+  isSelf: boolean;
+  displayName: string;
+  captureStatus: BattleTeamCaptureStatus | null;
+  partialNote: string | null;
+  /** 陣営トータルのバトルスコア(既存resolveBattleScore/teamsと同じ出典、正確な値)。 */
+  battleScore: string | null;
+  /** 陣営全体で観測できた🪙合計(実弾)。 */
+  observedGiftTotal: number;
+  /** 陣営全体合算の貢献者一覧(既定表示)。 */
+  contributors: BattleContributor[];
+  participants: BattleTeamParticipantContributors[];
+  /**
+   * "aggregate": 通常(陣営内複数人=同じteamIndexのコラボ)。既定は「陣営全体合算」、セレクタで個別に絞り込める。
+   * "individual": 相手が3陣営以上に分かれる乱戦(1vs1vs1vs1個人戦等)で複数teamIndexを1列に統合した特殊列。
+   *   「陣営全体合算」を持たず、常にparticipants内のどれか1人を選択した状態で表示する
+   *   (初期選択=participants[0]、サーバー側でスコア降順にソート済み)。
+   */
+  selectorMode: "aggregate" | "individual";
 }
 
 export interface BattleContributorsData {
+  /** 後方互換フォールバック(陣営分割できない場合に使う単一リスト)。 */
   contributors: BattleContributor[];
   status: BattleStatus;
+  /** 陣営別内訳。1v1/teams/multiに解決できた確定済みバトルのみ非null。 */
+  teams: BattleTeamContributors[] | null;
 }
 
 export const BATTLE_STATUS_LABELS: Record<BattleStatus, string> = {

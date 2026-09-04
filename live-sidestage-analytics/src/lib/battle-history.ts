@@ -1121,6 +1121,57 @@ export async function queryBattles(
 
 export type BattleContributor = GiftAnalyticsUser;
 
+export type BattleContributorGiftEvent = {
+  occurredAt: string;
+  giftName: string;
+  totalDiamonds: number;
+  repeatCount: number;
+};
+
+/** 貢献者1件+時系列ギフト明細(貢献者行クリック展開用)。確定済みバトルのみ非空。 */
+export type BattleContributorDetail = GiftAnalyticsUser & {
+  giftEvents: BattleContributorGiftEvent[];
+};
+
+export type BattleTeamCaptureStatus = "complete" | "partial" | "unavailable";
+
+/** 陣営内1参加者(room)分の貢献者内訳。参加者セレクタで個別に絞り込むときに使う。 */
+export type BattleTeamParticipantContributors = {
+  anchorId: string;
+  displayName: string;
+  captureStatus: BattleTeamCaptureStatus | null;
+  partialNote: string | null;
+  /** 陣営トータルスコアと同じ出典(BattleHistoryParticipant.score/officialScore)のこの参加者個別分。 */
+  battleScore: string | null;
+  observedGiftTotal: number;
+  contributors: BattleContributorDetail[];
+};
+
+/** 陣営(teamIndex)単位の貢献者一覧。陣営内メンバーが複数いれば`participants`で個別に絞り込める。 */
+export type BattleTeamContributors = {
+  index: number;
+  isSelf: boolean;
+  displayName: string;
+  /** 陣営内最悪の状態を採用(unavailable > partial > complete)。1人も情報が無ければnull。 */
+  captureStatus: BattleTeamCaptureStatus | null;
+  partialNote: string | null;
+  /** 陣営トータルのバトルスコア。既存resolveBattleScore/teamsと同じ出典(正確な値)。 */
+  battleScore: string | null;
+  /** 陣営全体で観測できた🪙合計(実弾)。 */
+  observedGiftTotal: number;
+  /** 陣営全体合算の貢献者一覧(既定表示)。 */
+  contributors: BattleContributorDetail[];
+  participants: BattleTeamParticipantContributors[];
+  /**
+   * "aggregate": 通常(陣営内複数人=同じteamIndexのコラボ)。既定は「陣営全体合算」、セレクタで個別に絞り込める。
+   * "individual": 相手が3陣営以上に分かれる乱戦(例: 1vs1vs1vs1個人戦)で、複数teamIndexを1列に統合した特殊列。
+   *   「陣営全体合算」という概念が無いため常にどれか1人(既定=自分以外の最高スコア者)を選択した状態で始まる。
+   *   この場合、列自体のbattleScore/observedGiftTotal/contributors/captureStatus/partialNoteは
+   *   participants[0](既定選択者)の値をそのまま複製したもの。
+   */
+  selectorMode: "aggregate" | "individual";
+};
+
 /** BattleHistoryGiftEvent 1行分(集計に使う列だけ)。rowsは呼び出し側で
  * `[{occurredAt:"desc"},{sourceGiftId:"desc"}]` 済みである前提(「最初に見た行を採用」で
  * nicknameを最新行のものに固定するため)。 */
@@ -1131,6 +1182,7 @@ export type GiftEventForContribution = {
   totalDiamonds: number;
   occurredAt: Date;
   sourceGiftId: string;
+  giftNameSnapshot: string;
 };
 
 /**
@@ -1140,26 +1192,41 @@ export type GiftEventForContribution = {
  * nickname=最新occurredAt行のsnapshot。sourceGiftIdの重複(書き込み経路上は起きない想定だが
  * 保険)はSetで弾き、二重計上を防ぐ。profileImageUrlは呼び出し側でresolveAvatarUrlsして埋める。
  */
-export function aggregateGiftEventsToContributors(rows: GiftEventForContribution[]): BattleContributor[] {
+export function aggregateGiftEventsToContributors(rows: GiftEventForContribution[]): BattleContributorDetail[] {
   const seenSourceIds = new Set<string>();
   const byUniqueId = new Map<
     string,
-    { nickname: string; giftCount: number; totalDiamonds: number; lastGiftAt: Date }
+    {
+      nickname: string;
+      giftCount: number;
+      totalDiamonds: number;
+      lastGiftAt: Date;
+      giftEvents: (BattleContributorGiftEvent & { occurredAtDate: Date })[];
+    }
   >();
   for (const row of rows) {
     if (seenSourceIds.has(row.sourceGiftId)) continue;
     seenSourceIds.add(row.sourceGiftId);
+    const event = {
+      occurredAt: row.occurredAt.toISOString(),
+      occurredAtDate: row.occurredAt,
+      giftName: row.giftNameSnapshot,
+      totalDiamonds: row.totalDiamonds,
+      repeatCount: row.repeatCount,
+    };
     const existing = byUniqueId.get(row.senderUniqueIdSnapshot);
     if (existing) {
       existing.giftCount += row.repeatCount;
       existing.totalDiamonds += row.totalDiamonds;
       if (row.occurredAt > existing.lastGiftAt) existing.lastGiftAt = row.occurredAt;
+      existing.giftEvents.push(event);
     } else {
       byUniqueId.set(row.senderUniqueIdSnapshot, {
         nickname: row.senderNicknameSnapshot,
         giftCount: row.repeatCount,
         totalDiamonds: row.totalDiamonds,
         lastGiftAt: row.occurredAt,
+        giftEvents: [event],
       });
     }
   }
@@ -1171,6 +1238,11 @@ export function aggregateGiftEventsToContributors(rows: GiftEventForContribution
       giftCount: v.giftCount,
       totalDiamonds: v.totalDiamonds,
       lastGiftAt: v.lastGiftAt.toISOString(),
+      // 展開明細は時系列(古→新)。集計元rowsは`occurredAt desc`なので反転する。
+      giftEvents: v.giftEvents
+        .slice()
+        .sort((a, b) => (a.occurredAtDate < b.occurredAtDate ? -1 : a.occurredAtDate > b.occurredAtDate ? 1 : 0))
+        .map(({ occurredAtDate: _occurredAtDate, ...event }) => event),
     }))
     .sort((a, b) => {
       if (b.totalDiamonds !== a.totalDiamonds) return b.totalDiamonds - a.totalDiamonds;
@@ -1193,19 +1265,66 @@ export function aggregateGiftEventsToContributors(rows: GiftEventForContribution
  * 無駄な読み取りを避ける)。バックフィル済みデータはself側全員が自roomのroomIdを持つ場合が
  * あるが、giftEventsを実際に持つのは本人1人だけなのでflattenしても結果は変わらない。
  */
+function formatJstHm(d: Date): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Tokyo",
+  }).format(d);
+}
+
+/** captureStartedLateMs/captureEndedEarlyMsから注記文言を作る(実装側の既定案。spec.md未解決5関連)。 */
+function buildPartialNote(windowStart: Date, startedLateMs: number | null, endedEarlyMs: number | null): string | null {
+  const parts: string[] = [];
+  if (startedLateMs !== null && startedLateMs > 0) {
+    const observedStart = new Date(windowStart.getTime() + startedLateMs);
+    parts.push(`観測開始が遅れたため一部期間のみ集計（${formatJstHm(observedStart)}〜）`);
+  }
+  if (endedEarlyMs !== null && endedEarlyMs > 0) {
+    parts.push("観測が途中で終了したため一部期間のみ集計");
+  }
+  return parts.length > 0 ? parts.join(" / ") : null;
+}
+
+/** 陣営内メンバーのcaptureStatusのうち最悪のものを採用(unavailable > partial > complete)。spec.md未解決1の実装側既定案。 */
+function worstCaptureStatus(statuses: (string | null)[]): BattleTeamCaptureStatus | null {
+  const present = statuses.filter((s): s is string => s !== null);
+  if (present.length === 0) return null;
+  if (present.includes("unavailable")) return "unavailable";
+  if (present.includes("partial")) return "partial";
+  return "complete";
+}
+
 export async function queryBattleContributors(
   roomId: string,
   viewerStreamerId: string,
   battleId: string,
   now: Date = new Date()
-): Promise<{ contributors: BattleContributor[]; status: BattleWindow["status"] } | null> {
+): Promise<{
+  contributors: BattleContributorDetail[];
+  status: BattleWindow["status"];
+  teams: BattleTeamContributors[] | null;
+} | null> {
   const finalized = await prisma.battleHistory.findUnique({
     where: { roomId_battleId: { roomId, battleId } },
     select: {
       status: true,
+      windowStart: true,
       participants: {
-        where: { roomId },
         select: {
+          anchorId: true,
+          side: true,
+          teamIndex: true,
+          position: true,
+          nickName: true,
+          displayId: true,
+          tiktokId: true,
+          score: true,
+          officialScore: true,
+          captureStatus: true,
+          captureStartedLateMs: true,
+          captureEndedEarlyMs: true,
           giftEvents: {
             select: {
               senderUniqueIdSnapshot: true,
@@ -1214,6 +1333,7 @@ export async function queryBattleContributors(
               totalDiamonds: true,
               occurredAt: true,
               sourceGiftId: true,
+              giftNameSnapshot: true,
             },
             orderBy: [{ occurredAt: "desc" }, { sourceGiftId: "desc" }],
           },
@@ -1223,17 +1343,139 @@ export async function queryBattleContributors(
   });
 
   if (finalized) {
-    const selfGiftEventRows = finalized.participants.flatMap((p) => p.giftEvents);
-    const contributors = aggregateGiftEventsToContributors(selfGiftEventRows);
+    const allGiftEventRows = finalized.participants.flatMap((p) => p.giftEvents);
+    const contributors = aggregateGiftEventsToContributors(allGiftEventRows);
 
     // アバターだけは署名付きURLなので保存せず都度解決する(TiktokAvatarAssetはGift非依存の恒久キャッシュ)。
     const avatarUrls = await resolveAvatarUrls(
       "gift_sender",
       contributors.map((c) => c.uniqueId)
     );
+    const withAvatar = (list: BattleContributorDetail[]): BattleContributorDetail[] =>
+      list.map((c) => ({ ...c, profileImageUrl: avatarUrls.get(c.uniqueId) ?? null }));
+
+    // teamIndex導入前の確定データはteamIndexが全件0。その場合はside(self/opponent)から2陣営を
+    // 作る(buildFinalizedPendingItemの後方互換ロジックと同じ規則)。
+    type ParticipantRow = (typeof finalized.participants)[number];
+    const scoreOf = (p: ParticipantRow): bigint | null => {
+      const v = p.officialScore ?? p.score;
+      return v === null ? null : BigInt(v);
+    };
+    const teamIndexes = [...new Set(finalized.participants.map((p) => p.teamIndex))].sort((a, b) => a - b);
+    // 相手側(teamIndex!==0)が3陣営以上に分かれる乱戦(例: 1vs1vs1vs1個人戦)は、下部貢献欄を
+    // 「自分列+相手統合列(セレクタで相手を切替え)」の2列にまとめる(spec.md「参加者セレクタ」節)。
+    // 相手が1陣営(通常の1vsN)・2陣営(2vs2)まではteamIndexごとに素直に列を作る。
+    const opponentTeamIndexes = teamIndexes.filter((i) => i !== 0);
+    const mergeOpponents = opponentTeamIndexes.length >= 3;
+
+    let groups: ParticipantRow[][];
+    let mergedGroupIndex: number | null = null;
+    if (mergeOpponents) {
+      const selfGroup = finalized.participants.filter((p) => p.teamIndex === 0);
+      const opponentGroup = finalized.participants.filter((p) => p.teamIndex !== 0);
+      groups = [selfGroup, opponentGroup].filter((g) => g.length > 0);
+      mergedGroupIndex = selfGroup.length > 0 ? 1 : 0;
+    } else if (teamIndexes.length >= 2) {
+      groups = teamIndexes.map((i) =>
+        finalized.participants.filter((p) => p.teamIndex === i).sort((a, b) => a.position - b.position)
+      );
+    } else {
+      groups = [
+        finalized.participants.filter((p) => p.side === "self"),
+        finalized.participants.filter((p) => p.side === "opponent"),
+      ].filter((g) => g.length > 0);
+    }
+
+    const displayNameOf = (p: ParticipantRow): string =>
+      p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
+
+    const teams: BattleTeamContributors[] = groups.map((group, index) => {
+      const isSelf = index === 0;
+      const isMerged = mergedGroupIndex === index;
+      // 統合列は「1人=1陣営」の乱戦想定なので、初期値=自分以外の最高スコア者になるようスコア降順。
+      // 通常列は既存どおり陣営内の表示順(position昇順)。
+      const sortedGroup = isMerged
+        ? group.slice().sort((a, b) => {
+            const av = scoreOf(a);
+            const bv = scoreOf(b);
+            if (av === null && bv === null) return 0;
+            if (av === null) return 1;
+            if (bv === null) return -1;
+            return av > bv ? -1 : av < bv ? 1 : 0;
+          })
+        : group.slice().sort((a, b) => a.position - b.position);
+
+      const participants: BattleTeamParticipantContributors[] = sortedGroup.map((p) => {
+        const pContributors = withAvatar(aggregateGiftEventsToContributors(p.giftEvents));
+        return {
+          anchorId: p.anchorId,
+          displayName: isSelf ? "自分" : displayNameOf(p),
+          captureStatus: (p.captureStatus as BattleTeamCaptureStatus | null) ?? null,
+          partialNote: buildPartialNote(finalized.windowStart, p.captureStartedLateMs, p.captureEndedEarlyMs),
+          battleScore: p.officialScore ?? p.score ?? null,
+          observedGiftTotal: pContributors.reduce((sum, c) => sum + c.totalDiamonds, 0),
+          contributors: pContributors,
+        };
+      });
+
+      const groupContributors = withAvatar(
+        aggregateGiftEventsToContributors(sortedGroup.flatMap((p) => p.giftEvents))
+      );
+
+      let battleScore: bigint | null = null;
+      for (const p of sortedGroup) {
+        const v = p.officialScore ?? p.score;
+        if (v === null) continue;
+        battleScore = (battleScore ?? 0n) + BigInt(v);
+      }
+
+      const representative = sortedGroup[0];
+      const displayName = isSelf
+        ? "自分"
+        : sortedGroup.length <= 1
+          ? displayNameOf(representative)
+          : `${displayNameOf(representative)} 他${sortedGroup.length - 1}人`;
+
+      // 統合列("individual")は陣営全体合算という概念が無いため、列自体の値は既定選択者
+      // (=最高スコア者、sortedGroup[0])の値をそのまま複製する。UI側は常にparticipants内の
+      // 選択中の1人を表示するが、team値を直接参照しても意味のある値になるようにしておく。
+      if (isMerged) {
+        const initial = participants[0];
+        return {
+          index,
+          isSelf,
+          displayName,
+          captureStatus: initial.captureStatus,
+          partialNote: initial.partialNote,
+          battleScore: initial.battleScore,
+          observedGiftTotal: initial.observedGiftTotal,
+          contributors: initial.contributors,
+          participants,
+          selectorMode: "individual",
+        };
+      }
+
+      return {
+        index,
+        isSelf,
+        displayName,
+        captureStatus: worstCaptureStatus(sortedGroup.map((p) => p.captureStatus)),
+        partialNote:
+          sortedGroup
+            .map((p) => buildPartialNote(finalized.windowStart, p.captureStartedLateMs, p.captureEndedEarlyMs))
+            .find((n): n is string => n !== null) ?? null,
+        battleScore: battleScore === null ? null : battleScore.toString(),
+        observedGiftTotal: groupContributors.reduce((sum, c) => sum + c.totalDiamonds, 0),
+        contributors: groupContributors,
+        participants,
+        selectorMode: "aggregate",
+      };
+    });
+
     return {
-      contributors: contributors.map((c) => ({ ...c, profileImageUrl: avatarUrls.get(c.uniqueId) ?? null })),
+      contributors: withAvatar(contributors),
       status: finalized.status as BattleWindow["status"],
+      teams,
     };
   }
 
@@ -1245,11 +1487,18 @@ export async function queryBattleContributors(
 
   const windowInfo = resolveBattleWindow(battle, now);
   if (windowInfo.window === null || windowInfo.window.end === null) {
-    return { contributors: [], status: windowInfo.status };
+    return { contributors: [], status: windowInfo.status, teams: null };
   }
 
   const { users } = await queryGifts(roomId, viewerStreamerId, {
     receivedAt: { gte: windowInfo.window.start, lte: windowInfo.window.end },
   });
-  return { contributors: users, status: windowInfo.status };
+  // ライブ中(未確定バトル)は相手陣営のリアルタイム集計手段が無い(spec.md未解決4、既定案採用)。
+  // 自陣営(自room視点)のみ返し、teamsはnull=既存の単一貢献者リスト表示にフォールバックさせる。
+  // ライブ中はギフト明細(giftEvents)も保持していないため展開はできない。
+  return {
+    contributors: users.map((u) => ({ ...u, giftEvents: [] })),
+    status: windowInfo.status,
+    teams: null,
+  };
 }

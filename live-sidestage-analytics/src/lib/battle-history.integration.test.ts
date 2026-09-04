@@ -1122,27 +1122,65 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
         giftCount: 8, // Σ repeatCount = 3 + 5
         totalDiamonds: 5003, // Σ totalDiamonds = 3 + 5000
         lastGiftAt: new Date(startedAt.getTime() + 120 * 1000).toISOString(),
+        giftEvents: [
+          {
+            occurredAt: new Date(startedAt.getTime() + 60 * 1000).toISOString(),
+            giftName: "Rose",
+            totalDiamonds: 3,
+            repeatCount: 3,
+          },
+          {
+            occurredAt: new Date(startedAt.getTime() + 120 * 1000).toISOString(),
+            giftName: "Galaxy",
+            totalDiamonds: 5000,
+            repeatCount: 5,
+          },
+        ],
       },
     ]);
   });
 
-  it("queryBattleContributorsはteam戦で味方(別room)のgiftEventsを混入しない", async () => {
+  it("queryBattleContributorsはteam戦で味方(別room・同teamIndex)のgiftEventsを合算し、相手陣営(別teamIndex)は混入しない", async () => {
     const startedAt = new Date("2026-09-01T17:00:00Z");
     await prisma.tiktokBattle.create({ data: finalBattleData("contrib_teammate", startedAt) });
     const history = await createHistory("contrib_teammate", startedAt, []);
     const selfParticipant = await getSelfParticipant(history.id);
-    // 味方: isSelfかもしれないが自room(finalRoomId)ではない別roomを監視できていたケース。
+    // 味方: 自分と同じ陣営(teamIndex=0)だが、自room(finalRoomId)ではない別roomを監視できていたケース(コラボ)。
     const teammateRoom = await prisma.tiktokRoom.create({ data: { tiktokId: `teammate_${Date.now()}` } });
     const teammate = await prisma.battleHistoryParticipant.create({
       data: {
         battleHistoryId: history.id,
         side: "self",
+        teamIndex: 0,
         position: 1,
         anchorId: "teammate_anchor",
         tiktokId: null,
         displayId: "snap_teammate",
         nickName: "確定味方",
         roomId: teammateRoom.id,
+      },
+    });
+    // createHistoryが作った相手参加者(OPP_ANCHOR)は自陣営と違う陣営(teamIndex=1)にする。
+    // 別陣営なので、そこにgiftEventsがあっても自陣営の集計に混ざってはいけない。
+    const opponentParticipant = await prisma.battleHistoryParticipant.findUniqueOrThrow({
+      where: { battleHistoryId_anchorId: { battleHistoryId: history.id, anchorId: OPP_ANCHOR } },
+    });
+    await prisma.battleHistoryParticipant.update({
+      where: { id: opponentParticipant.id },
+      data: { teamIndex: 1 },
+    });
+    await prisma.battleHistoryGiftEvent.create({
+      data: {
+        participantId: opponentParticipant.id,
+        occurredAt: new Date(startedAt.getTime() + 60 * 1000),
+        senderUniqueIdSnapshot: "opponent_fan",
+        senderNicknameSnapshot: "相手のファン",
+        giftId: 1,
+        giftNameSnapshot: "Rose",
+        repeatCount: 1,
+        diamondCount: 12345,
+        totalDiamonds: 12345,
+        sourceGiftId: "src_opponent",
       },
     });
     await prisma.battleHistoryGiftEvent.create({
@@ -1176,7 +1214,12 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
 
     const result = await queryBattleContributors(finalRoomId, VIEWER, "contrib_teammate");
 
-    expect(result!.contributors.map((c) => c.uniqueId)).toEqual(["self_fan"]);
+    // トップレベルcontributorsは全陣営合算(後方互換フォールバック)。陣営別の絞り込みはteamsで見る。
+    const selfTeam = result!.teams!.find((t) => t.index === 0)!;
+    const opponentTeam = result!.teams!.find((t) => t.index === 1)!;
+    // 自陣営(teamIndex=0)の集計には味方(別room)のgiftEventsを合算する。相手陣営(teamIndex=1)は混ざらない。
+    expect(selfTeam.contributors.map((c) => c.uniqueId)).toEqual(["teammate_fan", "self_fan"]);
+    expect(opponentTeam.contributors.map((c) => c.uniqueId)).toEqual(["opponent_fan"]);
   });
 
   it("listenerQueryは確定済み(giftEventsスナップショット)と未確定(Gift)の両方から一致を拾う", async () => {
