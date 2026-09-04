@@ -35,8 +35,8 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
-vi.mock("tiktok-live-connector", async () => {
-  const actual = await vi.importActual<typeof import("tiktok-live-connector")>("tiktok-live-connector");
+vi.mock("TLC-sidestage", async () => {
+  const actual = await vi.importActual<typeof import("TLC-sidestage")>("TLC-sidestage");
   return {
     ...actual,
     WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {

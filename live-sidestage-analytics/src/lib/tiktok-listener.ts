@@ -1,5 +1,5 @@
-import { WebcastPushConnection, getBattleItemCard, getBattleItemCardSender } from "tiktok-live-connector";
-import type { WebcastLinkMicBattleItemCard } from "tiktok-live-connector";
+import { WebcastPushConnection, getBattleItemCard, getBattleItemCardSender } from "TLC-sidestage";
+import type { WebcastLinkMicBattleItemCard } from "TLC-sidestage";
 import { ProxyAgent } from "proxy-agent";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
@@ -875,7 +875,7 @@ function jstDateKey(date: Date = new Date()): string {
  * tiktok-live-connector の WebcastPushConnection(レガシー互換クラス)は simplifyObject() で
  * ネストしたprotobufを平坦化する際、common の中身をトップレベルへ Object.assign したうえで
  * common 自体を delete する
- * (node_modules/tiktok-live-connector/dist/lib/_legacy/data-converter.js)。
+ * (node_modules/TLC-sidestage/dist/lib/_legacy/data-converter.js)。
  *
  *   Object.assign(webcastObject, webcastObject.common);
  *   delete webcastObject.common;
@@ -1225,7 +1225,7 @@ interface SignUsageContext {
 
 // EulerStream署名API(WebSocket接続用の署名)への実際のリクエストを記録するラッパー。
 // tiktok-live-connectorはoptions.signedWebSocketProviderが未指定なら
-// `this.webClient.fetchSignedWebSocketFromEuler`を直接呼ぶ(node_modules/tiktok-live-connector/dist/lib/client.js
+// `this.webClient.fetchSignedWebSocketFromEuler`を直接呼ぶ(node_modules/TLC-sidestage/dist/lib/client.js
 // の_connect()参照)。ここではその既定実装を素通しで呼びつつ、呼ばれた事実だけを記録する
 // — fetchRoomInfoOnConnectのオフライン判定(UserOfflineError)はこの手前で終わるため、
 // このラッパーが呼ばれる=実際に署名を消費する試行が発生した、という対応が保たれる。

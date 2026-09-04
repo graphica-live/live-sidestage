@@ -50,7 +50,7 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "stripe": "^22.6.0",
-    "tiktok-live-connector": "file:vendor/TLC-sidestage-1.1.0.tgz"
+    "TLC-sidestage": "file:vendor/TLC-sidestage-1.1.0.tgz"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

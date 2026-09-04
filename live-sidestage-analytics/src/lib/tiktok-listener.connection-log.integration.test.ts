@@ -33,7 +33,7 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
-vi.mock("tiktok-live-connector", () => ({
+vi.mock("TLC-sidestage", () => ({
   WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
     return new MockConnection(uniqueId, options);
   }),

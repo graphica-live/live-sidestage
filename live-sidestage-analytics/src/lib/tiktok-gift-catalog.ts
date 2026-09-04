@@ -8,7 +8,7 @@
 //  - **ライブ接続には一切影響させない。** 失敗はログのみ。呼び出し元へ例外を投げない
 //  - `enableExtendedGiftInfo: true` は使わない。あれを立てると connect() の内部で
 //    fetchAvailableGifts() が呼ばれ、失敗時に InvalidResponseError を投げて
-//    **ライブ接続そのものが落ちる**(tiktok-live-connector/dist/lib/client.js:192-194)。
+//    **ライブ接続そのものが落ちる**(TLC-sidestage/dist/lib/client.js:192-194)。
 //    未接続の使い捨て接続から明示的に呼ぶ方が、失敗を隔離できる
 //  - 書き込みは**1本の multi-row INSERT ... ON CONFLICT DO UPDATE**。文が1つなら原子的なので、
 //    「途中まで書けた状態が他プロセスから新しい fetchedAt に見える」が構造的に起きない
@@ -20,7 +20,7 @@
 //    取るため。`name`(一致キー)と `label` は必ず英語版から採り、日本語は `labelJa` にだけ入れる。
 //    ここを混ぜると効果音が無言で鳴らなくなる — 詳細は mergeLocalizedCatalog() のコメント。
 //    日本語版の取得は表示にしか効かないので、失敗してもカタログ更新は通す
-import { WebcastPushConnection } from "tiktok-live-connector";
+import { WebcastPushConnection } from "TLC-sidestage";
 import { ProxyAgent } from "proxy-agent";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
