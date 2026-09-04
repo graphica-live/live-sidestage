@@ -204,7 +204,12 @@ export function BattleDetailModal({
                     : "このバトルへの貢献者なし"}
                 </div>
               ) : (
-                <FallbackContributorList contributors={state.data.contributors} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <FallbackContributorList contributors={state.data.contributors} />
+                  </div>
+                  <OpponentPendingPlaceholder />
+                </div>
               ))}
           </div>
         </div>
@@ -524,6 +529,14 @@ function ExpandableContributorRow({ contributor, color }: { contributor: BattleC
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function OpponentPendingPlaceholder() {
+  return (
+    <div className="min-w-0 flex items-center justify-center rounded-md border border-border bg-white/[.02] px-2.5 py-6 text-center text-[11px] text-muted">
+      <span className="animate-pulse">集計中…</span>
     </div>
   );
 }
