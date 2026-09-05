@@ -22,7 +22,7 @@ export default async function DashboardLayout({
           </Link>
         </div>
       )}
-      <DashboardHeader />
+      <DashboardHeader email={session.user.email} />
       {children}
     </>
   );
