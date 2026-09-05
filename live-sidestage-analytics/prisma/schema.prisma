@@ -281,7 +281,17 @@ model TiktokRoom {
   // --- 低価値Room監視停止(tiktok-low-value-cleanup.ts)用 ---
   // このRoomに対し低価値クリーンアップの判定を最後に実行した時刻(結果を問わず)。
   // lastExistenceCheckAtと同じ理由(クールダウン+候補ローテーションの公平性)で持つ。
+  // reviveSuspendedMonitoring()等の監視復帰処理からも現在時刻で書き込まれる——復帰直後
+  // すぐ次の低価値判定サイクルの対象へ戻り再停止される事故を防ぐため(CHECK_COOLDOWN_MS)。
   lastLowValueCheckAt DateTime?
+  // --- 403/ブロック検知によるworker再割当(worker-guardian.ts)用 ---
+  // TikTok側からの403応答(isBlockedError())が連続した回数。connectAndAttach()の
+  // 接続失敗時・conn.on("error")時にrecordBlockedAttempt()がincrementし、
+  // persistState()がstatus="connected"到達時に0へリセットする(notFoundStreakと
+  // 同じCASE式パターン)。worker-guardian.tsがこの値の閾値超過を検知して別workerへの
+  // 再割当を行う。全workerを試し尽くしても解消しなければmonitoringSuspended:trueにして
+  // give-upし、以降はreviveSuspendedMonitoring()経由の復帰でこの値も0に戻る。
+  consecutiveBlockedCount Int @default(0)
   // true の間、watchedRoomFilter() はこのRoomの Streamer を「監視対象」から除外する
   // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/GiftEdit/
   // overlayToken/apiKey/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/

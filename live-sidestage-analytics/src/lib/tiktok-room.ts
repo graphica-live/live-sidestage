@@ -33,13 +33,19 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
   // 判定まで監視を続ける情報プール方針)ため、Streamerを新規に紐付けただけではmonitoringSuspended
   // は自動で戻らない。ここで明示的に戻さないと、過去に監視停止されたRoomへ新規登録した
   // ユーザーは、次に markLastActive()(ログイン時)が呼ばれるまでデータが貯まらない。
-  await prisma.$transaction([
-    prisma.streamer.update({ where: { id: streamerId }, data: { roomId: room.id } }),
-    prisma.tiktokRoom.updateMany({
-      where: { id: room.id, monitoringSuspended: true },
-      data: { monitoringSuspended: false },
-    }),
-  ]);
+  //
+  // reviveSuspendedMonitoring()に寄せる(以前はここだけ独自にmonitoringSuspendedのみを
+  // 戻す実装だった)。NOT_FOUND系フィールド・lastLowValueCheckAt・consecutiveBlockedCount
+  // も同時にリセットされるようになるが、いずれも「監視が復活した」という事実に対して
+  // 一貫してリセットするのが自然で実害はない。streamer.update()と同一transactionには
+  // しない(mark-last-active.tsのmarkLastActive()と同じ理由: revive失敗時にstreamerの
+  // roomId更新まで巻き戻す必要はなく、revive失敗はログのみで握りつぶし次回機会に委ねる)。
+  await prisma.streamer.update({ where: { id: streamerId }, data: { roomId: room.id } });
+  try {
+    await reviveSuspendedMonitoring(room.id);
+  } catch (err) {
+    console.error("[tiktok-room] 監視復活処理に失敗:", err);
+  }
 
   return room.id;
 }

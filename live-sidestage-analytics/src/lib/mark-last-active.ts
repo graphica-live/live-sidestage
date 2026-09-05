@@ -69,6 +69,12 @@ export async function reviveSuspendedMonitoringForRoom(roomId: string): Promise<
 // 最初の実在確認で古いstreakを引き継いでしまい、TikTok側が実際には復帰していても
 // 誤って早期に再停止しかねない。低価値クリーンアップ由来の停止ではこれらは元々null
 // なのでリセットしても影響しない。
+//
+// lastLowValueCheckAt を現在時刻に更新するのは低価値クリーンアップのクールダウン
+// (CHECK_COOLDOWN_MS、tiktok-low-value-cleanup.ts)に復帰直後から乗せるため。
+// 復帰直後に間髪入れず次の低価値判定サイクルの対象へ戻り再停止される事故を防ぐ。
+// consecutiveBlockedCount も0にリセットする(403ブロックによるgive-up停止からの
+// 復帰でも、古いカウントを引き継いで即座にフェイルオーバー対象へ戻らないように)。
 export async function reviveSuspendedMonitoring(roomId: string): Promise<number> {
   const updated = await prisma.tiktokRoom.updateMany({
     where: { id: roomId, monitoringSuspended: true },
@@ -78,6 +84,8 @@ export async function reviveSuspendedMonitoring(roomId: string): Promise<number>
       notFoundStreak: 0,
       notFoundFirstAt: null,
       lastExistenceCheckAt: null,
+      lastLowValueCheckAt: new Date(),
+      consecutiveBlockedCount: 0,
     },
   });
   return updated.count;

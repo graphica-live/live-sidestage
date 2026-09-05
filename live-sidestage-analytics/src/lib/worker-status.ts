@@ -62,6 +62,7 @@ export type AssignedRoom = {
   streamerCount: number;
   watchCount: number;
   eventMonitored: boolean;
+  consecutiveBlockedCount: number;
 };
 
 export type WorkerIssue = {
@@ -141,6 +142,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
       listenerMessage: true,
       listenerUpdatedAt: true,
       monitorUntil: true,
+      consecutiveBlockedCount: true,
       _count: { select: { streamers: true, watches: true } },
     },
     orderBy: [{ workerId: "asc" }, { tiktokId: "asc" }],
@@ -156,6 +158,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     streamerCount: r._count.streamers,
     watchCount: r._count.watches,
     eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
+    consecutiveBlockedCount: r.consecutiveBlockedCount,
   }));
 }
 

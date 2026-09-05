@@ -39,6 +39,15 @@ export const AUDIT_LOG_SETTING_KEY = "workerGuardianAuditLog";
 const AUDIT_LOG_MAX_ENTRIES = 50;
 export const KILL_SWITCH_SETTING_KEY = "workerGuardianDisabled";
 
+// --- 403ブロック検知によるworker再割当(死活監視とは独立したトリガー) ---
+// プロセスは生きているが特定の部屋だけTikTok側からブロックされ続けるケースを拾う。
+// クールダウンは設けない(即時復活優先) — 代わりに再割当直後の短いガード期間だけを
+// 設けて、旧worker側のteardown(60秒reconcile)完了前に連鎖的に再移送が走る振動を防ぐ。
+export const BLOCKED_REASSIGN_THRESHOLD = Number(process.env.WORKER_GUARDIAN_BLOCKED_THRESHOLD ?? 5);
+export const BLOCKED_REASSIGN_GUARD_MS = Number(process.env.WORKER_GUARDIAN_BLOCKED_GUARD_MS ?? 3 * 60_000);
+export const BLOCKED_AUDIT_LOG_SETTING_KEY = "workerGuardianBlockedAuditLog";
+export const BLOCKED_KILL_SWITCH_SETTING_KEY = "workerGuardianBlockedReassignDisabled";
+
 export type HealthClassification = "healthy" | "unhealthy" | "inconclusive";
 
 export type MigrationAssignment = { roomId: string; tiktokId: string; toWorker: number };
@@ -50,13 +59,92 @@ export type MigrationAuditEntry = {
   assignments: MigrationAssignment[];
 };
 
+export type BlockedRoomState = {
+  triedWorkers: Set<number>;
+  lastReassignedAt: number;
+  // 生存worker一巡後に give_up した部屋。null でなければ以後この部屋は永久にskipする
+  // (実装後レビューHIGH指摘: AgencyWatch/イベントmonitorUntilが有効な部屋は
+  // monitoringSuspended:trueが接続を止めないため、give_up直後も403が続き
+  // consecutiveBlockedCountが再び閾値へ達して worker一巡→give_up を無限に繰り返す。
+  // gaveUpAtを恒久マーカーとして残しskipし続けることで、この無限ループを断つ)。
+  // 完全に復帰した(listenerStatus==="connected"でconsecutiveBlockedCountが0に戻った)
+  // 部屋はrunGuardianCycle冒頭でこのエントリごと削除し、新しいブロックepisodeとして
+  // 再スタートできるようにする。
+  gaveUpAt: number | null;
+};
+
+export type BlockedRoomAuditEntry = {
+  at: string;
+  roomId: string;
+  tiktokId: string;
+  reason: "reassigned" | "given_up";
+  fromWorker: number;
+  toWorker: number | null;
+};
+
+export type BlockedRoomDecision =
+  | { action: "reassign"; toWorker: number }
+  | { action: "give_up" }
+  | { action: "skip" };
+
 export type GuardianState = {
   streaks: Map<number, number>;
   lastMigrationAt: number | null;
+  // 部屋ごとの403再割当履歴(in-memory)。プロセス再起動で消えるが、消えた場合は
+  // 単にtriedWorkersが空の状態から再開するだけ(最初のuntried workerへ再割当を試みる)
+  // — give-up判定はDB側のmonitoringSuspendedで完結しているため、消失しても
+  // 「無限リトライが再開する」ような実害はない。
+  blockedRoomState: Map<string, BlockedRoomState>;
 };
 
 export function createInitialState(): GuardianState {
-  return { streaks: new Map(), lastMigrationAt: null };
+  return { streaks: new Map(), lastMigrationAt: null, blockedRoomState: new Map() };
+}
+
+/**
+ * 1部屋ぶんの403ブロック検知に対する意思決定。純粋関数。
+ *
+ * - 再割当直後のガード期間内はskip(振動防止)。
+ * - まだ試していないhealthy workerがあれば、その中で最小負荷を選ぶ。
+ * - healthy worker自体が0件ならskip(worker側の問題であってこの部屋固有の問題ではない)。
+ * - 生存workerを一巡し尽くしたらgive_up(アカウント自体がブロックされている可能性が高いと
+ *   判断し、呼び出し側がmonitoringSuspended:trueにして機能A(reviveSuspendedMonitoring)の
+ *   復帰経路へ委ねる)。
+ */
+export function decideBlockedRoomAction(input: {
+  eligibleTargets: number[];
+  currentLoad: Map<number, number>;
+  state: BlockedRoomState | undefined;
+  now: number;
+}): BlockedRoomDecision {
+  const { eligibleTargets, currentLoad, state, now } = input;
+
+  if (state?.gaveUpAt != null) {
+    return { action: "skip" };
+  }
+
+  if (state && now - state.lastReassignedAt < BLOCKED_REASSIGN_GUARD_MS) {
+    return { action: "skip" };
+  }
+
+  const tried = state?.triedWorkers ?? new Set<number>();
+  const untried = eligibleTargets.filter((w) => !tried.has(w));
+
+  if (untried.length === 0) {
+    if (eligibleTargets.length === 0) return { action: "skip" };
+    return { action: "give_up" };
+  }
+
+  let best = untried[0];
+  let bestLoad = currentLoad.get(best) ?? 0;
+  for (const w of untried) {
+    const l = currentLoad.get(w) ?? 0;
+    if (l < bestLoad || (l === bestLoad && w < best)) {
+      best = w;
+      bestLoad = l;
+    }
+  }
+  return { action: "reassign", toWorker: best };
 }
 
 /** kill switch(AppSetting)の値を解釈する。純粋関数。 */
@@ -298,6 +386,105 @@ async function migrateDeadWorker(
   });
 }
 
+async function appendBlockedAuditLog(tx: Prisma.TransactionClient, entry: BlockedRoomAuditEntry): Promise<void> {
+  const row = await tx.appSetting.findUnique({ where: { key: BLOCKED_AUDIT_LOG_SETTING_KEY } });
+  let list: BlockedRoomAuditEntry[] = [];
+  if (row?.value) {
+    try {
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      list = [];
+    }
+  }
+  list.push(entry);
+  const trimmed = list.slice(-AUDIT_LOG_MAX_ENTRIES);
+  await tx.appSetting.upsert({
+    where: { key: BLOCKED_AUDIT_LOG_SETTING_KEY },
+    create: { key: BLOCKED_AUDIT_LOG_SETTING_KEY, value: JSON.stringify(trimmed) },
+    update: { value: JSON.stringify(trimmed) },
+  });
+}
+
+/**
+ * 403連続検知が閾値に達した部屋1件を別workerへ再割当する。migrateDeadWorker()と同じ
+ * advisory lock(GUARDIAN_LOCK_KEY)を共有するため、死活監視の移送と直列化されるが
+ * これは意図通り(同時に同じ部屋を奪い合うことがない)。
+ *
+ * WHERE workerId = fromWorker を条件に含める — 既に他所へ動いていた部屋を誤って
+ * 奪わない(migrateDeadWorker()と同じ理由)。
+ */
+async function migrateBlockedRoom(
+  roomId: string,
+  tiktokId: string,
+  fromWorker: number,
+  toWorker: number
+): Promise<boolean> {
+  const migrated = await prisma.$transaction(async (tx) => {
+    const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+      SELECT pg_try_advisory_xact_lock(${GUARDIAN_LOCK_KEY}::bigint) AS locked
+    `;
+    if (!locked) {
+      console.warn("[worker-guardian] 別インスタンスが移送処理中 — 403フェイルオーバーはこのサイクルはスキップ");
+      return false;
+    }
+
+    const updated = await tx.tiktokRoom.updateMany({
+      where: { id: roomId, workerId: fromWorker },
+      data: { workerId: toWorker, consecutiveBlockedCount: 0 },
+    });
+    if (updated.count === 0) return false;
+
+    await appendBlockedAuditLog(tx, {
+      at: new Date().toISOString(),
+      roomId,
+      tiktokId,
+      reason: "reassigned",
+      fromWorker,
+      toWorker,
+    });
+    return true;
+  });
+
+  if (migrated) {
+    console.error(`[worker-guardian] @${tiktokId}(403連続) をworker${fromWorker}→worker${toWorker}へ再割当した`);
+  }
+  return migrated;
+}
+
+/**
+ * 生存workerを一巡してもブロックが解消しない部屋をgive-upする。monitoringSuspended:true
+ * にして接続自体を止め、以降の復帰はreviveSuspendedMonitoring()経由(ユーザー再アクセス等)
+ * のみに委ねる——6時間ごとの自動再一巡等は行わない(アカウント自体がブロックされている
+ * 可能性が高い状況で移送を繰り返しても解消しない上、EulerStream署名を浪費し続けるため)。
+ */
+async function giveUpBlockedRoom(roomId: string, tiktokId: string, fromWorker: number): Promise<boolean> {
+  const gaveUp = await prisma.$transaction(async (tx) => {
+    const updated = await tx.tiktokRoom.updateMany({
+      where: { id: roomId, workerId: fromWorker },
+      data: { monitoringSuspended: true, consecutiveBlockedCount: 0 },
+    });
+    if (updated.count === 0) return false;
+
+    await appendBlockedAuditLog(tx, {
+      at: new Date().toISOString(),
+      roomId,
+      tiktokId,
+      reason: "given_up",
+      fromWorker,
+      toWorker: null,
+    });
+    return true;
+  });
+
+  if (gaveUp) {
+    console.error(
+      `[worker-guardian] @${tiktokId} は生存worker全台で403が継続 — monitoringSuspended:trueにして復帰経路へ委譲した`
+    );
+  }
+  return gaveUp;
+}
+
 /** 1サイクルぶんの検知+(必要なら)移送を実行し、次サイクルへ渡す状態を返す。 */
 export async function runGuardianCycle(state: GuardianState): Promise<GuardianState> {
   const disabledSetting = await getSetting(KILL_SWITCH_SETTING_KEY).catch((err) => {
@@ -355,47 +542,150 @@ export async function runGuardianCycle(state: GuardianState): Promise<GuardianSt
     console.log(`[worker-guardian] worker${idx}が回復した(移送済みの部屋は自動で戻さない)`);
   }
 
-  if (deadWorkers.length === 0) {
-    return { streaks, lastMigrationAt: state.lastMigrationAt };
-  }
+  let lastMigrationAt = state.lastMigrationAt;
 
-  for (const idx of deadWorkers) {
-    console.error(
-      `[worker-guardian] worker${idx}を死亡と判定した(${CONSECUTIVE_BAD_POLLS_REQUIRED}回連続不健全)`
-    );
-  }
-
-  if (shouldSkipDueToCooldown(state.lastMigrationAt, now.getTime(), COOLDOWN_MS)) {
-    console.warn(
-      `[worker-guardian] クールダウン中(前回移送から${Math.round(
-        (now.getTime() - (state.lastMigrationAt ?? 0)) / 1000
-      )}秒)のため今回は移送しない`
-    );
-    return { streaks, lastMigrationAt: state.lastMigrationAt };
-  }
-
-  const eligibleTargets = [...classifications.entries()]
-    .filter(([, c]) => c === "healthy")
-    .map(([idx]) => idx);
-
-  let migrated = false;
-  for (const deadIndex of deadWorkers) {
-    const orphanedRoomIds = rooms.filter((r) => r.workerId === deadIndex).map((r) => r.roomId);
-    if (orphanedRoomIds.length === 0) continue;
-
-    const currentLoad = new Map<number, number>();
-    for (const idx of eligibleTargets) {
-      currentLoad.set(idx, rooms.filter((r) => r.workerId === idx).length);
+  if (deadWorkers.length > 0) {
+    for (const idx of deadWorkers) {
+      console.error(
+        `[worker-guardian] worker${idx}を死亡と判定した(${CONSECUTIVE_BAD_POLLS_REQUIRED}回連続不健全)`
+      );
     }
 
-    const entry = await migrateDeadWorker(deadIndex, orphanedRoomIds, eligibleTargets, currentLoad).catch(
-      (err) => {
-        console.error(`[worker-guardian] worker${deadIndex}の移送処理で例外:`, err);
-        return null;
+    if (shouldSkipDueToCooldown(state.lastMigrationAt, now.getTime(), COOLDOWN_MS)) {
+      console.warn(
+        `[worker-guardian] クールダウン中(前回移送から${Math.round(
+          (now.getTime() - (state.lastMigrationAt ?? 0)) / 1000
+        )}秒)のため今回は移送しない`
+      );
+    } else {
+      const eligibleTargets = [...classifications.entries()]
+        .filter(([, c]) => c === "healthy")
+        .map(([idx]) => idx);
+
+      let migrated = false;
+      for (const deadIndex of deadWorkers) {
+        const orphanedRoomIds = rooms.filter((r) => r.workerId === deadIndex).map((r) => r.roomId);
+        if (orphanedRoomIds.length === 0) continue;
+
+        const currentLoad = new Map<number, number>();
+        for (const idx of eligibleTargets) {
+          currentLoad.set(idx, rooms.filter((r) => r.workerId === idx).length);
+        }
+
+        const entry = await migrateDeadWorker(deadIndex, orphanedRoomIds, eligibleTargets, currentLoad).catch(
+          (err) => {
+            console.error(`[worker-guardian] worker${deadIndex}の移送処理で例外:`, err);
+            return null;
+          }
+        );
+        if (entry?.reason === "migrated") migrated = true;
       }
-    );
-    if (entry?.reason === "migrated") migrated = true;
+      if (migrated) lastMigrationAt = now.getTime();
+    }
   }
 
-  return { streaks, lastMigrationAt: migrated ? now.getTime() : state.lastMigrationAt };
+  // --- 403ブロック検知による部屋単位の再割当(死活監視とは独立、上のdeadWorkersが
+  // 0件のサイクルでも常に評価する) ---
+  let blockedRoomState = state.blockedRoomState;
+
+  // 完全に復帰した部屋(persistState()がconnected到達でconsecutiveBlockedCountを
+  // 0に戻し、listenerStatusもconnectedになっている)のstateエントリを削除する。
+  // 削除しないと、give_up済みの部屋が後日まったく別のブロックepisodeで403を
+  // 再検知したときも古いgaveUpAtが残っていて永久にskipされ続けてしまう
+  // (実装後レビューHIGH指摘)。DBから消えた/担当から外れた部屋のエントリも
+  // 無期限に肥大化させないためここで一緒に落とす。
+  {
+    const roomById = new Map(rooms.map((r) => [r.roomId, r]));
+    const purged = new Map(blockedRoomState);
+    for (const roomId of blockedRoomState.keys()) {
+      const room = roomById.get(roomId);
+      if (!room || (room.listenerStatus === "connected" && room.consecutiveBlockedCount === 0)) {
+        purged.delete(roomId);
+      }
+    }
+    blockedRoomState = purged;
+  }
+
+  const blockedDisabledSetting = await getSetting(BLOCKED_KILL_SWITCH_SETTING_KEY).catch((err) => {
+    console.error("[worker-guardian] blocked kill switch の読み取りに失敗:", err);
+    return null;
+  });
+
+  if (!isGuardianDisabled(blockedDisabledSetting)) {
+    const blockedRooms = rooms.filter((r) => r.consecutiveBlockedCount >= BLOCKED_REASSIGN_THRESHOLD);
+
+    if (blockedRooms.length > 0) {
+      const healthyWorkers = [...classifications.entries()]
+        .filter(([, c]) => c === "healthy")
+        .map(([idx]) => idx);
+      const nextBlockedRoomState = new Map(blockedRoomState);
+
+      for (const room of blockedRooms) {
+        if (room.workerId == null) continue;
+
+        const eligibleTargets = healthyWorkers.filter((w) => w !== room.workerId);
+        const currentLoad = new Map(
+          healthyWorkers.map((w) => [w, rooms.filter((r) => r.workerId === w).length])
+        );
+        const decision = decideBlockedRoomAction({
+          eligibleTargets,
+          currentLoad,
+          state: nextBlockedRoomState.get(room.roomId),
+          now: now.getTime(),
+        });
+
+        if (decision.action === "reassign") {
+          const migrated = await migrateBlockedRoom(
+            room.roomId,
+            room.tiktokId,
+            room.workerId,
+            decision.toWorker
+          ).catch((err) => {
+            console.error(`[worker-guardian] @${room.tiktokId}の403フェイルオーバーで例外:`, err);
+            return false;
+          });
+          // 移送が実際に成功した場合だけtriedWorkers/lastReassignedAtを進める。
+          // advisory lock競合やWHERE workerId不一致(既に他所へ動いていた)で
+          // 失敗した回をtried扱いにすると、実際には試していないworkerを
+          // 消費してしまい早期give_upにつながる(実装後レビューHIGH指摘)。
+          if (migrated) {
+            const prev = nextBlockedRoomState.get(room.roomId);
+            nextBlockedRoomState.set(room.roomId, {
+              triedWorkers: new Set([
+                ...(prev?.triedWorkers ?? []),
+                room.workerId,
+                decision.toWorker,
+              ]),
+              lastReassignedAt: now.getTime(),
+              gaveUpAt: null,
+            });
+          }
+        } else if (decision.action === "give_up") {
+          const gaveUp = await giveUpBlockedRoom(room.roomId, room.tiktokId, room.workerId).catch(
+            (err) => {
+              console.error(`[worker-guardian] @${room.tiktokId}のgive-up処理で例外:`, err);
+              return false;
+            }
+          );
+          // 実際にDB更新できた場合だけgaveUpAtを立てる。同サイクル内の死活監視移送等で
+          // workerIdが既に変わっていてWHERE条件に一致しなかった場合、gaveUpAtだけ
+          // 立ててmonitoringSuspendedがfalseのままだと、以後give_upを二度と試みない
+          // まま接続・署名消費が続く(実装後レビューLOW指摘、HIGH-2と同じ理由)。
+          if (gaveUp) {
+            const prev = nextBlockedRoomState.get(room.roomId);
+            nextBlockedRoomState.set(room.roomId, {
+              triedWorkers: prev?.triedWorkers ?? new Set(),
+              lastReassignedAt: prev?.lastReassignedAt ?? now.getTime(),
+              gaveUpAt: now.getTime(),
+            });
+          }
+        }
+        // skip: 何もしない(次サイクルへ持ち越し)
+      }
+
+      blockedRoomState = nextBlockedRoomState;
+    }
+  }
+
+  return { streaks, lastMigrationAt, blockedRoomState };
 }

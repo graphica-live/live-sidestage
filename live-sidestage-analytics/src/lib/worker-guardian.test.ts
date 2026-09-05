@@ -5,6 +5,8 @@ import {
   planReassignment,
   isGuardianDisabled,
   shouldSkipDueToCooldown,
+  decideBlockedRoomAction,
+  BLOCKED_REASSIGN_GUARD_MS,
   WATCHDOG_TRIGGER_DEAD_THRESHOLD,
   type HealthClassification,
 } from "./worker-guardian";
@@ -39,6 +41,7 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
     streamerCount: 1,
     watchCount: 0,
     eventMonitored: false,
+    consecutiveBlockedCount: 0,
     ...overrides,
   };
 }
@@ -407,5 +410,77 @@ describe("shouldSkipDueToCooldown", () => {
   it("クールダウン期間を過ぎていればfalse", () => {
     const lastMigrationAt = NOW.getTime() - 1_000_000;
     expect(shouldSkipDueToCooldown(lastMigrationAt, NOW.getTime(), 900_000)).toBe(false);
+  });
+});
+
+describe("decideBlockedRoomAction", () => {
+  const now = NOW.getTime();
+
+  it("未試行のworkerがあれば最小負荷を選ぶ", () => {
+    const decision = decideBlockedRoomAction({
+      eligibleTargets: [1, 2, 3],
+      currentLoad: new Map([
+        [1, 5],
+        [2, 1],
+        [3, 3],
+      ]),
+      state: undefined,
+      now,
+    });
+    expect(decision).toEqual({ action: "reassign", toWorker: 2 });
+  });
+
+  it("再割当直後のガード期間内はskip(振動防止)", () => {
+    const decision = decideBlockedRoomAction({
+      eligibleTargets: [1, 2],
+      currentLoad: new Map([[1, 0], [2, 0]]),
+      state: { triedWorkers: new Set([1]), lastReassignedAt: now - 60_000, gaveUpAt: null },
+      now,
+    });
+    expect(decision).toEqual({ action: "skip" });
+  });
+
+  it("ガード期間経過後は未試行のworkerへ再割当する", () => {
+    const decision = decideBlockedRoomAction({
+      eligibleTargets: [1, 2],
+      currentLoad: new Map([[1, 0], [2, 0]]),
+      state: { triedWorkers: new Set([1]), lastReassignedAt: now - BLOCKED_REASSIGN_GUARD_MS - 1, gaveUpAt: null },
+      now,
+    });
+    expect(decision).toEqual({ action: "reassign", toWorker: 2 });
+  });
+
+  it("全healthy workerを試し終えたらgive_up", () => {
+    const decision = decideBlockedRoomAction({
+      eligibleTargets: [1, 2],
+      currentLoad: new Map([[1, 0], [2, 0]]),
+      state: { triedWorkers: new Set([1, 2]), lastReassignedAt: now - BLOCKED_REASSIGN_GUARD_MS - 1, gaveUpAt: null },
+      now,
+    });
+    expect(decision).toEqual({ action: "give_up" });
+  });
+
+  it("healthy worker自体が0件ならskip(この部屋固有の問題ではない)", () => {
+    const decision = decideBlockedRoomAction({
+      eligibleTargets: [],
+      currentLoad: new Map(),
+      state: undefined,
+      now,
+    });
+    expect(decision).toEqual({ action: "skip" });
+  });
+
+  it("gaveUpAtが立っている部屋はガード期間・未試行workerの有無に関わらず永久にskip", () => {
+    // 実装後レビューHIGH指摘: AgencyWatch/イベントmonitorUntilが有効な部屋は
+    // monitoringSuspended:trueが接続を止めないため、give_up後も403が続き閾値へ
+    // 再到達しうる。gaveUpAtが残っている限りは未試行workerが復活していても
+    // 再割当を再開しない(無限の再割当ループを防ぐ)。
+    const decision = decideBlockedRoomAction({
+      eligibleTargets: [1, 2, 3],
+      currentLoad: new Map([[1, 0], [2, 0], [3, 0]]),
+      state: { triedWorkers: new Set(), lastReassignedAt: now - BLOCKED_REASSIGN_GUARD_MS - 1, gaveUpAt: now - 1_000 },
+      now,
+    });
+    expect(decision).toEqual({ action: "skip" });
   });
 });

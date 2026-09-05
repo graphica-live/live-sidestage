@@ -1,4 +1,4 @@
-import { WebcastPushConnection, getBattleItemCard, getBattleItemCardSender } from "TLC-sidestage";
+import { WebcastPushConnection, getBattleItemCard, getBattleItemCardSender, FetchIsLiveError } from "TLC-sidestage";
 import type { WebcastLinkMicBattleItemCard } from "TLC-sidestage";
 import { ProxyAgent } from "proxy-agent";
 import type { Prisma } from "@prisma/client";
@@ -711,6 +711,55 @@ function isAlreadyConnectedError(error: unknown): boolean {
   return /already connected!?/i.test(msg);
 }
 
+// TikTok側からの403(IP/アカウントブロック)を検知する。worker-guardian.tsの403フェイル
+// オーバー(別workerへの再割当)トリガーとしてのみ使う——in-processの再接続ロジック
+// (scheduleReconnect)は変えない。
+//
+// 判定はAxiosErrorのstatus===403のみに絞る(SIGI_STATE抽出失敗等の文言ベース判定は
+// 対象外——TikTok側のHTML構造変更(非ブロック)でも同じ文言が出て誤検知になるため、
+// 実装前レビューで意図的に除外した)。FetchIsLiveErrorはfetchRoomId()内でHTML経由・
+// API経由の複数エラーをまとめて投げるラッパーなので、その配列内も走査する。
+//
+// error.exception / error.cause も候補に含める——isUserOfflineError()と同じ理由で、
+// conn.on("error")が受け取るのはTLC側がラップした{info, exception}形であることがあり、
+// exceptionの中に本来のAxiosErrorが入っている。ここを見ないとisAxiosErrorが常にundefinedで
+// post-connect側の403検知が機能しない(実装後レビューMEDIUM指摘)。
+export function isBlockedError(error: unknown): boolean {
+  const candidates: unknown[] =
+    error instanceof FetchIsLiveError
+      ? [error, ...error.errors]
+      : [
+          error,
+          (error as { exception?: unknown })?.exception,
+          (error as { cause?: unknown })?.cause,
+        ].filter(Boolean);
+  return candidates.some((c) => {
+    const e = c as { isAxiosError?: boolean; response?: { status?: number } };
+    return e?.isAxiosError === true && e.response?.status === 403;
+  });
+}
+
+// consecutiveBlockedCountのincrement。WHERE workerId=自worker を必ず付ける——
+// 再割当直後、旧worker側の60秒reconcile待ちの間に届くin-flightのエラーが新worker分
+// としてカウントされたり、旧workerの残余カウントを誤って引き継いだりするレースを防ぐ
+// (実装前レビューHIGH指摘)。fencing(listenerRevision)は使わない単純incrementなので、
+// persistState()のCASE式リセットとはごく小さいレースが理論上残るが、実害は「1回分
+// カウントがずれる」程度で許容する。
+export async function recordBlockedAttempt(roomId: string): Promise<void> {
+  const workerIndex = Number.isInteger(Number(process.env.WORKER_INDEX))
+    ? Number(process.env.WORKER_INDEX)
+    : null;
+  if (workerIndex == null) return;
+  try {
+    await prisma.tiktokRoom.updateMany({
+      where: { id: roomId, workerId: workerIndex },
+      data: { consecutiveBlockedCount: { increment: 1 } },
+    });
+  } catch (err) {
+    console.error("[listener] consecutiveBlockedCount更新に失敗:", err);
+  }
+}
+
 // 配信の署名発行(WebSocket接続用の署名)を担う外部APIが、アカウント単位の時間あたり
 // リクエスト数上限に達したときに投げるエラー。retryAfter(ms)が付与されていれば
 // それに従って待機する — 固定10秒で再試行し続けるとさらにクォータを消費し、
@@ -754,6 +803,11 @@ function parseSignatureRateLimitError(error: unknown): {
 //  - "connected"復帰で全てクリアする(要件: 実在確認できたら判定をやり直す)。
 //  - "idle"(部屋が監視対象から外れた/デプロイのグレースフルシャットダウン。コード上区別不可)では
 //    意図的に何もリセットしない。デプロイのたびに全部屋のクロックが巻き戻るのを避けるため。
+//  - consecutiveBlockedCount は"connected"に加え reason==='user_offline' でも0リセットする。
+//    配信者が長期オフラインだとconnected到達自体が起きず、その間に散発する403が数日かけて
+//    閾値に達し誤ってブロック扱いされうる。room/info成功後の判定であるuser_offlineは
+//    「TikTokから正常応答があった」証拠なので、ブロックが解消している根拠として扱える
+//    (実装後レビューMEDIUM指摘)。
 // exportはtiktok-listener.unhealthy.integration.test.ts用(実際の再接続ループ/モック接続を
 // 経由せず、CASE式の挙動そのものを直接検証するため)。呼び出し元は本ファイル内のみ。
 export async function persistState(
@@ -784,7 +838,11 @@ export async function persistState(
             ELSE "unhealthySince"
           END,
           "notFoundStreak" = CASE WHEN ${status} = 'connected' THEN 0 ELSE "notFoundStreak" END,
-          "notFoundFirstAt" = CASE WHEN ${status} = 'connected' THEN NULL ELSE "notFoundFirstAt" END
+          "notFoundFirstAt" = CASE WHEN ${status} = 'connected' THEN NULL ELSE "notFoundFirstAt" END,
+          "consecutiveBlockedCount" = CASE
+            WHEN ${status} = 'connected' OR ${reason ?? null} = 'user_offline' THEN 0
+            ELSE "consecutiveBlockedCount"
+          END
       WHERE "id" = ${roomId}
         -- fencing: 自分より新しい書き込みがすでに入っていたら何もしない。
         -- persistState は await されないので同一プロセス内でも着弾順が入れ替わるし、
@@ -1745,6 +1803,9 @@ async function connectAndAttach(
       scheduleReconnect(roomId, "rate_limited", rateLimit.retryAfterMs ?? undefined);
       return;
     }
+    if (isBlockedError(err)) {
+      void recordBlockedAttempt(roomId);
+    }
     scheduleReconnect(
       roomId,
       isUserOfflineError(err) ? "user_offline" : "error"
@@ -2113,6 +2174,9 @@ async function connectAndAttach(
     }
     if (!isUserOfflineError(err)) {
       console.error("[listener] connect error:", err);
+    }
+    if (isBlockedError(err)) {
+      void recordBlockedAttempt(roomId);
     }
     if (!inst.stopped) {
       const rateLimit = parseSignatureRateLimitError(err);
