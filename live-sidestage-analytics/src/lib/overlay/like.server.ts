@@ -1,13 +1,13 @@
-// Like(いいね)の日次累計。**サーバー専用**(prisma を引く)。tap-list / like-contribution が共有する。
+// Like(いいね)の日次累計。**サーバー専用**。tap-list / like-contribution が共有する。
+// 実データはプロセス内インメモリストア(like-tally-store.ts、旧LikeTallyテーブルの置き換え)。
 //
 // 単発イベントのログは保持しない方針(データ量爆発回避)。呼び出しは「イベントにつき1回」に
-// 限定すること — roomId軸で複数Streamerが共有するテーブルなので、購読者ごとに複製して
+// 限定すること — roomId軸で複数Streamerが共有するストアなので、購読者ごとに複製して
 // 呼ぶと合計が購読者数倍になる(tiktok-listener.ts側のstreamerIds一括転送とセットで守る)。
 
-import { prisma } from "@/lib/prisma";
-import { jstDateKey } from "./day-key";
 import { emitOverlayUpdate, emitLikeMilestone } from "./emit";
 import { loadLikeContributionSettings } from "./like-contribution.server";
+import { incrementLike } from "./like-tally-store";
 
 export async function recordLike(
   roomId: string,
@@ -16,22 +16,7 @@ export async function recordLike(
   profileImageUrl: string | null,
   likeCount: number
 ): Promise<{ dayKey: string; previousTotal: number; newTotal: number }> {
-  const dayKey = jstDateKey();
-  // 「更新前合計」はfindUnique+upsertの2ステップ・トランザクションでは
-  // READ COMMITTED下で並行リクエスト間の競合(同じprevを読んで同じマイルストーンを
-  // 二重発火する)が起きるため使わない。upsertの戻り値(更新後totalLikes)から
-  // 逆算する方が正確かつシンプル。
-  const row = await prisma.likeTally.upsert({
-    where: { roomId_dayKey_uniqueId: { roomId, dayKey, uniqueId } },
-    create: { roomId, dayKey, uniqueId, nickname, profileImageUrl, totalLikes: likeCount },
-    // nicknameが空文字のイベントで既存の良い値を上書きしないよう、非空のときだけ渡す。
-    update: {
-      totalLikes: { increment: likeCount },
-      ...(nickname ? { nickname } : {}),
-      ...(profileImageUrl ? { profileImageUrl } : {}),
-    },
-  });
-  return { dayKey, previousTotal: row.totalLikes - likeCount, newTotal: row.totalLikes };
+  return incrementLike(roomId, uniqueId, nickname, profileImageUrl, likeCount);
 }
 
 /** previousTotal→newTotal の間に跨いだ interval の倍数(マイルストーン)をすべて返す。 */
@@ -41,20 +26,6 @@ export function crossedMilestones(previousTotal: number, newTotal: number, inter
   const to = Math.floor(newTotal / interval);
   if (to <= from) return [];
   return Array.from({ length: to - from }, (_, i) => (from + i + 1) * interval);
-}
-
-/** 古い日付のLikeTally行を削除する(誰にも読まれず無期限に蓄積するのを防ぐ)。
- * dryRun=trueのときは削除せず対象件数だけ数える(tiktok-cleanup.ts等の安全側デフォルトに合わせる)。 */
-export async function pruneOldLikeTallies(
-  options: { olderThanDays?: number; dryRun?: boolean } = {}
-): Promise<number> {
-  const { olderThanDays = 7, dryRun = false } = options;
-  const cutoff = jstDateKey(-olderThanDays);
-  if (dryRun) {
-    return prisma.likeTally.count({ where: { dayKey: { lt: cutoff } } });
-  }
-  const result = await prisma.likeTally.deleteMany({ where: { dayKey: { lt: cutoff } } });
-  return result.count;
 }
 
 /**

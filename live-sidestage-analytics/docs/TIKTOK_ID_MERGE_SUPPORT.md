@@ -73,10 +73,11 @@ WHERE "streamerId" = '<streamerId>';
 
 自動合流の3条件を満たさないが、本人確認が取れて手動合流が妥当と判断した場合は、
 `src/lib/tiktok-id-migration.ts`の`absorbRooms()`相当の処理を手動実行する。
-Gift・LikeTally・TiktokBattle・BattleHistory・AgencyWatch・EventRoomLease・Streamerの7種のリレーションを
+Gift・TiktokBattle・BattleHistory・AgencyWatch・EventRoomLease・Streamerの6種のリレーションを
 1トランザクションで移動する必要があり、片手落ちの手動SQLは事故の元なので、
 原則スクリプト経由(`absorbRooms()`を呼ぶワンオフスクリプト)で実行し、**旧room削除前に対象streamerIdの
-Gift件数・LikeTally件数を控えてから行う**。
+Gift件数を控えてから行う**。いいね集計(旧LikeTally)はプロセス内インメモリ(当日分のみ)のため
+合流の対象外——候補room側の当日分は引き継がず破棄される。
 
 ## イベント期間中の合流による順位変動
 

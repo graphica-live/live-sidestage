@@ -227,9 +227,6 @@ async function detectMergeCandidates(
 export type AbsorbStats = {
   giftsMoved: number;
   giftsDiscarded: number;
-  likeTalliesMerged: number;
-  likeTalliesMoved: number;
-  likeTalliesDiscarded: number;
   battlesMoved: number;
   battlesDiscarded: number;
   battleHistoriesMoved: number;
@@ -326,9 +323,6 @@ export async function absorbRooms(
       const stats: AbsorbStats = {
         giftsMoved: 0,
         giftsDiscarded: 0,
-        likeTalliesMerged: 0,
-        likeTalliesMoved: 0,
-        likeTalliesDiscarded: 0,
         battlesMoved: 0,
         battlesDiscarded: 0,
         battleHistoriesMoved: 0,
@@ -364,32 +358,11 @@ export async function absorbRooms(
         candidateRoomId
       );
 
-      // --- 2. LikeTally ---
-      // 衝突(roomId,dayKey,uniqueId)は合算 → 衝突行DELETE → 残り(非衝突)を移動。
-      const merged = await tx.$executeRawUnsafe(
-        `UPDATE public.like_tallies s
-            SET "totalLikes" = s."totalLikes" + o."totalLikes", "updatedAt" = now()
-           FROM public.like_tallies o
-          WHERE s."roomId" = $1 AND o."roomId" = $2
-            AND s."dayKey" = o."dayKey" AND s."uniqueId" = o."uniqueId"`,
-        survivingRoomId,
-        candidateRoomId
-      );
-      stats.likeTalliesMerged = merged;
-      await tx.$executeRawUnsafe(
-        `DELETE FROM public.like_tallies o
-          USING public.like_tallies s
-          WHERE o."roomId" = $2 AND s."roomId" = $1
-            AND s."dayKey" = o."dayKey" AND s."uniqueId" = o."uniqueId"`,
-        survivingRoomId,
-        candidateRoomId
-      );
-      const likeTalliesMoved = await tx.$executeRawUnsafe(
-        `UPDATE public.like_tallies SET "roomId" = $1 WHERE "roomId" = $2`,
-        survivingRoomId,
-        candidateRoomId
-      );
-      stats.likeTalliesMoved = likeTalliesMoved;
+      // いいね集計(旧LikeTally)はプロセス内インメモリストア(like-tally-store.ts)に
+      // 移行済み。当日分のみの一時データなので、room統合時は候補room側の当日分を
+      // 引き継がず破棄する(合流はレアな管理者操作であり、この処理自体も候補roomの
+      // 本来のプロセス(Web)ではなくevent-worker側から呼ばれるため、インメモリの
+      // マージは元々成立しない設計判断)。
 
       // --- 3. TiktokBattle(unique [roomId,battleId]) ---
       // 衝突は endedAt IS NOT NULL を優先して残す(同条件ならN=survivor優先)。

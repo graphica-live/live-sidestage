@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
   }
 
   // いいね(desktop 5ウィジェット移植分)。streamerIdsは購読中の全員(streamerIdごとに
-  // 複製して呼ばない — LikeTallyはroomId軸で共有されるため、複製すると合計が
+  // 複製して呼ばない — いいね集計はroomId軸で共有されるため、複製すると合計が
   // 購読者数倍になる)。
   if (body.likeEvent !== undefined) {
     const streamerIds = parseStreamerIds(body.streamerIds);

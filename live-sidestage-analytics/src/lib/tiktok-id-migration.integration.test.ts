@@ -147,29 +147,6 @@ describe("absorbRooms — ABSORB正常系", () => {
     expect(updated?.tiktokId).toBe("newhandle3");
   });
 
-  it("LikeTallyは衝突行を合算し、非衝突行は移動する", async () => {
-    const survivor = await makeRoom("survivor4", "hu4");
-    const candidate = await makeRoom("candidate4", "hu4");
-
-    await prisma.likeTally.create({
-      data: { roomId: survivor.id, dayKey: "2026-09-03", uniqueId: "u1", nickname: "u1", totalLikes: 10 },
-    });
-    await prisma.likeTally.create({
-      data: { roomId: candidate.id, dayKey: "2026-09-03", uniqueId: "u1", nickname: "u1", totalLikes: 5 },
-    });
-    await prisma.likeTally.create({
-      data: { roomId: candidate.id, dayKey: "2026-09-03", uniqueId: "u2", nickname: "u2", totalLikes: 3 },
-    });
-
-    const result = await absorbRooms(survivor.id, candidate.id, "hu4", survivor.tiktokId);
-    expect(result.kind).toBe("merged");
-
-    const tallies = await prisma.likeTally.findMany({ where: { roomId: survivor.id }, orderBy: { uniqueId: "asc" } });
-    expect(tallies).toHaveLength(2);
-    expect(tallies.find((t) => t.uniqueId === "u1")?.totalLikes).toBe(15);
-    expect(tallies.find((t) => t.uniqueId === "u2")?.totalLikes).toBe(3);
-  });
-
   it("TiktokBattleの battleId 衝突は endedAt IS NOT NULL を優先して残す", async () => {
     const survivor = await makeRoom("survivor5", "hu5");
     const candidate = await makeRoom("candidate5", "hu5");

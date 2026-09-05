@@ -547,7 +547,7 @@ async function notifyChatGift(streamerIds: string[], gift: Omit<ChatGiftInput, "
 }
 
 // notifyChatGiftと同型 — 1イベント(コアレッシング済みの合算値)につき1リクエスト。
-// **streamerIdごとに複製して呼んではいけない**(LikeTallyはroomId軸で共有されるため、
+// **streamerIdごとに複製して呼んではいけない**(いいね集計はroomId軸で共有されるため、
 // 複製すると合計が購読者数倍になる)。
 async function notifyLikeEvent(
   streamerIds: string[],

@@ -1,8 +1,8 @@
 // Like数一覧オーバーレイのスナップショット構築。**サーバー専用**(prisma を引く)。
-// like-contributionと同じLikeTally(日次累計)を読むだけで、JS側での集計は不要
-// (DBのORDER BYに任せる)。
+// like-contributionと同じインメモリストア(like-tally-store.ts、日次累計)を読むだけ。
 
 import { prisma } from "@/lib/prisma";
+import { getTopEntries } from "./like-tally-store";
 import { jstDateKey } from "./day-key";
 import { normalizeOverlayAppearance, OVERLAY_APPEARANCE_DEFAULT, type OverlayAppearance } from "./appearance";
 
@@ -36,12 +36,7 @@ export async function buildTapListSnapshot(streamerId: string): Promise<TapListS
   const maxEntries = settings?.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const dayKey = jstDateKey();
 
-  const rows = await prisma.likeTally.findMany({
-    where: { roomId: streamer.roomId, dayKey, totalLikes: { gt: 0 } },
-    orderBy: { totalLikes: "desc" },
-    take: maxEntries,
-    select: { uniqueId: true, nickname: true, profileImageUrl: true, totalLikes: true },
-  });
+  const rows = getTopEntries(streamer.roomId, maxEntries);
 
   const entries: TapListEntry[] = rows.map((r, i) => ({
     rank: i + 1,
