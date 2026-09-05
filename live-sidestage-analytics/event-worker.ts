@@ -15,7 +15,8 @@ import { processPendingMergeJobs } from "@/lib/tiktok-id-migration";
 import { autoFinishOverdueEvents } from "@/event/auto-finish";
 import { collectDbStats } from "@/lib/db-stats/collect";
 import { compareToPrevious } from "@/lib/db-stats/compare";
-import { formatDbStatsMessage } from "@/lib/db-stats/message";
+import { buildDbStatsEmail } from "@/lib/db-stats/message";
+import { fetchTotalRowsTrend, fetchTableRowsTrend } from "@/lib/db-stats/history";
 import { sendAlertEmail } from "@/lib/notify/email";
 import { toJstInputValue } from "@/event/datetime";
 import { prisma } from "@/lib/prisma";
@@ -267,8 +268,23 @@ async function dbStatsTick(): Promise<void> {
     console.log(
       `[event-worker] DB統計を記録 ${tables}テーブル / 異常増分 ${comparison.anomalies.length}件`
     );
-    const { subject, text } = formatDbStatsMessage(datePart, comparison);
-    await sendAlertEmail(subject, text);
+
+    const totalTrend = await fetchTotalRowsTrend(runDate);
+    const anomalyTrendResults = await Promise.allSettled(
+      comparison.anomalies.map(async (a) => ({
+        schemaName: a.schemaName,
+        tableName: a.tableName,
+        points: await fetchTableRowsTrend(a.schemaName, a.tableName, runDate),
+      }))
+    );
+    const anomalyTrends = anomalyTrendResults.flatMap((r) => {
+      if (r.status === "fulfilled") return [r.value];
+      console.error("[event-worker] 異常テーブルの推移取得でエラー(グラフ無しで続行):", r.reason);
+      return [];
+    });
+
+    const email = buildDbStatsEmail(datePart, comparison, totalTrend, anomalyTrends);
+    await sendAlertEmail(email);
   } catch (err) {
     console.error("[event-worker] DB統計の記録・通知でエラー:", err);
   } finally {

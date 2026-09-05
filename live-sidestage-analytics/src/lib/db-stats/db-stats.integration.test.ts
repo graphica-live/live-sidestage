@@ -3,6 +3,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { collectDbStats } from "@/lib/db-stats/collect";
 import { compareToPrevious } from "@/lib/db-stats/compare";
+import { fetchTotalRowsTrend, fetchTableRowsTrend } from "@/lib/db-stats/history";
 
 // 実テーブルと衝突しない架空のschema/tableName、かつ他テストのrunDateとも重ならない過去日付を使う。
 const FAKE_SCHEMA = "public";
@@ -95,5 +96,54 @@ describe("collectDbStats", () => {
       where: { runDate, tableName: "DbStatsSnapshot" },
     });
     expect(selfSnapshot).toBeNull();
+  });
+});
+
+describe("history", () => {
+  const HIST_TABLE = "itest_db_stats_history_fake_table";
+  const HD1 = new Date("2020-03-01T00:00:00.000Z");
+  const HD2 = new Date("2020-03-02T00:00:00.000Z");
+  const HD3 = new Date("2020-03-03T00:00:00.000Z");
+
+  afterAll(async () => {
+    await prisma.dbStatsSnapshot.deleteMany({ where: { tableName: HIST_TABLE } });
+  });
+
+  it("fetchTableRowsTrendは過去→現在の順で指定テーブルの件数推移を返す", async () => {
+    await prisma.dbStatsSnapshot.upsert({
+      where: {
+        runDate_schemaName_tableName: { runDate: HD1, schemaName: FAKE_SCHEMA, tableName: HIST_TABLE },
+      },
+      create: { runDate: HD1, schemaName: FAKE_SCHEMA, tableName: HIST_TABLE, rowCount: 10n, totalBytes: 1n },
+      update: { rowCount: 10n },
+    });
+    await prisma.dbStatsSnapshot.upsert({
+      where: {
+        runDate_schemaName_tableName: { runDate: HD2, schemaName: FAKE_SCHEMA, tableName: HIST_TABLE },
+      },
+      create: { runDate: HD2, schemaName: FAKE_SCHEMA, tableName: HIST_TABLE, rowCount: 20n, totalBytes: 1n },
+      update: { rowCount: 20n },
+    });
+    await prisma.dbStatsSnapshot.upsert({
+      where: {
+        runDate_schemaName_tableName: { runDate: HD3, schemaName: FAKE_SCHEMA, tableName: HIST_TABLE },
+      },
+      create: { runDate: HD3, schemaName: FAKE_SCHEMA, tableName: HIST_TABLE, rowCount: 30n, totalBytes: 1n },
+      update: { rowCount: 30n },
+    });
+
+    const trend = await fetchTableRowsTrend(FAKE_SCHEMA, HIST_TABLE, HD3, 3);
+
+    expect(trend.map((p) => p.value)).toEqual([10, 20, 30]);
+    expect(trend[0].label).toBe("03-01");
+    expect(trend[2].label).toBe("03-03");
+  });
+
+  it("fetchTotalRowsTrendは実行日ごとの全テーブル合計件数を返す", async () => {
+    const trend = await fetchTotalRowsTrend(HD3, 3);
+
+    const hd3Point = trend.find((p) => p.label === "03-03");
+    expect(hd3Point).toBeDefined();
+    expect(hd3Point!.value).toBeGreaterThanOrEqual(30);
   });
 });
