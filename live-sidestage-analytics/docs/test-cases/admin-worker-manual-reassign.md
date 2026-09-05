@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: admin-worker-manual-reassign
-last_updated: 2026-09-05
-last_risk: HIGH
-last_reviewers: Qwen(単独、カナリア検証通過。Codex quota切れ2026-09-07まで、Geminiもquota切れ残り161h)
+last_updated: 2026-09-06
+last_risk: LOW
+last_reviewers: Qwen(単独)
 ---
 
 # テストケース設定表: admin-worker-manual-reassign
@@ -34,6 +34,7 @@ operator(セッションemail)付きで記録する。API(`POST /api/admin/worke
 | TC-12 | UI: 実際に「移動」ボタンをクリックしてworker移動がDBへ反映され、監査ログに実ログインユーザーが記録される | `/admin/workers` page.tsx + `POST /api/admin/workers/reassign` | UI/正常(E2E) | ローカルDB(`.env.local.test`)限定。@local_test_streamer(workerId:0)の行で「移動」クリック(confirm自動accept) | DB上workerIdが0→1へ変化、手動移動履歴の先頭に`@local_test_streamer worker0→worker1 by graphicatestlive@gmail.com`が追加表示される | Playwright(headless)でクリック実行後、Prisma直接クエリでworkerId確認。Artifact同上(2枚目) | PASS | 2026-09-05 | Qwenレビュー指摘(MEDIUM、TC-11がUI描画のみで実クリック未検証)を受けて追加。**本番DATABASE_URLを指す`.env.local`では絶対に実行しないこと**(このテストは`.env.local.test`のローカルDB限定) |
 | TC-13 | `notifyWorkersOfManualReassign()`: toWorkerのみ/from+to両方/from===to重複排除/secret未設定スキップ/urls欠損スキップ/fetch失敗時非同期例外なし の6パターン | `notifyWorkersOfManualReassign()` (src/lib/worker-status.ts) | 正常/境界/異常 | `fetchImpl`をモック差し替え | 各パターンで期待回数・URL・ヘッダーどおりPOSTされる。secret未設定/urls欠損は例外なくスキップ。fetch reject時も同期的にreturnし例外を投げない | `npx vitest run src/lib/worker-status.test.ts -t "notifyWorkersOfManualReassign"` | PASS(6/6) | 2026-09-05 | ダウンタイム短縮機能(手動移動直後の即時reconcile通知)追加に伴い新設 |
 | TC-14 | `POST /internal/reconcile-now`: secretなし→401、secret不一致→401、正しいsecret→202即返り+`reconcileOnce()`起動、`/status`のlastReconcile.atが更新される | `worker.ts` healthServer | 正常/異常/境界(実機) | ローカルで`WORKER_COUNT=3 WORKER_INDEX=0 PORT=8091 WEB_INTERNAL_URL=http://localhost:3000 INTERNAL_API_SECRET=<test-secret>`にてworker.ts起動 | 3パターンとも期待ステータスコード。202後、数秒待って`/status`の`lastReconcile.at`が起動直後の値から更新されている | `curl -X POST http://localhost:8091/internal/reconcile-now`(secretなし/誤り/正しい の3回)+`curl http://localhost:8091/status`前後比較 | PASS(401/401/202、lastReconcile.at更新確認) | 2026-09-05 | worker.tsはNode `http`直書きでexport無くunit test化の既存慣習が無いため実機確認で代替。ログ: `.claude/scratch/worker0.log` |
+| TC-15 | UI: listener欄とDB上の担当欄を同時に出すと同一部屋が2箇所に見え紛らわしいという指摘を受け、表示モードを3択(listenerのみ/DB上の担当のみ/両方)で切り替えられるようにした。初期選択はlistenerのみ | `/admin/workers` page.tsx (`displayMode` state) | UI/正常/境界(全状態網羅) | WORKER_COUNT=3、workerあたりlistener1件以上・DB上の担当1件以上が存在するシード | 初期表示は「listenerのみ」選択状態で、各workerブロックはlistener一覧のみ表示し「DB上の担当」セクションは非表示。「DB上の担当のみ」選択でlistener一覧が非表示になり「DB上の担当」セクションのみ表示。「両方」選択で両セクションとも表示される | Playwright(headless)でdev-login→`/admin/workers`へ遷移し、初期状態・「DB上の担当のみ」クリック後・「両方」クリック後の3状態でスクリーンショット取得 | PASS | 2026-09-06 | 実装は既存の`w.listeners.length > 0`等の表示条件へ`showListeners`/`showAssigned`をAND追加しただけで、DB取得ロジック・reassign APIには変更なし |
 
 ## テストケースレビューと対応
 
