@@ -162,6 +162,8 @@ app.prepare().then(() => {
           notFoundStreak: 0,
           notFoundFirstAt: null,
           lastExistenceCheckAt: null,
+          lastLowValueCheckAt: new Date(),
+          consecutiveBlockedCount: 0,
         },
       });
     } catch (err) {

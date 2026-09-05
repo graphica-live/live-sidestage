@@ -22,6 +22,8 @@ async function makeRoom(data: { tag: string; monitoringSuspended: boolean }) {
       notFoundStreak: 2,
       notFoundFirstAt: new Date(),
       lastExistenceCheckAt: new Date(),
+      lastLowValueCheckAt: new Date("2000-01-01T00:00:00.000Z"),
+      consecutiveBlockedCount: 3,
     },
     select: { id: true },
   });
@@ -67,6 +69,11 @@ describe("reviveSuspendedMonitoringForRoom", () => {
     expect(roomAfter.notFoundStreak).toBe(0);
     expect(roomAfter.notFoundFirstAt).toBeNull();
     expect(roomAfter.lastExistenceCheckAt).toBeNull();
+    // 低価値クリーンアップのクールダウンに復帰直後から乗せるため現在時刻へ更新される。
+    expect(roomAfter.lastLowValueCheckAt).not.toBeNull();
+    expect(roomAfter.lastLowValueCheckAt!.getTime()).toBeGreaterThan(Date.now() - 5_000);
+    // 403ブロックによるgive-up停止からの復帰でも古いカウントを引き継がない。
+    expect(roomAfter.consecutiveBlockedCount).toBe(0);
   });
 
   it("monitoringSuspended:falseなら何もしない(no-op)", async () => {
@@ -78,6 +85,9 @@ describe("reviveSuspendedMonitoringForRoom", () => {
     expect(roomAfter.monitoringSuspended).toBe(false);
     // 停止していなかったRoomのNOT_FOUND判定フィールドは変化しない。
     expect(roomAfter.notFoundStreak).toBe(2);
+    // no-opなのでlastLowValueCheckAt/consecutiveBlockedCountも変化しない。
+    expect(roomAfter.lastLowValueCheckAt?.toISOString()).toBe("2000-01-01T00:00:00.000Z");
+    expect(roomAfter.consecutiveBlockedCount).toBe(3);
   });
 
   it("存在しないroomIdを渡しても例外にならない", async () => {

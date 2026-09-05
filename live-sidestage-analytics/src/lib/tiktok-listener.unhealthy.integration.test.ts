@@ -80,15 +80,16 @@ describe("persistState()のunhealthySince/notFoundStreak扱い", () => {
     expect(afterConnecting.unhealthySince).toEqual(afterRetrying.unhealthySince);
   });
 
-  it('"connected"復帰でunhealthySince/notFoundStreak/notFoundFirstAtが全てクリアされる', async () => {
+  it('"connected"復帰でunhealthySince/notFoundStreak/notFoundFirstAt/consecutiveBlockedCountが全てクリアされる', async () => {
     const room = await makeRoom();
 
     await persistState(room.id, "retrying", "再接続待機中...");
-    // notFoundStreak/notFoundFirstAtはtiktok-room-cleanup.ts側が書くフィールドだが、
-    // "connected"復帰時に持ち越されないことを確認するため直接セットしておく。
+    // notFoundStreak/notFoundFirstAtはtiktok-room-cleanup.ts側、consecutiveBlockedCountは
+    // recordBlockedAttempt()側が書くフィールドだが、"connected"復帰時に持ち越されないことを
+    // 確認するため直接セットしておく。
     await prisma.tiktokRoom.update({
       where: { id: room.id },
-      data: { notFoundStreak: 2, notFoundFirstAt: new Date() },
+      data: { notFoundStreak: 2, notFoundFirstAt: new Date(), consecutiveBlockedCount: 4 },
     });
 
     await persistState(room.id, "connected", "接続済み");
@@ -98,6 +99,32 @@ describe("persistState()のunhealthySince/notFoundStreak扱い", () => {
     expect(after.unhealthySince).toBeNull();
     expect(after.notFoundStreak).toBe(0);
     expect(after.notFoundFirstAt).toBeNull();
+    expect(after.consecutiveBlockedCount).toBe(0);
+  });
+
+  it('"retrying"遷移ではconsecutiveBlockedCountに触れない', async () => {
+    const room = await makeRoom();
+    await prisma.tiktokRoom.update({ where: { id: room.id }, data: { consecutiveBlockedCount: 3 } });
+
+    await persistState(room.id, "retrying", "再接続待機中...");
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.consecutiveBlockedCount).toBe(3);
+  });
+
+  it('reason="user_offline"での"retrying"遷移ではconsecutiveBlockedCountが0にリセットされる', async () => {
+    // 実装後レビューMEDIUM指摘: "connected"到達のみでリセットすると、配信者が長期
+    // オフラインで"connected"に一度も到達しないまま散発的な403が数日かけて蓄積し、
+    // 誤ってブロック扱いされうる。room/info成功後に判定されるuser_offlineは
+    // TikTokから正常応答があった証拠なので、ブロック解消の根拠として0リセットする。
+    const room = await makeRoom();
+    await prisma.tiktokRoom.update({ where: { id: room.id }, data: { consecutiveBlockedCount: 4 } });
+
+    await persistState(room.id, "retrying", "配信者オフライン", undefined, "user_offline");
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.listenerStatus).toBe("retrying");
+    expect(after.consecutiveBlockedCount).toBe(0);
   });
 
   it('"idle"遷移ではunhealthySince等をリセットしない(デプロイのたびに巻き戻るのを防ぐ)', async () => {

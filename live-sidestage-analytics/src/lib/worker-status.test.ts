@@ -37,6 +37,7 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
     streamerCount: 1,
     watchCount: 0,
     eventMonitored: false,
+    consecutiveBlockedCount: 0,
     ...overrides,
   };
 }

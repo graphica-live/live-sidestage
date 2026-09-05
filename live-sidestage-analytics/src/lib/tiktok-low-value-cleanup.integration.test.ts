@@ -11,6 +11,7 @@ import {
   DIAMOND_THRESHOLD,
   ACTIVE_PROTECT_MS,
 } from "./tiktok-low-value-cleanup";
+import { reviveSuspendedMonitoring } from "./mark-last-active";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -158,6 +159,19 @@ describe("selectLowValueCandidates", () => {
     expect(ids).not.toContain(monitorUntilFutureRoom.id);
     expect(ids).not.toContain(alreadySuspendedRoom.id);
     expect(ids).not.toContain(cooldownNotElapsedRoom.id);
+  });
+
+  it("監視復帰直後のRoomはクールダウン中として候補に入らない(reviveSuspendedMonitoring()由来)", async () => {
+    const revivedRoom = await makeRoom({ tag: "revived", monitoringSuspended: true });
+    const u = await makeUser(null);
+    await attachStreamer(revivedRoom.id, u.id);
+
+    // 復帰処理自体がlastLowValueCheckAtを現在時刻へ書き換える(機能A)ので、
+    // 復帰直後のRoomは既存のクールダウン条件でそのまま除外されるはず。
+    await reviveSuspendedMonitoring(revivedRoom.id);
+
+    const candidates = await selectLowValueCandidates(NOW, 200);
+    expect(candidates.map((c) => c.id)).not.toContain(revivedRoom.id);
   });
 });
 
