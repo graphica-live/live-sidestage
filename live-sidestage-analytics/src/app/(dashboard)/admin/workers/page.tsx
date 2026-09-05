@@ -151,6 +151,70 @@ function IssueRow({ issue }: { issue: WorkerIssue }) {
   );
 }
 
+// 新しい監視対象TikTok IDを追加するフォーム。Streamer登録・AgencyWatch追加と同じ
+// fail-closedな実在確認をAPI側で通す(存在しないIDは400で拒否される)。
+function AddWatchForm({ onAdded }: { onAdded: () => void }) {
+  const [tiktokId, setTiktokId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState("");
+
+  const handleAdd = async () => {
+    const trimmed = tiktokId.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setErr("");
+    setDone("");
+    try {
+      const res = await fetch("/api/admin/workers/watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tiktokId: trimmed }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErr((data as { error?: string } | null)?.error ?? "追加に失敗しました");
+        return;
+      }
+      setDone(`@${(data as { tiktokId: string }).tiktokId} を追加しました（反映まで最大30秒）`);
+      setTiktokId("");
+      onAdded();
+    } catch {
+      setErr("追加に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-4 px-4 py-3 rounded border border-border bg-panel">
+      <div className="text-sm font-bold text-strong mb-2">監視対象IDを追加</div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          type="text"
+          value={tiktokId}
+          onChange={(e) => setTiktokId(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleAdd();
+          }}
+          placeholder="TikTok ID（@任意）"
+          disabled={busy}
+          className="text-sm rounded border border-border bg-transparent px-2 py-1 min-w-0 flex-1"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={busy || tiktokId.trim().length === 0}
+          className="text-sm px-3 py-1 rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
+        >
+          {busy ? "確認中..." : "追加"}
+        </button>
+      </div>
+      {err && <div className="mt-1 text-xs text-red-400 break-all">{err}</div>}
+      {done && !err && <div className="mt-1 text-xs text-green-400">{done}</div>}
+    </div>
+  );
+}
+
 export default function WorkersAdminPage() {
   const [report, setReport] = useState<WorkerReportWithAudit | null>(null);
   const [error, setError] = useState("");
@@ -211,6 +275,8 @@ export default function WorkersAdminPage() {
           {loading ? "取得中..." : "更新"}
         </button>
       </div>
+
+      <AddWatchForm onAdded={load} />
 
       {error && (
         <div className="mb-4 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-sm text-red-300">

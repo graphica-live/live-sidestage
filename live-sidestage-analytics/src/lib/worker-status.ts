@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { watchedRoomFilter, type ListenerSnapshot } from "./tiktok-listener";
+import { normalizeTiktokId } from "./tiktok-room";
+import { reviveSuspendedMonitoring } from "./mark-last-active";
+import { requireExistingTiktokAccount, type ExistenceChecker } from "./tiktok-existence";
+import { isValidNormalizedTiktokId } from "./agency/params";
 
 // Worker プロセスの稼働状況を管理画面向けに集約する。
 //
@@ -267,6 +271,59 @@ export async function reassignRoomWorker(
 
     return { status: "ok", roomId, tiktokId: room.tiktokId, fromWorker: expectedWorkerId };
   });
+}
+
+export type AddWatchedRoomResult =
+  | { status: "ok"; roomId: string; tiktokId: string; created: boolean; nickname: string | null }
+  | { status: "invalid"; error: string }
+  | { status: "not_found" }
+  | { status: "unverified" };
+
+// admin/workers画面から手動で監視対象IDを追加する。Streamer登録・AgencyWatch追加と同じ
+// fail-closedな実在確認(requireExistingTiktokAccount)を通してから部屋を用意する。
+//
+// 追加後にwatchedRoomFilter()で監視対象になる条件は「情報プール方針」の
+// monitoringSuspended: false のみ(Streamer/AgencyWatchのようなリレーションは作らない)。
+// 既存roomが休止中(monitoringSuspended: true)だった場合はreviveSuspendedMonitoring()で
+// 復帰させる — Streamerのmarkイベント由来の復帰と同じ経路で、追加後の停止判定
+// (tiktok-low-value-cleanup.ts等)もStreamer登録済みroomと同じ基準にそのまま乗る。
+export async function addWatchedRoom(
+  rawTiktokId: string,
+  checker?: ExistenceChecker
+): Promise<AddWatchedRoomResult> {
+  const normalized = normalizeTiktokId(rawTiktokId ?? "");
+  if (!isValidNormalizedTiktokId(normalized)) {
+    return {
+      status: "invalid",
+      error: "TikTok IDの形式が正しくありません(英数字・アンダースコア・ドットの2〜24文字)。",
+    };
+  }
+
+  const existence = await requireExistingTiktokAccount(normalized, checker);
+  if (!existence.ok) {
+    return { status: existence.reason === "MISSING" ? "not_found" : "unverified" };
+  }
+
+  const existing = await prisma.tiktokRoom.findUnique({
+    where: { tiktokId: normalized },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await reviveSuspendedMonitoring(existing.id);
+    return { status: "ok", roomId: existing.id, tiktokId: normalized, created: false, nickname: existence.nickname };
+  }
+
+  try {
+    const room = await prisma.tiktokRoom.create({ data: { tiktokId: normalized }, select: { id: true } });
+    return { status: "ok", roomId: room.id, tiktokId: normalized, created: true, nickname: existence.nickname };
+  } catch (err) {
+    // findUnique と create の間に別リクエストが同じ tiktokId を作った場合。
+    if ((err as { code?: string })?.code === "P2002") {
+      return addWatchedRoom(rawTiktokId, checker);
+    }
+    throw err;
+  }
 }
 
 /**
