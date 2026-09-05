@@ -153,7 +153,7 @@ export async function upsertTiktokIdMergeJob(
 // 入口で取れた userId はゲートの戻り値(`ExistenceGateResult.userId`)から受け取る。
 
 /**
- * 入口での hostUserId fill を、新規作成 room または Gift 0件の room に限定して行う。
+ * 入口での hostUserId fill を、新規作成 room または「データ無し」の room に限定して行う。
  *
  * **データ入りの room への fill は Phase 0 / mergeTick の規律つき経路に任せる。** squatter が
  * 放棄済みハンドルを取得して登録すると、共有 room 設計で既存 room(Gift 入り・
@@ -166,8 +166,14 @@ export async function fillHostUserIdAtEntryIfEligible(
   roomId: string,
   userId: string
 ): Promise<void> {
-  const giftCount = await prisma.gift.count({ where: { roomId }, take: 1 });
-  if (giftCount > 0) return;
+  // **Gift 0件だけでは「データ無し」の根拠にならない。** 明細は90日で削除される
+  // (gift-retention.ts)ので、実際には長い履歴を持つ room でも Gift が空になりうる。
+  // 長期保持されるロールアップ(GiftDailyListenerStat)も 0件のときだけ休眠とみなす。
+  const [giftCount, rollupCount] = await Promise.all([
+    prisma.gift.count({ where: { roomId }, take: 1 }),
+    prisma.giftDailyListenerStat.count({ where: { roomId }, take: 1 }),
+  ]);
+  if (giftCount > 0 || rollupCount > 0) return;
   await saveHostUserIdOnce(roomId, userId);
 }
 
@@ -227,6 +233,10 @@ async function detectMergeCandidates(
 export type AbsorbStats = {
   giftsMoved: number;
   giftsDiscarded: number;
+  /** 日次ロールアップを新roomへ合算した件数(旧room側の行数)。 */
+  giftDailyStatsMerged: number;
+  /** 合算後に旧roomから削除した日次ロールアップの件数。 */
+  giftDailyStatsDiscarded: number;
   battlesMoved: number;
   battlesDiscarded: number;
   battleHistoriesMoved: number;
@@ -327,6 +337,8 @@ export async function absorbRooms(
         battlesDiscarded: 0,
         battleHistoriesMoved: 0,
         battleHistoriesDiscarded: 0,
+        giftDailyStatsMerged: 0,
+        giftDailyStatsDiscarded: 0,
         agencyWatchesMoved: 0,
         agencyWatchesDiscarded: 0,
         eventParticipantsMoved: 0,
@@ -355,6 +367,38 @@ export async function absorbRooms(
 
       stats.giftsDiscarded = await tx.$executeRawUnsafe(
         `DELETE FROM public."gifts" WHERE "roomId" = $1`,
+        candidateRoomId
+      );
+
+      // --- 1b. GiftDailyListenerStat(日次ロールアップ) ---
+      // **Gift と同じトランザクションで付け替える。** 明細は90日で消えるので、これを
+      // 移さないと90日超の履歴が旧roomIdのまま孤立し、改名後の room から見えなくなる。
+      // FK が無いので TiktokRoom の削除では消えない(旧roomの行は明示的に削除する)。
+      // 同じ (dayKey, uniqueId) が両roomにあれば合算する。
+      stats.giftDailyStatsMerged = await tx.$executeRawUnsafe(
+        `INSERT INTO public."gift_daily_listener_stats" AS t
+           (id, "roomId", "dayKey", "uniqueId", nickname, "profileImageUrl",
+            "rowCount", "giftCount", "totalDiamonds", "firstReceivedAt", "lastReceivedAt")
+         SELECT gen_random_uuid()::text, $1, s."dayKey", s."uniqueId", s.nickname, s."profileImageUrl",
+                s."rowCount", s."giftCount", s."totalDiamonds", s."firstReceivedAt", s."lastReceivedAt"
+           FROM public."gift_daily_listener_stats" s
+          WHERE s."roomId" = $2
+         ON CONFLICT ("roomId", "dayKey", "uniqueId") DO UPDATE SET
+           "rowCount"        = t."rowCount" + EXCLUDED."rowCount",
+           "giftCount"       = t."giftCount" + EXCLUDED."giftCount",
+           "totalDiamonds"   = t."totalDiamonds" + EXCLUDED."totalDiamonds",
+           "firstReceivedAt" = LEAST(t."firstReceivedAt", EXCLUDED."firstReceivedAt"),
+           "lastReceivedAt"  = GREATEST(t."lastReceivedAt", EXCLUDED."lastReceivedAt"),
+           nickname          = CASE WHEN EXCLUDED."lastReceivedAt" > t."lastReceivedAt"
+                                    THEN EXCLUDED.nickname ELSE t.nickname END,
+           "profileImageUrl" = CASE WHEN EXCLUDED."lastReceivedAt" > t."lastReceivedAt"
+                                    THEN EXCLUDED."profileImageUrl" ELSE t."profileImageUrl" END`,
+        survivingRoomId,
+        candidateRoomId
+      );
+
+      stats.giftDailyStatsDiscarded = await tx.$executeRawUnsafe(
+        `DELETE FROM public."gift_daily_listener_stats" WHERE "roomId" = $1`,
         candidateRoomId
       );
 

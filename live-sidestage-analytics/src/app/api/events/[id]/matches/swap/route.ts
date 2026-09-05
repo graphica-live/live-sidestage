@@ -9,6 +9,7 @@ import {
   type FeederSwapSlot,
 } from "@/event/bracket-swap-apply";
 import { isTransactionTimeout } from "@/event/reopen-aggregation";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 
 // トーナメント表の組み合わせ変更。**表を破棄せずに**勝ち残っている出場者を別の枠へ移す。
 //
@@ -171,6 +172,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         { status: err.status }
       );
     }
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     if (isTransactionTimeout(err)) return eventBusy();
     throw err;
   }

@@ -1,5 +1,6 @@
 import type { DbClient } from "./analytics-db";
 import { acquireEventLock } from "./event-lock";
+import { AGGREGATE_GRACE_MS } from "./aggregate-deadline";
 
 /**
  * 集計をやり直させる。
@@ -45,9 +46,66 @@ export function isTransactionTimeout(err: unknown): boolean {
   );
 }
 
-export async function reopenAggregation(tx: DbClient, eventId: string): Promise<void> {
+/**
+ * 「終了から1週間(`AGGREGATE_GRACE_MS`)を過ぎたので、もう結果を訂正できない」。
+ *
+ * **呼び出し元のトランザクション全体をロールバックさせるために例外にしてある**
+ * (no-op にすると、対戦の追加・VOID などのミューテーションだけが成功して順位に
+ * 反映されない不整合が残る)。API 層は 409 として主催者へ返すこと。
+ */
+export const AGGREGATION_DEADLINE_PASSED_CODE = "AGGREGATION_DEADLINE_PASSED";
+
+export const AGGREGATION_DEADLINE_PASSED_MESSAGE =
+  "イベント終了から1週間を過ぎたため、結果は確定済みで変更できません。";
+
+export class AggregationDeadlinePassedError extends Error {
+  readonly code = AGGREGATION_DEADLINE_PASSED_CODE;
+
+  constructor(message = AGGREGATION_DEADLINE_PASSED_MESSAGE) {
+    super(message);
+    this.name = "AggregationDeadlinePassedError";
+  }
+}
+
+export function isAggregationDeadlinePassed(err: unknown): err is AggregationDeadlinePassedError {
+  return err instanceof AggregationDeadlinePassedError;
+}
+
+/**
+ * 締切を過ぎているか。`endAt + AGGREGATE_GRACE_MS` が期限。
+ */
+export function isPastAggregationDeadline(endAt: Date, now: Date): boolean {
+  return now.getTime() > endAt.getTime() + AGGREGATE_GRACE_MS;
+}
+
+export async function reopenAggregation(
+  tx: DbClient,
+  eventId: string,
+  options: { now?: Date } = {}
+): Promise<void> {
   // トランザクションの先頭ですでに取っていれば、これは待たされない。
   await acquireEventLock(tx, eventId);
+
+  const event = await tx.event.findUnique({
+    where: { id: eventId },
+    select: { endAt: true, finalizedAt: true },
+  });
+  // 存在しないイベントは従来どおり no-op(呼び出し元が 404 を返す)。
+  if (!event) return;
+
+  // **まだ確定していないなら締切を見ない。** 戻すべき `finalizedAt` が無い以上
+  // 「確定済みの結果を覆す」操作ではなく、締切前後で意味が変わらない。
+  // ここを見ないと、締切を過ぎた未確定イベント(集計が一度も成功していない等)への
+  // 通常のミューテーションまで巻き添えで失敗する。
+  if (event.finalizedAt === null) return;
+
+  // 締切超過後は `finalizedAt` を戻さない。ギフト明細は90日で削除される
+  // (gift-retention.ts)ので、確定済みイベントの再集計は元データを欠いたまま
+  // 走ることになり、静かに順位が壊れる。訂正はサポート対象外(設計判断)。
+  if (isPastAggregationDeadline(event.endAt, options.now ?? new Date())) {
+    throw new AggregationDeadlinePassedError();
+  }
+
   await tx.event.updateMany({
     where: { id: eventId, finalizedAt: { not: null } },
     data: { finalizedAt: null },

@@ -27,6 +27,7 @@ import {
   MUTATION_TX_OPTIONS,
   reopenAggregation,
 } from "@/event/reopen-aggregation";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 import { assertEventSession, SingleMatchError } from "@/event/single-match";
 import type { DbClient } from "@/event/analytics-db";
 
@@ -891,6 +892,8 @@ export async function PATCH(
     if (err instanceof SingleMatchError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     }
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     if (isTransactionTimeout(err)) return eventBusy();
     throw err;
   }
@@ -963,6 +966,8 @@ export async function DELETE(
       return null;
     });
   } catch (err) {
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     if (isTransactionTimeout(err)) return eventBusy();
     throw err;
   }

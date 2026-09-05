@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDateRange } from "@/lib/gift-analytics";
 import { queryGiftHistory } from "@/lib/gift-history";
+import {
+  clampGiftHistoryDayRange,
+  clampGiftHistoryDatetimeRange,
+} from "@/lib/gift-history-range";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -31,15 +35,20 @@ export async function GET(req: NextRequest) {
   let giftWhere: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } };
   let dateRange: { start: string; end: string };
 
+  // 明細は90日で削除されるので、参照期間もそこへ切り詰める(period=year・任意の範囲指定)。
   if (startDatetime && endDatetime) {
-    giftWhere = { receivedAt: { gte: new Date(startDatetime), lte: new Date(endDatetime) } };
-    dateRange = { start: startDatetime, end: endDatetime };
+    const clamped = clampGiftHistoryDatetimeRange({
+      start: new Date(startDatetime),
+      end: new Date(endDatetime),
+    });
+    giftWhere = { receivedAt: { gte: clamped.start, lte: clamped.end } };
+    dateRange = { start: clamped.start.toISOString(), end: clamped.end.toISOString() };
   } else {
     const period = searchParams.get("period") ?? "day";
     const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
-    const { start, end } = getDateRange(period, date);
-    giftWhere = { dayKey: { gte: start, lte: end } };
-    dateRange = { start, end };
+    const clamped = clampGiftHistoryDayRange(getDateRange(period, date));
+    giftWhere = { dayKey: { gte: clamped.start, lte: clamped.end } };
+    dateRange = { start: clamped.start, end: clamped.end };
   }
 
   const { events, total } = await queryGiftHistory(streamer.roomId, giftWhere, limit);

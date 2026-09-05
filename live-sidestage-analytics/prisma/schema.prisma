@@ -808,7 +808,66 @@ model Gift {
   @@index([roomId, uniqueId])
   @@index([roomId, groupId])
   @@index([roomId, msgId])
+  // 90日retentionの削除バッチは dayKey 単体で絞る(gift-retention.ts)。既存のindexは
+  // すべて roomId 先頭なので、これが無いと日次の削除が gifts のフルスキャンになる。
+  @@index([dayKey])
   @@map("gifts")
+  @@schema("public")
+}
+
+// ギフト明細(Gift)の日次ロールアップ。(roomId, dayKey, uniqueId) 単位。
+//
+// **Gift は受信後90日で削除される**(gift-retention.ts)。削除しても期間ランキング・
+// 事務所APIの長期集計が壊れないよう、削除の前にこのテーブルへ集計を落としておく。
+// こちらは長期保持(削除しない)。
+//
+// **Gift への FK は張らない**(BattleHistoryGiftEvent と同じ「コピーして切り離す」パターン)。
+// roomId も論理参照に留める — TiktokRoom の物理削除時は deleteTiktokRoomPermanently() が
+// 同一トランザクションで明示的に削除し、TikTok ID 自動合流時は absorbRooms() が
+// 新 roomId へ合算して付け替える。
+//
+// rowCount は「行数」で、giftCount(= repeatCount の合計)とは意味が違う。
+// login-stats が現行どおり行数ベースの数字を出せるよう GiftLifetimeStat.rowCount を
+// ここから再集計するために必要。
+model GiftDailyListenerStat {
+  id       String @id @default(cuid())
+  roomId   String
+  dayKey   String
+  uniqueId String
+
+  // その日の最新の Gift 行から採ったスナップショット(表示用)。
+  nickname        String
+  profileImageUrl String?
+
+  rowCount      Int @default(0) // Gift の行数
+  giftCount     Int @default(0) // Gift.repeatCount の合計
+  totalDiamonds Int @default(0) // Gift.totalDiamonds の合計(1日1人ぶんなのでIntで足りる)
+
+  firstReceivedAt DateTime
+  lastReceivedAt  DateTime
+
+  @@unique([roomId, dayKey, uniqueId])
+  @@index([roomId, dayKey])
+  @@index([dayKey])
+  @@map("gift_daily_listener_stats")
+  @@schema("public")
+}
+
+// uniqueId 単位(room横断)の全期間累計。GiftDailyListenerStat 全体から毎回再集計する。
+// /api/public/login-stats の gifts フルスキャンを置き換えるためだけに存在する。
+//
+// totalDiamonds は全期間・全room の合計なので Int を超えうる。BigInt で持つ。
+model GiftLifetimeStat {
+  uniqueId String @id
+
+  rowCount      Int    @default(0) // Gift の行数(prisma.gift.count() 相当)
+  giftCount     Int    @default(0) // Gift.repeatCount の合計
+  totalDiamonds BigInt @default(0)
+
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+
+  @@map("gift_lifetime_stats")
   @@schema("public")
 }
 

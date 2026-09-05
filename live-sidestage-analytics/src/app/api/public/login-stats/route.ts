@@ -10,19 +10,45 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 export const revalidate = 300;
 
-export async function GET() {
-  const [streamerCount, contributorRows, giftCount, battleCount] = await Promise.all([
-    prisma.streamer.count(),
+/**
+ * 全期間累計は `GiftLifetimeStat`(gift-retention.ts が日次で作り直す)から読む。
+ * 明細(Gift)は90日で削除されるので、フルスキャンでは過去ぶんを数えられない。
+ *
+ * `giftCount` は現行どおり**行数**(`prisma.gift.count()` 相当)なので `rowCount` を使う。
+ * ロールアップの `giftCount`(repeatCount合計)とは意味が違うので取り違えないこと。
+ *
+ * バックフィル前(=ロールアップ0件)は従来のフルスキャンへフォールバックする。
+ * 有効化の途中で数字が0に落ちないための保険で、バックフィル後は分岐しない。
+ */
+async function loadGiftTotals(): Promise<{ contributorCount: number; giftCount: number }> {
+  const [contributorCount, sums] = await Promise.all([
+    prisma.giftLifetimeStat.count(),
+    prisma.giftLifetimeStat.aggregate({ _sum: { rowCount: true } }),
+  ]);
+
+  if (contributorCount > 0) {
+    return { contributorCount, giftCount: sums._sum.rowCount ?? 0 };
+  }
+
+  const [rows, giftCount] = await Promise.all([
     prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(DISTINCT "uniqueId") AS count FROM "gifts"`,
     prisma.gift.count(),
+  ]);
+  return { contributorCount: Number(rows[0]?.count ?? 0), giftCount };
+}
+
+export async function GET() {
+  const [streamerCount, giftTotals, battleCount] = await Promise.all([
+    prisma.streamer.count(),
+    loadGiftTotals(),
     prisma.tiktokBattle.count(),
   ]);
 
   return NextResponse.json(
     {
       streamerCount,
-      contributorCount: Number(contributorRows[0]?.count ?? 0),
-      giftCount,
+      contributorCount: giftTotals.contributorCount,
+      giftCount: giftTotals.giftCount,
       battleCount,
     },
     { headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=600" } }

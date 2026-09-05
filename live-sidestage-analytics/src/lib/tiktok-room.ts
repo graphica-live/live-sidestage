@@ -423,6 +423,9 @@ export async function deleteTiktokRoomPermanently(
       };
 
       await tx.agencyWatch.deleteMany({ where: { roomId } });
+      // GiftDailyListenerStat は TiktokRoom への FK を張っていない(明細と切り離す設計)ので
+      // cascade で消えない。明示的に消さないと孤児行が残る。
+      await tx.giftDailyListenerStat.deleteMany({ where: { roomId } });
       await tx.tiktokRoom.delete({ where: { id: roomId } });
       await tx.tiktokRoomAdminAuditLog.create({
         data: { action: "delete", roomId: room.id, tiktokId: room.tiktokId, operatorEmail, detail },

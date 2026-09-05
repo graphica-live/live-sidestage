@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEventOwner } from "@/event/authz";
 import { ParticipantError, registerParticipant } from "@/event/participants";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const owned = await requireEventOwner(params.id);
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (err instanceof ParticipantError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     throw err;
   }
 }
