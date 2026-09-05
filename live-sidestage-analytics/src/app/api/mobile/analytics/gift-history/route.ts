@@ -5,6 +5,10 @@ import { queryGiftHistory } from "@/lib/gift-history";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
 import { parseRangeQuery, parseLimit, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
+import {
+  clampGiftHistoryDayRange,
+  clampGiftHistoryDatetimeRange,
+} from "@/lib/gift-history-range";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -40,14 +44,17 @@ export async function GET(req: NextRequest) {
 
   let where: Parameters<typeof queryGiftHistory>[1];
   let dateRange: { start: string; end: string };
+  // 明細は90日で削除されるので、参照期間もそこへ切り詰める(period=year・任意の範囲指定)。
+  // 集計系(貢献ランキング)は長期ロールアップで賄えるので parseRangeQuery 側の
+  // MAX_RANGE_DAYS(366)はそのまま。ここは履歴一覧だけの上限。
   if (query.value.mode === "custom") {
-    const { start, end } = query.value;
-    where = { receivedAt: { gte: start, lte: end } };
-    dateRange = { start: start.toISOString(), end: end.toISOString() };
+    const clamped = clampGiftHistoryDatetimeRange(query.value);
+    where = { receivedAt: { gte: clamped.start, lte: clamped.end } };
+    dateRange = { start: clamped.start.toISOString(), end: clamped.end.toISOString() };
   } else {
-    const { start, end } = getDateRange(query.value.period, query.value.date);
-    where = { dayKey: { gte: start, lte: end } };
-    dateRange = { start, end };
+    const clamped = clampGiftHistoryDayRange(getDateRange(query.value.period, query.value.date));
+    where = { dayKey: { gte: clamped.start, lte: clamped.end } };
+    dateRange = { start: clamped.start, end: clamped.end };
   }
 
   const { events, total, hasMore } = await queryGiftHistory(

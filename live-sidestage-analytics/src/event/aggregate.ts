@@ -40,8 +40,12 @@ import { serializeBreakdown } from "./contribution-breakdown";
 // 集計結果はスナップショット(EventContribution / EventStanding)として置き換える。
 // 読み手が中間状態を見ないよう、削除と作成は同一トランザクションで行う。
 
-/** イベント終了後もこの時間だけ集計を続ける(終了間際のギフトの取りこぼし対策)。 */
-export const AGGREGATE_GRACE_MS = 60 * 60 * 1000;
+// 締切(AGGREGATE_GRACE_MS / aggregationDeadline)は aggregate-deadline.ts が正本。
+// reopen-aggregation.ts も同じ値を見る必要があり、そちらからこの重いモジュールを
+// import させないための分割。ここでは後方互換のため再exportする。
+import { AGGREGATE_GRACE_MS, aggregationDeadline } from "./aggregate-deadline";
+
+export { AGGREGATE_GRACE_MS, aggregationDeadline };
 
 /**
  * scope ごとに保存するリスナー貢献の上限。
@@ -53,6 +57,9 @@ export const AGGREGATE_GRACE_MS = 60 * 60 * 1000;
  */
 export const MAX_CONTRIBUTION_ROWS = 200;
 
+/** 終了後(猶予中)の再集計を間引く間隔。開催中(endAt前)のイベントには適用しない。 */
+export const POST_END_AGGREGATE_THROTTLE_MS = 15 * 60 * 1000;
+
 /**
  * 集計対象イベントの選択条件。
  *
@@ -60,18 +67,27 @@ export const MAX_CONTRIBUTION_ROWS = 200;
  * 主催者は開催中いつでも FINISHED にできるので、それを打ち切り条件にすると
  * 直前のギフトや遅れて保存されたギフトが永久に反映されないため。
  * 代わりに「締切(endAt + 猶予)後の最終集計が済んだか」を `finalizedAt` で持つ。
+ *
+ * **終了後は再集計を間引く。** `AGGREGATE_GRACE_MS` が1週間(訂正猶予)へ延長された結果、
+ * 締切前の未確定イベントは以前の1時間ではなく最大1週間、`event-worker`(10秒間隔)の
+ * フルスキャン再計算対象であり続ける(1イベントの再計算は実測0.9〜3.4秒、
+ * `src/event/CLAUDE.md` の実測値)。開催中(`endAt`がまだ先)のイベントは今までどおり
+ * 毎周回対象にし、終了済み(`endAt`を過ぎた)イベントだけ
+ * `POST_END_AGGREGATE_THROTTLE_MS` 間隔に間引く。締切(=最終集計)への到達は
+ * この間引きの範囲内で遅延するだけで、最終的に必ず`finalizedAt`が立つことに変わりはない。
  */
 export function aggregationWindow(now: Date) {
+  const throttleCutoff = new Date(now.getTime() - POST_END_AGGREGATE_THROTTLE_MS);
   return {
     status: { in: ["RUNNING", "FINISHED"] },
     startAt: { lte: now },
     finalizedAt: null,
+    OR: [
+      { endAt: { gt: now } },
+      { lastAggregatedAt: null },
+      { lastAggregatedAt: { lte: throttleCutoff } },
+    ],
   };
-}
-
-/** 締切。これを過ぎてからの集計が最終集計になる。 */
-export function aggregationDeadline(endAt: Date): Date {
-  return new Date(endAt.getTime() + AGGREGATE_GRACE_MS);
 }
 
 export { advisoryLockKey };

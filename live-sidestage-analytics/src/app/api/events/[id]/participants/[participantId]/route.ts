@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEventOwner } from "@/event/authz";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 import { ParticipantError, removeParticipant, updateParticipant } from "@/event/participants";
 import { isTransactionTimeout } from "@/event/reopen-aggregation";
 import { parseParticipantPatch } from "@/event/validation";
@@ -45,6 +46,8 @@ export async function PATCH(
         { status: 503 }
       );
     }
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     throw err;
   }
 }

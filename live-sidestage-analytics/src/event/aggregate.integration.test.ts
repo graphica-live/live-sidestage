@@ -8,6 +8,7 @@ import {
   aggregationWindow,
   advisoryLockKey,
   MAX_CONTRIBUTION_ROWS,
+  POST_END_AGGREGATE_THROTTLE_MS,
 } from "./aggregate";
 
 const PREFIX = "itest_agg";
@@ -736,6 +737,60 @@ describe("最終集計(finalizedAt)", () => {
       select: { finalizedAt: true },
     });
     expect(after?.finalizedAt).toBeNull();
+  });
+
+  it("終了済み・締切前でも、スロットル間隔内に再集計済みなら次のtickでは対象から外れる", async () => {
+    const event = await newEvent({
+      status: "FINISHED",
+      startAt: new Date(Date.now() - 2 * 86_400_000),
+      endAt: new Date(Date.now() - 60_000), // 終了済み・締切(1週間)前
+    });
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { lastAggregatedAt: new Date() }, // たった今集計したばかり
+    });
+
+    const due = await prisma.event.findMany({
+      where: { ...aggregationWindow(new Date()), id: event.id },
+      select: { id: true },
+    });
+    expect(due).toHaveLength(0);
+  });
+
+  it("終了済みでもスロットル間隔を過ぎていれば再び対象に入る", async () => {
+    const event = await newEvent({
+      status: "FINISHED",
+      startAt: new Date(Date.now() - 2 * 86_400_000),
+      endAt: new Date(Date.now() - 60_000),
+    });
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { lastAggregatedAt: new Date(Date.now() - POST_END_AGGREGATE_THROTTLE_MS - 1000) },
+    });
+
+    const due = await prisma.event.findMany({
+      where: { ...aggregationWindow(new Date()), id: event.id },
+      select: { id: true },
+    });
+    expect(due.map((e) => e.id)).toContain(event.id);
+  });
+
+  it("開催中(endAtが未来)なら、直近に集計済みでもスロットルされず毎回対象に入る", async () => {
+    const event = await newEvent({
+      status: "RUNNING",
+      startAt: new Date(Date.now() - 86_400_000),
+      endAt: new Date(Date.now() + 86_400_000), // まだ開催中
+    });
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { lastAggregatedAt: new Date() }, // たった今集計したばかり
+    });
+
+    const due = await prisma.event.findMany({
+      where: { ...aggregationWindow(new Date()), id: event.id },
+      select: { id: true },
+    });
+    expect(due.map((e) => e.id)).toContain(event.id);
   });
 
   it("開始前(startAt が未来)のイベントは集計対象にならない", async () => {

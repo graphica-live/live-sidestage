@@ -6,6 +6,7 @@ import {
   createSingleMatch,
   type SingleMatchSide,
 } from "@/event/single-match";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 
 /**
  * サイドの入力。
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (err instanceof SingleMatchError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     }
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     throw err;
   }
 }

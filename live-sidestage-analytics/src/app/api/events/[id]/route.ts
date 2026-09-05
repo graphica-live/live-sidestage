@@ -18,6 +18,7 @@ import {
   MUTATION_TX_OPTIONS,
   reopenAggregation,
 } from "@/event/reopen-aggregation";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 import { parseSessionRequest } from "@/event/sessions";
 import { applySessionDiff, SessionUpdateError } from "@/event/session-update";
 import { isAllowedStatusTransition } from "@/event/status-transition";
@@ -135,6 +136,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     try {
       outcome = await changeEventStatus(params.id, body.status as EventStatus);
     } catch (err) {
+      // 締切(終了+1週間)を過ぎた確定済みイベントは開催中へ戻せない
+      // (`reopenAggregation()` が例外を投げてトランザクション全体がロールバックする)。
+      const deadline = aggregationDeadlineResponseFor(err);
+      if (deadline) return deadline;
       if (isTransactionTimeout(err)) return eventBusy();
       throw err;
     }
@@ -180,30 +185,37 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // 値の正規化・範囲の丸めは parseDeathmatchRules に任せる(不正値は既定へ落ちる)。
     const normalized = parseDeathmatchRules({ deathmatch: body.deathmatchRules });
 
-    await prisma.$transaction(async (tx) => {
-      // ライフは全期間再計算なので、ルール変更は過去に遡る。最終集計が済んでいても
-      // やり直させないと、新しいルールが順位・脱落に反映されない。
-      await reopenAggregation(tx, params.id);
+    try {
+      await prisma.$transaction(async (tx) => {
+        // ライフは全期間再計算なので、ルール変更は過去に遡る。最終集計が済んでいても
+        // やり直させないと、新しいルールが順位・脱落に反映されない。
+        await reopenAggregation(tx, params.id);
 
-      // rules はロック取得後にここで読み直す(トランザクション開始前の読み取りだと、
-      // 下の一般更新ブランチが同時に matchRules 名前空間を書いたとき、
-      // どちらか片方の変更が古いスナップショットで上書きされうる)。
-      const current = await tx.event.findUnique({
-        where: { id: params.id },
-        select: { rules: true },
-      });
-      const existing =
-        current?.rules && typeof current.rules === "object" && !Array.isArray(current.rules)
-          ? (current.rules as Prisma.JsonObject)
-          : {};
+        // rules はロック取得後にここで読み直す(トランザクション開始前の読み取りだと、
+        // 下の一般更新ブランチが同時に matchRules 名前空間を書いたとき、
+        // どちらか片方の変更が古いスナップショットで上書きされうる)。
+        const current = await tx.event.findUnique({
+          where: { id: params.id },
+          select: { rules: true },
+        });
+        const existing =
+          current?.rules && typeof current.rules === "object" && !Array.isArray(current.rules)
+            ? (current.rules as Prisma.JsonObject)
+            : {};
 
-      await tx.event.update({
-        where: { id: params.id },
-        data: {
-          rules: { ...(existing as Prisma.InputJsonObject), deathmatch: { ...normalized } },
-        },
-      });
-    }, MUTATION_TX_OPTIONS);
+        await tx.event.update({
+          where: { id: params.id },
+          data: {
+            rules: { ...(existing as Prisma.InputJsonObject), deathmatch: { ...normalized } },
+          },
+        });
+      }, MUTATION_TX_OPTIONS);
+    } catch (err) {
+      const deadline = aggregationDeadlineResponseFor(err);
+      if (deadline) return deadline;
+      if (isTransactionTimeout(err)) return eventBusy();
+      throw err;
+    }
     return NextResponse.json({ deathmatch: normalized });
   }
 
@@ -349,6 +361,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       });
     }, MUTATION_TX_OPTIONS);
   } catch (err) {
+    // 締切(終了+1週間)を過ぎた確定済みイベントは、日程・期間を含めた設定変更ができない
+    // (`reopenAggregation()` が例外を投げてトランザクション全体がロールバックする)。
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     if (err instanceof SessionUpdateError) {
       return NextResponse.json(
         { errors: [err.message], code: err.code },

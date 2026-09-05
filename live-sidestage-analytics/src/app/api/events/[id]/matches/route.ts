@@ -3,6 +3,7 @@ import { requireEventOwner } from "@/event/authz";
 import { prisma } from "@/lib/prisma";
 import { MAX_BRACKET_SIZE } from "@/event/bracket";
 import { isTransactionTimeout } from "@/event/reopen-aggregation";
+import { aggregationDeadlineResponseFor } from "@/event/aggregation-deadline-http";
 import { BracketError, createBracket, destroyBracket } from "@/event/tournament";
 
 // トーナメント表の作成(POST)と破棄(DELETE)。
@@ -167,6 +168,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof BracketError) return bracketErrorResponse(err);
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     if (isTransactionTimeout(err)) return eventBusy();
     throw err;
   }
@@ -211,6 +214,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof BracketError) return bracketErrorResponse(err);
+    const deadline = aggregationDeadlineResponseFor(err);
+    if (deadline) return deadline;
     if (isTransactionTimeout(err)) return eventBusy();
     throw err;
   }
