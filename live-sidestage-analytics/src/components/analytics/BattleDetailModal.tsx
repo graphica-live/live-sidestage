@@ -73,12 +73,16 @@ function resolveWinningTeamIndex(teams: { index: number; score: string | null }[
 export function BattleDetailModal({
   battle,
   onClose,
+  apiBase,
 }: {
   battle: BattleListItem | null;
   onClose: () => void;
+  /** fetch先の先頭。既定は一般ユーザー向け "/api/analytics"。admin専用画面では "/api/admin/rooms/{roomId}/analytics" を渡す。 */
+  apiBase?: string;
 }) {
   const [state, setState] = useState<LoadState | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const base = apiBase ?? "/api/analytics";
 
   useEffect(() => {
     if (!battle) return;
@@ -87,7 +91,7 @@ export function BattleDetailModal({
 
     void (async () => {
       try {
-        const res = await fetch(`/api/analytics/battles/${encodeURIComponent(battle.battleId)}/contributors`);
+        const res = await fetch(`${base}/battles/${encodeURIComponent(battle.battleId)}/contributors`);
         if (cancelled) return;
         if (!res.ok) {
           setState({ status: "error" });
@@ -103,7 +107,7 @@ export function BattleDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [battle]);
+  }, [battle, base]);
 
   useEffect(() => {
     if (!battle) return;

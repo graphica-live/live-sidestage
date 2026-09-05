@@ -52,6 +52,7 @@ import { materializeBattleHistory } from "./battle-history-finalize";
 import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
 import { isCollabJoinSource, parseCollabGroupChange } from "./tiktok-collab";
 import { ensureRoomWatchedForCollab, normalizeTiktokId } from "./tiktok-room";
+import { existenceChecker } from "./tiktok-existence";
 
 export type ListenerStatus =
   | "idle"
@@ -907,6 +908,21 @@ function updateState(
     const startedAt = new Date();
     inst.connectionIntervalId = id;
     void connLogWrites.run(roomId, () => openConnectionInterval(id, roomId, startedAt));
+
+    // 配信開始(初回connected)のたびにTikTok表示名(nickname)を更新する。表示専用データなので
+    // 失敗しても接続処理自体には影響させない。existenceCheckerは6時間TTLキャッシュ・同時実行
+    // 上限2を持つ既存の共有レート制限層(tiktok-existence.ts)にそのまま乗る。例外を投げない契約
+    // (ExistenceChecker.check参照)だが、DB更新側の失敗は念のためcatchしておく。
+    void existenceChecker
+      .check(inst.state.tiktokId)
+      .then((result) => {
+        if (result.verdict !== "EXISTS" || !result.nickname) return;
+        return prisma.tiktokRoom.update({
+          where: { id: roomId },
+          data: { nickname: result.nickname },
+        });
+      })
+      .catch(() => {});
   } else if (status !== "connected" && previousStatus === "connected") {
     const id = inst.connectionIntervalId;
     const endedAt = new Date();

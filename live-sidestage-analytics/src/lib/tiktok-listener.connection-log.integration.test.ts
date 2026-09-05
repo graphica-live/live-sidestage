@@ -39,6 +39,12 @@ vi.mock("TLC-sidestage", () => ({
   }),
 }));
 
+vi.mock("./tiktok-existence", () => ({
+  existenceChecker: {
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+  },
+}));
+
 const emitOverlaySnapshotMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("./overlay", () => ({
   emitOverlaySnapshot: emitOverlaySnapshotMock,
