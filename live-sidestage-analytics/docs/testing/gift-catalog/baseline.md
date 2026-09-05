@@ -2,8 +2,8 @@
 project: live-sidestage-analytics
 feature: gift-catalog
 last_updated: 2026-09-06
-last_risk: HIGH
-last_reviewers: Qwen(TestCase Mode、NO ISSUESをカナリアで実施確認済み) + Fable(TestCase Mode、Codex/Geminiはquota切れのためユーザー承認済みの代理として起動)
+last_risk: LOW
+last_reviewers: レビュー省略(ユーザー明示、TC-GC-023b追加分)。過去の HIGH レビュー実績: Qwen(TestCase Mode、NO ISSUESをカナリアで実施確認済み) + Fable(TestCase Mode、Codex/Geminiはquota切れのためユーザー承認済みの代理として起動)
 ---
 
 # テストベースライン: gift-catalog
@@ -37,6 +37,7 @@ last_reviewers: Qwen(TestCase Mode、NO ISSUESをカナリアで実施確認済�
 | TC-GC-021 | ライブ中の部屋を優先する並べ替え | `orderRoomsLiveFirst` | 正常/境界 | ライブ中(room_id取得可)の要素が末尾寄り、複数、全live、全idle、空配列 | ライブ中要素を先頭に集約しつつ各グループ内の相対順序を保つ。`slice(0, N)`後も枠外だったlive要素が繰り上がる | `npx vitest run src/lib/tiktok-listener.gift-catalog-order.test.ts` | PASS | `MAX_GIFT_CATALOG_SOURCES=3`固定と組み合わせて、担当部屋4件目以降がライブ中でもコミュニティギフトが反映される前提を担保 |
 | TC-GC-022 | roomIdの空文字列正規化 | `resolveGiftCatalogSources` | 境界 | 未接続直後で`connection.roomId`が`""` | `GiftCatalogSource.roomId`を`undefined`に正規化する | コードレビューで確認(`|| undefined`) | PASS | `resolveGiftCatalogSources`自体はDB(`getMyRooms`)依存のためunit分離した自動テストなし |
 | TC-GC-023 | 管理画面: 取得履歴の表示 | `/admin/proxy` + `/api/admin/proxy` | 正常 | 監査ログが1件以上ある管理者セッション | 新しい順に時刻・成功/失敗・locale・部屋・件数またはエラー文言が表示される | Playwright(headless、要ログイン) | PASS | 手順は下記「Web実機確認」参照 |
+| TC-GC-023b | 管理画面: フォールバック成功の警告表示 | `/admin/proxy`(`outcomeBadge`) | 境界 | `outcome: "success"` かつ `usedJpProxy: false`(部屋プロキシへのフォールバック成功) | 緑「成功」ではなく黄色「成功(フォールバック)」と表示する。`usedJpProxy: true`の成功は従来どおり緑「成功」、`outcome: "failure"`は従来どおり赤「失敗」 | Playwright(headless、要ログイン) | PASS | 2026-09-06: フォールバック成功が緑「成功」表示のままで実質失敗に近い状態が区別できないという指摘により追加。下記「Web実機確認」参照 |
 | TC-GC-024 | 管理画面API: 未認証アクセス | `/api/admin/proxy` | 異常 | 管理者セッションなし(`getAdminSession()`が`null`) | `401 Unauthorized`、`getSetting`を呼ばない | `npx vitest run src/app/api/admin/proxy/route.test.ts` | PASS | 既存`getAdminSession()`ゲートを流用(`admin/workers/route.ts`と同型)。unit化(TestCaseレビューFable指摘) |
 | TC-GC-025 | 管理画面API: 破損/欠損データへの耐性と順序 | `/api/admin/proxy` | 異常/境界 | 設定値が無い/JSON破損/配列でない形状/正常な複数件 | いずれもエラーにせず空配列または正しい配列を返す。正常時は新しい順(reverse)で返す | `npx vitest run src/app/api/admin/proxy/route.test.ts` | PASS | |
 | TC-GC-026 | 管理画面: 履歴0件時の表示 | `/admin/proxy` | 境界/empty state | 監査ログが0件 | エラーにならず空状態の文言を表示する | Playwright(headless) | PASS | 下記「Web実機確認」参照 |

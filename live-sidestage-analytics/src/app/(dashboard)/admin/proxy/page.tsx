@@ -8,12 +8,14 @@ import type { ProxyAttemptLogEntry } from "@/lib/tiktok-gift-catalog";
 // 極端に短く叩く必要はないが、失敗直後の確認用途を考えて workers 画面と同じ間隔にする。
 const REFRESH_INTERVAL_MS = 15_000;
 
-function outcomeBadge(outcome: ProxyAttemptLogEntry["outcome"]) {
-  return outcome === "success" ? (
-    <span className="text-green-600 dark:text-green-400">成功</span>
-  ) : (
-    <span className="text-red-600 dark:text-red-400">失敗</span>
-  );
+function outcomeBadge(entry: ProxyAttemptLogEntry) {
+  if (entry.outcome === "failure") {
+    return <span className="text-red-600 dark:text-red-400">失敗</span>;
+  }
+  if (!entry.usedJpProxy) {
+    return <span className="text-yellow-600 dark:text-yellow-400">成功(フォールバック)</span>;
+  }
+  return <span className="text-green-600 dark:text-green-400">成功</span>;
 }
 
 export default function ProxyAdminPage() {
@@ -95,7 +97,7 @@ export default function ProxyAdminPage() {
                   <span className="text-strong">
                     {new Date(entry.at).toLocaleString("ja-JP")}
                   </span>
-                  {outcomeBadge(entry.outcome)}
+                  {outcomeBadge(entry)}
                   <span>locale={entry.locale}</span>
                   <span>@{entry.tiktokId}</span>
                   <span>{entry.usedJpProxy ? "日本プロキシ経由" : "フォールバック(部屋プロキシ)"}</span>
