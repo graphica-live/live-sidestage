@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { href: "/admin/euler-api", label: "EulerAPI" },
   { href: "/admin/agencies", label: "事務所" },
   { href: "/admin/workers", label: "Worker" },
+  { href: "/admin/proxy", label: "プロキシ" },
 ];
 
 export default async function AdminLayout({

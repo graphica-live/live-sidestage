@@ -2577,24 +2577,43 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
 // 「まだ貰ったことのないギフトを事前に仕込む」という目的そのものが果たせない。
 // 1周回のカタログ取得で試す部屋数の上限。
 //
-// **地域/イベント限定ギフトは`gift/list/`の応答が部屋(アカウント)ごとに変わりうる**
-// (実測: giftId 1182805 "Ultra Fan"/「ウルトラうちわ」は`is_global_gift: false`で、
-// ある部屋からの取得では出るが別の部屋からは出ない可能性がある)。1部屋だけに固定すると
-// その部屋がたまたま対象外のイベント/地域だった場合、実際にTikTok側には存在するギフトが
-// 恒久的にカタログへ入らない。複数の自部屋を試して和集合を取ることでカバレッジを広げる。
+// **地域限定ギフトの可否はegress IPのリージョンだけで決まり、部屋(アカウント)には依存しない**
+// (2026-09実測: room_id・device_id・regionパラメータ・Cookie等は全て無関係。日本限定ギフトの
+// 取りこぼしは `GIFT_CATALOG_PROXY_URL`(日本プロキシ)で対応済み)。
+//
+// 一方、**配信者固有のコミュニティギフトは`room_id`を渡した部屋でだけ追加される、地域とは
+// 独立した軸**。複数の自部屋から集めるのはこちらのカバレッジを広げるため(1部屋だけだと
+// その配信者以外のコミュニティギフトがカタログへ入らない)。
 //
 // 増やしすぎるとリフレッシュ1周回あたりのTikTokへのリクエスト数(英語+日本語の2倍)が
 // 線形に増えるため、小さめの上限にする。
 export const MAX_GIFT_CATALOG_SOURCES = 3;
 
+// ライブ中(生きている接続から数値room_idが取れる)要素を先頭に、元の相対順序を保ったまま
+// 並べ替える。元の順序のまま slice(0, N) すると、対象配信者がライブ中でも枠外にいるだけで
+// コミュニティギフトが一切反映されない(設計レビュー指摘)。純粋関数として export し単体テスト対象にする。
+export function orderRoomsLiveFirst<T>(rooms: T[], isLive: (room: T) => boolean): T[] {
+  const live: T[] = [];
+  const idle: T[] = [];
+  for (const room of rooms) {
+    (isLive(room) ? live : idle).push(room);
+  }
+  return [...live, ...idle];
+}
+
 export async function resolveGiftCatalogSources(): Promise<GiftCatalogSource[]> {
   const rooms = await getMyRooms();
+  const orderedRooms = orderRoomsLiveFirst(rooms, (room) => Boolean(listeners.get(room.id)?.connection?.roomId));
+
   const sources: GiftCatalogSource[] = [];
-  for (const room of rooms.slice(0, MAX_GIFT_CATALOG_SOURCES)) {
-    // ライブ接続と同じdeviceId/proxyを使う。カタログ取得だけ別のegress IPから出さない。
+  for (const room of orderedRooms.slice(0, MAX_GIFT_CATALOG_SOURCES)) {
+    // ライブ接続と同じdeviceId/proxyを使う。カタログ取得だけ別のegress IPから出さない
+    // (日本プロキシ未設定時のフォールバックとしてのみ使われる。tiktok-gift-catalog.ts参照)。
     const deviceId = await getOrCreateDeviceId(room.id);
     const proxyUrl = await resolveProxyForRoom(room.id);
-    sources.push({ tiktokId: room.tiktokId, deviceId, proxyUrl });
+    // 未接続直後は roomId が空文字列 "" になりうるので undefined に正規化する。
+    const roomId = listeners.get(room.id)?.connection?.roomId || undefined;
+    sources.push({ tiktokId: room.tiktokId, deviceId, proxyUrl, roomId });
   }
   return sources;
 }

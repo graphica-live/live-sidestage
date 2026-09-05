@@ -86,7 +86,10 @@ export type CatalogLocale = "default" | "ja";
 export interface GiftCatalogSource {
   tiktokId: string;
   deviceId: string;
+  /** 段階的廃止対象。`GIFT_CATALOG_PROXY_URL`(日本プロキシ)未設定時のみのフォールバックとして使う。 */
   proxyUrl: string | null;
+  /** 生きているライブ接続が持つ数値room_id。コミュニティギフト反映用。無ければ省略。 */
+  roomId?: string;
 }
 
 export interface GiftCatalogDeps {
@@ -229,10 +232,95 @@ function describeError(err: unknown): string {
   return redact(String(err));
 }
 
-async function fetchGiftsFromTikTok(
+/**
+ * カタログ取得専用の日本プロキシ(Webshare、単一URL)。ライブ接続用の `TIKTOK_PROXY_POOL`
+ * (東南アジア系、JSON配列、sticky割当)とは無関係な別変数。
+ *
+ * 地域限定ギフト(`is_global_gift: false`)の可否は egress IP のリージョンだけで決まり、
+ * room_id・device_id・region パラメータでは変えられない(2026-09実測)。本番の
+ * `TIKTOK_PROXY_POOL` は東南アジア系のため、日本限定ギフトを恒久的に取りこぼしていた。
+ */
+function getGiftCatalogProxyUrl(): string | null {
+  return process.env.GIFT_CATALOG_PROXY_URL || null;
+}
+
+export const PROXY_ATTEMPT_LOG_KEY = "giftCatalogProxyAttemptLog";
+const PROXY_ATTEMPT_LOG_MAX_ENTRIES = 50;
+// pg_try_advisory_xact_lock用のロックキー。worker-guardian.ts の GUARDIAN_LOCK_KEY とは別値。
+const PROXY_ATTEMPT_LOG_LOCK_KEY = 837234501;
+
+export interface ProxyAttemptLogEntry {
+  /** ISO文字列。 */
+  at: string;
+  locale: CatalogLocale;
+  /** どの部屋を取得元にしたか。プロキシURL自体は記録しない。 */
+  tiktokId: string;
+  /** `GIFT_CATALOG_PROXY_URL` が設定されていたか。 */
+  usedJpProxy: boolean;
+  outcome: "success" | "failure";
+  /** success時のみ。 */
+  giftCount?: number;
+  /** failure時のみ。describeError() 通過済み(資格情報はマスク済み)。 */
+  error?: string;
+}
+
+/**
+ * 直近のカタログ取得(日本プロキシ経由)成功/失敗履歴を記録する。管理画面
+ * `/admin/proxy` の表示元。書き込み失敗はカタログ取得自体を止めない(呼び出し元でconsole.warn)。
+ *
+ * worker1/2/3の3プロセスが同時にこの関数を呼びうるため、`pg_try_advisory_xact_lock`
+ * (worker-guardian.ts の appendAuditLog と同じ方式)で read-modify-write を保護する。
+ * ロック取得に失敗した側はこのエントリを諦めて次回に譲る(監視ログなので1件欠落は許容、
+ * ブロッキング再試行はしない)。
+ */
+async function recordProxyAttempt(entry: ProxyAttemptLogEntry): Promise<void> {
+  try {
+    await prisma.$transaction(async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`
+        SELECT pg_try_advisory_xact_lock(${PROXY_ATTEMPT_LOG_LOCK_KEY}::bigint) AS locked
+      `;
+      if (!locked) {
+        console.warn("[gift-catalog] proxy attempt log: 別プロセスが書き込み中のためスキップ");
+        return;
+      }
+      const row = await tx.appSetting.findUnique({ where: { key: PROXY_ATTEMPT_LOG_KEY } });
+      let list: ProxyAttemptLogEntry[] = [];
+      if (row?.value) {
+        try {
+          const parsed = JSON.parse(row.value);
+          if (Array.isArray(parsed)) list = parsed;
+        } catch {
+          list = [];
+        }
+      }
+      list.push(entry);
+      const trimmed = list.slice(-PROXY_ATTEMPT_LOG_MAX_ENTRIES);
+      await tx.appSetting.upsert({
+        where: { key: PROXY_ATTEMPT_LOG_KEY },
+        create: { key: PROXY_ATTEMPT_LOG_KEY, value: JSON.stringify(trimmed) },
+        update: { value: JSON.stringify(trimmed) },
+      });
+    });
+  } catch (err) {
+    console.warn("[gift-catalog] proxy attempt log write failed:", describeError(err));
+  }
+}
+
+export async function fetchGiftsFromTikTok(
   source: GiftCatalogSource,
   locale: CatalogLocale
 ): Promise<unknown> {
+  const jpProxyUrl = getGiftCatalogProxyUrl();
+  // 日本プロキシを優先する。**英語版・日本語版どちらの呼び出しにも同じプロキシを使う**
+  // (地域ゲーティングは webcast_language と無関係にIPだけで決まるため、default ロケールにも必須)。
+  // 未設定時のみ既存の部屋プロキシへフォールバックする(無音で東南アジアのままだが、
+  // カタログ取得自体は失敗させない)。
+  // **設定済みの日本プロキシ自体が障害中でも部屋プロキシへは落とさない**(意図的)。
+  // 落とすと地域限定ギフトの取りこぼしが黙って再発するため、失敗はそのまま記録して
+  // 次周回(TTL経過後)の再試行に委ねる。障害時は`usedJpProxy: true`のfailureエントリが
+  // /admin/proxy に積み上がるので検知できる。
+  const proxyUrl = jpProxyUrl ?? source.proxyUrl;
+
   // WebSocketは張らない。HTTPで `gift/list/` を1回叩くためだけの使い捨て接続。
   const conn = new WebcastPushConnection(`@${source.tiktokId}`, {
     processInitialData: false,
@@ -250,17 +338,44 @@ async function fetchGiftsFromTikTok(
       ...(locale === "ja" ? { webcast_language: "ja-JP" } : {}),
     },
     // ライブ接続と同じegress IPを通す。Railwayの素のIPを晒さないため。
-    ...(source.proxyUrl
+    ...(proxyUrl
       ? {
           webClientOptions: {
-            httpsAgent: new ProxyAgent({ getProxyForUrl: () => source.proxyUrl as string }),
+            httpsAgent: new ProxyAgent({ getProxyForUrl: () => proxyUrl }),
           },
         }
       : {}),
   } as unknown as Record<string, unknown>);
 
+  // constructorの setDisconnected() が room_id='' を無条件に上書きするため、
+  // この代入は必ず construct **後**、fetchAvailableGifts() 呼び出し**前**に置く。
+  // clientParams は参照で返るgetterなので、この代入が fetchAvailableGifts() 側にも反映される。
+  if (source.roomId) {
+    conn.clientParams.room_id = source.roomId;
+  }
+
   try {
-    return await conn.fetchAvailableGifts();
+    const result = await conn.fetchAvailableGifts();
+    const giftCount = Array.isArray(result) ? result.length : undefined;
+    await recordProxyAttempt({
+      at: new Date().toISOString(),
+      locale,
+      tiktokId: source.tiktokId,
+      usedJpProxy: jpProxyUrl !== null,
+      outcome: "success",
+      giftCount,
+    });
+    return result;
+  } catch (err) {
+    await recordProxyAttempt({
+      at: new Date().toISOString(),
+      locale,
+      tiktokId: source.tiktokId,
+      usedJpProxy: jpProxyUrl !== null,
+      outcome: "failure",
+      error: describeError(err),
+    });
+    throw err;
   } finally {
     // 成否に関わらず必ず片付ける。
     try {
@@ -389,10 +504,12 @@ export async function refreshGiftCatalogIfStale(
       const sources = await resolveSources();
       if (sources.length === 0) return; // 担当している部屋が無い。失敗ではないのでバックオフもしない
 
-      // **複数の部屋から取って和集合にする。** 地域/イベント限定ギフト(`is_global_gift: false`)は
-      // `gift/list/` の応答が部屋(アカウント)ごとに変わりうるため、1部屋だけだと恒久的に
-      // 取りこぼす可能性がある。先に見つかった部屋のgiftIdを優先し(決定的にするため)、
-      // 後続の部屋は前の部屋に無かったgiftIdだけ足す。
+      // **複数の部屋から取って和集合にする。** 地域限定ギフト(`is_global_gift: false`)の可否は
+      // egress IP のリージョンだけで決まり部屋非依存(2026-09実測、`GIFT_CATALOG_PROXY_URL` で
+      // 対応済み)。一方、部屋(アカウント)ごとに変わるのは配信者固有のコミュニティギフトで、
+      // これは各部屋の数値room_idを渡したときだけ追加される(`GiftCatalogSource.roomId`)。
+      // 複数部屋から集めるのは、後者を複数配信者ぶん一度に拾うため。先に見つかった部屋の
+      // giftIdを優先し(決定的にするため)、後続の部屋は前の部屋に無かったgiftIdだけ足す。
       const baseByGiftId = new Map<number, CatalogEntry>();
       const jaByGiftId = new Map<number, CatalogEntry>();
       let anyBaseSucceeded = false;
