@@ -38,15 +38,18 @@ async function loadGiftTotals(): Promise<{ contributorCount: number; giftCount: 
 }
 
 export async function GET() {
-  const [streamerCount, giftTotals, battleCount] = await Promise.all([
-    prisma.streamer.count(),
+  // 「監視中」の実数はStreamer(登録ユーザー)行数ではなくTiktokRoom(実際に接続している部屋)数。
+  // コラボ自己申告等でStreamer登録なしにTiktokRoomだけ存在するケースがあるため、
+  // streamer.count()だと監視中の部屋数より少なく出る。
+  const [roomCount, giftTotals, battleCount] = await Promise.all([
+    prisma.tiktokRoom.count(),
     loadGiftTotals(),
     prisma.tiktokBattle.count(),
   ]);
 
   return NextResponse.json(
     {
-      streamerCount,
+      roomCount,
       contributorCount: giftTotals.contributorCount,
       giftCount: giftTotals.giftCount,
       battleCount,

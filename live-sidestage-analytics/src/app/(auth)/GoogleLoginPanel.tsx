@@ -46,7 +46,7 @@ export default function GoogleLoginPanel(props: GoogleLoginPanelProps) {
 }
 
 interface LoginStats {
-  streamerCount: number;
+  roomCount: number;
   contributorCount: number;
   giftCount: number;
   battleCount: number;
@@ -177,7 +177,7 @@ function LoginForm({
             <p className="text-[1.15rem] font-bold leading-[1.5] my-[18px] mb-[22px]">
               {stats ? (
                 <>
-                  <b className="text-[1.3rem]">{stats.streamerCount.toLocaleString()}</b>
+                  <b className="text-[1.3rem]">{stats.roomCount.toLocaleString()}</b>
                   人の配信者データを集計する、配信を支えるサポートプラットフォーム
                 </>
               ) : (
