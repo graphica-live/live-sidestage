@@ -1,13 +1,20 @@
 import type { DbStatsComparison } from "@/lib/db-stats/compare";
 
-/** LINE通知本文を組み立てる。異常有無に関わらず毎日サマリを送る。 */
-export function formatDbStatsMessage(runDateJst: string, comparison: DbStatsComparison): string {
+export type DbStatsEmail = { subject: string; text: string };
+
+/** メール通知の件名・本文を組み立てる。異常有無に関わらず毎日サマリを送る。 */
+export function formatDbStatsMessage(runDateJst: string, comparison: DbStatsComparison): DbStatsEmail {
+  const hasAnomaly = comparison.anomalies.length > 0;
+  const subject = hasAnomaly
+    ? `[DB統計] ${runDateJst} ⚠️異常増分${comparison.anomalies.length}件`
+    : `[DB統計] ${runDateJst} 異常なし`;
+
   const lines = [
     `[DB統計] ${runDateJst}`,
     `全${comparison.totalTables}テーブル / 件数合計${comparison.totalRows.toString()} / サイズ合計${formatBytes(comparison.totalBytes)}`,
   ];
 
-  if (comparison.anomalies.length === 0) {
+  if (!hasAnomaly) {
     lines.push("異常な増分はありません。");
   } else {
     lines.push(`⚠️ 前日比で急増したテーブル(${comparison.anomalies.length}件):`);
@@ -17,7 +24,7 @@ export function formatDbStatsMessage(runDateJst: string, comparison: DbStatsComp
     }
   }
 
-  return lines.join("\n");
+  return { subject, text: lines.join("\n") };
 }
 
 function formatBytes(bytes: bigint): string {

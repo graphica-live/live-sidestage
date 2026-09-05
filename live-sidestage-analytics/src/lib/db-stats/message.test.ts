@@ -11,14 +11,15 @@ describe("formatDbStatsMessage", () => {
       anomalies: [],
     };
 
-    const message = formatDbStatsMessage("2026-09-06", comparison);
+    const { subject, text } = formatDbStatsMessage("2026-09-06", comparison);
 
-    expect(message).toContain("異常な増分はありません");
-    expect(message).toContain("全3テーブル");
-    expect(message).not.toContain("⚠️");
+    expect(subject).toContain("異常なし");
+    expect(text).toContain("異常な増分はありません");
+    expect(text).toContain("全3テーブル");
+    expect(text).not.toContain("⚠️");
   });
 
-  it("異常テーブルがあれば件数と増加率を出す", () => {
+  it("異常テーブルがあれば件名・本文に件数と増加率を出す", () => {
     const comparison: DbStatsComparison = {
       totalTables: 2,
       totalRows: 500n,
@@ -34,10 +35,11 @@ describe("formatDbStatsMessage", () => {
       ],
     };
 
-    const message = formatDbStatsMessage("2026-09-06", comparison);
+    const { subject, text } = formatDbStatsMessage("2026-09-06", comparison);
 
-    expect(message).toContain("⚠️");
-    expect(message).toContain("public.gifts: 100 → 126 (+26%)");
+    expect(subject).toContain("異常増分1件");
+    expect(text).toContain("⚠️");
+    expect(text).toContain("public.gifts: 100 → 126 (+26%)");
   });
 
   it("prevCount=0からの増加は「新規データ」と表示する", () => {
@@ -56,8 +58,8 @@ describe("formatDbStatsMessage", () => {
       ],
     };
 
-    const message = formatDbStatsMessage("2026-09-06", comparison);
+    const { text } = formatDbStatsMessage("2026-09-06", comparison);
 
-    expect(message).toContain("event.NewTable: 0 → 5 (新規データ)");
+    expect(text).toContain("event.NewTable: 0 → 5 (新規データ)");
   });
 });

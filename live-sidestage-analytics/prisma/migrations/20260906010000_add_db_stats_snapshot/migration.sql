@@ -1,5 +1,5 @@
 -- 毎朝JST6:00にevent-workerが記録する全テーブルの件数・サイズのスナップショット
--- (src/lib/db-stats/collect.ts)。前日比+25%超の増分をLINEへ通知する異常検知の原本データ。
+-- (src/lib/db-stats/collect.ts)。前日比+25%超の増分をメールへ通知する異常検知の原本データ。
 --
 -- 注意: 本番デプロイは `prisma db push --accept-data-loss` を使用しており、このファイルは
 -- 実行されない(db pushはmigrationsフォルダを読まない)。履歴ドキュメントとして残すのみ。

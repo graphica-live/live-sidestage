@@ -16,7 +16,7 @@ import { autoFinishOverdueEvents } from "@/event/auto-finish";
 import { collectDbStats } from "@/lib/db-stats/collect";
 import { compareToPrevious } from "@/lib/db-stats/compare";
 import { formatDbStatsMessage } from "@/lib/db-stats/message";
-import { sendLineMessage } from "@/lib/notify/line";
+import { sendAlertEmail } from "@/lib/notify/email";
 import { toJstInputValue } from "@/event/datetime";
 import { prisma } from "@/lib/prisma";
 
@@ -244,7 +244,7 @@ async function autoFinishTick(): Promise<void> {
 }
 
 // 毎朝JST6:00に全テーブルの件数・サイズをDbStatsSnapshotへ記録し、前日比+閾値%超の
-// テーブルがあればLINEへ通知する(異常有無に関わらず毎日サマリを送る)。
+// テーブルがあればメールへ通知する(異常有無に関わらず毎日サマリを送る)。
 // JST暦日の@@uniqueで「今日は記録済みか」を判定するため、状態はメモリではなくDBに持つ
 // (プロセス再起動をまたいでも二重実行・実行漏れが起きない)。
 async function dbStatsTick(): Promise<void> {
@@ -267,7 +267,8 @@ async function dbStatsTick(): Promise<void> {
     console.log(
       `[event-worker] DB統計を記録 ${tables}テーブル / 異常増分 ${comparison.anomalies.length}件`
     );
-    await sendLineMessage(formatDbStatsMessage(datePart, comparison));
+    const { subject, text } = formatDbStatsMessage(datePart, comparison);
+    await sendAlertEmail(subject, text);
   } catch (err) {
     console.error("[event-worker] DB統計の記録・通知でエラー:", err);
   } finally {

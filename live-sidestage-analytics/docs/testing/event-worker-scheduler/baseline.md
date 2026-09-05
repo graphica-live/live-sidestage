@@ -19,9 +19,9 @@ last_reviewers: Qwen(Code Mode。DB統計tick追加のreview-auto流用、TestCa
 | TC-EWS-003 | 集計に時間がかかった場合のSLO警告 | `tick` / `SLO_WARN_MS` | 境界 | `aggregateDueEvents`の`totalMs`が`SLO_WARN_MS`を超過、かつ`processed>0` | warnログを出す（`processed=0`なら出さない） | 自動テストなし | NOT RUN: 自動テストなし | |
 | TC-EWS-004 | 自動終了tickの多重起動防止 | `autoFinishTick` / `autoFinishInFlight` | negative | 前回`autoFinishOverdueEvents`呼び出しが未完了 | 次の周期発火時に新規実行しない | 自動テストなし | NOT RUN: 自動テストなし | `autoFinishOverdueEvents`自体の判定（endAt超過からの猶予期間等）は`src/event/auto-finish.integration.test.ts`が対象 |
 | TC-EWS-005 | shutdown中は新規tickを開始しない | `shutdown()` / `stopping` | negative | `stopping=true` | `tick`/`autoFinishTick`/`avatarSnapshotTick`/`hostIdTick`/`renewTick`/`streamerHostIdTick`/`dbStatsTick` いずれも新規実行しない | 自動テストなし | NOT RUN: 自動テストなし | 各tickは独立timer・独立inFlightで管理。shutdownは`currentTick`/`mergeTickCurrent`の完了のみ待ち、他のtickは実行中でも待たずに`prisma.$disconnect()`へ進む（SIGTERM時に稀にDBエラーログが出うるが、各tickはcatch済みでデータ破壊はしない） |
-| TC-EWS-006 | DB統計tickの多重起動防止 | `dbStatsTick` / `dbStatsInFlight` | negative | 前回`dbStatsTick`(collect/compare/通知)が未完了 | 次の周期発火時に新規実行しない | 自動テストなし | NOT RUN: 自動テストなし | 他のtickと同型のguard。中身(collectDbStats/compareToPrevious/sendLineMessage)は`db-stats-daily-snapshot`baseline対象 |
-| TC-EWS-007 | JST6時前は記録・通知をスキップする | `dbStatsTick` / `DB_STATS_FORCE_RUN` | 境界 | `DB_STATS_FORCE_RUN`未設定、JST現在時刻が6時未満 | `collectDbStats`/`compareToPrevious`/`sendLineMessage`のいずれも呼ばれない | 自動テストなし | NOT RUN: 自動テストなし(時刻依存のため自動化困難) | 2026-09-06、`DB_STATS_FORCE_RUN=1`でevent-worker.tsを実際に起動し、54テーブル記録・LINE未設定時の警告ログ出力を確認済み(ゲートを無視した経路の疎通確認であり、6時前にスキップされることそのものは未検証) |
-| TC-EWS-008 | 当日分は1回だけ記録する | `dbStatsTick` / `DbStatsSnapshot`の`@@unique(runDate,schemaName,tableName)` | 正常 | JST6時以降、当日分の`DbStatsSnapshot`が既に存在する | `DB_STATS_FORCE_RUN`未設定なら`collectDbStats`/`compareToPrevious`/`sendLineMessage`を呼ばない(二重実行・二重通知を防ぐ) | 自動テストなし | NOT RUN: 自動テストなし(時刻依存のため自動化困難) | プロセス再起動をまたいでも`DbStatsSnapshot`の存在確認で判定するため、メモリ上の状態に依存しない |
+| TC-EWS-006 | DB統計tickの多重起動防止 | `dbStatsTick` / `dbStatsInFlight` | negative | 前回`dbStatsTick`(collect/compare/通知)が未完了 | 次の周期発火時に新規実行しない | 自動テストなし | NOT RUN: 自動テストなし | 他のtickと同型のguard。中身(collectDbStats/compareToPrevious/sendAlertEmail)は`db-stats-daily-snapshot`baseline対象 |
+| TC-EWS-007 | JST6時前は記録・通知をスキップする | `dbStatsTick` / `DB_STATS_FORCE_RUN` | 境界 | `DB_STATS_FORCE_RUN`未設定、JST現在時刻が6時未満 | `collectDbStats`/`compareToPrevious`/`sendAlertEmail`のいずれも呼ばれない | 自動テストなし | NOT RUN: 自動テストなし(時刻依存のため自動化困難) | 2026-09-06、`DB_STATS_FORCE_RUN=1`でevent-worker.tsを実際に起動し、54テーブル記録・通知認証情報未設定時の警告ログ出力を確認済み(ゲートを無視した経路の疎通確認であり、6時前にスキップされることそのものは未検証) |
+| TC-EWS-008 | 当日分は1回だけ記録する | `dbStatsTick` / `DbStatsSnapshot`の`@@unique(runDate,schemaName,tableName)` | 正常 | JST6時以降、当日分の`DbStatsSnapshot`が既に存在する | `DB_STATS_FORCE_RUN`未設定なら`collectDbStats`/`compareToPrevious`/`sendAlertEmail`を呼ばない(二重実行・二重通知を防ぐ) | 自動テストなし | NOT RUN: 自動テストなし(時刻依存のため自動化困難) | プロセス再起動をまたいでも`DbStatsSnapshot`の存在確認で判定するため、メモリ上の状態に依存しない |
 
 ## Quality Gate
 
@@ -32,4 +32,4 @@ last_reviewers: Qwen(Code Mode。DB統計tick追加のreview-auto流用、TestCa
 - `aggregateDueEvents`の集計計算そのもの、`pg_try_advisory_xact_lock`によるロック意味論、`Event.finalizedAt`の判定・リセット（`src/event/aggregate.ts`。既存自動テスト: `src/event/aggregate.integration.test.ts`）
 - `autoFinishOverdueEvents`の終了判定ロジック自体（`src/event/auto-finish.ts`。既存自動テスト: `src/event/auto-finish.integration.test.ts`）
 - `mergeTick`/`avatarSnapshotTick`/`hostIdTick`/`renewTick`/`streamerHostIdTick`各々が呼ぶ集計・同期ロジックの中身（event機能側のbaseline対象）
-- `collectDbStats`/`compareToPrevious`/`formatDbStatsMessage`/`sendLineMessage`の中身（`db-stats-daily-snapshot`baseline対象）
+- `collectDbStats`/`compareToPrevious`/`formatDbStatsMessage`/`sendAlertEmail`の中身（`db-stats-daily-snapshot`baseline対象）
