@@ -25,20 +25,34 @@ describe("compareToPrevious", () => {
     await prisma.dbStatsSnapshot.deleteMany({ where: { tableName: FAKE_TABLE } });
   });
 
-  it("前回記録が無ければ異常なしで返す", async () => {
+  it("前回記録が無ければ異常なしで返す。allTablesは前回0件・全体合計はnullで返る", async () => {
     await seed(DAY1, 100n);
 
     const result = await compareToPrevious(DAY1);
 
     expect(result.anomalies).toHaveLength(0);
+    expect(result.prevTotalRows).toBeNull();
+    expect(result.prevTotalBytes).toBeNull();
+    expect(result.totalRowsPctChange).toBeNull();
+    const stat = result.allTables.find((t) => t.tableName === FAKE_TABLE);
+    expect(stat).toBeDefined();
+    expect(stat?.prevCount).toBe(0n);
+    expect(stat?.todayCount).toBe(100n);
+    expect(stat?.pctChange).toBeNull();
   });
 
-  it("前日比+25%未満は異常扱いしない", async () => {
+  it("前日比+25%未満は異常扱いしない。allTablesには非異常テーブルも含まれる", async () => {
     await seed(DAY2, 120n); // DAY1=100からは+20%
 
     const result = await compareToPrevious(DAY2);
 
     expect(result.anomalies.find((a) => a.tableName === FAKE_TABLE)).toBeUndefined();
+    const stat = result.allTables.find((t) => t.tableName === FAKE_TABLE);
+    expect(stat).toBeDefined();
+    expect(stat?.prevCount).toBe(100n);
+    expect(stat?.todayCount).toBe(120n);
+    expect(stat?.pctChange).toBeCloseTo(0.2, 2);
+    expect(result.prevTotalRows).not.toBeNull();
   });
 
   it("前日比+25%以上は異常として検出する", async () => {
@@ -66,6 +80,45 @@ describe("compareToPrevious", () => {
     expect(anomaly?.pctChange).toBeNull();
 
     await prisma.dbStatsSnapshot.deleteMany({ where: { runDate: { in: [zeroDay, nextDay] } } });
+  });
+
+  it("全体合計(件数・サイズ)の前日比を計算する", async () => {
+    const prevDay = new Date("2020-01-20T00:00:00.000Z");
+    const todayDay = new Date("2020-01-21T00:00:00.000Z");
+    const table2 = `${FAKE_TABLE}_2`;
+
+    await prisma.dbStatsSnapshot.upsert({
+      where: { runDate_schemaName_tableName: { runDate: prevDay, schemaName: FAKE_SCHEMA, tableName: FAKE_TABLE } },
+      create: { runDate: prevDay, schemaName: FAKE_SCHEMA, tableName: FAKE_TABLE, rowCount: 100n, totalBytes: 1000n },
+      update: { rowCount: 100n, totalBytes: 1000n },
+    });
+    await prisma.dbStatsSnapshot.upsert({
+      where: { runDate_schemaName_tableName: { runDate: prevDay, schemaName: FAKE_SCHEMA, tableName: table2 } },
+      create: { runDate: prevDay, schemaName: FAKE_SCHEMA, tableName: table2, rowCount: 50n, totalBytes: 500n },
+      update: { rowCount: 50n, totalBytes: 500n },
+    });
+    await prisma.dbStatsSnapshot.upsert({
+      where: { runDate_schemaName_tableName: { runDate: todayDay, schemaName: FAKE_SCHEMA, tableName: FAKE_TABLE } },
+      create: { runDate: todayDay, schemaName: FAKE_SCHEMA, tableName: FAKE_TABLE, rowCount: 120n, totalBytes: 1200n },
+      update: { rowCount: 120n, totalBytes: 1200n },
+    });
+    await prisma.dbStatsSnapshot.upsert({
+      where: { runDate_schemaName_tableName: { runDate: todayDay, schemaName: FAKE_SCHEMA, tableName: table2 } },
+      create: { runDate: todayDay, schemaName: FAKE_SCHEMA, tableName: table2, rowCount: 60n, totalBytes: 600n },
+      update: { rowCount: 60n, totalBytes: 600n },
+    });
+
+    const result = await compareToPrevious(todayDay);
+
+    expect(result.totalRows).toBe(180n); // 120+60
+    expect(result.prevTotalRows).toBe(150n); // 100+50
+    expect(result.totalRowsPctChange).toBeCloseTo(0.2, 5);
+    expect(result.totalBytes).toBe(1800n);
+    expect(result.prevTotalBytes).toBe(1500n);
+    expect(result.totalBytesPctChange).toBeCloseTo(0.2, 5);
+
+    await prisma.dbStatsSnapshot.deleteMany({ where: { runDate: { in: [prevDay, todayDay] } } });
+    await prisma.dbStatsSnapshot.deleteMany({ where: { tableName: table2 } });
   });
 });
 

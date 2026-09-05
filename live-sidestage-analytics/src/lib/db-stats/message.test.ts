@@ -9,6 +9,15 @@ describe("formatDbStatsMessage", () => {
       totalTables: 3,
       totalRows: 100n,
       totalBytes: 1024n * 1024n,
+      prevTotalRows: 90n,
+      prevTotalBytes: 900n * 1024n,
+      totalRowsPctChange: 100 / 90 - 1,
+      totalBytesPctChange: (1024 - 900) / 900,
+      allTables: [
+        { schemaName: "public", tableName: "a", prevCount: 30n, todayCount: 33n, pctChange: 0.1 },
+        { schemaName: "public", tableName: "b", prevCount: 30n, todayCount: 33n, pctChange: 0.1 },
+        { schemaName: "public", tableName: "c", prevCount: 30n, todayCount: 34n, pctChange: 0.133 },
+      ],
       anomalies: [],
     };
 
@@ -18,6 +27,9 @@ describe("formatDbStatsMessage", () => {
     expect(text).toContain("異常な増分はありません");
     expect(text).toContain("全3テーブル");
     expect(text).not.toContain("⚠️");
+    expect(text).toContain("件数合計: 90 → 100 (+11%)");
+    expect(text).toContain("public.a: 30 → 33 (+10%)");
+    expect(text).toContain("public.c: 30 → 34 (+13%)");
   });
 
   it("異常テーブルがあれば件名・本文に件数と増加率を出す", () => {
@@ -25,6 +37,13 @@ describe("formatDbStatsMessage", () => {
       totalTables: 2,
       totalRows: 500n,
       totalBytes: 2048n,
+      prevTotalRows: 400n,
+      prevTotalBytes: 2048n,
+      totalRowsPctChange: 0.25,
+      totalBytesPctChange: 0,
+      allTables: [
+        { schemaName: "public", tableName: "gifts", prevCount: 100n, todayCount: 126n, pctChange: 0.26 },
+      ],
       anomalies: [
         {
           schemaName: "public",
@@ -48,6 +67,11 @@ describe("formatDbStatsMessage", () => {
       totalTables: 1,
       totalRows: 5n,
       totalBytes: 100n,
+      prevTotalRows: 0n,
+      prevTotalBytes: 0n,
+      totalRowsPctChange: null,
+      totalBytesPctChange: null,
+      allTables: [{ schemaName: "event", tableName: "NewTable", prevCount: 0n, todayCount: 5n, pctChange: null }],
       anomalies: [
         {
           schemaName: "event",
@@ -63,6 +87,44 @@ describe("formatDbStatsMessage", () => {
 
     expect(text).toContain("event.NewTable: 0 → 5 (新規データ)");
   });
+
+  it("前回記録が無い(初回実行)ときは全体合計を「初回記録」と表示する", () => {
+    const comparison: DbStatsComparison = {
+      totalTables: 1,
+      totalRows: 5n,
+      totalBytes: 1024n * 1024n,
+      prevTotalRows: null,
+      prevTotalBytes: null,
+      totalRowsPctChange: null,
+      totalBytesPctChange: null,
+      allTables: [{ schemaName: "public", tableName: "a", prevCount: 0n, todayCount: 5n, pctChange: null }],
+      anomalies: [],
+    };
+
+    const { text } = formatDbStatsMessage("2026-09-06", comparison);
+
+    expect(text).toContain("件数合計: 5(初回記録、前日比較なし)");
+    expect(text).toContain("サイズ合計: 1.0MB(初回記録、前日比較なし)");
+  });
+
+  it("全テーブル一覧は件数が減少したテーブルも符号付きで含む", () => {
+    const comparison: DbStatsComparison = {
+      totalTables: 1,
+      totalRows: 80n,
+      totalBytes: 100n,
+      prevTotalRows: 100n,
+      prevTotalBytes: 100n,
+      totalRowsPctChange: -0.2,
+      totalBytesPctChange: 0,
+      allTables: [{ schemaName: "public", tableName: "shrinking", prevCount: 100n, todayCount: 80n, pctChange: -0.2 }],
+      anomalies: [],
+    };
+
+    const { text } = formatDbStatsMessage("2026-09-06", comparison);
+
+    expect(text).toContain("public.shrinking: 100 → 80 (-20%)");
+    expect(text).toContain("件数合計: 100 → 80 (-20%)");
+  });
 });
 
 describe("buildDbStatsEmail", () => {
@@ -70,6 +132,13 @@ describe("buildDbStatsEmail", () => {
     totalTables: 2,
     totalRows: 500n,
     totalBytes: 2048n,
+    prevTotalRows: 400n,
+    prevTotalBytes: 2048n,
+    totalRowsPctChange: 0.25,
+    totalBytesPctChange: 0,
+    allTables: [
+      { schemaName: "public", tableName: "gifts", prevCount: 100n, todayCount: 126n, pctChange: 0.26 },
+    ],
     anomalies: [
       { schemaName: "public", tableName: "gifts", prevCount: 100n, todayCount: 126n, pctChange: 0.26 },
     ],
@@ -118,5 +187,12 @@ describe("buildDbStatsEmail", () => {
     expect(email.inlineImages?.[1].contentId).toBe("anomaly-trend-0");
     expect(email.html).toContain("cid:anomaly-trend-0");
     expect(email.html).toContain("public.gifts");
+  });
+
+  it("htmlのpre本文にも全テーブル一覧・全体合計欄が含まれる", () => {
+    const email = buildDbStatsEmail("2026-09-06", comparison, totalTrend, []);
+
+    expect(email.html).toContain("件数合計: 400 → 500 (+25%)");
+    expect(email.html).toContain("public.gifts: 100 → 126 (+26%)");
   });
 });

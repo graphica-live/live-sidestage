@@ -14,7 +14,9 @@ export function formatDbStatsMessage(runDateJst: string, comparison: DbStatsComp
 
   const lines = [
     `[DB統計] ${runDateJst}`,
-    `全${comparison.totalTables}テーブル / 件数合計${comparison.totalRows.toString()} / サイズ合計${formatBytes(comparison.totalBytes)}`,
+    `全${comparison.totalTables}テーブル`,
+    `件数合計: ${formatCountChange(comparison.prevTotalRows, comparison.totalRows, comparison.totalRowsPctChange)}`,
+    `サイズ合計: ${formatBytesChange(comparison.prevTotalBytes, comparison.totalBytes, comparison.totalBytesPctChange)}`,
   ];
 
   if (!hasAnomaly) {
@@ -27,7 +29,30 @@ export function formatDbStatsMessage(runDateJst: string, comparison: DbStatsComp
     }
   }
 
+  lines.push(`テーブルごとの件数(全${comparison.allTables.length}件):`);
+  for (const t of comparison.allTables) {
+    lines.push(`  ${t.schemaName}.${t.tableName}: ${t.prevCount.toString()} → ${t.todayCount.toString()} (${formatPct(t.pctChange)})`);
+  }
+
   return { subject, text: lines.join("\n") };
+}
+
+/** 全テーブル一覧・全体合計欄の増減%表示。異常一覧欄(常に「+」固定)とは異なり、
+ * 減少もあり得るので符号を動的にする。 */
+function formatPct(pctChange: number | null): string {
+  if (pctChange === null) return "新規データ";
+  const rounded = Math.round(pctChange * 100);
+  return rounded >= 0 ? `+${rounded}%` : `${rounded}%`;
+}
+
+function formatCountChange(prev: bigint | null, today: bigint, pctChange: number | null): string {
+  if (prev === null) return `${today.toString()}(初回記録、前日比較なし)`;
+  return `${prev.toString()} → ${today.toString()} (${formatPct(pctChange)})`;
+}
+
+function formatBytesChange(prev: bigint | null, today: bigint, pctChange: number | null): string {
+  if (prev === null) return `${formatBytes(today)}(初回記録、前日比較なし)`;
+  return `${formatBytes(prev)} → ${formatBytes(today)} (${formatPct(pctChange)})`;
 }
 
 function formatBytes(bytes: bigint): string {
