@@ -18,7 +18,7 @@ const statusColor: Record<string, string> = {
   error: "bg-red-500",
 };
 
-export default function DashboardHeader() {
+export default function DashboardHeader({ email }: { email?: string | null }) {
   const [listener, setListener] = useState<ListenerState | null>(null);
 
   useEffect(() => {
@@ -55,6 +55,15 @@ export default function DashboardHeader() {
             </span>
           )}
         </div>
+
+        {email && (
+          <span
+            className="text-xs text-muted truncate shrink min-w-0 max-w-[100px] sm:max-w-[160px]"
+            title={email}
+          >
+            {email}
+          </span>
+        )}
 
         {/* オーバーレイ(/overlays)・イベント(/events)への導線はここに置かない。
             どちらも表向き別サービスとして分離してあり、analytics 側から
