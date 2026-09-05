@@ -139,10 +139,10 @@ async function seedBattles(eventId: string, participantIds: string[]) {
       await prisma.$executeRaw`
         INSERT INTO public.tiktok_battles
           (id, "roomId", "battleId", action, "startedAt", "startedAtEstimated", "endedAt",
-           "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", raw, "updatedAt")
+           "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", "updatedAt")
         VALUES
           (gen_random_uuid()::text, ${roomId}, ${battleId}, 5, ${startedAt}, false, ${endedAt},
-           600, ARRAY[]::text[], ARRAY[]::text[], '{}'::jsonb, '{}'::jsonb, NOW())
+           600, ARRAY[]::text[], ARRAY[]::text[], '{}'::jsonb, NOW())
       `;
     }
     seeded++;

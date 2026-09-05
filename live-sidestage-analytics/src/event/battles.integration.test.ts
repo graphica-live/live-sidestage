@@ -80,12 +80,12 @@ async function insertBattle(params: {
   await prisma.$executeRaw`
     INSERT INTO public.tiktok_battles
       (id, "roomId", "battleId", action, "startedAt", "startedAtEstimated", "endedAt",
-       "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", raw, "updatedAt")
+       "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", "updatedAt")
     VALUES
       (gen_random_uuid()::text, ${params.roomId}, ${params.battleId}, ${params.action ?? 5},
        ${params.startedAt}, ${params.startedAtEstimated ?? false}, ${params.endedAt},
        ${params.durationSec ?? null}, ARRAY[]::text[], ARRAY[]::text[], '{}'::jsonb,
-       '{}'::jsonb, NOW())
+       NOW())
   `;
 }
 

@@ -1,4 +1,4 @@
-// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
+﻿// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 //
 // TikTok ID変更時のroom合流(absorbRooms)を実DBに対して検証する。ユニット側は
 // 純粋関数(findHostUserIdFromBattleProfiles)しかカバーしないため、raw SQLを含む
@@ -158,7 +158,6 @@ describe("absorbRooms — ABSORB正常系", () => {
         action: 4,
         startedAt: new Date(),
         endedAt: null,
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -168,7 +167,6 @@ describe("absorbRooms — ABSORB正常系", () => {
         action: 5,
         startedAt: new Date(),
         endedAt: new Date(),
-        raw: {},
       },
     });
 

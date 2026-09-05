@@ -1,4 +1,4 @@
-// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
+﻿// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // バトル履歴の確定処理(BattleHistory系テーブルへのスナップショット保存)を検証する。
 //
 // ここで作る TiktokRoom は monitoringSuspended: true にする。Streamer 0人の部屋も
@@ -74,7 +74,6 @@ function battleData(
       [SELF_ANCHOR_ID]: { displayId: "self_handle", nickName: "じぶん", avatarUrl: "https://example.invalid/a.jpg" },
       [OPPONENT_ANCHOR_ID]: { displayId: "opp_handle", nickName: "あいて", avatarUrl: "https://example.invalid/b.jpg" },
     },
-    raw: {},
     ...overrides,
   };
 }
