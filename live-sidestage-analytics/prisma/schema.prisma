@@ -336,7 +336,6 @@ model TiktokRoom {
   battleArmiesSnapshots TiktokBattleArmiesSnapshot[]
   battleHistories    BattleHistory[]
   watches            AgencyWatch[]
-  likeTallies        LikeTally[]
   monitorLeases      RoomMonitorLease[]
   connectionIntervals RoomConnectionInterval[]
 
@@ -602,26 +601,6 @@ model Streamer {
 // 同じ行を参照する)。likeイベント自体には金銭的価値がなく再送/重複の実害が
 // Giftより小さいため、Giftのような(roomId, orderId)unique制約やmsgId時間窓dedupまでは持たない
 // — 増分はWorker側の秒単位コアレッシング+プロセス内msgId FIFOでのみ弾く。
-model LikeTally {
-  id              String   @id @default(cuid())
-  roomId          String
-  dayKey          String // jstDateKey()、Giftと同じ形式
-  uniqueId        String
-  nickname        String
-  profileImageUrl String?
-  totalLikes      Int      @default(0)
-  updatedAt       DateTime @updatedAt
-  createdAt       DateTime @default(now())
-
-  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-
-  // (roomId, dayKey, uniqueId)のunique indexが(roomId, dayKey)検索もprefixでカバーするため、
-  // 別途の@@indexは追加しない。
-  @@unique([roomId, dayKey, uniqueId])
-  @@map("like_tallies")
-  @@schema("public")
-}
-
 model OverlayCoinListSettings {
   streamerId   String   @id
   fontKey      String   @default("default")
