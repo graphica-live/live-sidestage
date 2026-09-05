@@ -394,7 +394,7 @@ export async function absorbRooms(
                     "durationSec" = old."durationSec", "hostUserIds" = old."hostUserIds",
                     "hostDisplayIds" = old."hostDisplayIds", "hostScores" = old."hostScores",
                     "hostProfiles" = old."hostProfiles", "hostTeams" = old."hostTeams",
-                    "raw" = old."raw", "updatedAt" = now()
+                    "updatedAt" = now()
                FROM public."tiktok_battles" old
               WHERE o."id" = $1 AND old."id" = $2`,
             row.nId,

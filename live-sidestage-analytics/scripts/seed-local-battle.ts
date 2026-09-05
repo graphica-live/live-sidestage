@@ -1,4 +1,4 @@
-import { prisma } from "../src/lib/prisma";
+﻿import { prisma } from "../src/lib/prisma";
 
 async function main() {
   const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokId: "local_test_streamer" } });
@@ -34,7 +34,6 @@ async function main() {
       durationSec: 600,
       hostUserIds: [selfHostUserId, opponentHostUserId],
       hostScores,
-      raw: {},
     },
   });
 
@@ -49,7 +48,6 @@ async function main() {
       durationSec: 600,
       hostUserIds: [selfHostUserId, opponentHostUserId],
       hostScores,
-      raw: {},
     },
   });
 

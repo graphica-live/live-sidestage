@@ -5,7 +5,6 @@
 // WebcastPushConnection は deprecated。simplifyObject() が common をトップレベルへ展開したり
 // battleUsers を足したりと、型定義(tiktok-schema.d.ts)と実際の payload はずれている。
 // したがって全フィールドを best-effort で読み、取れなかったものは null にする。
-// payload そのもの(raw)は必ず保存するので、後から再解釈できる。
 
 /** BattleAction。tiktok-schema.d.ts の enum に対応する。 */
 export const BATTLE_ACTION = {
@@ -139,7 +138,6 @@ function findTeamArmies(data: Record<string, unknown>): Record<string, unknown>[
   return toEntries(data.teamArmies);
 }
 
-/** バックフィルスクリプト(既存raw JSONの再解釈)からも使うのでexportする。 */
 export function collectHosts(data: Record<string, unknown>) {
   const hostUserIds: string[] = [];
   const hostScores: Record<string, string> = {};

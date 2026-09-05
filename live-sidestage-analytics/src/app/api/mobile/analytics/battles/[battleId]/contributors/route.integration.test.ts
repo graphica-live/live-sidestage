@@ -1,4 +1,4 @@
-// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
+﻿// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -46,7 +46,6 @@ beforeAll(async () => {
       durationSec: 300,
       hostUserIds: ["itest_host_self"],
       hostScores: {},
-      raw: {},
     },
   });
 

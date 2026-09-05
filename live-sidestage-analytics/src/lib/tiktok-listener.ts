@@ -1457,23 +1457,6 @@ function queueBattleWrite(key: string, task: () => Promise<void>): void {
   void battleWrites.run(key, task);
 }
 
-// payload には未検証の構造が入りうるので、JSON 化できないものはそこで捨てる。
-// 1件あたりの上限を設けるのは、anchorInfo のアバター画像URL群などで肥大するため。
-const MAX_RAW_BYTES = 64 * 1024;
-
-function toStorableRaw(data: unknown): Prisma.InputJsonValue {
-  try {
-    const json = JSON.stringify(data);
-    if (!json) return { unserializable: true };
-    if (json.length > MAX_RAW_BYTES) {
-      return { truncated: true, bytes: json.length, head: json.slice(0, MAX_RAW_BYTES) };
-    }
-    return JSON.parse(json) as Prisma.InputJsonValue;
-  } catch (err) {
-    return { unserializable: true, error: String(err) };
-  }
-}
-
 /**
  * バトル履歴の確定を仕掛けるまでの猶予。
  *
@@ -1507,8 +1490,6 @@ async function persistBattle(
   tiktokId: string,
   streamerIds: string[],
   parsed: ParsedBattle,
-  rawKey: "battle" | "armies",
-  raw: unknown,
   receivedAt: Date
 ): Promise<void> {
   const existing = await prisma.tiktokBattle.findUnique({
@@ -1532,17 +1513,6 @@ async function persistBattle(
 
   const state = mergeBattleState(previous, parsed, receivedAt);
 
-  // raw は linkMicBattle と linkMicArmies を別キーで持つ。実 payload の fixture を
-  // 取るとき、両方のイベント形が1レコードから読めるようにするため。
-  const existingRaw =
-    existing && existing.raw && typeof existing.raw === "object" && !Array.isArray(existing.raw)
-      ? (existing.raw as Prisma.JsonObject)
-      : {};
-  const raws: Prisma.InputJsonObject = {
-    ...(existingRaw as Prisma.InputJsonObject),
-    [rawKey]: toStorableRaw(raw),
-  };
-
   const data = {
     action: state.action,
     startedAt: state.startedAt,
@@ -1554,7 +1524,6 @@ async function persistBattle(
     hostScores: state.hostScores,
     hostProfiles: state.hostProfiles,
     hostTeams: state.hostTeams,
-    raw: raws,
   };
 
   if (existing) {
@@ -1640,15 +1609,13 @@ function recordBattleEvent(
   roomId: string,
   tiktokId: string,
   streamerIds: string[],
-  parsed: ParsedBattle | null,
-  rawKey: "battle" | "armies",
-  raw: unknown
+  parsed: ParsedBattle | null
 ): void {
   // 成立していない招待(INVITE / REJECT / CANCEL)やパースできない payload は記録しない。
   if (!parsed) return;
   const receivedAt = new Date();
   queueBattleWrite(`${roomId}:${parsed.battleId}`, () =>
-    persistBattle(roomId, tiktokId, streamerIds, parsed, rawKey, raw, receivedAt)
+    persistBattle(roomId, tiktokId, streamerIds, parsed, receivedAt)
   );
 }
 
@@ -1890,9 +1857,7 @@ async function connectAndAttach(
       roomId,
       inst.state.tiktokId,
       Array.from(inst.subscriberIds),
-      parseBattleEvent(data),
-      "battle",
-      data
+      parseBattleEvent(data)
     );
   });
   conn.on("linkMicArmies", (data: unknown) => {
@@ -1901,9 +1866,7 @@ async function connectAndAttach(
       roomId,
       inst.state.tiktokId,
       Array.from(inst.subscriberIds),
-      parseArmiesEvent(data),
-      "armies",
-      data
+      parseArmiesEvent(data)
     );
   });
 

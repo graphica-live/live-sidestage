@@ -3,9 +3,9 @@
 //
 // **本番DBへの実行はユーザーの明示的な指示があってから行うこと**(書き込みを伴う)。
 //
-// 設計(backfill-battle-host-teams.ts と同じ考え方: 冪等・CAS・dry-run):
+// 設計(冪等・CAS・dry-run):
 //
-// - 駆動クエリは軽量列のみ(raw / hostProfiles 等の重い列は取らない)。id カーソルで500件ずつ走査する。
+// - 駆動クエリは軽量列のみ(hostProfiles 等の重い列は取らない)。id カーソルで500件ずつ走査する。
 // - **action による事前フィルタはしない。** 全行に resolveBattleWindow を適用し、status が
 //   finished/cut_short かつ window.end !== null のものだけを対象にする(現行UIの「終了扱い」判定と
 //   完全に一致させるため。action だけで絞ると OPEN のまま endedAt が埋まっている行や
@@ -72,7 +72,7 @@ async function main() {
       where: batchWhere,
       orderBy: { id: "asc" },
       take: BATCH_SIZE,
-      // 重い列(raw / hostProfiles / hostScores)は取らない。窓の判定に要る列だけ。
+      // 重い列(hostProfiles / hostScores)は取らない。窓の判定に要る列だけ。
       select: {
         id: true,
         roomId: true,

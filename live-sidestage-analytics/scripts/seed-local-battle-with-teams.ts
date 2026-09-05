@@ -1,4 +1,4 @@
-import { prisma } from "../src/lib/prisma";
+﻿import { prisma } from "../src/lib/prisma";
 import { computeBattleSnapshot, commitBattleSnapshot } from "../src/lib/battle-history-finalize";
 
 async function main() {
@@ -34,7 +34,6 @@ async function main() {
       durationSec: 600,
       hostUserIds: [selfHostUserId, opponentHostUserId],
       hostScores,
-      raw: {},
     },
   });
   await prisma.tiktokBattle.create({
@@ -48,7 +47,6 @@ async function main() {
       durationSec: 600,
       hostUserIds: [selfHostUserId, opponentHostUserId],
       hostScores,
-      raw: {},
     },
   });
 

@@ -1,4 +1,4 @@
-// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
+﻿// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // hostUserId を事前にseedしておき、backfillHostUserIds()(外部TikTok問い合わせ)を
 // 実際には発火させない状態でテストする。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -66,7 +66,6 @@ beforeAll(async () => {
       durationSec: 300,
       hostUserIds: ["itest_host_self"],
       hostScores: { itest_host_self: "100" },
-      raw: {},
     },
   });
 
@@ -200,7 +199,6 @@ describe("GET /api/mobile/analytics/battles", () => {
           durationSec: 300,
           hostUserIds: ["itest_host_self"],
           hostScores: { itest_host_self: "50" },
-          raw: {},
         },
       });
 

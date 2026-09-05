@@ -1,4 +1,4 @@
-// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
+﻿// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // queryBattles() の DB 依存部分(相手roomの解決、opponent.count)を検証する。
 // 純粋関数(resolveBattleScore等)のユニットテストは battle-history.test.ts 側にある。
 //
@@ -55,7 +55,6 @@ describe("queryBattles opponent.count", () => {
         durationSec: 300,
         hostUserIds: ["host_self"],
         hostScores: {},
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -69,7 +68,6 @@ describe("queryBattles opponent.count", () => {
         durationSec: 300,
         hostUserIds: ["host_b"],
         hostScores: {},
-        raw: {},
       },
     });
 
@@ -85,7 +83,6 @@ describe("queryBattles opponent.count", () => {
         durationSec: 300,
         hostUserIds: ["host_self"],
         hostScores: {},
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -99,7 +96,6 @@ describe("queryBattles opponent.count", () => {
         durationSec: 300,
         hostUserIds: ["host_c"],
         hostScores: {},
-        raw: {},
       },
     });
 
@@ -183,7 +179,6 @@ describe("queryBattles teams (2vs2)", () => {
           host_d: { displayId: "opponent_d_handle", nickName: "相手D", avatarUrl: null },
         },
         hostTeams: { host_self: "1", host_b: "1", host_c: "2", host_d: "2" },
-        raw: {},
       },
     });
     // 各roomも同じbattleIdの行を持つ。teamArmiesは両チーム分を1payloadに含むため、
@@ -204,7 +199,6 @@ describe("queryBattles teams (2vs2)", () => {
         durationSec: 300,
         hostUserIds: allHostUserIds,
         hostScores: {},
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -218,7 +212,6 @@ describe("queryBattles teams (2vs2)", () => {
         durationSec: 300,
         hostUserIds: allHostUserIds,
         hostScores: {},
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -232,7 +225,6 @@ describe("queryBattles teams (2vs2)", () => {
         durationSec: 300,
         hostUserIds: allHostUserIds,
         hostScores: {},
-        raw: {},
       },
     });
 
@@ -325,7 +317,6 @@ describe("queryBattles multi(hostTeamsが2チームに解決できない乱戦)"
           host_e: { displayId: "opponent_e_handle", nickName: "相手E", avatarUrl: null },
           host_f: { displayId: "opponent_f_handle", nickName: "相手F", avatarUrl: null },
         },
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -339,7 +330,6 @@ describe("queryBattles multi(hostTeamsが2チームに解決できない乱戦)"
         durationSec: 300,
         hostUserIds: allHostUserIds,
         hostScores: {},
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -353,7 +343,6 @@ describe("queryBattles multi(hostTeamsが2チームに解決できない乱戦)"
         durationSec: 300,
         hostUserIds: allHostUserIds,
         hostScores: {},
-        raw: {},
       },
     });
 
@@ -473,7 +462,6 @@ describe("queryBattles teams(3陣営以上)", () => {
           host_tri_c1: "3",
           host_tri_c2: "3",
         },
-        raw: {},
       },
     });
     for (const roomId of otherTriRoomIds) {
@@ -488,7 +476,6 @@ describe("queryBattles teams(3陣営以上)", () => {
           durationSec: 300,
           hostUserIds: allHostUserIds,
           hostScores: {},
-          raw: {},
         },
       });
     }
@@ -577,7 +564,6 @@ describe("queryBattles selfTeam/opponentTeamのtiktokId解決はバトルごと�
         durationSec: 300,
         hostUserIds: ["host_self_dup", SHARED_HOST_USER_ID],
         hostScores: { host_self_dup: "10", [SHARED_HOST_USER_ID]: "5" },
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -591,7 +577,6 @@ describe("queryBattles selfTeam/opponentTeamのtiktokId解決はバトルごと�
         durationSec: 300,
         hostUserIds: ["host_self_dup", SHARED_HOST_USER_ID],
         hostScores: {},
-        raw: {},
       },
     });
 
@@ -607,7 +592,6 @@ describe("queryBattles selfTeam/opponentTeamのtiktokId解決はバトルごと�
         durationSec: 300,
         hostUserIds: ["host_self_dup", SHARED_HOST_USER_ID],
         hostScores: { host_self_dup: "20", [SHARED_HOST_USER_ID]: "8" },
-        raw: {},
       },
     });
     await prisma.tiktokBattle.create({
@@ -621,7 +605,6 @@ describe("queryBattles selfTeam/opponentTeamのtiktokId解決はバトルごと�
         durationSec: 300,
         hostUserIds: ["host_self_dup", SHARED_HOST_USER_ID],
         hostScores: {},
-        raw: {},
       },
     });
 
@@ -664,7 +647,6 @@ describe("queryBattles listenerQuery", () => {
       durationSec: 300,
       hostUserIds: ["host_self"],
       hostScores: {},
-      raw: {},
       ...overrides,
     };
   }
@@ -861,7 +843,6 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
         [SELF_ANCHOR]: { displayId: "live_self", nickName: "ライブ自分", avatarUrl: "https://example.invalid/a.jpg" },
         [OPP_ANCHOR]: { displayId: "live_opp", nickName: "ライブ相手", avatarUrl: "https://example.invalid/b.jpg" },
       },
-      raw: {},
       ...overrides,
     };
   }
