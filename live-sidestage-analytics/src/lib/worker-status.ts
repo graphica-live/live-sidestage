@@ -318,6 +318,49 @@ export async function probeWorkers(
 }
 
 /**
+ * 手動移動の直後に toWorker/fromWorker へ即時 reconcile を依頼する(worker.ts の
+ * POST /internal/reconcile-now)。ベストエフォート — 呼び出し元をブロックしない・
+ * 失敗は例外を投げずログのみ。**commit 後にのみ呼ぶこと**(commit 前に呼ぶと
+ * Worker が古い workerId を読んで空振りする)。届かなくても既存の最大30秒
+ * reconcile 周期へ自然に劣化するだけなので、失敗を呼び出し元へ伝播させない。
+ * fetchImpl はテストから差し替えるためだけの引数。
+ */
+export function notifyWorkersOfManualReassign(input: {
+  fromWorker: number | null;
+  toWorker: number;
+  urls: string[];
+  secret: string | undefined;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}): void {
+  const { fromWorker, toWorker, urls, secret, timeoutMs = PROBE_TIMEOUT_MS, fetchImpl = fetch } = input;
+  if (!secret) {
+    console.warn(
+      "[worker-status] manual reassign 即時通知をスキップ(INTERNAL_API_SECRET未設定) — 最大30秒のreconcileフォールバックへ委譲"
+    );
+    return;
+  }
+
+  const targets = new Set<number>([toWorker]);
+  if (fromWorker != null) targets.add(fromWorker);
+
+  for (const workerIndex of targets) {
+    const url = urls[workerIndex];
+    if (!url) continue; // WORKER_INTERNAL_URLS 件数不足(既知の劣化状態)はスキップ
+    fetchImpl(`${url}/internal/reconcile-now`, {
+      method: "POST",
+      headers: { "x-internal-secret": secret },
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch((err) => {
+      console.warn(
+        `[worker-status] manual reassign 即時通知に失敗(worker${workerIndex}) — 最大30秒のreconcileフォールバックへ委譲:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    });
+  }
+}
+
+/**
  * DB と Worker の応答を突き合わせてレポートを作る。副作用も時刻依存もない純粋関数
  * (now を受け取る)ので、境界値のテストが素直に書ける。
  */

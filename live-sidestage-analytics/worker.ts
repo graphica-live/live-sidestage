@@ -92,6 +92,26 @@ const healthServer = createServer((req, res) => {
     return;
   }
 
+  // 管理画面からの手動worker移動直後に叩かれる、即時reconcileトリガー。
+  // DB上のworkerId変更後、定常30秒周期のreconcileを待たずに担当変化を反映させる
+  // (最大60秒のギフト受信ダウンタイムを数秒に短縮する)。認証は/statusと同じ。
+  // reconcileOnce()自体が持つ`reconcileRunning || shuttingDown`の多重実行防止ガードに
+  // 委譲するため、ここでは追加のロック/レートリミットを設けない。
+  if (req.url === "/internal/reconcile-now" && req.method === "POST") {
+    const secret = process.env.INTERNAL_API_SECRET;
+    if (!secret || req.headers["x-internal-secret"] !== secret) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+    res.writeHead(202, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ accepted: true, reconcileRunning }));
+    void reconcileOnce().catch((err) =>
+      console.error("[worker] /internal/reconcile-now triggered reconcileOnce failed:", err)
+    );
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });

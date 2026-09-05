@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin";
-import { reassignRoomWorker } from "@/lib/worker-status";
+import { reassignRoomWorker, notifyWorkersOfManualReassign, parseWorkerInternalUrls } from "@/lib/worker-status";
 
 // 管理画面から特定の部屋(TiktokRoom)の担当 worker を手動で切り替える。
 // worker-guardian の自動フェイルオーバーとは独立の、人間による即時操作用。
@@ -70,6 +70,13 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
+    // fire-and-forget: レスポンスは待たない。届かなくても最大30秒のreconcile周期へ自然に劣化する。
+    notifyWorkersOfManualReassign({
+      fromWorker: result.fromWorker,
+      toWorker: toWorkerIndex,
+      urls: parseWorkerInternalUrls(process.env.WORKER_INTERNAL_URLS),
+      secret: process.env.INTERNAL_API_SECRET,
+    });
     return NextResponse.json({ ok: true, roomId: result.roomId, tiktokId: result.tiktokId, fromWorker: result.fromWorker });
   } catch (err) {
     console.error("[admin/workers/reassign] failed:", err);
