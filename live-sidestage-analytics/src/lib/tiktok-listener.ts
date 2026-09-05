@@ -703,6 +703,32 @@ function isUserOfflineError(error: unknown): boolean {
   return hasName || /isn't online|user.+offline|requested user.+online/i.test(text);
 }
 
+// fetchRoomInfoOnConnectのオフライン判定(client.jsの`_roomInfo.data.status === 4`)は、
+// `room/info/` が `status_code!==0`(データ無し応答。実測: sion291のケースで4003110)を
+// 返すroomでは`data.status`自体が無く、常にfalseへ倒れて素通りする——本来オフラインの
+// roomがオンライン扱いのままEuler署名を消費してWS接続し、無応答→watchdog強制再接続を
+// 繰り返す「ゾンビ」になる(実データで確認、2026-09-05)。
+//
+// 一般利用者が見る「配信中か」は`api-live/user/room/`の`liveRoom.status`(TLC-sidestageの
+// `fetchIsLive()`が使う方のエンドポイント)で、このroomでは一貫して4(オフライン)を返す。
+// `_connect()`本体を差し替える(vendored fork)のではなく、Euler署名を消費する前にこちらで
+// 事前チェックし、確実にオフラインと分かる場合だけ`user_offline`と同じ経路へ倒す。
+// 判定不能(API失敗・フィールド欠落)ならfalseを返し、既存の`fetchRoomInfoOnConnect`任せの
+// 挙動へフォールバックする(誤検知でオンラインroomを弾かないため)。
+async function isReportedOfflineByApiLive(conn: WebcastPushConnection, tiktokId: string): Promise<boolean> {
+  try {
+    const roomData = await conn.webClient.fetchRoomInfoFromApiLive({ uniqueId: tiktokId });
+    return roomData?.data?.liveRoom?.status === 4;
+  } catch (err) {
+    console.warn(
+      `[listener] @${tiktokId}: api-live/user/room/ pre-check failed (falling back to fetchRoomInfoOnConnect) — ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    return false;
+  }
+}
+
 function isAlreadyConnectedError(error: unknown): boolean {
   const msg =
     typeof (error as { message?: string })?.message === "string"
@@ -2150,6 +2176,21 @@ async function connectAndAttach(
   if (conn.clientParams) {
     (conn.clientParams as Record<string, string>).room_id = "";
     (conn.clientParams as Record<string, string>).cursor = "";
+  }
+
+  const reportedOffline = await isReportedOfflineByApiLive(conn, inst.state.tiktokId);
+  if (!isCurrent() || inst.stopped) {
+    // isReportedOfflineByApiLiveのHTTP待機中にstopListener()や次のconnectInstance()で
+    // inst.connectionが差し替わった、または意図的に止められた
+    // (stopListenerはinst.connectionをnullにしないためisCurrent()だけでは検知できない)。
+    return;
+  }
+  if (reportedOffline) {
+    console.warn(
+      `[listener] @${inst.state.tiktokId}: api-live/user/room/ reports offline (status=4) — skipping connect to avoid consuming an Euler signature`
+    );
+    scheduleReconnect(roomId, "user_offline");
+    return;
   }
 
   updateState(inst, "connecting", FACTS_CONNECTING.message, FACTS_CONNECTING, null);
