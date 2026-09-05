@@ -42,6 +42,8 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
     watchCount: 0,
     eventMonitored: false,
     consecutiveBlockedCount: 0,
+    weeklyEulerSignUsageCount: null,
+    monitoringSuspended: false,
     ...overrides,
   };
 }

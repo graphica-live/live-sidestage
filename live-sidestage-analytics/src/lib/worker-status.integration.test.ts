@@ -4,7 +4,7 @@
 // Streamer / AgencyWatch / monitorUntil の3条件をそれぞれ単独で確認する。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { fetchAssignedRooms } from "./worker-status";
+import { fetchAdminRoomList, fetchAssignedRooms } from "./worker-status";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -98,6 +98,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.eulerSignUsage.deleteMany({ where: { roomId: { in: roomIds } } });
   await prisma.agencyWatch.deleteMany({ where: { roomId: { in: roomIds } } });
   await prisma.agency.deleteMany({ where: { id: { in: agencyIds } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
@@ -137,6 +138,13 @@ describe("fetchAssignedRooms", () => {
     expect(rooms.find((r) => r.roomId === idleRoom.id)).toBeUndefined();
   });
 
+  it("AgencyWatchがある部屋はmonitoringSuspended:trueでも一覧に残る(監視解除が事務所監視で無効化される既存仕様)", async () => {
+    const room = await makeRoom({ tag: "susw", workerId: 0, monitoringSuspended: true });
+    await attachWatch(room.id, room.tiktokId);
+    const rooms = await fetchAssignedRooms();
+    expect(rooms.find((r) => r.roomId === room.id)).toBeDefined();
+  });
+
   it("now を渡せば、その時刻基準で monitorUntil を判定する", async () => {
     // eventRoom の監視期限より後の時刻で見れば、監視対象から外れる。
     const future = new Date(Date.now() + 2 * 60 * 60 * 1000);
@@ -144,5 +152,90 @@ describe("fetchAssignedRooms", () => {
     expect(rooms.find((r) => r.roomId === eventRoom.id)).toBeUndefined();
     // Streamer がいる部屋は時刻に関係なく対象のまま。
     expect(rooms.find((r) => r.roomId === streamerRoom.id)).toBeDefined();
+  });
+
+  it("オプション未指定時は weeklyEulerSignUsageCount が null(既存呼び出し元の無改修動作)", async () => {
+    const rooms = await fetchAssignedRooms();
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    expect(found!.weeklyEulerSignUsageCount).toBeNull();
+  });
+});
+
+describe("fetchAdminRoomList", () => {
+  it("watchedRoomFilter()を通さないため、monitoringSuspended:trueでAgencyWatch/monitorUntilも無い部屋(idleRoom)も一覧に含まれる", async () => {
+    const rooms = await fetchAdminRoomList();
+    const found = rooms.find((r) => r.roomId === idleRoom.id);
+    expect(found).toBeDefined();
+    expect(found!.monitoringSuspended).toBe(true);
+  });
+
+  it("workerId未割当の部屋(eventRoom、workerId:null)は含まれない(where: workerId not null)", async () => {
+    const rooms = await fetchAdminRoomList();
+    expect(rooms.find((r) => r.roomId === eventRoom.id)).toBeUndefined();
+  });
+
+  it("includeWeeklyEulerUsage未指定時はweeklyEulerSignUsageCountがnull", async () => {
+    const rooms = await fetchAdminRoomList();
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    expect(found!.weeklyEulerSignUsageCount).toBeNull();
+  });
+
+  it("includeWeeklyEulerUsage:trueかつ署名消費0件ならweeklyEulerSignUsageCountは0(nullでない)", async () => {
+    const rooms = await fetchAdminRoomList(new Date(), { includeWeeklyEulerUsage: true });
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    expect(found!.weeklyEulerSignUsageCount).toBe(0);
+  });
+
+  it("includeWeeklyEulerUsage:trueで直近7日以内(ちょうど7日前を含む)の署名消費を成功/失敗問わず数え、8日前の消費は含めない", async () => {
+    const now = new Date("2026-08-22T12:00:00.000Z");
+    const within = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const exactlySevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const outside = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
+    const base = {
+      roomId: streamerRoom.id,
+      tiktokId: streamerRoom.tiktokId,
+      trigger: "start" as const,
+      reason: null,
+      role: "worker" as const,
+      workerIndex: 0,
+      listenerEpoch: null,
+      credentialMode: "anonymous" as const,
+      streamerUserIds: [] as string[],
+      agencyIds: [] as string[],
+      eventIds: [] as string[],
+    };
+    await prisma.eulerSignUsage.createMany({
+      data: [
+        { ...base, requestedAt: within, createdAt: within, outcome: "success" },
+        { ...base, requestedAt: within, createdAt: within, outcome: "failed" },
+        { ...base, requestedAt: exactlySevenDaysAgo, createdAt: exactlySevenDaysAgo, outcome: "success" },
+        { ...base, requestedAt: outside, createdAt: outside, outcome: "success" },
+      ],
+    });
+
+    const rooms = await fetchAdminRoomList(now, { includeWeeklyEulerUsage: true });
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    // 直近7日以内(ちょうど7日前含む)の3件(success2+failed1)を数え、8日前の1件は含めない。
+    expect(found!.weeklyEulerSignUsageCount).toBe(3);
+  });
+
+  it("listenerUpdatedAtの降順で並び、nullの部屋は末尾に来る", async () => {
+    const older = await makeRoom({ tag: "ordold", workerId: 0 });
+    const newer = await makeRoom({ tag: "ordnew", workerId: 0 });
+    const nullRoom = await makeRoom({ tag: "ordnull", workerId: 0 });
+    await prisma.tiktokRoom.update({
+      where: { id: older.id },
+      data: { listenerUpdatedAt: new Date("2026-08-01T00:00:00.000Z") },
+    });
+    await prisma.tiktokRoom.update({
+      where: { id: newer.id },
+      data: { listenerUpdatedAt: new Date("2026-08-20T00:00:00.000Z") },
+    });
+
+    const rooms = await fetchAdminRoomList();
+    const indexOf = (id: string) => rooms.findIndex((r) => r.roomId === id);
+    expect(indexOf(newer.id)).toBeGreaterThanOrEqual(0);
+    expect(indexOf(newer.id)).toBeLessThan(indexOf(older.id));
+    expect(indexOf(older.id)).toBeLessThan(indexOf(nullRoom.id));
   });
 });

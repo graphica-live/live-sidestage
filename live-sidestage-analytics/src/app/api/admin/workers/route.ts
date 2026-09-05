@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import {
   buildWorkerReport,
+  fetchAdminRoomList,
   fetchAssignedRooms,
   parseWorkerInternalUrls,
   probeWorkers,
@@ -36,6 +37,15 @@ export async function GET() {
     console.error("[admin/workers] DB 取得に失敗:", err);
   }
 
+  // UI一覧表示専用。fetchAssignedRooms()のwatchedRoomFilterでは監視解除済みの部屋が
+  // 消えてしまうため、buildWorkerReport()用のroomsとは別に取得する(worker-status.ts参照)。
+  let adminRoomList: AssignedRoom[] = [];
+  try {
+    adminRoomList = await fetchAdminRoomList(now, { includeWeeklyEulerUsage: true });
+  } catch (err) {
+    console.error("[admin/workers] adminRoomList 取得に失敗:", err);
+  }
+
   const probes = await probeWorkers(urls, process.env.INTERNAL_API_SECRET);
 
   const report = buildWorkerReport({ workerCount, urls, probes, rooms, dbError, now });
@@ -53,7 +63,7 @@ export async function GET() {
   }
 
   return NextResponse.json(
-    { ...report, guardianAuditLog },
+    { ...report, guardianAuditLog, adminRoomList },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
