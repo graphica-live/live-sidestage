@@ -111,31 +111,13 @@ describe("absorbRooms — ABSORB正常系", () => {
     expect(room).toBeNull();
   });
 
-  it("非NULLのorderIdが衝突するときは移動分と破棄分に分かれ、GiftEditは移動後も生存する", async () => {
+  it("非NULLのorderIdが衝突するときは移動分と破棄分に分かれる", async () => {
     const survivor = await makeRoom("survivor2", "hu2");
     const candidate = await makeRoom("candidate2", "hu2");
-    const streamer = await makeStreamer(survivor.id, survivor.tiktokId);
 
     await makeGift(survivor.id, { orderId: "order-conflict" });
     const conflicting = await makeGift(candidate.id, { orderId: "order-conflict" });
     const unique = await makeGift(candidate.id, { orderId: "order-unique" });
-
-    await prisma.giftEdit.create({
-      data: {
-        giftId: conflicting.id,
-        streamerId: streamer.id,
-        giftName: "Rose",
-        totalDiamonds: 999,
-      },
-    });
-    await prisma.giftEdit.create({
-      data: {
-        giftId: unique.id,
-        streamerId: streamer.id,
-        giftName: "Rose",
-        totalDiamonds: 1,
-      },
-    });
 
     const result = await absorbRooms(survivor.id, candidate.id, "hu2", survivor.tiktokId);
     expect(result.kind).toBe("merged");
@@ -143,19 +125,11 @@ describe("absorbRooms — ABSORB正常系", () => {
 
     expect(result.stats.giftsMoved).toBe(1);
     expect(result.stats.giftsDiscarded).toBe(1);
-    expect(result.stats.giftEditsDiscarded).toBe(1);
 
     const survivingGift = await prisma.gift.findUnique({ where: { id: unique.id } });
     expect(survivingGift?.roomId).toBe(survivor.id);
-    const survivingEdit = await prisma.giftEdit.findUnique({
-      where: { giftId_streamerId: { giftId: unique.id, streamerId: streamer.id } },
-    });
-    expect(survivingEdit).not.toBeNull();
-
-    const discardedEdit = await prisma.giftEdit.findUnique({
-      where: { giftId_streamerId: { giftId: conflicting.id, streamerId: streamer.id } },
-    });
-    expect(discardedEdit).toBeNull();
+    const discardedGift = await prisma.gift.findUnique({ where: { id: conflicting.id } });
+    expect(discardedGift).toBeNull();
   });
 
   it("Streamerのroomidとtiktokidを同時に更新する", async () => {

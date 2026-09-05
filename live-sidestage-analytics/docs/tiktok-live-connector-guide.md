@@ -712,6 +712,3 @@ SELECT MAX(span) FROM (
   GROUP BY "roomId", "groupId" HAVING COUNT(*) > 1
 ) t;
 ```
-
-行を消す必要が出た場合、`gifts` は `GiftEdit` から参照されている（`onDelete: Cascade`）ので、
-ユーザーの手動編集も一緒に消える点に注意。

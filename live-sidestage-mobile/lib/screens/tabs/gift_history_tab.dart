@@ -278,9 +278,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                                 ),
                                 const SizedBox(height: 1),
                                 Text(
-                                  event.edited
-                                      ? '${event.giftName} ×${event.repeatCount} ・ 編集済み'
-                                      : '${event.giftName} ×${event.repeatCount}',
+                                  '${event.giftName} ×${event.repeatCount}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(

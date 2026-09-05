@@ -10,7 +10,7 @@ import { roomHasPaidWatcher } from "./plan/room-has-paid-watcher";
 //
 // 「削除」ではなく「監視停止(TiktokRoom.monitoringSuspended = true)」にとどめる。
 // watchedRoomFilter()(tiktok-listener.ts)がこのフラグを見てWorker接続を切るだけで、
-// Streamer/GiftEdit/overlayToken/apiKey/Gift/BattleHistoryは全て残る。ユーザーが
+// Streamer/overlayToken/apiKey/Gift/BattleHistoryは全て残る。ユーザーが
 // 再ログイン・再アクセスすると markLastActive() が自動でフラグを戻し、次のreconcile
 // (30秒間隔)で監視が復活する。不可逆な操作が無いため、既存のNOT_FOUND削除ほど
 // 慎重な安全弁(needs_review・削除件数の異常検知)は必要ない。

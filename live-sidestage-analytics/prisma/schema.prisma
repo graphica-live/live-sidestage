@@ -293,7 +293,7 @@ model TiktokRoom {
   // give-upし、以降はreviveSuspendedMonitoring()経由の復帰でこの値も0に戻る。
   consecutiveBlockedCount Int @default(0)
   // true の間、watchedRoomFilter() はこのRoomの Streamer を「監視対象」から除外する
-  // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/GiftEdit/
+  // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/
   // overlayToken/apiKey/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/
   // 再アクセスすると markLastActive() が自動でfalseへ戻し、次のreconcileで監視が復活する。
   monitoringSuspended Boolean   @default(false)
@@ -508,7 +508,7 @@ model TiktokIdMergeLog {
   survivingRoomId    String?
   hostUserId         String?
   hostUserIdFilledAt DateTime?
-  stats              Json? // 移動件数・重複破棄件数・失われたGiftEdit件数等
+  stats              Json? // 移動件数・重複破棄件数等(過去の行には廃止済みの giftEditsDiscarded も残る)
   acknowledgedAt     DateTime? // 事後通知バナーを閉じた時刻。nullなら未読
   createdAt          DateTime  @default(now())
 
@@ -582,7 +582,6 @@ model Streamer {
 
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   room      TiktokRoom? @relation(fields: [roomId], references: [id])
-  giftEdits GiftEdit[]
 
   // desktopの5ウィジェット移植で追加。既存のoverlay*列(contribution専用)とは分離し、
   // 種類ごとに1テーブルへ寄せてある(Streamerへ列を積み増し続けると肥大化するため)。
@@ -804,7 +803,6 @@ model Gift {
   multiplierValue Int?
 
   room  TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  edits GiftEdit[]
 
   @@unique([roomId, orderId])
   @@index([roomId, dayKey])
@@ -816,27 +814,6 @@ model Gift {
   @@schema("public")
 }
 
-// TikTokから受信したオリジナルのGiftは変更・削除しない。編集内容はここに別レコードとして保持し、
-// 表示時のみ上書きする(オリジナルデータのみでの集計を別途可能にするため)。
-// Giftはtiktokアカウント単位で共有されるため、編集/非表示はstreamerId単位に紐づけ、
-// 編集した本人にしか見えないようにする(他の登録者のデータには影響しない)。
-model GiftEdit {
-  id            String   @id @default(cuid())
-  giftId        String
-  streamerId    String
-  giftName      String
-  totalDiamonds Int
-  hidden        Boolean  @default(false) // trueの場合、この行を編集したstreamerの集計・履歴からのみ除外する
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  gift     Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
-  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
-
-  @@unique([giftId, streamerId])
-  @@map("gift_edits")
-  @@schema("public")
-}
 
 // TikTokの全ギフトカタログ(webcastの `gift/list/` の結果)。全部屋で共有する1枚のテーブル。
 // ギフトはほぼグローバルなので部屋ごとには持たない(部屋限定ギフトは和集合として混ざる)。
@@ -1115,7 +1092,7 @@ model BattleHistoryParticipant {
 // 復元可能な形にする。通常のGift履歴とはFK/リレーションを張らず切り離す
 // (sourceGiftIdは監査用の文字列参照のみ。Giftが将来変更・削除されてもこの行は影響を受けない)。
 //
-// GiftEdit.hiddenは反映しない(確定は閲覧者非依存)。一意制約は張らない
+// 一意制約は張らない
 // (1送信者が同一バトル内で複数回投げれば複数行になるのが正しい)。
 model BattleHistoryGiftEvent {
   id String @id @default(cuid())

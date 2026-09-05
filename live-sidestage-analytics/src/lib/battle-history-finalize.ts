@@ -392,7 +392,7 @@ export async function computeBattleSnapshot(
   }));
 
   // selfTotalDiamondsはself participant(必ずroomId===roomIdに解決される)のobservedGiftTotal
-  // と同じ集計(自room・窓内のGift.totalDiamonds合計、GiftEdit非適用)なので、上のgiftEventsループで
+  // と同じ集計(自room・窓内のGift.totalDiamonds合計)なので、上のgiftEventsループで
   // 算出済みの値をそのまま使う(aggregateGiftUsers([roomId, window])での再集計は不要)。
   const selfTotalDiamonds = observedGiftTotalByAnchorId.get(selfHostUserId) ?? 0;
 

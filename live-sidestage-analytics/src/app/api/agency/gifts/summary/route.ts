@@ -9,7 +9,7 @@ import { emptySummary, queryRoomSummariesRaw } from "@/lib/agency/summary";
 //   GET /api/agency/gifts/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&tiktokIds=a,b,c
 //   Header: x-api-key: <Agency.apiKey>
 //
-// 数値はオリジナル生データ基準(GiftEdit非適用)。レスポンスの basis: "raw" がその契約を示す。
+// 数値はオリジナル生データ基準。レスポンスの basis: "raw" がその契約を示す。
 export async function GET(req: NextRequest) {
   const agency = await resolveAgencyByApiKey(req);
   if (!agency) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

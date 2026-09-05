@@ -11,15 +11,9 @@ class GiftHistoryEvent {
   final String? giftPictureUrl;
   final int repeatCount;
 
-  /// 編集済み(GiftEdit)の値を含む、サーバー側で上書き済みの合計コイン数。
-  /// マイナスもありうる(手動修正で減算した場合)。
   final int totalDiamonds;
 
   final DateTime? receivedAt;
-
-  /// Web版の編集機能でギフト名/コイン数が上書きされているか。
-  /// モバイルは編集操作自体を提供しないため表示にだけ使う。
-  final bool edited;
 
   const GiftHistoryEvent({
     required this.id,
@@ -32,7 +26,6 @@ class GiftHistoryEvent {
     required this.repeatCount,
     required this.totalDiamonds,
     this.receivedAt,
-    required this.edited,
   });
 
   static GiftHistoryEvent? tryParse(Object? value) {
@@ -60,7 +53,6 @@ class GiftHistoryEvent {
       repeatCount: repeatCount is int ? repeatCount : 0,
       totalDiamonds: totalDiamonds is int ? totalDiamonds : 0,
       receivedAt: DateTime.tryParse(value['receivedAt'] as String? ?? ''),
-      edited: value['edited'] == true,
     );
   }
 }

@@ -9,7 +9,7 @@ import { roomHasPaidWatcher } from "./plan/room-has-paid-watcher";
 // (純粋関数 + オーケストレータ + kill switch + AppSetting監査ログ)を踏襲する。
 //
 // **データは一切削除しない。** 停止は TiktokRoom.monitoringSuspended を立てるだけで、
-// Streamer/GiftEdit/overlayToken/apiKey/Gift/BattleHistoryは全て残る
+// Streamer/overlayToken/apiKey/Gift/BattleHistoryは全て残る
 // (tiktok-low-value-cleanup.ts と同じ仕組み)。ユーザーが再ログイン・再アクセスすると
 // markLastActive() が自動でフラグを戻し、次のreconcile(30秒間隔)で監視が復活する。
 // 以前はStreamerごと削除する設計だったが、TikTok改名(uniqueId変更)は「打ち間違いで

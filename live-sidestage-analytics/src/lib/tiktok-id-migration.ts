@@ -227,7 +227,6 @@ async function detectMergeCandidates(
 export type AbsorbStats = {
   giftsMoved: number;
   giftsDiscarded: number;
-  giftEditsDiscarded: number;
   likeTalliesMerged: number;
   likeTalliesMoved: number;
   likeTalliesDiscarded: number;
@@ -327,7 +326,6 @@ export async function absorbRooms(
       const stats: AbsorbStats = {
         giftsMoved: 0,
         giftsDiscarded: 0,
-        giftEditsDiscarded: 0,
         likeTalliesMerged: 0,
         likeTalliesMoved: 0,
         likeTalliesDiscarded: 0,
@@ -361,19 +359,10 @@ export async function absorbRooms(
       );
       stats.giftsMoved = giftsMoved;
 
-      const remainingGifts = await tx.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT "id" FROM public."gifts" WHERE "roomId" = $1`,
+      stats.giftsDiscarded = await tx.$executeRawUnsafe(
+        `DELETE FROM public."gifts" WHERE "roomId" = $1`,
         candidateRoomId
       );
-      stats.giftsDiscarded = remainingGifts.length;
-      if (remainingGifts.length > 0) {
-        const editCount = await tx.$queryRawUnsafe<{ count: bigint }[]>(
-          `SELECT COUNT(*)::bigint AS count FROM public."gift_edits" WHERE "giftId" = ANY($1::text[])`,
-          remainingGifts.map((r) => r.id)
-        );
-        stats.giftEditsDiscarded = Number(editCount[0]?.count ?? 0);
-      }
-      await tx.$executeRawUnsafe(`DELETE FROM public."gifts" WHERE "roomId" = $1`, candidateRoomId);
 
       // --- 2. LikeTally ---
       // 衝突(roomId,dayKey,uniqueId)は合算 → 衝突行DELETE → 残り(非衝突)を移動。

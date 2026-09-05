@@ -183,9 +183,6 @@ export async function GET(req: NextRequest) {
   //
   // labelは**履歴側を優先**する。カタログのロケール表記より、実際に飛んできた表記の方が
   // ユーザーの見慣れたものに近い。
-  //
-  // GiftEdit によるギフト名の手動リネームは**適用しない**。あれは表示・集計用の
-  // 上書きであって、TikTokが実際に送ってくる名前ではないため、一致キーにならない。
   let seenRank = 0;
   for (const row of historyRows) {
     const label = (row.giftName ?? "").trim();
