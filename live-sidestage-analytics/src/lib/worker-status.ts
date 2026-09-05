@@ -68,6 +68,10 @@ export type AssignedRoom = {
   watchCount: number;
   eventMonitored: boolean;
   consecutiveBlockedCount: number;
+  /** includeWeeklyEulerUsage未指定時はnull(「0件」と区別するため)。 */
+  weeklyEulerSignUsageCount: number | null;
+  /** true=管理者が監視解除(一時停止)した部屋。ログイン等で自動的にfalseへ戻りうる(reviveSuspendedMonitoring()参照)。 */
+  monitoringSuspended: boolean;
 };
 
 export type WorkerIssue = {
@@ -148,6 +152,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
       listenerUpdatedAt: true,
       monitorUntil: true,
       consecutiveBlockedCount: true,
+      monitoringSuspended: true,
       _count: { select: { streamers: true, watches: true } },
     },
     orderBy: [{ workerId: "asc" }, { tiktokId: "asc" }],
@@ -164,6 +169,77 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     watchCount: r._count.watches,
     eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
     consecutiveBlockedCount: r.consecutiveBlockedCount,
+    weeklyEulerSignUsageCount: null,
+    monitoringSuspended: r.monitoringSuspended,
+  }));
+}
+
+// 過去に一度でも workerId が割り当てられた部屋は、監視解除(monitoringSuspended:true)後も
+// workerId が null に戻されないため無期限に対象へ残り続ける(削除された部屋のみ対象から外れる)。
+// 上限なしに全件返すと本番の部屋数増加とともに一覧描画・週間集計クエリが際限なく重くなるため、
+// 直近の listener 活動が新しい順に打ち切る(review-auto Code Mode Fable finding反映)。
+const ADMIN_ROOM_LIST_LIMIT = 1000;
+
+/**
+ * /admin/workers 管理画面の一覧表示専用。fetchAssignedRooms() は watchedRoomFilter() を通すため、
+ * 管理者が監視解除(monitoringSuspended:true)してAgencyWatch/monitorUntilも無い部屋は
+ * 一覧から消えてしまい、再操作(完全削除)ができなくなる。この関数はフィルタを
+ * 通さず「workerIdが割当済みの部屋」を返すことでその問題を避ける(直近ADMIN_ROOM_LIST_LIMIT件まで)。
+ * 「取り消し」(手動での監視再開)ボタンはこの一覧に無い。監視解除は一時停止であり、
+ * ログイン等の既存4経路で自動的に再開する設計のため(review-auto Design Modeでの判断)。
+ * buildWorkerReport() の入力(fetchAssignedRooms())とは別系統であり、既存の
+ * assigned_not_running 等の判定ロジックには一切影響しない。
+ */
+export async function fetchAdminRoomList(
+  now: Date = new Date(),
+  options: { includeWeeklyEulerUsage?: boolean } = {}
+): Promise<AssignedRoom[]> {
+  const rooms = await prisma.tiktokRoom.findMany({
+    where: { workerId: { not: null } },
+    select: {
+      id: true,
+      tiktokId: true,
+      workerId: true,
+      listenerStatus: true,
+      listenerMessage: true,
+      listenerUpdatedAt: true,
+      monitorUntil: true,
+      consecutiveBlockedCount: true,
+      monitoringSuspended: true,
+      _count: { select: { streamers: true, watches: true } },
+    },
+    // listenerUpdatedAt が null(一度も接続していない部屋)は Postgres の DESC 既定(NULLS FIRST)だと
+    // 先頭に来て take の対象を占有してしまうため、明示的に末尾へ回す。
+    orderBy: [{ listenerUpdatedAt: { sort: "desc", nulls: "last" } }, { tiktokId: "asc" }],
+    take: ADMIN_ROOM_LIST_LIMIT,
+  });
+
+  // 現在の roomId 基準の集計(outcome問わず全件)。absorbRooms()等でroomIdが吸収・変更された
+  // 場合、旧roomId分の消費は数えない。表示用途のため厳密な会計値ではない。
+  let usageByRoomId: Map<string, number> | null = null;
+  if (options.includeWeeklyEulerUsage) {
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const grouped = await prisma.eulerSignUsage.groupBy({
+      by: ["roomId"],
+      where: { roomId: { in: rooms.map((r) => r.id) }, createdAt: { gte: sevenDaysAgo } },
+      _count: { _all: true },
+    });
+    usageByRoomId = new Map(grouped.map((g) => [g.roomId, g._count._all]));
+  }
+
+  return rooms.map((r) => ({
+    roomId: r.id,
+    tiktokId: r.tiktokId,
+    workerId: r.workerId,
+    listenerStatus: r.listenerStatus,
+    listenerMessage: r.listenerMessage,
+    listenerUpdatedAt: r.listenerUpdatedAt?.toISOString() ?? null,
+    streamerCount: r._count.streamers,
+    watchCount: r._count.watches,
+    eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
+    consecutiveBlockedCount: r.consecutiveBlockedCount,
+    weeklyEulerSignUsageCount: usageByRoomId ? usageByRoomId.get(r.id) ?? 0 : null,
+    monitoringSuspended: r.monitoringSuspended,
   }));
 }
 

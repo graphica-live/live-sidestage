@@ -1,13 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // 型のみの import なので、prisma を含む worker-status.ts / worker-guardian.ts の実体はクライアントに入らない。
-import type { WorkerIssue, WorkerReport, ManualReassignAuditEntry } from "@/lib/worker-status";
+import type {
+  AssignedRoom,
+  WorkerIssue,
+  WorkerReport,
+  ManualReassignAuditEntry,
+} from "@/lib/worker-status";
 import type { MigrationAuditEntry } from "@/lib/worker-guardian";
+import { sortAssignedRooms, type RoomSortKey, type RoomSortDir } from "./sort-rooms";
 
 type WorkerReportWithAudit = WorkerReport & {
   guardianAuditLog: MigrationAuditEntry[];
   manualReassignAuditLog: ManualReassignAuditEntry[];
+  adminRoomList: AssignedRoom[];
 };
 
 // Worker の /status は reconcile 間隔(30秒)と listener heartbeat(30秒)で更新される。
@@ -225,6 +232,12 @@ export default function WorkersAdminPage() {
   // 遅れて届いた古いレスポンスで新しい表示を上書きしないための世代番号。
   const requestId = useRef(0);
 
+  const [sortKey, setSortKey] = useState<RoomSortKey>("tiktokId");
+  const [sortDir, setSortDir] = useState<RoomSortDir>("asc");
+  // 完全削除・監視解除の二重クリック防止。実行中の roomId のみボタンを無効化する。
+  const [actioningRoomId, setActioningRoomId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
+
   const load = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -256,6 +269,93 @@ export default function WorkersAdminPage() {
   const nowMs = report ? new Date(report.generatedAt).getTime() : Date.now();
   const errors = report?.issues.filter((i) => i.severity === "error") ?? [];
   const warns = report?.issues.filter((i) => i.severity === "warn") ?? [];
+
+  const sortedRoomList = useMemo(
+    () => sortAssignedRooms(report?.adminRoomList ?? [], sortKey, sortDir),
+    [report?.adminRoomList, sortKey, sortDir]
+  );
+
+  const toggleSort = (key: RoomSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const handleSuspend = useCallback(
+    async (room: AssignedRoom) => {
+      const lines = [`@${room.tiktokId} の監視を一時停止しますか?`];
+      if (room.watchCount > 0 || room.eventMonitored) {
+        lines.push("事務所監視(AgencyWatch)またはイベント監視が有効なため、接続が止まらない場合があります。");
+      }
+      if (room.streamerCount > 0) {
+        lines.push(
+          `登録ユーザー${room.streamerCount}件がいるため、Web/モバイルへログイン中のアクセス(セッション検証のたび)だけでほぼ即座に再開します。`
+        );
+      }
+      lines.push(
+        "これは恒久停止ではありません。ログイン中ユーザーのWeb/モバイルからのアクセス(セッション検証のたび)・同じTikTok IDでの新規登録/設定・OBSオーバーレイ表示・Workerのコラボ検知のいずれかで自動的に監視が再開します(既存仕様)。"
+      );
+      if (!window.confirm(lines.join("\n"))) return;
+
+      setActioningRoomId(room.roomId);
+      setActionError("");
+      try {
+        const res = await fetch("/api/admin/tiktok-rooms", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: room.roomId, action: "suspend" }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setActionError(body?.error ?? "監視解除に失敗しました");
+          return;
+        }
+        await load();
+      } catch {
+        setActionError("監視解除に失敗しました");
+      } finally {
+        setActioningRoomId(null);
+      }
+    },
+    [load]
+  );
+
+  const handleDelete = useCallback(
+    async (room: AssignedRoom) => {
+      const lines = [`@${room.tiktokId} を完全削除しますか? この操作は取り消せません。`];
+      if (room.streamerCount > 0) {
+        lines.push(
+          `登録ユーザー${room.streamerCount}件はログイン・APIキーは維持されますが、この部屋との紐付け(roomId)が外れ、ギフト履歴・オーバーレイ表示は失われます。さらに、そのユーザーが次にアクセスすると同じTikTok IDの空の部屋が自動的に再作成され、監視も再開します。`
+        );
+      }
+      if (room.watchCount > 0) {
+        lines.push(`事務所監視(AgencyWatch)${room.watchCount}件も削除され、事務所の一覧から消えます。`);
+      }
+      if (!window.confirm(lines.join("\n"))) return;
+
+      setActioningRoomId(room.roomId);
+      setActionError("");
+      try {
+        const res = await fetch(`/api/admin/tiktok-rooms?id=${encodeURIComponent(room.roomId)}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setActionError(body?.error ?? "削除に失敗しました");
+          return;
+        }
+        await load();
+      } catch {
+        setActionError("削除に失敗しました");
+      } finally {
+        setActioningRoomId(null);
+      }
+    },
+    [load]
+  );
 
   return (
     <div className="p-6 max-w-5xl">
@@ -447,6 +547,90 @@ export default function WorkersAdminPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="mt-4 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-sm text-red-300">
+          {actionError}
+        </div>
+      )}
+
+      {report && report.adminRoomList.length > 0 && (
+        <div className="mt-4 rounded border border-border bg-panel overflow-x-auto">
+          <div className="px-4 py-2 border-b border-border text-sm text-strong">
+            監視対象一覧({report.adminRoomList.length}件)
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-muted">
+                <th className="text-left px-4 py-2 font-normal">
+                  <button onClick={() => toggleSort("tiktokId")} className="hover:text-strong">
+                    tiktokId {sortKey === "tiktokId" && (sortDir === "asc" ? "▲" : "▼")}
+                  </button>
+                </th>
+                <th className="text-left px-4 py-2 font-normal">
+                  <button onClick={() => toggleSort("listenerUpdatedAt")} className="hover:text-strong">
+                    listener最終更新 {sortKey === "listenerUpdatedAt" && (sortDir === "asc" ? "▲" : "▼")}
+                  </button>
+                  <span className="block text-[10px] opacity-70">
+                    connected以外でも更新されうる(最後にconnectedした時刻ではない)
+                  </span>
+                </th>
+                <th className="text-left px-4 py-2 font-normal">
+                  <button
+                    onClick={() => toggleSort("weeklyEulerSignUsageCount")}
+                    className="hover:text-strong"
+                  >
+                    週間署名消費 {sortKey === "weeklyEulerSignUsageCount" && (sortDir === "asc" ? "▲" : "▼")}
+                  </button>
+                  <span className="block text-[10px] opacity-70">成功/失敗含む・現在のroomId基準</span>
+                </th>
+                <th className="text-left px-4 py-2 font-normal">監視状態</th>
+                <th className="text-left px-4 py-2 font-normal">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {sortedRoomList.map((r) => (
+                <tr key={r.roomId}>
+                  <td className="px-4 py-2 text-strong">@{r.tiktokId}</td>
+                  <td className="px-4 py-2 text-muted">
+                    {formatDuration(ageMs(r.listenerUpdatedAt, nowMs))}前
+                  </td>
+                  <td className="px-4 py-2 text-muted">
+                    {r.weeklyEulerSignUsageCount ?? "—"}
+                  </td>
+                  <td className="px-4 py-2 text-muted">
+                    {r.monitoringSuspended ? (
+                      <span className="text-yellow-600 dark:text-yellow-400">一時停止中</span>
+                    ) : (
+                      <span className="text-green-600 dark:text-green-400">監視中</span>
+                    )}
+                    {r.watchCount > 0 && <span className="ml-2">事務所監視{r.watchCount}件</span>}
+                    {r.eventMonitored && <span className="ml-2">イベント監視中</span>}
+                  </td>
+                  <td className="px-4 py-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSuspend(r)}
+                        disabled={actioningRoomId === r.roomId || r.monitoringSuspended}
+                        className="px-2 py-1 rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
+                      >
+                        監視解除
+                      </button>
+                      <button
+                        onClick={() => handleDelete(r)}
+                        disabled={actioningRoomId === r.roomId}
+                        className="px-2 py-1 rounded border border-red-500/40 text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                      >
+                        完全削除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

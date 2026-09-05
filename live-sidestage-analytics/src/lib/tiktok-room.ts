@@ -312,3 +312,124 @@ export async function ensureRoomWatchedForCollab(
     throw err;
   }
 }
+
+// --- /admin/workers 管理画面からの監視解除・完全削除(管理者専用) ---
+
+export type SuspendRoomResult = "suspended" | "already_suspended" | "not_found";
+
+/**
+ * 監視を一時停止する(monitoringSuspended:trueにする)。データは一切消さない。
+ *
+ * **恒久停止ではない。** ログイン/セッション検証のたび(markLastActive())、OBSオーバーレイの
+ * アクセスのたび(reviveSuspendedMonitoringForRoom())、resolveRoomForStreamer()、
+ * Workerのコラボ検知(ensureRoomWatchedForCollab())のいずれかが発生すると、
+ * reviveSuspendedMonitoring()経由で自動的にfalseへ戻る(排他制御なし、既存仕様)。
+ * 呼び出し側(UI)は「一時停止」であることを利用者へ明示すること。
+ */
+export async function suspendRoomMonitoring(
+  roomId: string,
+  operatorEmail: string
+): Promise<SuspendRoomResult> {
+  return prisma.$transaction(async (tx) => {
+    const room = await tx.tiktokRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true, tiktokId: true, monitoringSuspended: true },
+    });
+    if (!room) return "not_found" as const;
+    if (room.monitoringSuspended) return "already_suspended" as const;
+
+    await tx.tiktokRoom.update({ where: { id: roomId }, data: { monitoringSuspended: true } });
+    await tx.tiktokRoomAdminAuditLog.create({
+      data: { action: "suspend", roomId: room.id, tiktokId: room.tiktokId, operatorEmail },
+    });
+    return "suspended" as const;
+  });
+}
+
+export type DeleteRoomResult = "deleted" | "not_found" | "event_active" | "lock_unavailable";
+
+/**
+ * TiktokRoomを完全削除する。不可逆。
+ *
+ * - Gift/BattleHistory等のTiktokRoom子リレーションはほぼ全てonDelete:Cascadeで消える。
+ * - Streamer.roomは optional relation で onDelete 未指定 = SetNull。Streamer行自体は残り
+ *   roomIdだけnullになる。**その後Streamerが1人でも残っていれば、次回アクセス時に
+ *   resolveRoomForStreamer()が同じtiktokIdの部屋を自動再作成し監視も再開する**。
+ * - AgencyWatch.roomは必須relationでonDelete未指定=Restrict。削除前にdeleteManyで
+ *   明示的に取り除く必要がある(FK制約回避のための必須の前処理)。
+ * - EventParticipant.roomId / EventRoomLease.roomId / DetectedBattle.roomIdはいずれも
+ *   FK制約のない論理参照。未finalizeイベントのEventParticipant、または未release
+ *   (releasedAt:null)のEventRoomLeaseが対象roomを参照していれば、削除せず
+ *   "event_active" を返す(absorbRooms()のEVENT_ACTIVE判定を踏襲)。finalize済み
+ *   イベントの参照・DetectedBattleは孤児として残ることを許容する(過去イベントの
+ *   履歴データであり実害が限定的なため)。同様にBattleHistoryParticipant.roomId
+ *   (相手roomの参照)・EulerSignUsage.roomId・TiktokIdMergeLog.oldRoomId/survivingRoomId
+ *   もFK制約のない論理参照で、削除後は孤児として残る(いずれも過去ログ・表示用データ)。
+ * - Gift行数の多い部屋でのカスケード削除がPrisma interactive transactionの既定
+ *   タイムアウト(5秒)を超えないよう、absorbRooms()と同じtimeout/advisory lockを使う。
+ *
+ * 新しくonDelete:Restrictな関係がTiktokRoomへ追加された場合、このtransactionは
+ * P2003で失敗するようになる。その場合は該当リレーションの明示的なdeleteMany/付け替えを
+ * ここへ追加すること。
+ */
+export async function deleteTiktokRoomPermanently(
+  roomId: string,
+  operatorEmail: string
+): Promise<DeleteRoomResult> {
+  return prisma.$transaction(
+    async (tx) => {
+      const lock = await tx.$queryRawUnsafe<{ locked: boolean }[]>(
+        `SELECT pg_try_advisory_xact_lock(hashtext($1)) AS locked`,
+        roomId
+      );
+      if (!lock[0]?.locked) return "lock_unavailable" as const;
+
+      const room = await tx.tiktokRoom.findUnique({
+        where: { id: roomId },
+        select: { id: true, tiktokId: true },
+      });
+      if (!room) return "not_found" as const;
+
+      const activeParticipants = await tx.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS count
+           FROM event."EventParticipant" ep
+           JOIN event."Event" e ON e."id" = ep."eventId"
+          WHERE ep."roomId" = $1 AND e."finalizedAt" IS NULL`,
+        roomId
+      );
+      if (Number(activeParticipants[0]?.count ?? 0) > 0) return "event_active" as const;
+
+      const activeLeases = await tx.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT COUNT(*)::bigint AS count
+           FROM event."EventRoomLease"
+          WHERE "roomId" = $1 AND "releasedAt" IS NULL`,
+        roomId
+      );
+      if (Number(activeLeases[0]?.count ?? 0) > 0) return "event_active" as const;
+
+      // agencyWatch.deleteMany より前にスナップショットを取る(順序を誤るとwatchCountが常に0になる)。
+      const [streamerCount, watches, giftCount, battleHistoryCount] = await Promise.all([
+        tx.streamer.count({ where: { roomId } }),
+        tx.agencyWatch.findMany({ where: { roomId }, select: { agencyId: true } }),
+        tx.gift.count({ where: { roomId } }),
+        tx.battleHistory.count({ where: { roomId } }),
+      ]);
+      const detail = {
+        streamerCount,
+        watchCount: watches.length,
+        agencyIds: watches.map((w) => w.agencyId),
+        giftCount,
+        battleHistoryCount,
+      };
+
+      await tx.agencyWatch.deleteMany({ where: { roomId } });
+      await tx.tiktokRoom.delete({ where: { id: roomId } });
+      await tx.tiktokRoomAdminAuditLog.create({
+        data: { action: "delete", roomId: room.id, tiktokId: room.tiktokId, operatorEmail, detail },
+      });
+
+      return "deleted" as const;
+    },
+    { timeout: 60_000, maxWait: 10_000 }
+  );
+}

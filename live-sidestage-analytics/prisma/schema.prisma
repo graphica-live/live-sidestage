@@ -350,6 +350,25 @@ model TiktokRoom {
   @@schema("public")
 }
 
+// /admin/workers管理画面からの完全削除・監視解除(一時停止)の監査ログ。
+// 既存の監査ログ3種(worker-guardian/tiktok-room-cleanup/tiktok-low-value-cleanup)は
+// AppSettingにJSON配列をtrimして保存する方式だが、完全削除の記録はtrimで失われては
+// ならない(不可逆操作の唯一の事後追跡手段のため)ので専用テーブルを新設する。
+model TiktokRoomAdminAuditLog {
+  id            String   @id @default(cuid())
+  action        String   // "delete" | "suspend"
+  roomId        String   // 削除後はTiktokRoom自体が無いのでFKは張らない(論理参照)
+  tiktokId      String   // 削除後にroomIdだけでは何のRoomか分からなくなるため必須保持
+  operatorEmail String   // getAdminSession()経由のセッションemail(ADMIN_EMAIL固定だが将来の複数管理者化に備え記録)
+  detail        Json?    // 削除時: { streamerCount, watchCount, agencyIds, giftCount, battleHistoryCount }
+  createdAt     DateTime @default(now())
+
+  @@index([roomId])
+  @@index([createdAt])
+  @@map("tiktok_room_admin_audit_logs")
+  @@schema("public")
+}
+
 // Roomの監視理由を独立管理する(TiktokRoom.monitorUntilの単一値では
 // EVENT監視とCOLLAB監視が同じroomへ同時発行された場合に競合・誤解放しうるため新設)。
 //
