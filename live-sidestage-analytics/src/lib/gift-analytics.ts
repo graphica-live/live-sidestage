@@ -108,7 +108,7 @@ export async function aggregateGiftUsers(
     const profile = profileMap.get(g.uniqueId);
     return {
       uniqueId: g.uniqueId,
-      nickname: profile?.nickname ?? g.uniqueId,
+      nickname: profile?.nickname || g.uniqueId,
       profileImageUrl: cachedAvatarUrls.get(g.uniqueId) ?? profile?.profileImageUrl ?? null,
       giftCount: g._sum.repeatCount ?? 0,
       totalDiamonds: g._sum.totalDiamonds ?? 0,

@@ -167,7 +167,9 @@ export function BattleDetailModal({
             />
           )}
 
-          <div className="mt-2 pr-8">
+          {/* 縦分割線・下部貢献欄と中央(left-1/2)を揃えるため、閉じるボタン避けのpr-8は
+              日付行(下記)だけに残し、ここには付けない(付けるとVSの中心が左へ16pxずれる)。 */}
+          <div className="mt-2">
             {teams && teams.length > 0 ? (
               <VersusHeader teams={teams} colorByIndex={colorByIndex!} winningIndex={winningIndex} />
             ) : (
@@ -548,11 +550,15 @@ function FallbackContributorList({ contributors }: { contributors: BattleContrib
         .slice()
         .sort((a, b) => b.totalDiamonds - a.totalDiamonds)
         .map((c) => (
-          <div key={c.uniqueId} className="flex items-center gap-2 text-xs">
-            <Avatar src={c.profileImageUrl} alt={c.nickname} />
-            <span className="font-medium truncate max-w-[160px]">{c.nickname}</span>
-            <span className="text-muted">@{c.uniqueId}</span>
-            <span className="ml-auto font-mono">
+          <div key={c.uniqueId} className="flex items-center gap-1.5 text-xs">
+            <span className="shrink-0">
+              <Avatar src={c.profileImageUrl} alt={c.nickname} />
+            </span>
+            {/* nicknameが未取得(空文字)のgiftは呼び出し元でuniqueIdへフォールバック済み。
+                狭い1カラム幅では名前+@uniqueId+コインを並べると折り返して崩れるため、
+                ExpandableContributorRow(確定バトル側)と同じく名前を主表示にしuniqueId併記はしない。 */}
+            <span className="min-w-0 flex-1 truncate font-medium">{c.nickname}</span>
+            <span className="shrink-0 font-mono">
               💎{c.totalDiamonds.toLocaleString()} ({c.giftCount}件)
             </span>
           </div>
