@@ -226,6 +226,9 @@ export default function WorkersAdminPage() {
   const [report, setReport] = useState<WorkerReportWithAudit | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // listener欄とDB上の担当欄を同時に出すと同じ部屋が2箇所に見えて混乱するため、
+  // どちらを見るか(または両方)を切り替えられるようにする。既定は実際に稼働中のlistenerのみ。
+  const [displayMode, setDisplayMode] = useState<"listener" | "db" | "both">("listener");
 
   // 前の fetch が終わる前に次を重ねない。詰まったときに要求が積み上がるのを防ぐ。
   const inFlight = useRef(false);
@@ -269,6 +272,8 @@ export default function WorkersAdminPage() {
   const nowMs = report ? new Date(report.generatedAt).getTime() : Date.now();
   const errors = report?.issues.filter((i) => i.severity === "error") ?? [];
   const warns = report?.issues.filter((i) => i.severity === "warn") ?? [];
+  const showListeners = displayMode === "listener" || displayMode === "both";
+  const showAssigned = displayMode === "db" || displayMode === "both";
 
   const sortedRoomList = useMemo(
     () => sortAssignedRooms(report?.adminRoomList ?? [], sortKey, sortDir),
@@ -378,6 +383,28 @@ export default function WorkersAdminPage() {
 
       <AddWatchForm onAdded={load} />
 
+      <div className="mb-4 inline-flex rounded border border-border overflow-hidden text-xs">
+        {(
+          [
+            { key: "listener", label: "listenerのみ" },
+            { key: "db", label: "DB上の担当のみ" },
+            { key: "both", label: "両方" },
+          ] as const
+        ).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setDisplayMode(key)}
+            className={`px-3 py-1.5 ${
+              displayMode === key
+                ? "bg-brand text-white"
+                : "text-strong hover:bg-row-hover"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div className="mb-4 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-sm text-red-300">
           {error}
@@ -457,7 +484,7 @@ export default function WorkersAdminPage() {
               )}
             </div>
 
-            {w.listeners.length > 0 && (
+            {showListeners && w.listeners.length > 0 && (
               <div className="divide-y divide-border">
                 {w.listeners.map((l) => (
                   <div key={l.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
@@ -479,13 +506,13 @@ export default function WorkersAdminPage() {
               </div>
             )}
 
-            {w.reachable && w.listeners.length === 0 && (
+            {showListeners && w.reachable && w.listeners.length === 0 && (
               <div className="px-4 py-2 text-xs text-muted">listener なし（待機中）</div>
             )}
 
             {/* DB上の担当一覧。listener が動いていない/worker が応答不能でもここには出るので、
                 手動移動が最も必要な障害時(worker死亡・起動失敗)でも操作できる。 */}
-            {w.assignedRooms.length > 0 && (
+            {showAssigned && w.assignedRooms.length > 0 && (
               <div className="divide-y divide-border border-t border-border">
                 <div className="px-4 py-1.5 text-[11px] text-muted">DB上の担当（手動移動はここから）</div>
                 {w.assignedRooms.map((r) => {
