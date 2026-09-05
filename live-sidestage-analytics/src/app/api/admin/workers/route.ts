@@ -3,9 +3,11 @@ import { getAdminSession } from "@/lib/admin";
 import {
   buildWorkerReport,
   fetchAssignedRooms,
+  fetchManualReassignAuditLog,
   parseWorkerInternalUrls,
   probeWorkers,
   type AssignedRoom,
+  type ManualReassignAuditEntry,
 } from "@/lib/worker-status";
 import { AUDIT_LOG_SETTING_KEY, type MigrationAuditEntry } from "@/lib/worker-guardian";
 import { getSetting } from "@/lib/settings";
@@ -52,8 +54,16 @@ export async function GET() {
     console.error("[admin/workers] guardian audit log の取得に失敗:", err);
   }
 
+  // 管理画面からの手動移動履歴。読めなくても画面は落とさない。
+  let manualReassignAuditLog: ManualReassignAuditEntry[] = [];
+  try {
+    manualReassignAuditLog = await fetchManualReassignAuditLog();
+  } catch (err) {
+    console.error("[admin/workers] manual reassign audit log の取得に失敗:", err);
+  }
+
   return NextResponse.json(
-    { ...report, guardianAuditLog },
+    { ...report, guardianAuditLog, manualReassignAuditLog },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

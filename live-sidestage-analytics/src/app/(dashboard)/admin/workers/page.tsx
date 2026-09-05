@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 // 型のみの import なので、prisma を含む worker-status.ts / worker-guardian.ts の実体はクライアントに入らない。
-import type { WorkerIssue, WorkerReport } from "@/lib/worker-status";
+import type { WorkerIssue, WorkerReport, ManualReassignAuditEntry } from "@/lib/worker-status";
 import type { MigrationAuditEntry } from "@/lib/worker-guardian";
 
-type WorkerReportWithAudit = WorkerReport & { guardianAuditLog: MigrationAuditEntry[] };
+type WorkerReportWithAudit = WorkerReport & {
+  guardianAuditLog: MigrationAuditEntry[];
+  manualReassignAuditLog: ManualReassignAuditEntry[];
+};
 
 // Worker の /status は reconcile 間隔(30秒)と listener heartbeat(30秒)で更新される。
 // それより短い間隔で叩いても新しい情報は増えないので、15秒で足りる。
@@ -32,6 +35,99 @@ function statusColor(status: string): string {
   if (status === "connected") return "text-green-600 dark:text-green-400";
   if (status === "connecting" || status === "retrying") return "text-yellow-600 dark:text-yellow-400";
   return "text-red-600 dark:text-red-400";
+}
+
+// 部屋の担当 worker を手動で切り替えるコントロール。移動先は現在の担当以外から選ばせる。
+//
+// currentWorker は「画面表示時点の担当」をそのまま expectedWorkerId として API へ渡す
+// (楽観的排他)。worker-guardian が同じ瞬間に自動フェイルオーバーで動かしていた場合、
+// API は 409 を返す — その場合は再取得して選び直す必要がある(黙って上書きしない)。
+function ReassignControl({
+  roomId,
+  currentWorker,
+  workerCount,
+  onReassigned,
+}: {
+  roomId: string;
+  currentWorker: number | null;
+  workerCount: number | null;
+  onReassigned: () => void;
+}) {
+  const options =
+    workerCount != null
+      ? Array.from({ length: workerCount }, (_, i) => i).filter((i) => i !== currentWorker)
+      : [];
+  const [target, setTarget] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(() => setDone(false), 4000);
+    return () => clearTimeout(t);
+  }, [done]);
+
+  if (options.length === 0) return null;
+  const selected = target ?? options[0];
+
+  const handleMove = async () => {
+    const confirmMsg =
+      currentWorker == null
+        ? `worker ${selected} へ割り当てる?`
+        : `worker ${currentWorker} → worker ${selected} へ移動する?`;
+    if (!confirm(confirmMsg)) return;
+    setBusy(true);
+    setErr("");
+    setDone(false);
+    try {
+      const res = await fetch("/api/admin/workers/reassign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId, toWorkerIndex: selected, expectedWorkerId: currentWorker }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const message = (data as { error?: string } | null)?.error ?? "移動に失敗しました";
+        setErr(res.status === 409 ? `${message}(表示を更新してから再試行)` : message);
+        return;
+      }
+      setDone(true);
+      onReassigned();
+    } catch {
+      setErr("移動に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span className="flex items-center gap-1">
+      <select
+        className="text-xs rounded border border-border bg-transparent px-1 py-0.5"
+        value={selected}
+        onChange={(e) => setTarget(Number(e.target.value))}
+        disabled={busy}
+      >
+        {options.map((i) => (
+          <option key={i} value={i}>
+            worker {i}へ
+          </option>
+        ))}
+      </select>
+      <button
+        onClick={handleMove}
+        disabled={busy}
+        className="text-xs px-2 py-0.5 rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
+      >
+        {currentWorker == null ? "割当" : "移動"}
+      </button>
+      {err && <span className="text-xs text-red-400 break-all">{err}</span>}
+      {done && !err && (
+        <span className="text-xs text-green-400">受付済み（反映まで最大30秒）</span>
+      )}
+    </span>
+  );
 }
 
 // issue の type は worker_url_count_mismatch のように長く、スマホ幅では改行できずに
@@ -206,6 +302,12 @@ export default function WorkersAdminPage() {
                       購読 {l.subscriberCount}人 · 無音 {formatDuration(l.silentForMs)}
                       {l.watchdogTriggerCount > 0 && ` · watchdog ${l.watchdogTriggerCount}回`}
                     </span>
+                    <ReassignControl
+                      roomId={l.roomId}
+                      currentWorker={w.workerIndex}
+                      workerCount={report?.workerCount ?? null}
+                      onReassigned={load}
+                    />
                   </div>
                 ))}
               </div>
@@ -213,6 +315,40 @@ export default function WorkersAdminPage() {
 
             {w.reachable && w.listeners.length === 0 && (
               <div className="px-4 py-2 text-xs text-muted">listener なし（待機中）</div>
+            )}
+
+            {/* DB上の担当一覧。listener が動いていない/worker が応答不能でもここには出るので、
+                手動移動が最も必要な障害時(worker死亡・起動失敗)でも操作できる。 */}
+            {w.assignedRooms.length > 0 && (
+              <div className="divide-y divide-border border-t border-border">
+                <div className="px-4 py-1.5 text-[11px] text-muted">DB上の担当（手動移動はここから）</div>
+                {w.assignedRooms.map((r) => {
+                  const live = w.listeners.find((l) => l.roomId === r.roomId);
+                  return (
+                    <div key={r.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
+                      <span className="text-sm text-strong">@{r.tiktokId}</span>
+                      {live ? (
+                        <span className={`text-xs ${statusColor(live.status)}`}>{live.status}</span>
+                      ) : (
+                        <span className="text-xs text-red-400">listener未起動</span>
+                      )}
+                      {r.consecutiveBlockedCount > 0 && (
+                        <span className="text-xs text-yellow-400">
+                          403連続{r.consecutiveBlockedCount}回
+                        </span>
+                      )}
+                      <span className="ml-auto">
+                        <ReassignControl
+                          roomId={r.roomId}
+                          currentWorker={w.workerIndex}
+                          workerCount={report?.workerCount ?? null}
+                          onReassigned={load}
+                        />
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         ))}
@@ -251,11 +387,40 @@ export default function WorkersAdminPage() {
       {report && report.unassignedRooms.length > 0 && (
         <div className="mt-4 rounded border border-border bg-panel">
           <div className="px-4 py-2 border-b border-border text-sm text-strong">workerId 未割当</div>
-          {report.unassignedRooms.map((r) => (
-            <div key={r.roomId} className="px-4 py-2 text-xs text-muted">
-              @{r.tiktokId}
-            </div>
-          ))}
+          <div className="divide-y divide-border">
+            {report.unassignedRooms.map((r) => (
+              <div key={r.roomId} className="px-4 py-2 text-xs text-muted flex items-center gap-3 flex-wrap">
+                <span>@{r.tiktokId}</span>
+                <span className="ml-auto">
+                  <ReassignControl
+                    roomId={r.roomId}
+                    currentWorker={null}
+                    workerCount={report?.workerCount ?? null}
+                    onReassigned={load}
+                  />
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report && report.manualReassignAuditLog.length > 0 && (
+        <div className="mt-4 rounded border border-border bg-panel">
+          <div className="px-4 py-2 border-b border-border text-sm text-strong">
+            手動移動履歴(直近{report.manualReassignAuditLog.length}件)
+          </div>
+          <div className="divide-y divide-border">
+            {[...report.manualReassignAuditLog].reverse().map((entry, i) => (
+              <div key={i} className="px-4 py-2 text-xs text-muted flex items-center gap-2 flex-wrap">
+                <span className="text-strong">{new Date(entry.at).toLocaleString("ja-JP")}</span>
+                <span>
+                  @{entry.tiktokId} worker{entry.fromWorker ?? "未割当"} → worker{entry.toWorker}
+                </span>
+                {entry.operator && <span className="text-muted">by {entry.operator}</span>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
