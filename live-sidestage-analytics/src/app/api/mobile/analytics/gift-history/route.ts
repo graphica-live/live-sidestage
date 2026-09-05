@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   });
   if (planDenied) return planDenied;
 
-  let where: Parameters<typeof queryGiftHistory>[2];
+  let where: Parameters<typeof queryGiftHistory>[1];
   let dateRange: { start: string; end: string };
   if (query.value.mode === "custom") {
     const { start, end } = query.value;
@@ -52,7 +52,6 @@ export async function GET(req: NextRequest) {
 
   const { events, total, hasMore } = await queryGiftHistory(
     ctx.streamer.roomId,
-    ctx.streamer.id,
     where,
     limit.value,
     listenerQuery.value

@@ -1,48 +1,8 @@
-// ギフト履歴の編集機能まわりのロジックと、履歴一覧の取得クエリ。ルートハンドラから分離してテスト可能にしている。
+// ギフト履歴一覧の取得クエリ。ルートハンドラから分離してテスト可能にしている。
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
-
-export type GiftEditInput =
-  | { ok: true; giftName: string; totalDiamonds: number }
-  | { ok: false; error: string };
-
-export function parseGiftEditInput(body: unknown): GiftEditInput {
-  const b = (body ?? {}) as Record<string, unknown>;
-
-  const giftName = typeof b.giftName === "string" ? b.giftName.trim() : "";
-  if (!giftName) {
-    return { ok: false, error: "ギフト名を入力してください。" };
-  }
-
-  const totalDiamonds = Number(b.totalDiamonds);
-  if (!Number.isInteger(totalDiamonds)) {
-    return { ok: false, error: "コイン数は整数で指定してください。" };
-  }
-
-  return { ok: true, giftName, totalDiamonds };
-}
-
-export type GiftHistoryRow = {
-  giftName: string;
-  totalDiamonds: number;
-  edit: { giftName: string; totalDiamonds: number } | null;
-};
-
-// TikTok受信時点のオリジナル値(giftName/totalDiamonds)はそのまま残し、
-// GiftEditが存在する行だけ表示用に上書きする。オリジナルGiftレコード自体は書き換えない。
-export function applyGiftEdit<T extends GiftHistoryRow>(
-  row: T
-): Omit<T, "edit"> & { edited: boolean } {
-  const { edit, ...rest } = row;
-  return {
-    ...rest,
-    giftName: edit?.giftName ?? row.giftName,
-    totalDiamonds: edit?.totalDiamonds ?? row.totalDiamonds,
-    edited: edit !== null,
-  };
-}
 
 export type GiftHistoryEvent = {
   id: string;
@@ -55,14 +15,11 @@ export type GiftHistoryEvent = {
   repeatCount: number;
   totalDiamonds: number;
   receivedAt: string;
-  edited: boolean;
 };
 
-// roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
-// viewerStreamerId: 閲覧者本人のGiftEdit(リネーム)を適用するために使う。他の登録者の編集は見えない。
+// listenerQuery: uniqueId / nickname の部分一致(大小文字無視)で絞り込む。省略時は全件。
 export async function queryGiftHistory(
   roomId: string,
-  viewerStreamerId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
   limit: number,
   listenerQuery?: string | null
@@ -99,15 +56,13 @@ export async function queryGiftHistory(
       repeatCount: true,
       totalDiamonds: true,
       receivedAt: true,
-      edits: { where: { streamerId: viewerStreamerId }, select: { giftName: true, totalDiamonds: true } },
     },
   });
 
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
 
-  // 表示名は「TikTok公式の日本語名(labelJa)があればそれ、無ければ受信生データ(英語)」を土台にし、
-  // GiftEditの手動リネームがあれば常にそれを最優先で上書きする(applyGiftEdit)。
+  // 表示名は「TikTok公式の日本語名(labelJa)があればそれ、無ければ受信生データ(英語)」。
   // 一致キー(効果音・集計)には影響しない — ここは表示専用の差し替え。
   const giftIds = [...new Set(pageRows.map((r) => r.giftId))];
   const catalogRows = giftIds.length
@@ -120,15 +75,11 @@ export async function queryGiftHistory(
     catalogRows.filter((c) => c.labelJa).map((c) => [c.giftId, c.labelJa as string])
   );
 
-  const events = pageRows.map((row) => {
-    const { edits, receivedAt, giftName, ...base } = row;
-    const edit = edits[0] ? { giftName: edits[0].giftName, totalDiamonds: edits[0].totalDiamonds } : null;
-    const displayGiftName = labelJaByGiftId.get(row.giftId) ?? giftName;
-    return {
-      ...applyGiftEdit({ ...base, giftName: displayGiftName, edit }),
-      receivedAt: receivedAt.toISOString(),
-    };
-  });
+  const events = pageRows.map(({ receivedAt, giftName, ...base }) => ({
+    ...base,
+    giftName: labelJaByGiftId.get(base.giftId) ?? giftName,
+    receivedAt: receivedAt.toISOString(),
+  }));
 
   const total = events.reduce(
     (acc, e) => ({ count: acc.count + e.repeatCount, diamonds: acc.diamonds + e.totalDiamonds }),

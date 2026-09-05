@@ -37,7 +37,6 @@ interface GiftEvent {
   repeatCount: number;
   totalDiamonds: number;
   receivedAt: string;
-  edited: boolean;
 }
 
 interface HistoryData {
@@ -229,7 +228,7 @@ function BattleOpponentInfo({ battle }: { battle: BattleListItem }) {
   return <span className="text-muted">対戦相手不明</span>;
 }
 
-/** ギフト名の非編集表示。テーブル行(sm以上)とモバイルカードの両方で使う共通表示。 */
+/** ギフト名の表示。テーブル行(sm以上)とモバイルカードの両方で使う共通表示。 */
 function GiftNameDisplay({ ev }: { ev: GiftEvent }) {
   return (
     <>
@@ -245,14 +244,6 @@ function GiftNameDisplay({ ev }: { ev: GiftEvent }) {
         {ev.giftName}
         {ev.repeatCount > 1 && <span className="text-muted ml-1">×{ev.repeatCount}</span>}
       </span>
-      {ev.edited && (
-        <span
-          className="text-[10px] text-brand shrink-0"
-          title="編集データ(オリジナルとは別に保持されています)"
-        >
-          編集済
-        </span>
-      )}
     </>
   );
 }
@@ -287,13 +278,6 @@ export default function AnalyticsPage() {
   const calendarRef = useRef<HTMLDivElement>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
-
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<{ giftName: string; totalDiamonds: string }>({
-    giftName: "",
-    totalDiamonds: "",
-  });
-  const [editSaving, setEditSaving] = useState(false);
 
   const fetchData = useCallback(
     async (p: Period, d: string, silent = false) => {
@@ -494,60 +478,6 @@ export default function AnalyticsPage() {
       );
     });
   }, [battlesData, filter, hideLowDiamond]);
-
-  const giftNameSuggestions = useMemo(() => {
-    if (!historyData) return [];
-    return Array.from(new Set(historyData.events.map((e) => e.giftName))).sort((a, b) =>
-      a.localeCompare(b, "ja")
-    );
-  }, [historyData]);
-
-  const coinSuggestions = useMemo(() => {
-    if (!historyData) return [];
-    return Array.from(new Set(historyData.events.map((e) => e.totalDiamonds))).sort((a, b) => a - b);
-  }, [historyData]);
-
-  const startEdit = useCallback((ev: GiftEvent) => {
-    setEditingId(ev.id);
-    setEditDraft({ giftName: ev.giftName, totalDiamonds: String(ev.totalDiamonds) });
-  }, []);
-
-  const stopEdit = useCallback(() => {
-    setEditingId(null);
-  }, []);
-
-  const commitEdit = useCallback(async (ev: GiftEvent) => {
-    const giftName = editDraft.giftName.trim();
-    const totalDiamonds = Number(editDraft.totalDiamonds);
-    if (!giftName || !Number.isInteger(totalDiamonds)) return;
-    if (giftName === ev.giftName && totalDiamonds === ev.totalDiamonds) return;
-
-    setEditSaving(true);
-    try {
-      const res = await fetch(`/api/analytics/gifts/history/${ev.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ giftName, totalDiamonds }),
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        setHistoryData((prev) =>
-          prev
-            ? {
-                ...prev,
-                events: prev.events.map((e) =>
-                  e.id === ev.id
-                    ? { ...e, giftName: updated.giftName, totalDiamonds: updated.totalDiamonds, edited: true }
-                    : e
-                ),
-              }
-            : prev
-        );
-      }
-    } finally {
-      setEditSaving(false);
-    }
-  }, [editDraft]);
 
   return (
     <>
@@ -982,11 +912,9 @@ export default function AnalyticsPage() {
             </div>
           ) : (
             <>
-              {/* モバイル(sm未満): カード表示。列間引きだけでは長いギフト名/編集欄が収まらないため */}
+              {/* モバイル(sm未満): カード表示。列間引きだけでは長いギフト名が収まらないため */}
               <div className="sm:hidden space-y-2">
-                {filteredEvents.map((ev) => {
-                  const isEditing = editingId === ev.id;
-                  return (
+                {filteredEvents.map((ev) => (
                     <div key={ev.id} className="rounded-xl border border-border bg-panel p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
@@ -1016,62 +944,16 @@ export default function AnalyticsPage() {
                           {formatEventTime(ev.receivedAt, period)}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            list="gift-name-suggestions"
-                            value={editDraft.giftName}
-                            onChange={(e) =>
-                              setEditDraft((d) => ({ ...d, giftName: e.target.value }))
-                            }
-                            onBlur={() => commitEdit(ev)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                            }}
-                            placeholder="例: Rose"
-                            disabled={editSaving}
-                            className="input-field text-sm flex-1 min-w-0"
-                          />
-                        ) : (
-                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <GiftNameDisplay ev={ev} />
-                          </div>
-                        )}
-                        <button
-                          onClick={() => (isEditing ? stopEdit() : startEdit(ev))}
-                          className="btn-ghost p-1.5 shrink-0"
-                          title={isEditing ? "編集を終了" : "このギフトを編集"}
-                        >
-                          {isEditing ? <CheckIcon /> : <PencilIcon />}
-                        </button>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <GiftNameDisplay ev={ev} />
                       </div>
                       <div className="flex items-center justify-end">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            list="coin-suggestions"
-                            value={editDraft.totalDiamonds}
-                            onChange={(e) =>
-                              setEditDraft((d) => ({ ...d, totalDiamonds: e.target.value }))
-                            }
-                            onBlur={() => commitEdit(ev)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                            }}
-                            placeholder="例: 100"
-                            disabled={editSaving}
-                            className="input-field text-sm w-24 text-right"
-                          />
-                        ) : (
-                          <span className="font-mono font-medium text-sm">
-                            💎{ev.totalDiamonds.toLocaleString()}
-                          </span>
-                        )}
+                        <span className="font-mono font-medium text-sm">
+                          💎{ev.totalDiamonds.toLocaleString()}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                ))}
               </div>
 
               {/* sm以上: テーブル表示 */}
@@ -1085,13 +967,10 @@ export default function AnalyticsPage() {
                     <th className="py-2.5 px-3 text-right">
                       <span title="コイン数">💎</span>
                     </th>
-                    <th className="py-2.5 px-3 text-center w-10">編集</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEvents.map((ev) => {
-                    const isEditing = editingId === ev.id;
-                    return (
+                  {filteredEvents.map((ev) => (
                       <tr
                         key={ev.id}
                         className="border-b border-row-border hover:bg-row-hover transition-colors"
@@ -1127,73 +1006,17 @@ export default function AnalyticsPage() {
                           </div>
                         </td>
                         <td className="py-2 px-3">
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              list="gift-name-suggestions"
-                              value={editDraft.giftName}
-                              onChange={(e) =>
-                                setEditDraft((d) => ({ ...d, giftName: e.target.value }))
-                              }
-                              onBlur={() => commitEdit(ev)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                              }}
-                              placeholder="例: Rose"
-                              disabled={editSaving}
-                              className="input-field text-sm w-full min-w-0 max-w-[150px] sm:max-w-none"
-                            />
-                          ) : (
-                            <div className="flex items-center gap-1.5 min-w-0 max-w-[150px] sm:max-w-none">
-                              <GiftNameDisplay ev={ev} />
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1.5 min-w-0 max-w-[150px] sm:max-w-none">
+                            <GiftNameDisplay ev={ev} />
+                          </div>
                         </td>
                         <td className="py-2 px-3 text-right font-mono font-medium">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              list="coin-suggestions"
-                              value={editDraft.totalDiamonds}
-                              onChange={(e) =>
-                                setEditDraft((d) => ({ ...d, totalDiamonds: e.target.value }))
-                              }
-                              onBlur={() => commitEdit(ev)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                              }}
-                              placeholder="例: 100"
-                              disabled={editSaving}
-                              className="input-field text-sm w-24 text-right ml-auto"
-                            />
-                          ) : (
-                            ev.totalDiamonds.toLocaleString()
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <button
-                            onClick={() => (isEditing ? stopEdit() : startEdit(ev))}
-                            className="btn-ghost p-1.5"
-                            title={isEditing ? "編集を終了" : "このギフトを編集"}
-                          >
-                            {isEditing ? <CheckIcon /> : <PencilIcon />}
-                          </button>
+                          {ev.totalDiamonds.toLocaleString()}
                         </td>
                       </tr>
-                    );
-                  })}
+                  ))}
                 </tbody>
               </table>
-              <datalist id="gift-name-suggestions">
-                {giftNameSuggestions.map((n) => (
-                  <option key={n} value={n} />
-                ))}
-              </datalist>
-              <datalist id="coin-suggestions">
-                {coinSuggestions.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
               </div>
             </>
           )
@@ -1385,22 +1208,6 @@ function DownloadIcon() {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
-      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-brand">
-      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }

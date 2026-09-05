@@ -94,7 +94,6 @@ const NOW = new Date();
 
 afterAll(async () => {
   await prisma.gift.deleteMany({ where: { id: { in: giftIds } } });
-  await prisma.giftEdit.deleteMany({ where: { streamer: { roomId: { in: roomIds } } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
   await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -220,7 +219,7 @@ describe("selectCleanupCandidates", () => {
 });
 
 describe("suspendNotFoundRoom", () => {
-  it("Gift0件・streak充足なら監視を停止する(Streamer/GiftEditは削除しない)", async () => {
+  it("Gift0件・streak充足なら監視を停止する(Streamerは削除しない)", async () => {
     const room = await makeRoom({
       tag: "suspend-ok",
       listenerStatus: "retrying",
@@ -228,24 +227,6 @@ describe("suspendNotFoundRoom", () => {
       notFoundFirstAt: new Date(NOW.getTime() - 10 * 86_400_000),
     });
     const streamer = await attachStreamer(room.id);
-
-    const otherRoom = await makeRoom({ tag: "gift-source" });
-    const editGift = await prisma.gift.create({
-      data: {
-        roomId: otherRoom.id,
-        uniqueId: "s3",
-        nickname: "s3",
-        giftId: 4,
-        giftName: "Rose",
-        dayKey: "2026-08-01",
-      },
-      select: { id: true },
-    });
-    giftIds.push(editGift.id);
-    const edit = await prisma.giftEdit.create({
-      data: { streamerId: streamer.id, giftId: editGift.id, giftName: "Rose", totalDiamonds: 5 },
-      select: { id: true },
-    });
 
     const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
 
@@ -256,9 +237,6 @@ describe("suspendNotFoundRoom", () => {
 
     const streamerAfter = await prisma.streamer.findUnique({ where: { id: streamer.id } });
     expect(streamerAfter).not.toBeNull();
-
-    const giftEditAfter = await prisma.giftEdit.findUnique({ where: { id: edit.id } });
-    expect(giftEditAfter).not.toBeNull();
 
     const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(roomAfter.monitoringSuspended).toBe(true);

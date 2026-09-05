@@ -54,20 +54,9 @@ beforeAll(async () => {
   roomA = a.id;
   roomB = b.id;
   roomEmpty = e.id;
-
-  // GiftEditを作るために配信者本人の登録も1件用意する(生データ集計が編集を無視することの確認用)。
-  const user = await prisma.user.create({
-    data: { email: `itest-agency-summary-${Date.now()}@local.test` },
-  });
-  userId = user.id;
-  const streamer = await prisma.streamer.create({
-    data: { userId: user.id, tiktokId: TIKTOK_ID_A, verificationCode: "x", verified: true, roomId: roomA },
-  });
-  streamerId = streamer.id;
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {}); // cascades User -> Streamer -> GiftEdit
   await Promise.all(
     [roomA, roomB, roomEmpty].map((id) =>
       prisma.tiktokRoom.delete({ where: { id } }).catch(() => {}) // cascades TiktokRoom -> Gift
@@ -129,27 +118,5 @@ describe("queryRoomSummariesRaw", () => {
   it("roomIdsが空なら空Mapを返す", async () => {
     const result = await queryRoomSummariesRaw([], { from: "2026-08-15", to: "2026-08-15" });
     expect(result.size).toBe(0);
-  });
-
-  it("GiftEdit(hidden含む)を無視してオリジナル生データを返す", async () => {
-    const gift = await makeGift({
-      roomId: roomA,
-      dayKey: "2026-08-17",
-      uniqueId: "user_hidden",
-      repeatCount: 1,
-      totalDiamonds: 500,
-      receivedAt: new Date("2026-08-17T10:00:00Z"),
-    });
-    // 配信者本人が金額を書き換え、さらに非表示にしても事務所APIの数字は動かない。
-    await prisma.giftEdit.create({
-      data: { giftId: gift.id, streamerId, giftName: "書き換え後", totalDiamonds: 1, hidden: true },
-    });
-
-    const result = await queryRoomSummariesRaw([roomA], { from: "2026-08-17", to: "2026-08-17" });
-    expect(result.get(roomA)).toMatchObject({
-      giftCount: 1,
-      totalDiamonds: 500,
-      supporterCount: 1,
-    });
   });
 });

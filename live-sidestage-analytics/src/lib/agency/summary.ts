@@ -1,9 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-// 事務所APIはオリジナル生データ基準。ライバー本人が GiftEdit で行った修正・非表示は
-// 一切適用しない(src/lib/gift-analytics.ts の queryGifts とはここが決定的に違う)。
-// 本人の画面の数字と食い違いうるため、APIレスポンスでは basis: "raw" として明示する。
+// 事務所APIはオリジナル生データ基準(src/lib/gift-analytics.ts の queryGifts とは
+// 集計単位が違う)。APIレスポンスでは basis: "raw" としてその契約を明示する。
 export type RoomSummary = {
   roomId: string;
   giftCount: number;

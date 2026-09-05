@@ -160,7 +160,7 @@ commit するまでの間に、別の解除経路が「lease 0件」と数えて
 - **集計対象は種目で変わる**（`isBattleOnlyFormat()`、`src/event/scoring.ts`）。
   `TOURNAMENT` / `DEATHMATCH` は**検知したバトル区間のギフトだけ**、`DIAMOND_RACE` は
   日程の全ギフト。詳しくは下の「バトル中のみ集計する種目」
-- 公式スコアは元の `gifts` のみ。`gift_edits` は無視する
+- 公式スコアは元の `gifts` のみ
 - ポイント = ダイヤ実数 × 倍率。**1件のギフトに適用される倍率は必ず1つ**。
   BATTLE 区間に入るなら BATTLE、入らなければ SOLO_STREAM。合計も乗算もしない。
   同じ kind が複数該当したら最も大きい factor を1つだけ採る。

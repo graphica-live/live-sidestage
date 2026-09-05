@@ -106,7 +106,6 @@ afterAll(async () => {
   await prisma.agencyWatch.deleteMany({ where: { agencyId: { in: agencyIds } } });
   await prisma.agency.deleteMany({ where: { id: { in: agencyIds } } });
   await prisma.gift.deleteMany({ where: { id: { in: giftIds } } });
-  await prisma.giftEdit.deleteMany({ where: { streamer: { roomId: { in: roomIds } } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
   await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });

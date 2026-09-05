@@ -197,17 +197,6 @@ describe("GET /api/mobile/gifts — 受信履歴のみ", () => {
     const { gifts } = await fetchGifts(token);
     expect(names(gifts)).toEqual(["galaxy", "rose"]);
   });
-
-  it("GiftEditによるリネームは反映しない(TikTokが送る名前ではないため)", async () => {
-    const gift = await addGift("TikTokName", 5, new Date("2026-08-20T13:00:00Z"));
-    await prisma.giftEdit.create({
-      data: { giftId: gift.id, streamerId, giftName: "手動でつけた名前", totalDiamonds: 5 },
-    });
-
-    const { gifts } = await fetchGifts(token);
-    expect(names(gifts)).toContain("tiktokname");
-    expect(names(gifts)).not.toContain("手動でつけた名前");
-  });
 });
 
 describe("GET /api/mobile/gifts — カタログとの和集合", () => {

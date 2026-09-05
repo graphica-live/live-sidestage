@@ -15,7 +15,6 @@ void main() {
         'repeatCount': 3,
         'totalDiamonds': 15,
         'receivedAt': '2026-08-28T10:00:00.000Z',
-        'edited': false,
       });
 
       expect(event, isNotNull);
@@ -23,20 +22,18 @@ void main() {
       expect(event.giftName, 'Rose');
       expect(event.repeatCount, 3);
       expect(event.totalDiamonds, 15);
-      expect(event.edited, isFalse);
     });
 
-    test('編集済みでマイナスのtotalDiamondsも正当値として扱う', () {
+    test('未知のキー(旧サーバーのedited等)は無視する', () {
       final event = GiftHistoryEvent.tryParse({
         'id': 'g1',
         'uniqueId': 'user_a',
         'giftName': 'Rose',
-        'totalDiamonds': -5,
+        'totalDiamonds': 5,
         'edited': true,
       });
 
-      expect(event!.totalDiamonds, -5);
-      expect(event.edited, isTrue);
+      expect(event!.totalDiamonds, 5);
     });
 
     test('id・uniqueId・giftNameのいずれかが無ければnull', () {
@@ -60,12 +57,11 @@ void main() {
       expect(event!.giftPictureUrl, isNull);
     });
 
-    test('数値フィールドが欠けていれば0、edited未指定はfalse', () {
+    test('数値フィールドが欠けていれば0', () {
       final event = GiftHistoryEvent.tryParse({'id': 'g1', 'uniqueId': 'a', 'giftName': 'Rose'});
       expect(event!.giftId, 0);
       expect(event.repeatCount, 0);
       expect(event.totalDiamonds, 0);
-      expect(event.edited, isFalse);
       expect(event.receivedAt, isNull);
     });
   });
