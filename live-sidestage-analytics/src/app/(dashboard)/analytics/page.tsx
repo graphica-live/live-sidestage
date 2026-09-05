@@ -191,6 +191,72 @@ function downloadHistoryCSV(events: GiftEvent[], period: Period, date: string) {
   URL.revokeObjectURL(url);
 }
 
+function battleStatusClass(status: BattleStatus): string {
+  if (status === "live") return "text-brand";
+  if (status === "cut_short") return "text-red-600 dark:text-red-400";
+  return "text-muted";
+}
+
+/** 対戦相手セル。テーブル行(sm以上)とモバイルカードの両方で使う共通表示。 */
+function BattleOpponentInfo({ battle }: { battle: BattleListItem }) {
+  const opponent = battle.opponent;
+  if (battle.selfTeam && battle.opponentTeam) {
+    return <BattleVersus selfTeam={battle.selfTeam} opponentTeam={battle.opponentTeam} size="sm" />;
+  }
+  if (opponent === null) {
+    return <span className="text-muted">対戦相手不明</span>;
+  }
+  if (opponent.count > 1) {
+    return <span className="text-muted">複数人バトル({opponent.count + 1}人)</span>;
+  }
+  if (opponent.nickName || opponent.displayId || opponent.tiktokId) {
+    return (
+      <div className="flex items-center gap-2 min-w-0">
+        <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
+        <div className="min-w-0">
+          <div className="font-medium truncate max-w-[160px]">
+            {opponent.nickName ?? `@${opponent.displayId}`}
+          </div>
+          {(opponent.displayId || opponent.tiktokId) && (
+            <div className="text-xs text-muted truncate max-w-[160px]">
+              @{opponent.displayId ?? opponent.tiktokId}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return <span className="text-muted">対戦相手不明</span>;
+}
+
+/** ギフト名の非編集表示。テーブル行(sm以上)とモバイルカードの両方で使う共通表示。 */
+function GiftNameDisplay({ ev }: { ev: GiftEvent }) {
+  return (
+    <>
+      {ev.giftPictureUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={ev.giftPictureUrl}
+          alt={ev.giftName}
+          className="w-6 h-6 object-contain shrink-0"
+        />
+      )}
+      <span className="truncate">
+        {ev.giftName}
+        {ev.repeatCount > 1 && <span className="text-muted ml-1">×{ev.repeatCount}</span>}
+      </span>
+      {ev.edited && (
+        <span
+          className="text-[10px] text-brand shrink-0"
+          title="編集データ(オリジナルとは別に保持されています)"
+        >
+          編集済
+        </span>
+      )}
+    </>
+  );
+}
+
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>("day");
   const [currentDate, setCurrentDate] = useState(todayStr());
@@ -915,7 +981,101 @@ export default function AnalyticsPage() {
               {filter ? "一致するイベントなし" : "この期間のデータなし"}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
+            <>
+              {/* モバイル(sm未満): カード表示。列間引きだけでは長いギフト名/編集欄が収まらないため */}
+              <div className="sm:hidden space-y-2">
+                {filteredEvents.map((ev) => {
+                  const isEditing = editingId === ev.id;
+                  return (
+                    <div key={ev.id} className="rounded-xl border border-border bg-panel p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <a
+                            href={tiktokProfileUrl(ev.uniqueId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="TikTokプロフィールを開く"
+                            className="shrink-0"
+                          >
+                            <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
+                          </a>
+                          <div className="min-w-0">
+                            <a
+                              href={tiktokProfileUrl(ev.uniqueId)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="TikTokプロフィールを開く"
+                              className="font-medium truncate max-w-[160px] hover:text-brand transition-colors block"
+                            >
+                              {ev.nickname}
+                            </a>
+                            <div className="text-xs text-muted truncate max-w-[160px]">@{ev.uniqueId}</div>
+                          </div>
+                        </div>
+                        <span className="text-xs text-muted whitespace-nowrap shrink-0">
+                          {formatEventTime(ev.receivedAt, period)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            list="gift-name-suggestions"
+                            value={editDraft.giftName}
+                            onChange={(e) =>
+                              setEditDraft((d) => ({ ...d, giftName: e.target.value }))
+                            }
+                            onBlur={() => commitEdit(ev)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            }}
+                            placeholder="例: Rose"
+                            disabled={editSaving}
+                            className="input-field text-sm flex-1 min-w-0"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <GiftNameDisplay ev={ev} />
+                          </div>
+                        )}
+                        <button
+                          onClick={() => (isEditing ? stopEdit() : startEdit(ev))}
+                          className="btn-ghost p-1.5 shrink-0"
+                          title={isEditing ? "編集を終了" : "このギフトを編集"}
+                        >
+                          {isEditing ? <CheckIcon /> : <PencilIcon />}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-end">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            list="coin-suggestions"
+                            value={editDraft.totalDiamonds}
+                            onChange={(e) =>
+                              setEditDraft((d) => ({ ...d, totalDiamonds: e.target.value }))
+                            }
+                            onBlur={() => commitEdit(ev)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            }}
+                            placeholder="例: 100"
+                            disabled={editSaving}
+                            className="input-field text-sm w-24 text-right"
+                          />
+                        ) : (
+                          <span className="font-mono font-medium text-sm">
+                            💎{ev.totalDiamonds.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* sm以上: テーブル表示 */}
+              <div className="hidden sm:block overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-xs text-muted">
@@ -981,32 +1141,11 @@ export default function AnalyticsPage() {
                               }}
                               placeholder="例: Rose"
                               disabled={editSaving}
-                              className="input-field text-sm w-full min-w-[110px]"
+                              className="input-field text-sm w-full min-w-0 max-w-[150px] sm:max-w-none"
                             />
                           ) : (
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              {ev.giftPictureUrl && (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={ev.giftPictureUrl}
-                                  alt={ev.giftName}
-                                  className="w-6 h-6 object-contain shrink-0"
-                                />
-                              )}
-                              <span className="truncate">
-                                {ev.giftName}
-                                {ev.repeatCount > 1 && (
-                                  <span className="text-muted ml-1">×{ev.repeatCount}</span>
-                                )}
-                              </span>
-                              {ev.edited && (
-                                <span
-                                  className="text-[10px] text-brand shrink-0"
-                                  title="編集データ(オリジナルとは別に保持されています)"
-                                >
-                                  編集済
-                                </span>
-                              )}
+                            <div className="flex items-center gap-1.5 min-w-0 max-w-[150px] sm:max-w-none">
+                              <GiftNameDisplay ev={ev} />
                             </div>
                           )}
                         </td>
@@ -1055,7 +1194,8 @@ export default function AnalyticsPage() {
                   <option key={c} value={c} />
                 ))}
               </datalist>
-            </div>
+              </div>
+            </>
           )
         )}
 
@@ -1068,60 +1208,29 @@ export default function AnalyticsPage() {
               {filter ? "一致するバトルなし" : "この期間のバトルなし"}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-xs text-muted">
-                    <th className="py-2.5 px-3 text-left whitespace-nowrap">時刻</th>
-                    <th className="py-2.5 px-3 text-left">対戦相手</th>
-                    <th className="py-2.5 px-3 text-right">スコア</th>
-                    <th className="py-2.5 px-3 text-center whitespace-nowrap">状態</th>
-                    <th className="py-2.5 px-3 text-right whitespace-nowrap">コイン</th>
-                    <th className="py-2.5 px-3 text-center w-10">詳細</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBattles.map((battle) => {
-                    const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
-                    const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
-                    const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
-                    const opponent = battle.opponent;
+            <>
+              {/* モバイル(sm未満): カード表示。列間引きでは対戦相手名・スコアが収まらないため */}
+              <div className="sm:hidden space-y-2">
+                {filteredBattles.map((battle) => {
+                  const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
+                  const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
+                  const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
 
-                    return (
-                      <tr
-                        key={battle.battleId}
-                        onClick={() => setOpenBattleId(battle.battleId)}
-                        className="border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer"
-                      >
-                        <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
-                          {formatEventTime(battle.startedAt, period)}
-                        </td>
-                        <td className="py-2 px-3">
-                          {battle.selfTeam && battle.opponentTeam ? (
-                            <BattleVersus selfTeam={battle.selfTeam} opponentTeam={battle.opponentTeam} size="sm" />
-                          ) : opponent === null ? (
-                            <span className="text-muted">対戦相手不明</span>
-                          ) : opponent.count > 1 ? (
-                            <span className="text-muted">複数人バトル({opponent.count + 1}人)</span>
-                          ) : opponent.nickName || opponent.displayId || opponent.tiktokId ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
-                              <div className="min-w-0">
-                                <div className="font-medium truncate max-w-[160px]">
-                                  {opponent.nickName ?? `@${opponent.displayId}`}
-                                </div>
-                                {(opponent.displayId || opponent.tiktokId) && (
-                                  <div className="text-xs text-muted truncate max-w-[160px]">
-                                    @{opponent.displayId ?? opponent.tiktokId}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-muted">対戦相手不明</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                  return (
+                    <div
+                      key={battle.battleId}
+                      onClick={() => setOpenBattleId(battle.battleId)}
+                      className="rounded-xl border border-border bg-panel p-3 space-y-2 cursor-pointer active:bg-row-hover transition-colors"
+                    >
+                      <div className="flex items-center justify-between text-xs text-muted">
+                        <span className="whitespace-nowrap">{formatEventTime(battle.startedAt, period)}</span>
+                        <span className={`whitespace-nowrap ${battleStatusClass(battle.status)}`}>
+                          {BATTLE_STATUS_LABELS[battle.status]}
+                        </span>
+                      </div>
+                      <BattleOpponentInfo battle={battle} />
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-sm">
                           {battle.selfScore === null ? (
                             "-"
                           ) : (
@@ -1137,41 +1246,91 @@ export default function AnalyticsPage() {
                               {Number(battle.opponentScore).toLocaleString()}
                             </span>
                           )}
-                        </td>
-                        <td className="py-2 px-3 text-center text-xs whitespace-nowrap">
-                          <span
-                            className={
-                              battle.status === "live"
-                                ? "text-brand"
-                                : battle.status === "cut_short"
-                                  ? "text-red-600 dark:text-red-400"
-                                  : "text-muted"
-                            }
-                          >
-                            {BATTLE_STATUS_LABELS[battle.status]}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                        </span>
+                        <span className="font-mono text-xs text-muted whitespace-nowrap">
                           💎{battle.selfTotalDiamonds.toLocaleString()}
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setOpenBattleId(battle.battleId);
-                            }}
-                            className="btn-ghost p-1.5"
-                            title="貢献者一覧を見る"
-                          >
-                            詳細
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* sm以上: テーブル表示 */}
+              <div className="hidden sm:block overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-xs text-muted">
+                      <th className="py-2.5 px-3 text-left whitespace-nowrap">時刻</th>
+                      <th className="py-2.5 px-3 text-left">対戦相手</th>
+                      <th className="py-2.5 px-3 text-right">スコア</th>
+                      <th className="py-2.5 px-3 text-center whitespace-nowrap">状態</th>
+                      <th className="py-2.5 px-3 text-right whitespace-nowrap">コイン</th>
+                      <th className="py-2.5 px-3 text-center w-10">詳細</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBattles.map((battle) => {
+                      const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
+                      const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
+                      const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
+
+                      return (
+                        <tr
+                          key={battle.battleId}
+                          onClick={() => setOpenBattleId(battle.battleId)}
+                          className="border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer"
+                        >
+                          <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
+                            {formatEventTime(battle.startedAt, period)}
+                          </td>
+                          <td className="py-2 px-3">
+                            <BattleOpponentInfo battle={battle} />
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                            {battle.selfScore === null ? (
+                              "-"
+                            ) : (
+                              <span className={win ? "text-brand font-semibold" : ""}>
+                                {Number(battle.selfScore).toLocaleString()}
+                              </span>
+                            )}
+                            {" / "}
+                            {battle.opponentScore === null ? (
+                              "-"
+                            ) : (
+                              <span className={lose ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
+                                {Number(battle.opponentScore).toLocaleString()}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-center text-xs whitespace-nowrap">
+                            <span className={battleStatusClass(battle.status)}>
+                              {BATTLE_STATUS_LABELS[battle.status]}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
+                            💎{battle.selfTotalDiamonds.toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenBattleId(battle.battleId);
+                              }}
+                              className="btn-ghost p-1.5"
+                              title="貢献者一覧を見る"
+                            >
+                              詳細
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )
         )}
           </div>
