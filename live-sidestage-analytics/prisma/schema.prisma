@@ -1185,6 +1185,23 @@ model TiktokAvatarAsset {
   @@schema("public")
 }
 
+// 毎朝JST6:00にevent-workerが記録する全テーブルの件数・サイズのスナップショット
+// (src/lib/db-stats/collect.ts)。前日比+25%超の増分をメールへ通知する異常検知の原本データ。
+// runDateはJST暦日単位で、@@uniqueが「その日は記録済みか」の判定と再起動時の二重実行防止を兼ねる。
+model DbStatsSnapshot {
+  id         String   @id @default(cuid())
+  runDate    DateTime @db.Date
+  schemaName String
+  tableName  String
+  rowCount   BigInt
+  totalBytes BigInt
+  recordedAt DateTime @default(now())
+
+  @@unique([runDate, schemaName, tableName])
+  @@index([schemaName, tableName, runDate])
+  @@schema("public")
+}
+
 // ============================================================================
 // event — イベント(大会)運営
 //
