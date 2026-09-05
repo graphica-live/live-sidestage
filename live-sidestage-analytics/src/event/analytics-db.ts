@@ -56,7 +56,7 @@ export type RoomStatus = {
 /**
  * room の TikTok 接続状態を引く。参加者一覧で「監視中か」を出すために使う。
  *
- * 監視要求を出してから Worker の reconcile(60秒間隔)が拾うまではここが null のままになる。
+ * 監視要求を出してから Worker の reconcile(30秒間隔)が拾うまではここが null のままになる。
  * UI では「まもなく監視を開始します」と出す。
  */
 export async function findRoomStatuses(roomIds: string[]): Promise<Map<string, RoomStatus>> {

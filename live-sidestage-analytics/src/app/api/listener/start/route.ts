@@ -6,7 +6,7 @@ import { getWorkerCount, resolveWorkerForRoom } from "@/lib/tiktok-listener";
 import { resolveRoomForStreamer } from "@/lib/tiktok-room";
 
 // Webプロセスはリスナーを持たないため、ここでは配信者を担当Workerへ割り当てるだけ。
-// 実際の接続開始は担当Workerのensure loop(最大60秒間隔)が拾う。
+// 実際の接続開始は担当Workerのensure loop(最大30秒間隔)が拾う。
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -35,7 +35,7 @@ export async function POST() {
       streamerId: streamer.id,
       tiktokId: streamer.tiktokId,
       status: room?.listenerStatus ?? "connecting",
-      message: room?.listenerMessage ?? "起動中(最大60秒)",
+      message: room?.listenerMessage ?? "起動中(最大30秒)",
       updatedAt: room?.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),
     },
   });

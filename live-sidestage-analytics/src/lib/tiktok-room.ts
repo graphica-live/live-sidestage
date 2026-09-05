@@ -50,7 +50,7 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
 // 会員登録(Streamer)のない配信者でも、イベント開催中だけは配信開始を監視する。
 // getMyRooms()(tiktok-listener.ts)が `monitoringSuspended: false` か
 // `monitorUntil > now` のどちらかを満たす部屋を担当するので、ここで
-// monitorUntil を立てれば次のreconcile(最大60秒)で接続が始まる。
+// monitorUntil を立てれば次のreconcile(最大30秒)で接続が始まる。
 //
 // もとは live-sidestage-event が叩く内部API(/api/internal/event-room-lease)だったが、
 // 同一プロジェクトへ統合したので直接呼ぶ。**外部入力に対する検証と上限はそのまま残す** —
@@ -221,6 +221,10 @@ export type CollabWatchResult = {
   tiktokId: string;
   /** この呼び出しで monitoringSuspended: true → false に書き換えたか(= 休止中だった) */
   resumed: boolean;
+  /** この呼び出しで TiktokRoom を新規作成したか。呼び出し元は created===true のときだけ
+   * 即接続キック(startListener)を検討してよい — false(既存room再利用/再開)で毎回キックすると
+   * 同じ相手を検知するたびに再接続してしまう */
+  created: boolean;
 };
 
 // コラボ経由で新規発見できるroomの上限。ensureRoomForEvent()のMAX_ACTIVE_LEASESと同じ理由
@@ -248,8 +252,23 @@ const MAX_COLLAB_DISCOVERED_ROOMS = 500;
  * tiktokId の形式が不正(TIKTOK_ID_PATTERN)な場合は何もせず null を返す — コラボ相手の
  * displayId は TikTok 側の値をそのまま受け取るだけの経路で、主催者入力のような検証は
  * 要らないはずだが、万一空文字・記号混じりが来ても部屋を作らないための最低限のガード。
+ *
+ * `workerId` は呼び出し元(worker プロセス)自身の WORKER_INDEX。渡された場合、新規作成される
+ * 行の workerId をそれで初期化する(= 検知した worker が自ら担当を申告し、次のreconcileを
+ * 待たず即座に自分で startListener できるようにする)。既存room(休止中の再開含む)の
+ * workerId は変更しない — 既に別workerが担当している可能性があり、上書きすると担当の
+ * 二重化・接続の奪い合いを招くため。getMyRooms()/resolveWorkerForRoom()(tiktok-listener.ts)
+ * はもともとDBのworkerId列を絶対視しhash(roomId)との一致を検証しないため、この自己申告値も
+ * 既存ロジックと整合する。
+ *
+ * この関数自身は WORKER_INDEX/WORKER_COUNT を一切読まない(getWorkerConfig()を直接呼ばない)。
+ * env を直接読むと、将来 web プロセスからこの関数が呼ばれた場合に無条件 throw する設計上の
+ * 危険が生まれるため、値は必ず引数として受け取る。
  */
-export async function ensureRoomWatchedForCollab(rawTiktokId: string): Promise<CollabWatchResult | null> {
+export async function ensureRoomWatchedForCollab(
+  rawTiktokId: string,
+  workerId?: number
+): Promise<CollabWatchResult | null> {
   const tiktokId = normalizeTiktokId(rawTiktokId);
   if (!TIKTOK_ID_PATTERN.test(tiktokId)) return null;
 
@@ -260,7 +279,7 @@ export async function ensureRoomWatchedForCollab(rawTiktokId: string): Promise<C
 
   if (existing) {
     const resumedCount = await reviveSuspendedMonitoring(existing.id);
-    return { roomId: existing.id, tiktokId, resumed: resumedCount > 0 };
+    return { roomId: existing.id, tiktokId, resumed: resumedCount > 0, created: false };
   }
 
   // 上限判定は「新規作成になる」場合のみ(既存roomの監視再開は総数を増やさないため対象外)。
@@ -274,12 +293,15 @@ export async function ensureRoomWatchedForCollab(rawTiktokId: string): Promise<C
   }
 
   try {
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId }, select: { id: true } });
-    return { roomId: room.id, tiktokId, resumed: false };
+    const room = await prisma.tiktokRoom.create({
+      data: { tiktokId, ...(workerId !== undefined ? { workerId } : {}) },
+      select: { id: true },
+    });
+    return { roomId: room.id, tiktokId, resumed: false, created: true };
   } catch (err) {
     // findUnique と create の間に別リクエストが同じ部屋を作った場合。
     if ((err as { code?: string })?.code === "P2002") {
-      return ensureRoomWatchedForCollab(rawTiktokId);
+      return ensureRoomWatchedForCollab(rawTiktokId, workerId);
     }
     throw err;
   }

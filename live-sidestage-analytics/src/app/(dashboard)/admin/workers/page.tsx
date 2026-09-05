@@ -7,7 +7,7 @@ import type { MigrationAuditEntry } from "@/lib/worker-guardian";
 
 type WorkerReportWithAudit = WorkerReport & { guardianAuditLog: MigrationAuditEntry[] };
 
-// Worker の /status は reconcile 間隔(60秒)と listener heartbeat(30秒)で更新される。
+// Worker の /status は reconcile 間隔(30秒)と listener heartbeat(30秒)で更新される。
 // それより短い間隔で叩いても新しい情報は増えないので、15秒で足りる。
 const REFRESH_INTERVAL_MS = 15_000;
 

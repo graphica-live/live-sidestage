@@ -38,7 +38,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function statusText(w: Watch): string {
-  if (!w.listenerStatus) return "起動待ち(最大60秒)";
+  if (!w.listenerStatus) return "起動待ち(最大30秒)";
   return STATUS_LABEL[w.listenerStatus] ?? w.listenerStatus;
 }
 
@@ -82,7 +82,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
     })();
   }, [loadAgency, loadWatches]);
 
-  // 監視対象の接続開始は担当Workerのensureループ(最大60秒間隔)が拾うため、
+  // 監視対象の接続開始は担当Workerのensureループ(最大30秒間隔)が拾うため、
   // 追加直後は listenerStatus が未設定のままになる。定期的に取り直して状態を反映する。
   useEffect(() => {
     if (!agency) return;

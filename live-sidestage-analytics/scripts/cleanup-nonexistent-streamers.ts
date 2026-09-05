@@ -140,7 +140,7 @@ async function main() {
       }
     }
     console.log(
-      `${deleted}件削除しました。対応する部屋(TiktokRoom)はそのまま残るが、他に監視要求がなければ次のreconcile(最大60秒)で接続が止まる。`
+      `${deleted}件削除しました。対応する部屋(TiktokRoom)はそのまま残るが、他に監視要求がなければ次のreconcile(最大30秒)で接続が止まる。`
     );
   } finally {
     await prisma.$disconnect();

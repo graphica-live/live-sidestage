@@ -35,7 +35,7 @@ export const CATALOG_TTL_MS = 2 * 60 * 60 * 1000;
 // 取得に失敗したときにプロセス内で待つ時間。
 //
 // **これが無いと失敗時に叩き続ける。** 失敗すると fetchedAt が進まないので、
-// 60秒ごとのreconcileが毎周回リトライしてしまう。TikTok側の一時障害や
+// 30秒ごとのreconcileが毎周回リトライしてしまう。TikTok側の一時障害や
 // proxyの不調でそうなると、同じproxyを共有しているライブ接続まで巻き添えになる。
 export const CATALOG_FAILURE_BACKOFF_MS = 30 * 60 * 1000;
 
@@ -303,7 +303,7 @@ export function __resetGiftCatalogStateForTest() {
  * **プロセスごとに1回で打ち切る。** 「取得は成功したが画像が1件も取れない」
  * (TikTokが `image` を返さなくなった・CDNホストがallowlist外へ変わった)場合、
  * 条件だけで判定すると `lastFailureAt` は成功で0のまま条件が真であり続け、
- * **60秒ごとのreconcileが `gift/list/` を叩き続ける**。ライブ接続と共有しているproxyを
+ * **30秒ごとのreconcileが `gift/list/` を叩き続ける**。ライブ接続と共有しているproxyを
  * 消耗させるので、成否に関わらず1周したらフラグを消費して通常のTTLへ戻す。
  */
 async function shouldBackfillImages(): Promise<boolean> {
@@ -366,7 +366,7 @@ async function writeCatalog(entries: LocalizedCatalogEntry[], fetchedAt: Date): 
  *
  * `resolveSources` は**TTLと失敗バックオフを通過したときにだけ**呼ばれる。
  * 取得元の解決(部屋の検索・deviceId・proxy)にDBアクセスが要るので、
- * 60秒ごとに無駄打ちしないため遅延にしている。
+ * 30秒ごとに無駄打ちしないため遅延にしている。
  *
  * **この関数は例外を投げない。** ライブ接続の維持がカタログ取得の失敗に引きずられてはいけない。
  */

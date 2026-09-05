@@ -174,7 +174,7 @@ export interface ChatFollowPayload extends ChatFollowInput {
  * コメント・ギフトと違い**状態通知**なので dedup しない(重複しても冪等)。代わりに
  * 順序が要る。端末は `(roomId, revision)` で新旧を判定し、壁時計を比較しない。
  *
- * - `roomId`: TikTok ID を変更した直後の最大60秒間、旧 room の Worker が同じ
+ * - `roomId`: TikTok ID を変更した直後の最大30秒間、旧 room の Worker が同じ
  *   `chat:{streamerId}` へ送れてしまう。端末が旧 room の状態を採らないための識別子
  * - `revision`: JSON に bigint を載せられないので10進文字列。単調増加(fencing と同じ値)
  */

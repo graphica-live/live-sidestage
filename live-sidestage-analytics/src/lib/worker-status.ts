@@ -6,7 +6,9 @@ import { watchedRoomFilter, type ListenerSnapshot } from "./tiktok-listener";
 // 情報源は2つあり、役割が違う。
 //
 //   1. DB(TiktokRoom) — 「どの Worker がどの部屋を担当することになっているか」。
-//      workerId は hash(roomId) % WORKER_COUNT で決まり永続化されている。
+//      workerId は初回 hash(roomId) % WORKER_COUNT で決まり永続化されるが、それは既定値に
+//      すぎない。worker-guardian の死亡フェイルオーバー移送、コラボ検知worker自身の
+//      自己申告(ensureRoomWatchedForCollab)がhashと無関係な値を書くため、DB上の値が正。
 //      listenerStatus も持っているが、これは persistState() が best effort で書いた
 //      「最後に書き込めた状態」で、定期更新があるのは connected のときだけ(30秒 heartbeat)。
 //      retrying/connecting/idle は古い値が残り続けるため、現在状態の正とは扱わない。
@@ -19,7 +21,7 @@ import { watchedRoomFilter, type ListenerSnapshot } from "./tiktok-listener";
 //
 // どちらかが取れなくても、取れた方だけで可能な範囲を返す(DB 障害時も Worker の死活は分かる)。
 
-/** 定常時の reconcile 間隔(worker.ts の RECONCILE_INTERVAL_MS)の3周ぶん。worker-guardian.ts も再利用する。 */
+/** 定常時の reconcile 間隔(worker.ts の RECONCILE_INTERVAL_MS)の6周ぶん。worker-guardian.ts も再利用する。 */
 export const RECONCILE_STALE_MS = 180_000;
 
 /** 各 Worker の /status を待つ上限。3台に対して直列には投げないので、短くてよい。 */
