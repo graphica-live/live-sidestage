@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { watchedRoomFilter, type ListenerSnapshot } from "./tiktok-listener";
 
@@ -162,6 +163,112 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
   }));
 }
 
+/** 管理画面からの手動 worker 移動の履歴。worker-guardian.ts の自動移送(MigrationAuditEntry)とは別枠。 */
+export type ManualReassignAuditEntry = {
+  at: string;
+  roomId: string;
+  tiktokId: string;
+  fromWorker: number | null;
+  toWorker: number;
+  operator: string | null;
+};
+
+export const MANUAL_REASSIGN_AUDIT_LOG_SETTING_KEY = "worker_manual_reassign_audit_log";
+const MANUAL_REASSIGN_AUDIT_LOG_MAX_ENTRIES = 50;
+
+/** 保存済みの手動移動履歴を読む。読めなくても画面を落とさないよう呼び出し側で catch する。 */
+export async function fetchManualReassignAuditLog(): Promise<ManualReassignAuditEntry[]> {
+  const row = await prisma.appSetting.findUnique({ where: { key: MANUAL_REASSIGN_AUDIT_LOG_SETTING_KEY } });
+  if (!row?.value) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function appendManualReassignAuditLog(
+  tx: Prisma.TransactionClient,
+  entry: ManualReassignAuditEntry
+): Promise<void> {
+  const row = await tx.appSetting.findUnique({ where: { key: MANUAL_REASSIGN_AUDIT_LOG_SETTING_KEY } });
+  let list: ManualReassignAuditEntry[] = [];
+  if (row?.value) {
+    try {
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      list = [];
+    }
+  }
+  list.push(entry);
+  const trimmed = list.slice(-MANUAL_REASSIGN_AUDIT_LOG_MAX_ENTRIES);
+  await tx.appSetting.upsert({
+    where: { key: MANUAL_REASSIGN_AUDIT_LOG_SETTING_KEY },
+    create: { key: MANUAL_REASSIGN_AUDIT_LOG_SETTING_KEY, value: JSON.stringify(trimmed) },
+    update: { value: JSON.stringify(trimmed) },
+  });
+}
+
+export type ReassignResult =
+  | { status: "ok"; roomId: string; tiktokId: string; fromWorker: number | null }
+  | { status: "not_found" }
+  | { status: "conflict"; actualWorkerId: number | null };
+
+// 管理画面からの手動 worker 移動。worker-guardian.ts の自動フェイルオーバー
+// (migrateBlockedRoom/migrateDeadWorker)と同じ2点を踏襲する。
+//
+// (1) $transaction + updateMany の where に現在の workerId(expectedWorkerId)を含めて
+//     楽観的排他を取る。無しだと「管理者がworker0→1のつもりでボタンを押す間に
+//     worker-guardianが既にworker2へ移送していた」場合、管理者の意図と違う相手を
+//     上書きし、監査ログにも古いfromWorkerが残って実態と食い違う。
+// (2) consecutiveBlockedCount を 0 にリセットする。リセットしないと、直後の
+//     runGuardianCycle が「まだ403連続超過」とみなし続け、手動で退避させた
+//     直後に別workerへ再移送する/give_upで監視そのものを止めてしまう。
+// (3) 監査ログの追記を同じ tx で行う(worker-guardian.tsの appendAuditLog と同じ理由 —
+//     tx外の setSetting() は tx内の変更と競合して lost update になりうる)。
+export async function reassignRoomWorker(
+  roomId: string,
+  toWorkerIndex: number,
+  workerCount: number,
+  expectedWorkerId: number | null,
+  operator: string | null
+): Promise<ReassignResult> {
+  if (!Number.isInteger(toWorkerIndex) || toWorkerIndex < 0 || toWorkerIndex >= workerCount) {
+    throw new Error(`toWorkerIndex は 0 以上 ${workerCount} 未満の整数である必要がある`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const room = await tx.tiktokRoom.findUnique({
+      where: { id: roomId },
+      select: { tiktokId: true, workerId: true },
+    });
+    if (!room) return { status: "not_found" };
+
+    if (room.workerId !== expectedWorkerId) {
+      return { status: "conflict", actualWorkerId: room.workerId };
+    }
+
+    const { count } = await tx.tiktokRoom.updateMany({
+      where: { id: roomId, workerId: expectedWorkerId },
+      data: { workerId: toWorkerIndex, consecutiveBlockedCount: 0 },
+    });
+    if (count === 0) return { status: "conflict", actualWorkerId: room.workerId };
+
+    await appendManualReassignAuditLog(tx, {
+      at: new Date().toISOString(),
+      roomId,
+      tiktokId: room.tiktokId,
+      fromWorker: expectedWorkerId,
+      toWorker: toWorkerIndex,
+      operator,
+    });
+
+    return { status: "ok", roomId, tiktokId: room.tiktokId, fromWorker: expectedWorkerId };
+  });
+}
+
 /**
  * 各 Worker の /status を並列に叩く。1台の不調が他をブロックしないよう allSettled で受ける。
  * fetchImpl はテストから差し替えるためだけの引数。
@@ -208,6 +315,49 @@ export async function probeWorkers(
           error: String(r.reason).slice(0, 200),
         }
   );
+}
+
+/**
+ * 手動移動の直後に toWorker/fromWorker へ即時 reconcile を依頼する(worker.ts の
+ * POST /internal/reconcile-now)。ベストエフォート — 呼び出し元をブロックしない・
+ * 失敗は例外を投げずログのみ。**commit 後にのみ呼ぶこと**(commit 前に呼ぶと
+ * Worker が古い workerId を読んで空振りする)。届かなくても既存の最大30秒
+ * reconcile 周期へ自然に劣化するだけなので、失敗を呼び出し元へ伝播させない。
+ * fetchImpl はテストから差し替えるためだけの引数。
+ */
+export function notifyWorkersOfManualReassign(input: {
+  fromWorker: number | null;
+  toWorker: number;
+  urls: string[];
+  secret: string | undefined;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}): void {
+  const { fromWorker, toWorker, urls, secret, timeoutMs = PROBE_TIMEOUT_MS, fetchImpl = fetch } = input;
+  if (!secret) {
+    console.warn(
+      "[worker-status] manual reassign 即時通知をスキップ(INTERNAL_API_SECRET未設定) — 最大30秒のreconcileフォールバックへ委譲"
+    );
+    return;
+  }
+
+  const targets = new Set<number>([toWorker]);
+  if (fromWorker != null) targets.add(fromWorker);
+
+  for (const workerIndex of targets) {
+    const url = urls[workerIndex];
+    if (!url) continue; // WORKER_INTERNAL_URLS 件数不足(既知の劣化状態)はスキップ
+    fetchImpl(`${url}/internal/reconcile-now`, {
+      method: "POST",
+      headers: { "x-internal-secret": secret },
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch((err) => {
+      console.warn(
+        `[worker-status] manual reassign 即時通知に失敗(worker${workerIndex}) — 最大30秒のreconcileフォールバックへ委譲:`,
+        err instanceof Error ? err.message : String(err)
+      );
+    });
+  }
 }
 
 /**

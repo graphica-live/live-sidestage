@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   buildWorkerReport,
+  notifyWorkersOfManualReassign,
   parseWorkerInternalUrls,
   probeWorkers,
   type AssignedRoom,
@@ -151,6 +152,64 @@ describe("probeWorkers", () => {
     const probes = await probeWorkers(["http://w0:8080"], undefined, 1000, fetchImpl as never);
     expect(probes[0].ok).toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifyWorkersOfManualReassign", () => {
+  const urls = ["http://w0:8080", "http://w1:8080", "http://w2:8080"];
+
+  it("toWorkerのみ(fromWorker:null)なら1回だけPOSTする", () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 202 }));
+    notifyWorkersOfManualReassign({ fromWorker: null, toWorker: 1, urls, secret: "secret", fetchImpl: fetchImpl as never });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://w1:8080/internal/reconcile-now",
+      expect.objectContaining({ method: "POST", headers: { "x-internal-secret": "secret" } })
+    );
+  });
+
+  it("fromWorkerとtoWorkerが異なれば2回POSTする", () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 202 }));
+    notifyWorkersOfManualReassign({ fromWorker: 0, toWorker: 2, urls, secret: "secret", fetchImpl: fetchImpl as never });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledWith("http://w0:8080/internal/reconcile-now", expect.anything());
+    expect(fetchImpl).toHaveBeenCalledWith("http://w2:8080/internal/reconcile-now", expect.anything());
+  });
+
+  it("fromWorker===toWorkerなら重複せず1回のみ", () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 202 }));
+    notifyWorkersOfManualReassign({ fromWorker: 1, toWorker: 1, urls, secret: "secret", fetchImpl: fetchImpl as never });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("secret未設定なら何も呼ばれない", () => {
+    const fetchImpl = vi.fn();
+    notifyWorkersOfManualReassign({ fromWorker: 0, toWorker: 1, urls, secret: undefined, fetchImpl: fetchImpl as never });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("urls[workerIndex]が無ければその宛先はスキップし例外を投げない", () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 202 }));
+    expect(() =>
+      notifyWorkersOfManualReassign({ fromWorker: null, toWorker: 5, urls, secret: "secret", fetchImpl: fetchImpl as never })
+    ).not.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("fetchが失敗しても例外を投げず、呼び出しは同期的にreturnする(fire-and-forget)", () => {
+    let resolveFetch: (() => void) | undefined;
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          resolveFetch = () => reject(new Error("network down"));
+        })
+    );
+    expect(() =>
+      notifyWorkersOfManualReassign({ fromWorker: null, toWorker: 1, urls, secret: "secret", fetchImpl: fetchImpl as never })
+    ).not.toThrow();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // 未解決のPromiseが残っていても呼び出し元は既にreturnしている(上のexpectが同期的に通ることで担保)。
+    resolveFetch?.();
   });
 });
 
