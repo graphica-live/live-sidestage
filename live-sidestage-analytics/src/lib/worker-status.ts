@@ -60,6 +60,8 @@ export type WorkerProbe =
 export type AssignedRoom = {
   roomId: string;
   tiktokId: string;
+  /** TikTok表示名。表示専用(取得できていない部屋はnull)。 */
+  nickname: string | null;
   workerId: number | null;
   listenerStatus: string | null;
   listenerMessage: string | null;
@@ -146,6 +148,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     select: {
       id: true,
       tiktokId: true,
+      nickname: true,
       workerId: true,
       listenerStatus: true,
       listenerMessage: true,
@@ -161,6 +164,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
   return rooms.map((r) => ({
     roomId: r.id,
     tiktokId: r.tiktokId,
+    nickname: r.nickname,
     workerId: r.workerId,
     listenerStatus: r.listenerStatus,
     listenerMessage: r.listenerMessage,
@@ -199,6 +203,7 @@ export async function fetchAdminRoomList(
     select: {
       id: true,
       tiktokId: true,
+      nickname: true,
       workerId: true,
       listenerStatus: true,
       listenerMessage: true,
@@ -230,6 +235,7 @@ export async function fetchAdminRoomList(
   return rooms.map((r) => ({
     roomId: r.id,
     tiktokId: r.tiktokId,
+    nickname: r.nickname,
     workerId: r.workerId,
     listenerStatus: r.listenerStatus,
     listenerMessage: r.listenerMessage,
@@ -387,11 +393,17 @@ export async function addWatchedRoom(
 
   if (existing) {
     await reviveSuspendedMonitoring(existing.id);
+    if (existence.nickname) {
+      await prisma.tiktokRoom.update({ where: { id: existing.id }, data: { nickname: existence.nickname } });
+    }
     return { status: "ok", roomId: existing.id, tiktokId: normalized, created: false, nickname: existence.nickname };
   }
 
   try {
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: normalized }, select: { id: true } });
+    const room = await prisma.tiktokRoom.create({
+      data: { tiktokId: normalized, nickname: existence.nickname },
+      select: { id: true },
+    });
     return { status: "ok", roomId: room.id, tiktokId: normalized, created: true, nickname: existence.nickname };
   } catch (err) {
     // findUnique と create の間に別リクエストが同じ tiktokId を作った場合。

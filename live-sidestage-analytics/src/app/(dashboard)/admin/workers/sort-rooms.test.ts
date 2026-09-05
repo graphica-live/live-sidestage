@@ -8,6 +8,7 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
   return {
     roomId: "room-1",
     tiktokId: "b",
+    nickname: null,
     workerId: 0,
     listenerStatus: "connected",
     listenerMessage: null,

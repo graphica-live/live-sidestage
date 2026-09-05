@@ -137,6 +137,29 @@ function ReassignControl({
   );
 }
 
+// nickname併記 + roomId別analyticsへの新規タブ遷移。nicknameが無い部屋は tiktokId のみ。
+function RoomLabel({
+  roomId,
+  tiktokId,
+  nickname,
+}: {
+  roomId: string;
+  tiktokId: string;
+  nickname: string | null | undefined;
+}) {
+  return (
+    <a
+      href={`/admin/rooms/${roomId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="hover:underline"
+    >
+      {nickname && <span className="text-strong">{nickname}</span>}{" "}
+      <span className={nickname ? "text-muted" : "text-strong"}>@{tiktokId}</span>
+    </a>
+  );
+}
+
 // issue の type は worker_url_count_mismatch のように長く、スマホ幅では改行できずに
 // 行をはみ出させる。flex-wrap と break-all で折り返しを許す。
 function IssueRow({ issue }: { issue: WorkerIssue }) {
@@ -279,6 +302,14 @@ export default function WorkersAdminPage() {
     () => sortAssignedRooms(report?.adminRoomList ?? [], sortKey, sortDir),
     [report?.adminRoomList, sortKey, sortDir]
   );
+
+  // w.listeners（ListenerSnapshot）はDBを介さないメモリ状態でnicknameを持たないため、
+  // adminRoomList から tiktokId → nickname を引けるようにしておく。
+  const nicknameByTiktokId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const r of report?.adminRoomList ?? []) map.set(r.tiktokId, r.nickname);
+    return map;
+  }, [report?.adminRoomList]);
 
   const toggleSort = (key: RoomSortKey) => {
     if (key === sortKey) {
@@ -488,7 +519,13 @@ export default function WorkersAdminPage() {
               <div className="divide-y divide-border">
                 {w.listeners.map((l) => (
                   <div key={l.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
-                    <span className="text-sm text-strong">@{l.tiktokId}</span>
+                    <span className="text-sm">
+                      <RoomLabel
+                        roomId={l.roomId}
+                        tiktokId={l.tiktokId}
+                        nickname={nicknameByTiktokId.get(l.tiktokId)}
+                      />
+                    </span>
                     <span className={`text-xs ${statusColor(l.status)}`}>{l.status}</span>
                     <span className="text-xs text-muted">{l.message}</span>
                     <span className="text-xs text-muted ml-auto">
@@ -519,7 +556,9 @@ export default function WorkersAdminPage() {
                   const live = w.listeners.find((l) => l.roomId === r.roomId);
                   return (
                     <div key={r.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
-                      <span className="text-sm text-strong">@{r.tiktokId}</span>
+                      <span className="text-sm">
+                        <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
+                      </span>
                       {live ? (
                         <span className={`text-xs ${statusColor(live.status)}`}>{live.status}</span>
                       ) : (
@@ -620,7 +659,9 @@ export default function WorkersAdminPage() {
             <tbody className="divide-y divide-border">
               {sortedRoomList.map((r) => (
                 <tr key={r.roomId}>
-                  <td className="px-4 py-2 text-strong">@{r.tiktokId}</td>
+                  <td className="px-4 py-2">
+                    <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
+                  </td>
                   <td className="px-4 py-2 text-muted">
                     {formatDuration(ageMs(r.listenerUpdatedAt, nowMs))}前
                   </td>
@@ -667,7 +708,9 @@ export default function WorkersAdminPage() {
           <div className="divide-y divide-border">
             {report.unassignedRooms.map((r) => (
               <div key={r.roomId} className="px-4 py-2 text-xs text-muted flex items-center gap-3 flex-wrap">
-                <span>@{r.tiktokId}</span>
+                <span>
+                  <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
+                </span>
                 <span className="ml-auto">
                   <ReassignControl
                     roomId={r.roomId}

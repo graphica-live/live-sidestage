@@ -226,6 +226,7 @@ model VerificationToken {
 model TiktokRoom {
   id                String    @id @default(cuid())
   tiktokId          String    @unique // 正規化済み(小文字化・trim・先頭@除去)
+  nickname          String?   // TikTok表示名。実在確認(tiktok-existence.ts)取得時・配信接続時に更新。表示専用、一致判定には使わない
   deviceId          String?
   workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定するが既定値にすぎない。worker-guardianの死亡移送・コラボ自己申告(ensureRoomWatchedForCollab)がhashと無関係な値を書くため、この列の値が常に正)
   proxyKey          String? // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)

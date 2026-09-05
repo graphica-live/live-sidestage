@@ -11,6 +11,7 @@ import {
   ensureAllListenersAlive,
 } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
+import { existenceChecker } from "./tiktok-existence";
 
 // vi.mockのfactoryはファイル先頭へホイストされるため、参照するオブジェクトは
 // vi.hoisted()で明示的にホイストしておく必要がある。
@@ -52,6 +53,12 @@ vi.mock("TLC-sidestage", () => ({
   WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
     return new MockConnection(uniqueId, options);
   }),
+}));
+
+vi.mock("./tiktok-existence", () => ({
+  existenceChecker: {
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+  },
 }));
 
 const emitOverlaySnapshotMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -401,5 +408,80 @@ describe("readinessの前提: DB起因の失敗はstartListenerから伝播す�
     ).rejects.toThrow();
 
     await stopListener(missingRoomId).catch(() => undefined);
+  });
+});
+
+// 配信開始(初回connected)のたびにTikTok表示名(nickname)をTiktokRoomへ反映する
+// (admin/workers画面でのnickname併記機能の土台)。
+describe("初回connected時のnickname更新", () => {
+  it("existenceCheckerがEXISTS+nicknameを返すとTiktokRoom.nicknameが更新される", async () => {
+    const tiktokId = `itest_nickname_ok_${Date.now()}`;
+    const a = await createStreamer(tiktokId, "itest-nickname-ok");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    vi.mocked(existenceChecker.check).mockResolvedValueOnce({
+      verdict: "EXISTS",
+      nickname: "テスト表示名",
+      userId: "123456",
+    });
+
+    await startListener(roomId, tiktokId, [a.id]);
+
+    await vi.waitFor(async () => {
+      const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId } });
+      expect(room?.nickname).toBe("テスト表示名");
+    });
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+  });
+
+  it("existenceCheckerがEXISTSでもnicknameが無ければTiktokRoom.nicknameは更新されない", async () => {
+    const tiktokId = `itest_nickname_none_${Date.now()}`;
+    const a = await createStreamer(tiktokId, "itest-nickname-none");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    vi.mocked(existenceChecker.check).mockResolvedValueOnce({
+      verdict: "EXISTS",
+      nickname: null,
+      userId: "123456",
+    });
+
+    await startListener(roomId, tiktokId, [a.id]);
+    // fire-and-forgetの完了を待つため、実害のない別クエリの完了を挟んでから確認する。
+    await vi.waitFor(async () => {
+      expect(getListenerStatus(roomId)).not.toBeNull();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId } });
+    expect(room?.nickname).toBeNull();
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+  });
+
+  it("existenceCheckerがMISSINGを返してもstartListener自体は失敗しない", async () => {
+    const tiktokId = `itest_nickname_missing_${Date.now()}`;
+    const a = await createStreamer(tiktokId, "itest-nickname-missing");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    vi.mocked(existenceChecker.check).mockResolvedValueOnce({
+      verdict: "MISSING",
+      nickname: null,
+      userId: null,
+    });
+
+    await expect(startListener(roomId, tiktokId, [a.id])).resolves.not.toThrow();
+    expect(getListenerStatus(roomId)).not.toBeNull();
+
+    const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId } });
+    expect(room?.nickname).toBeNull();
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
   });
 });
