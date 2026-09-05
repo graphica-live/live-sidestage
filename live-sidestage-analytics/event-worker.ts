@@ -13,6 +13,11 @@ import { backfillHostUserIds, backfillStreamerRoomHostIds } from "@/lib/tiktok-h
 import { snapshotDueEventAvatars } from "@/event/avatar-snapshot";
 import { processPendingMergeJobs } from "@/lib/tiktok-id-migration";
 import { autoFinishOverdueEvents } from "@/event/auto-finish";
+import { collectDbStats } from "@/lib/db-stats/collect";
+import { compareToPrevious } from "@/lib/db-stats/compare";
+import { formatDbStatsMessage } from "@/lib/db-stats/message";
+import { sendLineMessage } from "@/lib/notify/line";
+import { toJstInputValue } from "@/event/datetime";
 import { prisma } from "@/lib/prisma";
 
 const INTERVAL_MS = Number(process.env.AGGREGATE_INTERVAL_MS ?? 10_000);
@@ -66,6 +71,15 @@ const MERGE_TICK_MAX_PER_RUN = Number(process.env.TIKTOK_ID_MERGE_MAX_PER_RUN ??
  */
 const AUTO_FINISH_INTERVAL_MS = Number(process.env.EVENT_AUTO_FINISH_INTERVAL_MS ?? 60 * 60 * 1000);
 
+/**
+ * 毎朝JST6:00に全テーブルの件数・サイズを記録し、前日比の異常増分をLINEへ通知する。
+ * 時刻固定の実行なので、他ループと違い「まだ6時前か」「今日は記録済みか」の確認を毎tick挟む。
+ * 確認間隔自体は短くていい(既定5分)。
+ */
+const DB_STATS_CHECK_INTERVAL_MS = Number(process.env.DB_STATS_CHECK_INTERVAL_MS ?? 5 * 60_000);
+/** ローカル動作確認用。1を指定すると時刻ゲート(JST6時待ち)を無視して即実行する。 */
+const DB_STATS_FORCE_RUN = process.env.DB_STATS_FORCE_RUN === "1";
+
 let inFlight = false;
 let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
@@ -75,6 +89,7 @@ let streamerHostIdInFlight = false;
 let avatarSnapshotInFlight = false;
 let mergeTickInFlight = false;
 let autoFinishInFlight = false;
+let dbStatsInFlight = false;
 
 async function tick(): Promise<void> {
   // worker.ts(TikTok接続)には guard がないが、こちらは1周が長くなりうるので必ず持つ。
@@ -228,6 +243,38 @@ async function autoFinishTick(): Promise<void> {
   }
 }
 
+// 毎朝JST6:00に全テーブルの件数・サイズをDbStatsSnapshotへ記録し、前日比+閾値%超の
+// テーブルがあればLINEへ通知する(異常有無に関わらず毎日サマリを送る)。
+// JST暦日の@@uniqueで「今日は記録済みか」を判定するため、状態はメモリではなくDBに持つ
+// (プロセス再起動をまたいでも二重実行・実行漏れが起きない)。
+async function dbStatsTick(): Promise<void> {
+  if (dbStatsInFlight || stopping) return;
+  dbStatsInFlight = true;
+
+  try {
+    const nowJst = toJstInputValue(new Date()); // "YYYY-MM-DDTHH:mm"(JST)
+    const [datePart, timePart] = nowJst.split("T");
+    const hourJst = Number(timePart.slice(0, 2));
+
+    if (!DB_STATS_FORCE_RUN && hourJst < 6) return;
+
+    const runDate = new Date(`${datePart}T00:00:00.000Z`);
+    const alreadyRecorded = await prisma.dbStatsSnapshot.count({ where: { runDate } });
+    if (!DB_STATS_FORCE_RUN && alreadyRecorded > 0) return;
+
+    const { tables } = await collectDbStats(runDate);
+    const comparison = await compareToPrevious(runDate);
+    console.log(
+      `[event-worker] DB統計を記録 ${tables}テーブル / 異常増分 ${comparison.anomalies.length}件`
+    );
+    await sendLineMessage(formatDbStatsMessage(datePart, comparison));
+  } catch (err) {
+    console.error("[event-worker] DB統計の記録・通知でエラー:", err);
+  } finally {
+    dbStatsInFlight = false;
+  }
+}
+
 async function shutdown(signal: string) {
   if (stopping) return;
   stopping = true;
@@ -240,6 +287,7 @@ async function shutdown(signal: string) {
   clearInterval(avatarSnapshotTimer);
   clearInterval(mergeTimer);
   clearInterval(autoFinishTimer);
+  clearInterval(dbStatsTimer);
   await currentTick.catch(() => {});
   await mergeTickCurrent.catch(() => {});
   await prisma.$disconnect().catch(() => {});
@@ -267,6 +315,7 @@ const streamerHostIdTimer =
 const avatarSnapshotTimer = setInterval(() => void avatarSnapshotTick(), AVATAR_SNAPSHOT_INTERVAL_MS);
 const mergeTimer = setInterval(scheduleMergeTick, MERGE_TICK_INTERVAL_MS);
 const autoFinishTimer = setInterval(() => void autoFinishTick(), AUTO_FINISH_INTERVAL_MS);
+const dbStatsTimer = setInterval(() => void dbStatsTick(), DB_STATS_CHECK_INTERVAL_MS);
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
@@ -279,7 +328,8 @@ console.log(
     } / ` +
     `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms / ` +
     `TikTok ID合流ジョブ ${MERGE_TICK_INTERVAL_MS}ms/最大${MERGE_TICK_MAX_PER_RUN}件 / ` +
-    `開催終了後の自動終了 ${AUTO_FINISH_INTERVAL_MS}ms)`
+    `開催終了後の自動終了 ${AUTO_FINISH_INTERVAL_MS}ms / ` +
+    `DB統計の記録確認 ${DB_STATS_CHECK_INTERVAL_MS}ms${DB_STATS_FORCE_RUN ? "(強制実行モード)" : ""})`
 );
 scheduleTick();
 void renewTick();
@@ -288,3 +338,4 @@ if (streamerHostIdTimer) void streamerHostIdTick();
 void avatarSnapshotTick();
 scheduleMergeTick();
 void autoFinishTick();
+void dbStatsTick();
