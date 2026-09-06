@@ -55,7 +55,7 @@ import {
 import { ensureAvatarCached } from "./avatar-storage";
 import { materializeBattleHistory } from "./battle-history-finalize";
 import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
-import { isCollabJoinSource, parseCollabGroupChange } from "./tiktok-collab";
+import { parseCollabGroupChange, shouldWatchCollabSnapshot } from "./tiktok-collab";
 import {
   ensureRoomWatchedForCollab,
   normalizeTiktokId,
@@ -1882,14 +1882,33 @@ async function watchDiscoveredRooms(
  */
 function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unknown): void {
   const parsed = parseCollabGroupChange(data);
-  if (!parsed || !isCollabJoinSource(parsed.source)) return;
+  if (!parsed) return;
+
+  // 採用可否の前に出す。sourceの値分布と「待機者ゼロのイベントがどれだけ来るか」は本番でしか
+  // 測れず、この変更の効果測定(opponentWatchのbattle_start件数が減るか)の根拠にもなる。
+  // messageType:18はコラボメンバーの変化時にしか飛ばないので1件/イベントでも量は問題にならない。
+  console.info("[collab] groupChange", {
+    roomId,
+    source: parsed.source,
+    linked: parsed.linkedCount,
+    waiting: parsed.waitingCount,
+    other: parsed.otherCount,
+    ids: parsed.displayIds.length,
+  });
 
   if (parsed.displayIds.length === 0) {
-    // 参加確定(AGREE)なのにuserInfosが空 = payload構造が想定と変わった疑い。
+    // userListには人が居るのにuserInfosが空 = payload構造が想定と変わった疑い。
     // 判定自体は通っているため例外にはならず、気づかないまま機能停止しうる(実装後レビューで指摘)。
-    console.warn("[collab] 参加確定イベントだがdisplayIdsが空。payload構造の変化を疑う", { roomId });
+    if (parsed.linkedCount + parsed.waitingCount + parsed.otherCount > 0) {
+      console.warn("[collab] userListに人が居るのにdisplayIdsが空。payload構造の変化を疑う", {
+        roomId,
+        source: parsed.source,
+      });
+    }
     return;
   }
+
+  if (!shouldWatchCollabSnapshot(parsed)) return;
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("collab");
   void watchDiscoveredRooms(parsed.displayIds, ownTiktokId, "collab", ownWorkerIndex);

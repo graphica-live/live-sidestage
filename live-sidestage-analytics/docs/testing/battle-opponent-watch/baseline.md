@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: battle-opponent-watch
-last_updated: 2026-09-06
+last_updated: 2026-09-07
 last_risk: HIGH
-last_reviewers: Design Mode=Qwen単独(Codex/Geminiともquota切れ、ユーザー承認の上で完了扱い)。Code Mode=Qwen(ファイル分割+カナリア検証)+Fable(Codex/Gemini代理不可時の第2独立レビュアー)
+last_reviewers: Design Mode=DeepSeek+Fable(Codex/Geminiともquota切れ、ユーザー承認の上でFableを代理)。Code Mode=DeepSeek+Fable(同上)
 ---
 
 # テストベースライン: battle-opponent-watch
@@ -33,6 +33,13 @@ last_reviewers: Design Mode=Qwen単独(Codex/Geminiともquota切れ、ユーザ
 | TC-BOW-010 | 自陣営が単独最高スコアならbrand色+太字、自陣営より高い陣営があればred色+太字、同点最高(単独でない)は無着色 | `BattleScoreLine` | 正常/境界 | シナリオ3パターン: self-highest([1500,900,700])/self-losing([800,1600,1000])/tie-for-highest([1200,1200,500]) | self-highestは自陣営スコアがbrand色、self-losingはred色、tie-for-highestは無着色 | 同上(Playwright目視) | PASS | ハイライト規則はDesign Modeレビュー(Qwen finding #4)で明記した仕様どおり |
 | TC-BOW-011 | `battle.teams`がnull(1v1・チーム未解決)の一覧行は、既存の`selfScore`/`opponentScore` 2値表示にフォールバックする | `BattleScoreLine` | 回帰 | 既存の1v1バトルデータ | 従来どおり自スコア/相手スコアの2値と勝敗色が表示される | 同上(Playwright目視)、および単体テストで既存2値ロジックの分岐に回帰がないことを確認 | PASS | |
 | TC-BOW-013 | `battle.teams`にスコア未取得(null)の陣営が混在する場合、自陣営を含め着色しない | `BattleScoreLine` | 境界/回帰防止 | teams中の1陣営以上がscore:null(相手roomが未接続でスコア未取得の場合等) | 自陣営がnull以外の最高値でもbrand/red着色しない(全陣営スコアが揃うまで勝敗を示唆しない) | ソースレビュー(Fable finding、`hasNullScore`フラグの追加を確認) | PASS | Code Modeレビュー(Fable)で「null陣営混在時は無着色」というdocコメントと実装(自陣営が単独非null最高でbrand着色されてしまう)の不一致を指摘され修正。再スクリーンショットは未実施(NOT RUN理由: 撮影済みシナリオはいずれも全陣営スコア確定済みで本ケース非該当のため、コード直読で確認) |
+| TC-BOW-020 | `userList`に待機者(status:1)が居る招待送信イベントでは相手roomを作成しない(資源暴走の防止) | `shouldWatchCollabSnapshot` / linkLayerハンドラ | 境界/異常 | `source:"SOURCE_TYPE_RECOMMEND_LIST"`、`userList`が`[status:3, status:1]`のmessageType:18を発火 | 相手roomが作成されない(2秒間50ms間隔でpollし続けて`findUnique`がnullのまま) | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.collab-kick.integration.test.ts` | PASS | `userInfos`は招待中の人も含む(probeログ169件中167件で`userInfos`件数=LINKED+WAITING)。sourceを無条件に無視すると招待のたびに接続が張られる |
+| TC-BOW-021 | 待機者0なら`REPLY_STATUS_AGREE`以外のsource(`live_end`等)でも相手roomを`collab`として作成する | `shouldWatchCollabSnapshot` / linkLayerハンドラ | 正常 | `source:"live_end"`、`userList`が全員status:3のmessageType:18を発火 | 相手roomが作成され`watchSource==="collab"` | 同上 | PASS | AGREEは実測で全体の8%しかない。承諾イベントを取り逃すと相手roomをバトル開始まで発見できず`captureStatus`が悪化する |
+| TC-BOW-022 | `userList`が取れないpayload構造の変化ではAGREE以外を採用しない(fail-closed) | `shouldWatchCollabSnapshot` | 異常/境界 | `groupChangeContent`欠落の`messageType:18`を`source:"live_end"` / `source:"x[REPLY_STATUS_AGREE]"` の2通りで判定 | `live_end`はfalse、AGREEはtrue | `npm run test:unit -- src/lib/tiktok-collab.test.ts` | PASS | 構造変化時に資源の暴走側へ倒れないことを優先した既定 |
+| TC-BOW-023 | `userList`のstatusをLINKED(3)/WAITING(1)/その他で数え分ける | `parseCollabGroupChange` | 境界 | `userList`が`[3,3,1,7]` | `linkedCount===2` / `waitingCount===1` / `otherCount===1` | 同上 | PASS | 実測で観測できたstatusは1と3のみだが、protoには`GROUP_STATUS_UNKNOWN=0`がある |
+| TC-BOW-026 | `userList`が空配列(構造は読めるがLINKED 0人)のイベントはAGREE以外を採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `userList: []`かつ`userInfos`に2人、`source:"live_end"` / `source:"x[REPLY_STATUS_AGREE]"` | `live_end`はfalse、AGREEはtrue | `npm run test:unit -- src/lib/tiktok-collab.test.ts` | PASS | `linkedCount > 0`が必須条件であることを名指しで固定する(TC-BOW-022のキー欠落ケースは空配列へ正規化された結果同じ値になるだけ)。probeログ169件では空配列・キー欠落とも0件 |
+| TC-BOW-024 | LINKED以外のstatus(`GROUP_STATUS_UNKNOWN=0`・未定義の2等)が混ざるイベントは採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `source:"live_end"`で`userList`が`[3,0]` / `source:"SOURCE_TYPE_RECOMMEND_LIST"`で`[3,2]` | どちらもfalse | 同上 | PASS | 「WAITINGが0」でなく「LINKED以外が0」で判定する。未知statusをWAITING扱いしないと暴走側へ倒れる(Code Modeレビュー Fable指摘) |
+| TC-BOW-025 | `displayIds`がLINKED件数より多い(`userInfos`に`userList`へ居ない人が混ざる)イベントは採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `userInfos`2人・`userList`が`[3]`(LINKED 1人)、`source:"live_end"` | false | 同上 | PASS | probeログ169件中2件で`userInfos`が`userList`より1人多い実例あり。`displayIds`は重複除去・空文字除去で小さくなる方向にしかずれない |
 | TC-BOW-012 | プロジェクト全体のunit/integrationテストが今回の変更で壊れていない | プロジェクト全体 | 回帰 | - | 既知の不安定要因([[analytics-vitest-cross-file-interference]])を除き全PASS | `npm run test:unit`、`npm run test:integration -- tiktok-room.collab.integration.test.ts tiktok-listener.collab-kick.integration.test.ts` | PASS | unit: 1278/1278。integration(2ファイル+周辺): 782/782 PASS(post-review修正後の再実行) |
 
 ## Quality Gate

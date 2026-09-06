@@ -74,10 +74,22 @@ async function cleanupRoom(roomId: string) {
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {});
 }
 
-function groupChangePayload(ownDisplayId: string, partnerDisplayId: string) {
+function groupChangePayload(
+  ownDisplayId: string,
+  partnerDisplayId: string,
+  options: { source?: string; statuses?: number[] } = {}
+) {
+  const statuses = options.statuses;
   return {
     messageType: 18,
-    source: "SOURCE_TYPE_FRIEND_LIST[REPLY_STATUS_AGREE]",
+    source: options.source ?? "SOURCE_TYPE_FRIEND_LIST[REPLY_STATUS_AGREE]",
+    ...(statuses
+      ? {
+          groupChangeContent: {
+            groupUser: { userList: statuses.map((status, i) => ({ channelId: `ch${i}`, status })) },
+          },
+        }
+      : {}),
     businessContent: {
       cohostContent: {
         listChangeBizContent: {
@@ -293,6 +305,68 @@ describe("linkLayer: コラボ発見のキックはStreamer購読または特別
     await stopListener(ownRoom.id);
     await stopListener(partnerRoom.id);
     await cleanupRoom(ownRoom.id);
+    await cleanupRoom(partnerRoom.id);
+  });
+});
+
+describe("linkLayer: 待機者(status:1)の有無で採用可否を切り替える(2026-09-07)", () => {
+  it("待機者が居る招待送信イベントでは相手roomを作成しない", async () => {
+    const ownTiktokId = `itest_waiting_own_${Date.now()}`;
+    const partnerTiktokId = `itest_waiting_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokId, "itest-waiting");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire(
+      "linkLayer",
+      groupChangePayload(ownTiktokId, partnerTiktokId, {
+        source: "SOURCE_TYPE_RECOMMEND_LIST",
+        statuses: [3, 1],
+      })
+    );
+
+    // 作成されないことは「一定時間観測し続けて現れない」でしか確かめられない。固定待ちだと
+    // 遅いCIで作成が待ち時間の後ろへずれた場合に見逃すため、pollで繰り返し確認する。
+    await expect
+      .poll(async () => prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } }), {
+        timeout: 2000,
+        interval: 50,
+      })
+      .toBeNull();
+
+    await stopListener(ownRoomId);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+  });
+
+  it("待機者0なら承諾以外のsource(live_end)でも相手roomをcollabとして作成する", async () => {
+    const ownTiktokId = `itest_nowaiting_own_${Date.now()}`;
+    const partnerTiktokId = `itest_nowaiting_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokId, "itest-nowaiting");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire(
+      "linkLayer",
+      groupChangePayload(ownTiktokId, partnerTiktokId, { source: "live_end", statuses: [3, 3] })
+    );
+
+    await vi.waitFor(async () => {
+      expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } })).not.toBeNull();
+    });
+    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
+      where: { tiktokId: partnerTiktokId },
+    });
+    expect(partnerRoom.watchSource).toBe("collab");
+
+    await stopListener(ownRoomId);
+    await stopListener(partnerRoom.id);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
     await cleanupRoom(partnerRoom.id);
   });
 });
