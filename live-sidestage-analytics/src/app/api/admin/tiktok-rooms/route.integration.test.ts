@@ -245,6 +245,38 @@ describe("PATCH /api/admin/tiktok-rooms", () => {
     expect(log?.detail).toEqual({ specialWatch: true, revivedSuspension: true });
   });
 
+  it("一時停止解除時にlastWatchInstructedAtも更新する(匿名room自動停止トグルのstale判定に引っかからないため)", async () => {
+    auth.email = ADMIN_EMAIL;
+    const room = await makeRoom({ monitoringSuspended: true });
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: {
+        lastWatchInstructedAt: new Date("2000-01-01T00:00:00.000Z"),
+        unhealthySince: new Date(),
+        notFoundStreak: 3,
+        notFoundFirstAt: new Date("2000-01-01T00:00:00.000Z"),
+        lastExistenceCheckAt: new Date("2000-01-01T00:00:00.000Z"),
+        consecutiveBlockedCount: 2,
+      },
+    });
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/admin/tiktok-rooms", {
+        method: "PATCH",
+        body: JSON.stringify({ id: room.id, action: "toggle_special_watch" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.lastWatchInstructedAt.getTime()).toBeGreaterThan(Date.now() - 5_000);
+    expect(after.unhealthySince).toBeNull();
+    expect(after.notFoundStreak).toBe(0);
+    expect(after.notFoundFirstAt).toBeNull();
+    expect(after.lastExistenceCheckAt).toBeNull();
+    expect(after.lastLowValueCheckAt).not.toBeNull();
+    expect(after.lastLowValueCheckAt!.getTime()).toBeGreaterThan(Date.now() - 5_000);
+    expect(after.consecutiveBlockedCount).toBe(0);
+  });
+
   it("再度toggle_special_watchを実行すると特別監視がOFFに戻る", async () => {
     auth.email = ADMIN_EMAIL;
     const room = await prisma.tiktokRoom.create({

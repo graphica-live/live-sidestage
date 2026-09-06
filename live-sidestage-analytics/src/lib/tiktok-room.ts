@@ -401,7 +401,23 @@ export async function toggleSpecialWatch(
       where: { id: roomId },
       data: {
         specialWatch: nextValue,
-        ...(revivesSuspension ? { monitoringSuspended: false } : {}),
+        // revive時はreviveSuspendedMonitoring()(mark-last-active.ts)と同じフィールドを
+        // 同時にリセットする。monitoringSuspended:falseだけ戻すと、匿名room(Streamer/
+        // AgencyWatch/monitorUntilいずれも無し)ではlastWatchInstructedAtが古いままになり、
+        // 匿名観測room自動停止トグルON時にwatchedRoomFilter()のstale判定に引っかかって
+        // 監視対象から漏れ続ける(UI上は復帰済みなのに実際はworkerが接続しない)。
+        ...(revivesSuspension
+          ? {
+              monitoringSuspended: false,
+              lastWatchInstructedAt: new Date(),
+              unhealthySince: null,
+              notFoundStreak: 0,
+              notFoundFirstAt: null,
+              lastExistenceCheckAt: null,
+              lastLowValueCheckAt: new Date(),
+              consecutiveBlockedCount: 0,
+            }
+          : {}),
       },
     });
     await tx.tiktokRoomAdminAuditLog.create({
