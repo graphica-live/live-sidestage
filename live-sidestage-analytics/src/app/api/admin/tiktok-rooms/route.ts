@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin";
-import { deleteTiktokRoomPermanently, suspendRoomMonitoring } from "@/lib/tiktok-room";
+import { deleteTiktokRoomPermanently, suspendRoomMonitoring, toggleSpecialWatch } from "@/lib/tiktok-room";
 
 // /admin/workers 管理画面からの TiktokRoom 完全削除・監視解除(一時停止)。
 // GET /api/admin/workers は読み取り専用が設計上の不変条件のため、書き込み操作はこちらに分離する。
@@ -36,8 +36,17 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const roomId = body?.id;
   const action = body?.action;
-  if (typeof roomId !== "string" || action !== "suspend") {
-    return NextResponse.json({ error: "id and action:\"suspend\" are required" }, { status: 400 });
+  if (typeof roomId !== "string" || (action !== "suspend" && action !== "toggle_special_watch")) {
+    return NextResponse.json(
+      { error: "id and action:\"suspend\"|\"toggle_special_watch\" are required" },
+      { status: 400 }
+    );
+  }
+
+  if (action === "toggle_special_watch") {
+    const result = await toggleSpecialWatch(roomId, session.user.email!);
+    if (result.status === "not_found") return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ result }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const result = await suspendRoomMonitoring(roomId, session.user.email!);

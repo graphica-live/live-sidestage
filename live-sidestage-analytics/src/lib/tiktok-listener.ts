@@ -158,6 +158,10 @@ interface ListenerInstance {
   // オーバーレイ更新通知・チャット配信を「誰に」送るかを決めるためだけに使う
   // (ギフトデータ自体はroomId単位で1回だけ保存され、登録者全員が同じ行を参照する)。
   subscriberIds: Set<string>;
+  // 開発用「特別監視」フラグ(TiktokRoom.specialWatch)のキャッシュ。reconcile(ensureAllListenersAlive)
+  // のたびにDBの最新値へ更新する。コラボ・バトル相手発見のキック条件(subscriberIds.size>0 || specialWatch)
+  // にのみ使う。監視対象自体(watchedRoomFilter)には影響しない。
+  specialWatch: boolean;
   stopped: boolean;
   lastEventAt: number;
   // このインスタンスをlistenersに登録したepoch ms。ensureAllListenersAlive()が
@@ -2150,7 +2154,11 @@ async function connectAndAttach(
     recordBattleEvent(roomId, inst.state.tiktokId, Array.from(inst.subscriberIds), parsed);
     // 補助トリガー: コラボ承諾(linkLayer)の取りこぼし(worker再起動等で承諾より後に接続した場合)を
     // 埋める。主トリガーはlinkLayer側のrecordCollabGroupChange。詳細はwatchBattleOpponents参照。
-    if (parsed) watchBattleOpponents(roomId, inst.state.tiktokId, parsed);
+    // コラボ相手発見のキックはStreamer購読中のroomか特別監視roomからのみ許可する
+    // (2026-09-06、連鎖爆発によるEulerStream署名枯渇の再発防止)。
+    if (parsed && (inst.subscriberIds.size > 0 || inst.specialWatch)) {
+      watchBattleOpponents(roomId, inst.state.tiktokId, parsed);
+    }
   });
   conn.on("linkMicArmies", (data: unknown) => {
     markAlive();
@@ -2165,13 +2173,18 @@ async function connectAndAttach(
   // コラボ(linkMic本体。バトルでない)の参加・離脱通知。fork独自追加のイベント
   // (shared/tiktok-live-connector/CHANGELOG.md 1.1.0参照)。
   //
-  // 監視中roomすべてで発火する(2026-09にStreamer登録済みroom限定のガードを撤廃)。
-  // コラボ由来で新規発見したroomも次のreconcileで監視対象になり同じlinkLayerを購読するため
-  // 連鎖的に監視対象が広がりうるが、歯止めは`ensureRoomWatchedForCollab`内の
-  // `MAX_COLLAB_DISCOVERED_ROOMS`(監視中room総数の上限)のみに一本化した。
+  // 2026-09にStreamer登録済みroom限定のガードを一度撤廃したところ、コラボ由来で新規発見した
+  // roomが次のreconcileで同じlinkLayerを購読し連鎖的に監視対象が爆発、
+  // `MAX_COLLAB_DISCOVERED_ROOMS`(監視中room総数ベース)が403フェイルオーバー休止room
+  // (monitoringSuspended:true)を数に入れず実質無効化されていたため、EulerStream署名を
+  // 日次上限まで消費する障害になった(2026-09-06)。再発防止として、コラボ相手発見の
+  // キックはStreamer購読中のroomか特別監視(specialWatch)roomからのみ許可する。
+  // コラボ先のコラボ先(他人)が連鎖的に監視対象へ広がることはない。
   conn.on("linkLayer", (data: unknown) => {
     markAlive();
-    recordCollabGroupChange(roomId, inst.state.tiktokId, data);
+    if (inst.subscriberIds.size > 0 || inst.specialWatch) {
+      recordCollabGroupChange(roomId, inst.state.tiktokId, data);
+    }
   });
 
   conn.on("linkMicBattleItemCard", (data: unknown) => {
@@ -2541,11 +2554,12 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
 export async function startListener(
   roomId: string,
   tiktokId: string,
-  subscriberIds: string[] = []
+  subscriberIds: string[] = [],
+  specialWatch = false
 ) {
   const existing = listeners.get(roomId);
   if (existing && !existing.stopped) {
-    applySubscribers(existing, subscriberIds);
+    applySubscribers(existing, subscriberIds, specialWatch);
     if (
       existing.state.status === "connected" ||
       existing.state.status === "connecting"
@@ -2580,6 +2594,7 @@ export async function startListener(
     // キー(`uniqueId:giftId`)はGift行に残らないので元々復元できない。
     pendingCombos: new Map(),
     subscriberIds: new Set(subscriberIds),
+    specialWatch,
     stopped: false,
     lastEventAt: Date.now(),
     createdAt: Date.now(),
@@ -2668,9 +2683,10 @@ export async function stopListener(roomId: string, cause: StopListenerCause = "u
  * (heartbeat は persistState を呼ぶだけで updateState を通らない)。配信が安定していると
  * 遷移は何時間も起きないので、端末は延々「配信開始待ち」のままになる。
  */
-function applySubscribers(inst: ListenerInstance, subscriberIds: string[]) {
+function applySubscribers(inst: ListenerInstance, subscriberIds: string[], specialWatch = false) {
   const added = subscriberIds.filter((id) => !inst.subscriberIds.has(id));
   inst.subscriberIds = new Set(subscriberIds);
+  inst.specialWatch = specialWatch;
   if (added.length === 0 || inst.state.revision === 0n) return;
 
   enqueueListenerNotify(`${inst.state.roomId}:snapshot`, {
@@ -2729,7 +2745,7 @@ export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot
   }));
 }
 
-type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
+type MyRoom = { id: string; tiktokId: string; subscriberIds: string[]; specialWatch: boolean };
 
 // 接続を維持すべき部屋の条件は watched-room-filter.ts の watchedRoomFilter()/
 // resolveWatchedRoomFilter() へ集約してある(tiktok-room.ts の上限カウント・
@@ -2768,6 +2784,7 @@ async function getMyRooms(): Promise<MyRoom[]> {
     id: r.id,
     tiktokId: r.tiktokId,
     subscriberIds: r.streamers.map((s) => s.id),
+    specialWatch: r.specialWatch,
   }));
 }
 
@@ -2811,7 +2828,7 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
   let startFailures = 0;
   await runWithConcurrency(rooms, RESUME_CONCURRENCY, async (r) => {
     console.log(`[listener] starting listener for @${r.tiktokId} (room ${r.id}, ${r.subscriberIds.length} subscriber(s))`);
-    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) => {
+    await startListener(r.id, r.tiktokId, r.subscriberIds, r.specialWatch).catch((err) => {
       startFailures++;
       console.error(`[listener] resume failed for ${r.tiktokId}:`, err);
     });
@@ -2893,11 +2910,11 @@ export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
   for (const r of rooms) {
     const existing = listeners.get(r.id);
     if (existing) {
-      applySubscribers(existing, r.subscriberIds);
+      applySubscribers(existing, r.subscriberIds, r.specialWatch);
       continue;
     }
     console.log(`[listener] ensureAlive: restarting missing listener for @${r.tiktokId}`);
-    await startListener(r.id, r.tiktokId, r.subscriberIds).catch((err) => {
+    await startListener(r.id, r.tiktokId, r.subscriberIds, r.specialWatch).catch((err) => {
       startFailures++;
       console.error(`[listener] ensureAlive failed for ${r.tiktokId}:`, err);
     });

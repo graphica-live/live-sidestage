@@ -203,4 +203,53 @@ describe("PATCH /api/admin/tiktok-rooms", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("管理者がtoggle_special_watchを実行すると特別監視がONになり、監査ログが残る", async () => {
+    auth.email = ADMIN_EMAIL;
+    const room = await makeRoom();
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/admin/tiktok-rooms", {
+        method: "PATCH",
+        body: JSON.stringify({ id: room.id, action: "toggle_special_watch" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result).toEqual({ status: "toggled", specialWatch: true });
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.specialWatch).toBe(true);
+    const log = await prisma.tiktokRoomAdminAuditLog.findFirst({
+      where: { roomId: room.id, action: "toggle_special_watch" },
+    });
+    expect(log?.detail).toEqual({ specialWatch: true });
+  });
+
+  it("再度toggle_special_watchを実行すると特別監視がOFFに戻る", async () => {
+    auth.email = ADMIN_EMAIL;
+    const room = await prisma.tiktokRoom.create({
+      data: { tiktokId: tiktokId("r"), specialWatch: true },
+      select: { id: true },
+    });
+    roomIds.push(room.id);
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/admin/tiktok-rooms", {
+        method: "PATCH",
+        body: JSON.stringify({ id: room.id, action: "toggle_special_watch" }),
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result).toEqual({ status: "toggled", specialWatch: false });
+  });
+
+  it("存在しないroomIdへのtoggle_special_watchは404", async () => {
+    auth.email = ADMIN_EMAIL;
+    const res = await PATCH(
+      new NextRequest("http://localhost/api/admin/tiktok-rooms", {
+        method: "PATCH",
+        body: JSON.stringify({ id: "itest-nonexistent", action: "toggle_special_watch" }),
+      })
+    );
+    expect(res.status).toBe(404);
+  });
 });

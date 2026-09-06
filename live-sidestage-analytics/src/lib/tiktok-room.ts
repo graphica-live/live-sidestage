@@ -371,6 +371,41 @@ export async function suspendRoomMonitoring(
   });
 }
 
+export type ToggleSpecialWatchResult =
+  | { status: "toggled"; specialWatch: boolean }
+  | { status: "not_found" };
+
+/**
+ * 開発用「特別監視」フラグの反転。specialWatch:true のroomは、コラボ相手・バトル相手発見の
+ * キック条件をStreamer購読と無関係に満たす(tiktok-listener.ts の recordCollabGroupChange /
+ * watchBattleOpponents 呼び出しガード参照)。監視対象自体(watchedRoomFilter)には影響しない。
+ */
+export async function toggleSpecialWatch(
+  roomId: string,
+  operatorEmail: string
+): Promise<ToggleSpecialWatchResult> {
+  return prisma.$transaction(async (tx) => {
+    const room = await tx.tiktokRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true, tiktokId: true, specialWatch: true },
+    });
+    if (!room) return { status: "not_found" as const };
+
+    const nextValue = !room.specialWatch;
+    await tx.tiktokRoom.update({ where: { id: roomId }, data: { specialWatch: nextValue } });
+    await tx.tiktokRoomAdminAuditLog.create({
+      data: {
+        action: "toggle_special_watch",
+        roomId: room.id,
+        tiktokId: room.tiktokId,
+        operatorEmail,
+        detail: { specialWatch: nextValue },
+      },
+    });
+    return { status: "toggled" as const, specialWatch: nextValue };
+  });
+}
+
 export type DeleteRoomResult = "deleted" | "not_found" | "event_active" | "lock_unavailable";
 
 /**
