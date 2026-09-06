@@ -379,6 +379,10 @@ export type ToggleSpecialWatchResult =
  * 開発用「特別監視」フラグの反転。specialWatch:true のroomは、コラボ相手・バトル相手発見の
  * キック条件をStreamer購読と無関係に満たす(tiktok-listener.ts の recordCollabGroupChange /
  * watchBattleOpponents 呼び出しガード参照)。監視対象自体(watchedRoomFilter)には影響しない。
+ *
+ * ONにする際、そのroomが監視一時停止中(monitoringSuspended:true)なら同時に解除する。
+ * 一時停止のままだと特別監視ONにしても watchedRoomFilter を満たさず実際には動かないため。
+ * OFFに戻す操作では一時停止状態を書き戻さない(既存の一時停止はそのまま尊重する)。
  */
 export async function toggleSpecialWatch(
   roomId: string,
@@ -387,19 +391,26 @@ export async function toggleSpecialWatch(
   return prisma.$transaction(async (tx) => {
     const room = await tx.tiktokRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, tiktokId: true, specialWatch: true },
+      select: { id: true, tiktokId: true, specialWatch: true, monitoringSuspended: true },
     });
     if (!room) return { status: "not_found" as const };
 
     const nextValue = !room.specialWatch;
-    await tx.tiktokRoom.update({ where: { id: roomId }, data: { specialWatch: nextValue } });
+    const revivesSuspension = nextValue && room.monitoringSuspended;
+    await tx.tiktokRoom.update({
+      where: { id: roomId },
+      data: {
+        specialWatch: nextValue,
+        ...(revivesSuspension ? { monitoringSuspended: false } : {}),
+      },
+    });
     await tx.tiktokRoomAdminAuditLog.create({
       data: {
         action: "toggle_special_watch",
         roomId: room.id,
         tiktokId: room.tiktokId,
         operatorEmail,
-        detail: { specialWatch: nextValue },
+        detail: { specialWatch: nextValue, ...(revivesSuspension ? { revivedSuspension: true } : {}) },
       },
     });
     return { status: "toggled" as const, specialWatch: nextValue };
