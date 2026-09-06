@@ -1,7 +1,7 @@
 ---
 project: live-sidestage-analytics
 feature: 管理画面からのTikTokRoom監視操作(一時停止/特別監視)
-last_updated: 2026-09-06
+last_updated: 2026-09-07
 last_risk: LOW
 last_reviewers: DeepSeek
 ---
@@ -24,6 +24,7 @@ last_reviewers: DeepSeek
 | TC-ARM-008 | 未ログインは操作不可 | `PATCH /api/admin/tiktok-rooms` | 異常 | 未認証 | 401 | 同ファイル `-t "未ログインなら401"` | PASS | |
 | TC-ARM-009 | 一時停止中roomへの新規監視登録(コラボ検知等)は自動的に一時停止を解除する | `reviveSuspendedMonitoring` 経由の各エントリポイント | 回帰 | `monitoringSuspended:true`のroom | `monitoringSuspended:false`に復帰 | `npx dotenv -e .env.local.test -- npx vitest run src/lib/tiktok-room.integration.test.ts -t "監視を復活させる"` | PASS | 特別監視トグルとは独立した既存経路。今回未変更 |
 | TC-ARM-010 | 特別監視OFF操作は一時停止中でも一時停止状態を変更しない | `toggleSpecialWatch` | 境界 | `specialWatch:true`, `monitoringSuspended:true`のroom | 200、`specialWatch:false`。`monitoringSuspended`は`true`のまま変化しない。監査ログ`detail:{specialWatch:false}`(`revivedSuspension`を含まない) | 同ファイル `-t "特別監視OFF操作は一時停止中でも一時停止状態を変更しない"` | PASS | 2026-09-06追加。TestCaseレビュー(DeepSeek)指摘で追加 |
+| TC-ARM-011 | 特別監視ONでの一時停止解除は監視復帰用フィールドも同時にリセットする(匿名room自動停止のstale判定回避) | `toggleSpecialWatch` | 回帰 | `specialWatch:false`, `monitoringSuspended:true`かつ`lastWatchInstructedAt`・`unhealthySince`・`notFoundStreak`・`notFoundFirstAt`・`lastExistenceCheckAt`・`consecutiveBlockedCount`が残っているroom | 200、`monitoringSuspended:false`に加え`lastWatchInstructedAt`と`lastLowValueCheckAt`が現在時刻に更新され、`unhealthySince:null`・`notFoundStreak:0`・`notFoundFirstAt:null`・`lastExistenceCheckAt:null`・`consecutiveBlockedCount:0`にリセットされる | 同ファイル `-t "一時停止解除時にlastWatchInstructedAtも更新する"` | PASS | 2026-09-06追加、2026-09-07にTestCaseレビュー(DeepSeek)指摘で全リセット対象フィールドの検証へ拡充。特別監視ONで一時停止→監視中表示になってもworkerのlistenerに実際には出てこない不具合の修正(`reviveSuspendedMonitoring`と揃えるまで`monitoringSuspended`のみ戻し、匿名roomの`watchedRoomFilter`stale判定に漏れ続けていた) |
 
 ## Quality Gate
 
