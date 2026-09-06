@@ -378,7 +378,8 @@ export type ToggleSpecialWatchResult =
 /**
  * 開発用「特別監視」フラグの反転。specialWatch:true のroomは、コラボ相手・バトル相手発見の
  * キック条件をStreamer購読と無関係に満たす(tiktok-listener.ts の recordCollabGroupChange /
- * watchBattleOpponents 呼び出しガード参照)。監視対象自体(watchedRoomFilter)には影響しない。
+ * watchBattleOpponents 呼び出しガード参照)。監視対象の判定(watchedRoomFilter)では、
+ * 匿名観測room自動停止トグルのstale判定を免除する(monitoringSuspended:false は必要)。
  *
  * ONにする際、そのroomが監視一時停止中(monitoringSuspended:true)なら同時に解除する。
  * 一時停止のままだと特別監視ONにしても watchedRoomFilter を満たさず実際には動かないため。

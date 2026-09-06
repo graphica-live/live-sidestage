@@ -204,6 +204,24 @@ describe("watchedRoomFilter (匿名room自動停止トグルON相当)", () => {
     expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
   });
 
+  it("specialWatch:trueの匿名roomはstaleでも接続対象(特別監視はstale判定を免除)", async () => {
+    const room = await createRoom("anon_special_stale");
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { specialWatch: true, lastWatchInstructedAt: new Date(staleBefore.getTime() - 60_000) },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
+  });
+
+  it("specialWatch:trueでもmonitoringSuspended:trueなら接続対象外(一時停止が優先)", async () => {
+    const room = await createRoom("anon_special_suspended", { monitoringSuspended: true });
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { specialWatch: true, lastWatchInstructedAt: new Date(staleBefore.getTime() + 60_000) },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(false);
+  });
+
   it("monitoringSuspended:trueの匿名roomはfreshでも接続対象外(既存不変条件)", async () => {
     const room = await createRoom("anon_suspended_fresh", { monitoringSuspended: true });
     await prisma.tiktokRoom.update({

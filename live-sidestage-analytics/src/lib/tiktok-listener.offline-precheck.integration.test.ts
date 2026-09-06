@@ -125,7 +125,12 @@ describe("isReportedOfflineByApiLive()によるEuler署名消費前のオフラ�
 
     expect(MockConnection.instances).toHaveLength(1);
     expect(MockConnection.instances[0].connectCalls).toBe(0);
-    expect(await getListenerReason(roomId)).toBe("user_offline");
+    // updateState()はpersistStateAndNotify()をawaitしない(fire-and-forget)ため、
+    // startListener()が返った直後はまだDBへ"user_offline"が着弾していないことがある。
+    // 他ファイルとの並列実行でDBが混むほど読み取りが先行しやすいので、ポーリングで待つ。
+    await vi.waitFor(async () => {
+      expect(await getListenerReason(roomId)).toBe("user_offline");
+    });
 
     await stopListener(roomId);
     await cleanupStreamer(a.id);
@@ -274,7 +279,10 @@ describe("isReportedOfflineByApiLive()によるEuler署名消費前のオフラ�
 
     // watchdogが生成した2つ目のMockConnectionはオフライン事前チェックで止まり、connect()を呼ばない。
     expect(MockConnection.instances[1].connectCalls).toBe(0);
-    expect(await getListenerReason(roomId)).toBe("user_offline");
+    // TC-TLC-001と同じ理由でDB着弾を待つ。
+    await vi.waitFor(async () => {
+      expect(await getListenerReason(roomId)).toBe("user_offline");
+    });
 
     await stopListener(roomId);
     await cleanupStreamer(a.id);
