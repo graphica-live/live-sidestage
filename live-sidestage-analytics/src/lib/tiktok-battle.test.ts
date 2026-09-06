@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   BATTLE_ACTION,
+  BATTLE_TASK_MESSAGE_TYPE,
   battleNotifyDecision,
   mergeBattleState,
   parseArmiesEvent,
   parseBattleEvent,
+  parseBattleTaskEvent,
   type BattleRecordState,
 } from "./tiktok-battle";
 
@@ -657,5 +659,74 @@ describe("battleNotifyDecision", () => {
     );
 
     expect(battleNotifyDecision(opened, stillOpen)).toBeNull();
+  });
+});
+
+describe("parseBattleTaskEvent", () => {
+  function taskStartPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      battleId: "7300000000000000000",
+      battleTaskMessageType: 0,
+      taskStart: {
+        battleBonusConfig: {
+          taskPeriodConfig: { targetType: 1, progressTarget: "3", duration: "30" },
+          rewardPeriodConfig: { rewardMultiple: 3, duration: "30" },
+        },
+      },
+      ...overrides,
+    };
+  }
+
+  it("taskStart から targetType / progressTarget / rewardMultiple を取る", () => {
+    expect(parseBattleTaskEvent(taskStartPayload())).toMatchObject({
+      battleId: "7300000000000000000",
+      messageType: BATTLE_TASK_MESSAGE_TYPE.TASK_START,
+      targetType: 1,
+      progressTarget: 3,
+      rewardMultiple: 3,
+      taskResult: null,
+      rewardStartTime: null,
+      rewardSum: null,
+    });
+  });
+
+  it("taskSettle の taskResult と報酬区間の開始予告を取る", () => {
+    const parsed = parseBattleTaskEvent({
+      battleId: "7300000000000000000",
+      battleTaskMessageType: 2,
+      taskSettle: { taskResult: 2, rewardStartTimestamp: String(Math.floor(START_MS / 1000)) },
+    });
+    expect(parsed?.messageType).toBe(BATTLE_TASK_MESSAGE_TYPE.TASK_SETTLE);
+    expect(parsed?.taskResult).toBe(2);
+    expect(parsed?.rewardStartTime?.getTime()).toBe(START_MS);
+  });
+
+  it("rewardSettle に sum が無ければ rewardSum は null(protoに存在しないフィールドのため)", () => {
+    const parsed = parseBattleTaskEvent({
+      battleId: "7300000000000000000",
+      battleTaskMessageType: 3,
+      rewardSettle: { status: 1 },
+    });
+    expect(parsed?.messageType).toBe(BATTLE_TASK_MESSAGE_TYPE.REWARD_SETTLE);
+    expect(parsed?.rewardSum).toBeNull();
+  });
+
+  it("taskResult=0(中間settle)は 0 のまま返す(未取得の null と区別する)", () => {
+    const parsed = parseBattleTaskEvent({
+      battleId: "7300000000000000000",
+      battleTaskMessageType: 2,
+      taskSettle: { taskResult: 0 },
+    });
+    expect(parsed?.taskResult).toBe(0);
+  });
+
+  it("battleId が無い payload は null", () => {
+    expect(parseBattleTaskEvent(taskStartPayload({ battleId: "" }))).toBeNull();
+  });
+
+  it("battleTaskMessageType が無い payload は null", () => {
+    const payload = taskStartPayload();
+    delete (payload as Record<string, unknown>).battleTaskMessageType;
+    expect(parseBattleTaskEvent(payload)).toBeNull();
   });
 });

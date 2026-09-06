@@ -42,7 +42,10 @@ import {
   mergeBattleState,
   parseArmiesEvent,
   parseBattleEvent,
+  parseBattleTaskEvent,
+  BATTLE_TASK_MESSAGE_TYPE,
   type BattleRecordState,
+  type ParsedBattleTask,
   type HostProfiles,
   type HostTeams,
   type OpponentWatch,
@@ -1071,6 +1074,52 @@ const GIFT_DEDUP_WINDOW_MS = 5 * 60_000;
 // 時刻窓で弾く。
 const BATTLE_ITEM_DEDUP_WINDOW_MS = 5 * 60_000;
 
+// matchInfoを観測できた最初の1回だけログを出す(プロセス単位)。本番でこの刻印が
+// 実際に届いているかを確認する手段が、これとDBの `multiplierType IS NOT NULL` 件数しかない。
+let matchInfoObservedLogged = false;
+
+// WebcastGiftMessage.matchInfo から倍率刻印を取り出す。
+//
+// **ネストのまま読むのが正**。data-converter.ts の WebcastGiftMessage 変換が
+// Object.assign で平坦化するのは giftDetails と giftExtra だけで、matchInfo は
+// ネストされたまま残る。フラット側も読むのは、将来 converter が平坦化しても
+// 拾えるようにするための保険。
+//
+// multiplierType=0 は「倍率なし」を明示する値なので保存する。取り出せなかった場合のみ
+// null にして「未観測」と区別する(schema.prisma の Gift.multiplierType コメント参照)。
+function resolveGiftMultiplier(data: Record<string, unknown>): {
+  multiplierType: number | null;
+  multiplierValue: number | null;
+} {
+  const matchInfo = data.matchInfo as Record<string, unknown> | undefined;
+  const rawType = matchInfo?.multiplierType ?? data.multiplierType;
+  // protobufのint64はstringで届く。
+  const rawValue = matchInfo?.multiplierValue ?? data.multiplierValue;
+
+  const multiplierType = toFiniteInt(rawType);
+  const multiplierValue = toFiniteInt(rawValue);
+
+  if (!matchInfoObservedLogged && (multiplierType !== null || multiplierValue !== null)) {
+    matchInfoObservedLogged = true;
+    // どちらの形で届いたかを残す。フラット側だけで取れた場合に「matchInfoが来ている」と
+    // 誤読すると、data-converter.tsの平坦化仕様の判断を間違える。
+    console.log("[gift] gift multiplier observed", {
+      source: matchInfo ? "matchInfo" : "flat",
+      multiplierType,
+      multiplierValue,
+    });
+  }
+
+  return { multiplierType, multiplierValue };
+}
+
+function toFiniteInt(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? Math.trunc(num) : null;
+}
+
 // GiftのINSERT行を組み立てる。saveGift()とsaveComboGift()で共有する。
 // dedupキー(orderId/groupId/msgId)だけは経路ごとに扱いが違うので呼び出し側から渡す。
 function buildGiftRow(
@@ -1082,6 +1131,7 @@ function buildGiftRow(
   keys: { orderId: string | null; groupId: string | null; msgId: string | null }
 ): Prisma.GiftUncheckedCreateInput {
   const diamondCount = Number(data.diamondCount) || 0;
+  const { multiplierType, multiplierValue } = resolveGiftMultiplier(data);
   return {
     roomId,
     uniqueId: String(data.uniqueId || ""),
@@ -1100,6 +1150,8 @@ function buildGiftRow(
     groupId: keys.groupId,
     msgId: keys.msgId,
     giftType: Number.isInteger(data.giftType) ? (data.giftType as number) : null,
+    multiplierType,
+    multiplierValue,
   };
 }
 
@@ -1192,6 +1244,92 @@ type BattleItemSaveResult = "saved" | "duplicate" | "error";
 
 // バトルアイテム使用ログの保存。comboのような累計tickではなく「使用ごとに1回」の
 // 離散イベントなので、saveComboGiftのようなdelta計算は不要 — saveGift(non-combo)と同型。
+/**
+ * ボーナスミッション区間(linkMicBattleTask)を TiktokBattleBonusMission へ残す。
+ *
+ * taskStart で1行 create し、taskSettle / rewardSettle は `(roomId, battleId)` の
+ * **未確定の行のうち最も古いもの**を findFirst で1行選んで update する。**taskStart を
+ * 取りこぼした状態の settle は捨てる**(startedAt も条件も無い部分行を作らないため)。
+ *
+ * 最古を採る(`startedAt: "asc"`)のは、区間が重なって未確定行が2つ以上あるときに
+ * FIFO で対応づけるため。BATTLE-EVENTS.md 3節のライフサイクル
+ * (taskStart→taskSettle→rewardSettle→次のtaskStart)が保たれる限り未確定行は常に1つだが、
+ * payload に区間の識別子が無いので、崩れた場合でも先に始まった区間から順に閉じる方へ倒す。
+ *
+ * **書き込み失敗は握りつぶす**(persistBattle の armies snapshot と同じ理由)。この保存は
+ * バトル再生の補助情報であって、失敗でギフト受信や他のバトル保存を止めてはならない。
+ */
+async function saveBattleBonusMission(
+  roomId: string,
+  task: ParsedBattleTask,
+  receivedAt: Date
+): Promise<void> {
+  try {
+    if (task.messageType === BATTLE_TASK_MESSAGE_TYPE.TASK_START) {
+      // 条件が1つでも欠けた taskStart は「何のミッションか」を表示できないので保存しない。
+      if (task.targetType === null || task.progressTarget === null || task.rewardMultiple === null) {
+        console.warn("[battle-task] taskStart に条件が欠けているため保存しない", {
+          roomId,
+          battleId: task.battleId,
+        });
+        return;
+      }
+      await prisma.tiktokBattleBonusMission.create({
+        data: {
+          roomId,
+          battleId: task.battleId,
+          targetType: task.targetType,
+          progressTarget: task.progressTarget,
+          rewardMultiple: task.rewardMultiple,
+          startedAt: receivedAt,
+        },
+      });
+      return;
+    }
+
+    if (task.messageType === BATTLE_TASK_MESSAGE_TYPE.TASK_SETTLE) {
+      const open = await prisma.tiktokBattleBonusMission.findFirst({
+        where: { roomId, battleId: task.battleId, settledAt: null },
+        orderBy: { startedAt: "asc" },
+        select: { id: true },
+      });
+      if (!open) return; // taskStart を取りこぼした区間
+      await prisma.tiktokBattleBonusMission.update({
+        where: { id: open.id },
+        data: {
+          settledAt: receivedAt,
+          taskResult: task.taskResult,
+          // 報酬区間の開始は予告値しか取れない(実開始より早い)。区間終了は rewardSettle が正。
+          rewardStartedAt: task.rewardStartTime,
+        },
+      });
+      return;
+    }
+
+    if (task.messageType === BATTLE_TASK_MESSAGE_TYPE.REWARD_SETTLE) {
+      const settled = await prisma.tiktokBattleBonusMission.findFirst({
+        where: { roomId, battleId: task.battleId, settledAt: { not: null }, rewardEndedAt: null },
+        orderBy: { startedAt: "asc" },
+        select: { id: true },
+      });
+      if (!settled) return;
+      await prisma.tiktokBattleBonusMission.update({
+        where: { id: settled.id },
+        data: { rewardEndedAt: receivedAt, rewardSum: task.rewardSum },
+      });
+      return;
+    }
+    // taskUpdate(1)は高頻度なので保存しない(schema.prisma の TiktokBattleBonusMission コメント参照)。
+  } catch (err: unknown) {
+    console.error("[listener] battle bonus mission save error:", {
+      roomId,
+      battleId: task.battleId,
+      messageType: task.messageType,
+      err,
+    });
+  }
+}
+
 async function saveBattleItemUse(
   roomId: string,
   message: WebcastLinkMicBattleItemCard,
@@ -2062,6 +2200,20 @@ async function connectAndAttach(
         forgetMsgId(inst.recentBattleItemMsgIds, inst.recentBattleItemMsgIdOrder, msgId);
       }
     });
+  });
+
+  // ボーナスミッション区間(2倍/3倍)。taskStart→taskSettle→rewardSettle が同じ行を順に
+  // 埋めるので、persistBattle と同じ `${roomId}:${battleId}` キューで直列化する
+  // (fire-and-forget のままだと settle の update が create を追い越しうる)。
+  conn.on("linkMicBattleTask", (data: unknown) => {
+    markAlive();
+    const task = parseBattleTaskEvent(data);
+    if (!task) return;
+    if (task.messageType === BATTLE_TASK_MESSAGE_TYPE.TASK_UPDATE) return;
+    const { time: eventTime } = resolveEventTime(data as Record<string, unknown>);
+    queueBattleWrite(`${roomId}:${task.battleId}`, () =>
+      saveBattleBonusMission(roomId, task, eventTime)
+    );
   });
 
   conn.on("chat", (data: Record<string, unknown>) => {
