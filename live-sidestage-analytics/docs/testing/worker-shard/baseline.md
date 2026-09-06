@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: worker-shard
-last_updated: 2026-09-05
+last_updated: 2026-09-06
 last_risk: LOW
-last_reviewers: Fable(TestCase Mode。Qwenはcanary検証で検出失敗のため未実施扱い、Codex/Geminiはquota切れのため代替)
+last_reviewers: Qwen(TestCase Mode、canary検証で検出確認済み)
 ---
 
 # テストベースライン: worker-shard
@@ -22,6 +22,7 @@ last_reviewers: Fable(TestCase Mode。Qwenはcanary検証で検出失敗のた�
 | TC-WS-006 | スキーマ待ち(P2021/P2022)の復帰 | `schemaLagMessage()` / `reconcileOnce` | 異常 | DBに未反映の列を worker が読む | readyにならず`UNREADY_RECONCILE_INTERVAL_MS`(5秒)周期で再試行し、スキーマ到着後readyへ自動復帰。専用ログを出し素の例外にしない | 自動テストなし | NOT RUN: 自動テストなし | 2026-09-04 worker3 healthcheck失敗の再発防止。`schemaLagMessage`は非exportのため本採用時はexport化してユニット化を検討 |
 | TC-WS-007 | reconcileの多重起動防止 | `reconcileOnce` | 回帰 | 前回reconcile未完了中に次の周期が発火 | `reconcileRunning`の間は新規reconcileを開始しない | 自動テストなし | NOT RUN: 自動テストなし | |
 | TC-WS-008 | shutdown後は新規処理を開始しない | `shutdown()` / SIGINT・SIGTERM | negative | `shuttingDown=true` | reconcile・新規処理を開始しない | 自動テストなし | NOT RUN: 自動テストなし | |
+| TC-WS-009 | rebalanceの対象集合はWorkerの監視対象と一致する | `scripts/rebalance-workers.js` の対象部屋フィルタ | 回帰/データ欠損 | Streamer 0人・`monitoringSuspended:false` の room（コラボ検知で発見しただけの部屋）と、`monitoringSuspended:true` で AgencyWatch も monitorUntil も無い room が混在 | 前者は dry-run の「N部屋中」に含まれ hash と異なれば再割当候補に出る。後者は対象に含まれない。対象集合が `watchedRoomFilter()`（src/lib/tiktok-listener.ts）で `getMyRooms()` が拾う集合と一致する | `DATABASE_URL=<公開URL> WORKER_COUNT=3 node scripts/rebalance-workers.js`（dry-run）の対象件数を `SELECT count(*) FROM public."TiktokRoom" WHERE "monitoringSuspended"=false OR ...` と突き合わせる | PASS（2026-09-06 本番DB: 監視中8部屋すべてが対象、停止中26部屋は対象外） | 旧フィルタは `streamers.some` を条件にしていたため Streamer 0人の監視中roomが漏れ、guardianフェイルオーバー後の再配分が1/8しか効かなかった |
 
 ## Quality Gate
 
