@@ -28,7 +28,7 @@
 // 数秒古い」程度に限られる、という従来の想定はこの変更でさらに崩れやすくなる。
 
 import { prisma } from "@/lib/prisma";
-import { computeCaptureCoverage } from "@/lib/room-connection-log";
+import { computeCaptureCoverage, refineCaptureByScore, type CaptureGap, type CaptureStatus } from "@/lib/room-connection-log";
 import {
   asTeamEntries,
   mergeMaxScores,
@@ -166,6 +166,48 @@ export type MaterializeResult =
  * - 相手が1人も特定できない(solo)。旧`opponent`フィールドの復元に必要な情報が
  *   スナップショットに残らないため、確定せずライブ集計に任せる
  */
+/**
+ * 接続の欠落区間で公式スコアが実際に動いていたかを`TiktokBattleArmiesSnapshot`で確かめ、
+ * 動いていなければ捕捉状態を"complete"へ格上げする(`refineCaptureByScore`)。
+ *
+ * 相手roomはバトル開始検知後にオンデマンド接続するため窓頭を必ず数秒取り逃し、時間被覆率だけで
+ * 判定すると常に"partial"(UI表示「一部」)になる。実データが欠けていないのに欠損を示唆するため、
+ * スコアの動きで裏を取る。
+ *
+ * **確定処理は最適化であって必須ではない**ので、この見積もりが失敗しても確定そのものは止めない
+ * (ログを残して元の判定をそのまま使う)。
+ */
+async function refineCaptureWithOfficialScore(
+  base: { status: CaptureStatus; coverage: number; gaps: CaptureGap[] },
+  battleId: string,
+  anchorId: string,
+  officialScore: string | null
+): Promise<{ status: CaptureStatus; coverage: number }> {
+  if (base.status === "complete" || base.gaps.length === 0) {
+    return { status: base.status, coverage: base.coverage };
+  }
+  try {
+    const rows = await prisma.tiktokBattleArmiesSnapshot.findMany({
+      where: { battleId, anchorId },
+      select: { occurredAt: true, score: true },
+      orderBy: { occurredAt: "asc" },
+    });
+    const scorePoints = rows
+      .map((r) => ({ atMs: r.occurredAt.getTime(), score: Number(r.score) }))
+      .filter((p) => Number.isFinite(p.score));
+    const finalScore = officialScore === null ? null : Number(officialScore);
+    const refined = refineCaptureByScore(
+      base,
+      scorePoints,
+      finalScore !== null && Number.isFinite(finalScore) ? finalScore : null
+    );
+    return { status: refined.status, coverage: refined.coverage };
+  } catch (err) {
+    console.error("[battle-history-finalize] refineCaptureWithOfficialScore failed", { battleId, anchorId, err });
+    return { status: base.status, coverage: base.coverage };
+  }
+}
+
 export async function computeBattleSnapshot(
   roomId: string,
   battleId: string,
@@ -287,7 +329,11 @@ export async function computeBattleSnapshot(
   const captureByAnchorId = new Map<string, { status: "complete" | "partial" | "unavailable"; coverage: number }>();
   for (const p of participantsBase) {
     if (p.roomId === null) continue;
-    captureByAnchorId.set(p.anchorId, await computeCaptureCoverage(p.roomId, windowStart, windowEnd, now));
+    const baseCapture = await computeCaptureCoverage(p.roomId, windowStart, windowEnd, now);
+    captureByAnchorId.set(
+      p.anchorId,
+      await refineCaptureWithOfficialScore(baseCapture, battleId, p.anchorId, p.score)
+    );
     const rows = await prisma.gift.findMany({
       where: { roomId: p.roomId, receivedAt: { gte: windowStart, lte: windowEnd } },
       select: {
