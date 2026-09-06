@@ -246,14 +246,36 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
   });
 });
 
-describe("linkLayer: subscriberIds空(Streamer未登録)roomでもコラボ検知が発火する(ガード撤廃)", () => {
-  it("Streamer登録0件のroomでもlinkLayerのコラボ承諾で相手roomを作成する", async () => {
+describe("linkLayer: コラボ発見のキックはStreamer購読または特別監視のroomに限る(2026-09-06、連鎖爆発の再発防止)", () => {
+  it("subscriberIds空・specialWatch falseのroomでは、linkLayerのコラボ承諾があっても相手roomを作成しない", async () => {
     const ownTiktokId = `itest_noguard_own_${Date.now()}`;
     const partnerTiktokId = `itest_noguard_partner_${Date.now()}`;
     // resolveRoomForStreamerを経由せず、Streamer紐付けなしのroomを直接作る。
     const ownRoom = await prisma.tiktokRoom.create({ data: { tiktokId: ownTiktokId } });
 
-    await startListener(ownRoom.id, ownTiktokId, []); // subscriberIds空
+    await startListener(ownRoom.id, ownTiktokId, []); // subscriberIds空、specialWatch既定false
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
+
+    // 発火しないことの確認は「一定時間後も存在しない」でしか確かめられないため、
+    // 実処理が非同期で完走するのを待つ目的で他の副作用のない待機を挟む。
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const partnerRoom = await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } });
+    expect(partnerRoom).toBeNull();
+
+    await stopListener(ownRoom.id);
+    await cleanupRoom(ownRoom.id);
+  });
+
+  it("specialWatch trueのroomなら、subscriberIds空でもlinkLayerのコラボ承諾で相手roomを作成する", async () => {
+    const ownTiktokId = `itest_specialwatch_own_${Date.now()}`;
+    const partnerTiktokId = `itest_specialwatch_partner_${Date.now()}`;
+    const ownRoom = await prisma.tiktokRoom.create({
+      data: { tiktokId: ownTiktokId, specialWatch: true },
+    });
+
+    await startListener(ownRoom.id, ownTiktokId, [], true); // subscriberIds空、specialWatch true
     const ownConn = MockConnection.instances[0];
 
     ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));

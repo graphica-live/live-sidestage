@@ -332,6 +332,8 @@ export default function WorkersAdminPage() {
   // 完全削除・監視解除の二重クリック防止。実行中の roomId のみボタンを無効化する。
   const [actioningRoomId, setActioningRoomId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  // 監視対象一覧の自由入力フィルタ(tiktokId/プロフ名)。入力ごとに即時反映するのでdebounceしない。
+  const [roomFilterText, setRoomFilterText] = useState("");
 
   const load = useCallback(async () => {
     if (inFlight.current) return;
@@ -371,6 +373,14 @@ export default function WorkersAdminPage() {
     () => sortAssignedRooms(report?.adminRoomList ?? [], sortKey, sortDir),
     [report?.adminRoomList, sortKey, sortDir]
   );
+
+  const filteredRoomList = useMemo(() => {
+    const q = roomFilterText.trim().toLowerCase();
+    if (!q) return sortedRoomList;
+    return sortedRoomList.filter(
+      (r) => r.tiktokId.toLowerCase().includes(q) || (r.nickname ?? "").toLowerCase().includes(q)
+    );
+  }, [sortedRoomList, roomFilterText]);
 
   // w.listeners（ListenerSnapshot）はDBを介さないメモリ状態でnicknameを持たないため、
   // adminRoomList から tiktokId → nickname を引けるようにしておく。
@@ -455,6 +465,31 @@ export default function WorkersAdminPage() {
         await load();
       } catch {
         setActionError("削除に失敗しました");
+      } finally {
+        setActioningRoomId(null);
+      }
+    },
+    [load]
+  );
+
+  const handleToggleSpecialWatch = useCallback(
+    async (room: AssignedRoom) => {
+      setActioningRoomId(room.roomId);
+      setActionError("");
+      try {
+        const res = await fetch("/api/admin/tiktok-rooms", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: room.roomId, action: "toggle_special_watch" }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          setActionError(body?.error ?? "特別監視の切替に失敗しました");
+          return;
+        }
+        await load();
+      } catch {
+        setActionError("特別監視の切替に失敗しました");
       } finally {
         setActioningRoomId(null);
       }
@@ -700,8 +735,17 @@ export default function WorkersAdminPage() {
 
       {report && report.adminRoomList.length > 0 && (
         <div className="mt-4 rounded border border-border bg-panel overflow-x-auto">
-          <div className="px-4 py-2 border-b border-border text-sm text-strong">
-            監視対象一覧({report.adminRoomList.length}件)
+          <div className="px-4 py-2 border-b border-border text-sm text-strong flex items-center gap-3 flex-wrap">
+            <span>
+              監視対象一覧({filteredRoomList.length}/{report.adminRoomList.length}件)
+            </span>
+            <input
+              type="text"
+              value={roomFilterText}
+              onChange={(e) => setRoomFilterText(e.target.value)}
+              placeholder="tiktokId・プロフ名で絞り込み"
+              className="ml-auto px-2 py-1 text-xs rounded border border-border bg-transparent text-strong placeholder:text-muted min-w-0"
+            />
           </div>
           <table className="w-full text-xs">
             <thead>
@@ -733,7 +777,7 @@ export default function WorkersAdminPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sortedRoomList.map((r) => (
+              {filteredRoomList.map((r) => (
                 <tr key={r.roomId}>
                   <td className="px-4 py-2">
                     <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
@@ -752,6 +796,7 @@ export default function WorkersAdminPage() {
                     )}
                     {r.watchCount > 0 && <span className="ml-2">事務所監視{r.watchCount}件</span>}
                     {r.eventMonitored && <span className="ml-2">イベント監視中</span>}
+                    {r.specialWatch && <span className="ml-2 text-brand">特別監視中</span>}
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-2">
@@ -761,6 +806,17 @@ export default function WorkersAdminPage() {
                         className="px-2 py-1 rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
                       >
                         監視解除
+                      </button>
+                      <button
+                        onClick={() => handleToggleSpecialWatch(r)}
+                        disabled={actioningRoomId === r.roomId}
+                        className={`px-2 py-1 rounded border disabled:opacity-50 ${
+                          r.specialWatch
+                            ? "border-brand text-brand hover:bg-brand/10"
+                            : "border-border text-strong hover:bg-row-hover"
+                        }`}
+                      >
+                        {r.specialWatch ? "特別監視解除" : "特別監視"}
                       </button>
                       <button
                         onClick={() => handleDelete(r)}

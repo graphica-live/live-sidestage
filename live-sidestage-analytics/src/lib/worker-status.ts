@@ -75,6 +75,8 @@ export type AssignedRoom = {
   weeklyEulerSignUsageCount: number | null;
   /** true=管理者が監視解除(一時停止)した部屋。ログイン等で自動的にfalseへ戻りうる(reviveSuspendedMonitoring()参照)。 */
   monitoringSuspended: boolean;
+  /** 開発用「特別監視」フラグ。trueならStreamer購読が無くてもコラボ・バトル相手発見のキック元になれる(tiktok-listener.ts参照)。 */
+  specialWatch: boolean;
 };
 
 export type WorkerIssue = {
@@ -157,6 +159,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
       monitorUntil: true,
       consecutiveBlockedCount: true,
       monitoringSuspended: true,
+      specialWatch: true,
       _count: { select: { streamers: true, watches: true } },
     },
     orderBy: [{ workerId: "asc" }, { tiktokId: "asc" }],
@@ -176,6 +179,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: null,
     monitoringSuspended: r.monitoringSuspended,
+    specialWatch: r.specialWatch,
   }));
 }
 
@@ -212,6 +216,7 @@ export async function fetchAdminRoomList(
       monitorUntil: true,
       consecutiveBlockedCount: true,
       monitoringSuspended: true,
+      specialWatch: true,
       _count: { select: { streamers: true, watches: true } },
     },
     // listenerUpdatedAt が null(一度も接続していない部屋)は Postgres の DESC 既定(NULLS FIRST)だと
@@ -247,6 +252,7 @@ export async function fetchAdminRoomList(
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: usageByRoomId ? usageByRoomId.get(r.id) ?? 0 : null,
     monitoringSuspended: r.monitoringSuspended,
+    specialWatch: r.specialWatch,
   }));
 }
 

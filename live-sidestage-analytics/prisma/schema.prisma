@@ -236,6 +236,11 @@ model TiktokRoom {
   // (以後同じroomが別経路で再検知されても上書きしない。tiktok-room.ts参照)。
   watchSource       String?
   watchSourceAt     DateTime?
+  // 開発用フラグ。trueのroomは、コラボ相手・バトル相手発見(recordCollabGroupChange/
+  // watchBattleOpponents)のキック条件をStreamer購読と無関係に満たす(tiktok-listener.ts参照)。
+  // 管理画面(/admin/workers)の「特別監視」トグルからのみ変更する。監視対象自体の判定
+  // (watchedRoomFilter)には影響しない — あくまでコラボ発見の「発見元になれるか」のフラグ。
+  specialWatch      Boolean   @default(false)
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
@@ -371,7 +376,7 @@ model TiktokRoom {
 // ならない(不可逆操作の唯一の事後追跡手段のため)ので専用テーブルを新設する。
 model TiktokRoomAdminAuditLog {
   id            String   @id @default(cuid())
-  action        String   // "delete" | "suspend"
+  action        String   // "delete" | "suspend" | "toggle_special_watch"
   roomId        String   // 削除後はTiktokRoom自体が無いのでFKは張らない(論理参照)
   tiktokId      String   // 削除後にroomIdだけでは何のRoomか分からなくなるため必須保持
   operatorEmail String   // getAdminSession()経由のセッションemail(ADMIN_EMAIL固定だが将来の複数管理者化に備え記録)
