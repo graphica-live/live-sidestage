@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { MAX_LEASE_DAYS } from "./room-lease";
 import { reviveSuspendedMonitoring } from "./mark-last-active";
+import { resolveWatchedRoomFilter } from "./watched-room-filter";
 
 // TikTokのユーザー名は大文字小文字を区別しないため、部屋(TiktokRoom)のキーとしては
 // 正規化した値を使う。Streamer.tiktokId自体はユーザー入力値のまま表示用に残す。
@@ -289,7 +290,8 @@ export async function ensureRoomWatchedForCollab(
   }
 
   // 上限判定は「新規作成になる」場合のみ(既存roomの監視再開は総数を増やさないため対象外)。
-  const watchedCount = await prisma.tiktokRoom.count({ where: { monitoringSuspended: false } });
+  // watchedRoomFilter()と定義統一(乖離防止、F3対応)。
+  const watchedCount = await prisma.tiktokRoom.count({ where: await resolveWatchedRoomFilter() });
   if (watchedCount >= MAX_COLLAB_DISCOVERED_ROOMS) {
     console.warn(
       `[collab] 監視中room数が上限(${MAX_COLLAB_DISCOVERED_ROOMS})に達しているため、コラボ相手の新規room作成をスキップした`,

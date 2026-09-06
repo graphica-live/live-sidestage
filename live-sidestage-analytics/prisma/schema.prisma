@@ -263,6 +263,14 @@ model TiktokRoom {
   monitorUntil     DateTime?
   createdAt        DateTime  @default(now())
 
+  // Sidestageユーザー(Streamer登録/AgencyWatch/monitorUntil)に紐づかない匿名観測room
+  // (コラボ検知等で発見されただけのroom)を対象にした、無視聴放置による自動監視停止
+  // (anonymousRoomAutoStopEnabled、tiktok-listener.ts watchedRoomFilter参照)用。
+  // 「監視指示」(resolveRoomForStreamer/ensureRoomWatchedForCollab/オーバーレイアクセス等)
+  // のたびにreviveSuspendedMonitoring()が現在時刻へ更新する。新規create時は@default(now())
+  // により初回監視指示として扱われる。
+  lastWatchInstructedAt DateTime @default(now())
+
   // --- TikTok非実在Streamer自動削除(tiktok-room-cleanup.ts)用 ---
   // listenerStatusがretrying/errorに入った最初の時刻。connectedに戻ったらnullに戻す。
   // "connecting"遷移では絶対に触らない(再接続試行のたびに数十秒間隔で走るため、

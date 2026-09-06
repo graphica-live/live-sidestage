@@ -58,11 +58,19 @@ export async function reviveSuspendedMonitoringForRoom(roomId: string): Promise<
   }
 }
 
-// ユーザーが監視停止(monitoringSuspended)されたRoomに紐づいている場合、アクティブ化を
-// 検知した時点で即座に監視を復活させる。低価値クリーンアップ(tiktok-low-value-cleanup.ts)
+// このRoomへの「監視指示」を記録し(lastWatchInstructedAt)、かつユーザーが監視停止
+// (monitoringSuspended)されたRoomに紐づいている場合はアクティブ化を検知した時点で
+// 即座に監視を復活させる。低価値クリーンアップ(tiktok-low-value-cleanup.ts)
 // 由来・NOT_FOUND判定(tiktok-room-cleanup.ts)由来のどちらの停止も同じフラグ・同じ経路で
 // 復活する。「ログインし直せば監視復活する」という運用意図を、次回クリーンアップrunを
 // 待たずに実現するための能動的な巻き戻し。
+//
+// lastWatchInstructedAtは匿名観測room自動停止(watched-room-filter.ts)の基準時刻。
+// 呼び出し元(markLastActive、reviveSuspendedMonitoringForRoom、
+// ensureRoomWatchedForCollabの既存room分岐等)は全て「このroomへの監視指示」に
+// あたるため、この関数1箇所に記録を集約する。書き込みはスロットルする
+// (呼び出し頻度の高い経路からfire-and-forgetで呼ばれるため、毎回書くとDB書き込みが
+// 過剰になる。30分判定に対して数分のスロットルは実用上無視できる誤差)。
 //
 // NOT_FOUND判定用フィールド(unhealthySince/notFoundStreak/notFoundFirstAt/
 // lastExistenceCheckAt)も同時にリセットする。停止時にこれらを残したままだと、復活後
@@ -75,7 +83,20 @@ export async function reviveSuspendedMonitoringForRoom(roomId: string): Promise<
 // 復帰直後に間髪入れず次の低価値判定サイクルの対象へ戻り再停止される事故を防ぐ。
 // consecutiveBlockedCount も0にリセットする(403ブロックによるgive-up停止からの
 // 復帰でも、古いカウントを引き継いで即座にフェイルオーバー対象へ戻らないように)。
+//
+// 戻り値は「監視停止から復活したか」(resumed判定用)。lastWatchInstructedAtの
+// スタンプ更新はこの戻り値に影響しない(スロットルでスキップされても復活処理は毎回試行する)。
+const WATCH_INSTRUCTION_STAMP_THROTTLE_MS = 5 * 60 * 1000;
+
 export async function reviveSuspendedMonitoring(roomId: string): Promise<number> {
+  await prisma.tiktokRoom.updateMany({
+    where: {
+      id: roomId,
+      lastWatchInstructedAt: { lt: new Date(Date.now() - WATCH_INSTRUCTION_STAMP_THROTTLE_MS) },
+    },
+    data: { lastWatchInstructedAt: new Date() },
+  });
+
   const updated = await prisma.tiktokRoom.updateMany({
     where: { id: roomId, monitoringSuspended: true },
     data: {

@@ -93,6 +93,33 @@ describe("reviveSuspendedMonitoringForRoom", () => {
   it("存在しないroomIdを渡しても例外にならない", async () => {
     await expect(reviveSuspendedMonitoringForRoom("nonexistent-room-id")).resolves.toBeUndefined();
   });
+
+  it("lastWatchInstructedAtを現在時刻へ更新する(監視指示の記録、匿名観測room自動停止トグル用)", async () => {
+    const room = await makeRoom({ tag: "stamp", monitoringSuspended: false });
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: new Date("2000-01-01T00:00:00.000Z") },
+    });
+
+    await reviveSuspendedMonitoringForRoom(room.id);
+
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.lastWatchInstructedAt.getTime()).toBeGreaterThan(Date.now() - 5_000);
+  });
+
+  it("5分以内の再呼び出しではlastWatchInstructedAtを更新しない(スロットル)", async () => {
+    const room = await makeRoom({ tag: "throttle", monitoringSuspended: false });
+    const recent = new Date(Date.now() - 60_000); // 1分前(5分スロットル内)
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: recent },
+    });
+
+    await reviveSuspendedMonitoringForRoom(room.id);
+
+    const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(roomAfter.lastWatchInstructedAt.getTime()).toBe(recent.getTime());
+  });
 });
 
 describe("markLastActive", () => {

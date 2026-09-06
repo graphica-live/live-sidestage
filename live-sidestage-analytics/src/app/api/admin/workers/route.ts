@@ -12,6 +12,10 @@ import {
 } from "@/lib/worker-status";
 import { AUDIT_LOG_SETTING_KEY, type MigrationAuditEntry } from "@/lib/worker-guardian";
 import { getSetting } from "@/lib/settings";
+import {
+  ANONYMOUS_ROOM_AUTO_STOP_SETTING_KEY,
+  isAnonymousRoomAutoStopEnabled,
+} from "@/lib/watched-room-filter";
 
 // Worker プロセスの稼働状況。DB(担当予定の部屋)と各 Worker の /status(実際の listener)を
 // 突き合わせて返す。読み取り専用。
@@ -72,8 +76,18 @@ export async function GET() {
     console.error("[admin/workers] manual reassign audit log の取得に失敗:", err);
   }
 
+  // 匿名観測room自動停止トグル。読めなくてもOFF扱い(fail-open、現行動作維持)で画面は落とさない。
+  let anonymousRoomAutoStopEnabled = false;
+  try {
+    anonymousRoomAutoStopEnabled = isAnonymousRoomAutoStopEnabled(
+      await getSetting(ANONYMOUS_ROOM_AUTO_STOP_SETTING_KEY)
+    );
+  } catch (err) {
+    console.error("[admin/workers] 匿名room自動停止トグルの取得に失敗:", err);
+  }
+
   return NextResponse.json(
-    { ...report, guardianAuditLog, manualReassignAuditLog, adminRoomList },
+    { ...report, guardianAuditLog, manualReassignAuditLog, adminRoomList, anonymousRoomAutoStopEnabled },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

@@ -152,8 +152,22 @@ app.prepare().then(() => {
   // OBSがoverlayTokenでsocket接続した = 配信者が実際に使っている証拠として、監視停止
   // (monitoringSuspended)を能動的に復活させる。呼び出し元でroomIdまで取得済みのため
   // Streamerの再取得はしない(Code Modeレビューで指摘)。
+  //
+  // lastWatchInstructedAtのスタンプ更新も複製する(匿名観測room自動停止トグル用。
+  // watched-room-filter.ts参照)。現状OBS接続roomは常にStreamerを持つため匿名判定には
+  // 乗らないが、将来Streamer削除で「降格」したroomをOBSが叩き続けるケースに備える
+  // (Code Modeレビューで指摘)。スロットル(5分)はmark-last-active.tsの
+  // WATCH_INSTRUCTION_STAMP_THROTTLE_MSと同じ値。
+  const WATCH_INSTRUCTION_STAMP_THROTTLE_MS = 5 * 60 * 1000;
   const reviveSuspendedMonitoringForRoom = async (roomId) => {
     try {
+      await prisma.tiktokRoom.updateMany({
+        where: {
+          id: roomId,
+          lastWatchInstructedAt: { lt: new Date(Date.now() - WATCH_INSTRUCTION_STAMP_THROTTLE_MS) },
+        },
+        data: { lastWatchInstructedAt: new Date() },
+      });
       await prisma.tiktokRoom.updateMany({
         where: { id: roomId, monitoringSuspended: true },
         data: {

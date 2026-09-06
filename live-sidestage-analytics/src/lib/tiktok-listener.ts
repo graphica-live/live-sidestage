@@ -52,6 +52,7 @@ import { materializeBattleHistory } from "./battle-history-finalize";
 import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
 import { isCollabJoinSource, parseCollabGroupChange } from "./tiktok-collab";
 import { ensureRoomWatchedForCollab, normalizeTiktokId } from "./tiktok-room";
+import { resolveWatchedRoomFilter } from "./watched-room-filter";
 import { existenceChecker } from "./tiktok-existence";
 
 export type ListenerStatus =
@@ -1646,6 +1647,13 @@ function recordBattleEvent(
  * 監視対象への追加はfire-and-forget。失敗してもlinkLayerイベント自体の処理(watchdog等)は
  * 継続させる — 監視対象追加はベストエフォートの付随処理であって、取りこぼしても
  * 次のコラボ参加イベントで再試行される(ensureRoomWatchedForCollab()は冪等)。
+ *
+ * 既知の制約(匿名観測room自動停止トグルON時): この関数はコラボ参加確定(AGREE)の
+ * 瞬間にしかコラボ相手roomのlastWatchInstructedAtをスタンプしない。コラボが継続中でも
+ * メンバー変動(groupChangeイベント)が無ければ再スタンプされないため、トグルON時は
+ * 参加検知から30分でコラボ観測が打ち切られうる(実装後レビューで指摘。継続監視まで
+ * 保証するにはlinkMicBattle/linkMicArmies受信時の再スタンプが必要だが、今回のスコープ
+ * (Sidestageユーザーでない匿名roomの放置停止)を超えるため見送った)。
  */
 function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unknown): void {
   const parsed = parseCollabGroupChange(data);
@@ -2443,39 +2451,23 @@ export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot
 
 type MyRoom = { id: string; tiktokId: string; subscriberIds: string[] };
 
-// 接続を維持すべき部屋の条件。次のいずれかが成立していれば対象。
-//  - monitoringSuspendedがfalse — 配信者(Streamer)の登録有無を問わない。Streamerが0人の
-//    部屋も、tiktok-low-value-cleanup.tsが停止判定するまでは情報をプールし続ける方針
-//    (tiktokIdのハンドル変更でStreamerの紐付けが別Room行へ移った場合に、旧Room行が
-//    Streamer 0人になった瞬間切断されるのを避ける意図もある)
-//  - 事務所の監視対象(AgencyWatch)が1件以上ある
-//  - monitorUntilが未来 — 外部サービス(live-sidestage-event)が期限付きで監視を要求している
-// どれも満たさない部屋(明示的にmonitoringSuspended=trueにされ、監視要求も期限切れ)は
-// 除外され、ensureAllListenersAlive()の第2ループで切断される。
-// 事務所を削除するとwatchはカスケードで消えるため、この条件だけで接続も止まる。
-// nowは呼び出し側が1回だけ評価した時刻を渡す(複数クエリ間で基準時刻がずれないようにするため)。
-export function watchedRoomFilter(now: Date = new Date()): Prisma.TiktokRoomWhereInput {
-  return {
-    OR: [
-      { monitoringSuspended: false },
-      { watches: { some: {} } },
-      { monitorUntil: { gt: now } },
-    ],
-  };
-}
+// 接続を維持すべき部屋の条件は watched-room-filter.ts の watchedRoomFilter()/
+// resolveWatchedRoomFilter() へ集約してある(tiktok-room.ts の上限カウント・
+// worker-status.ts の一覧取得も同じ関数を経由する)。ここでは re-export のみ行う。
+export { watchedRoomFilter } from "./watched-room-filter";
 
 // 自分(このWorkerプロセス)が担当する部屋(TiktokRoom)だけを返す。
 // workerId未割当の部屋は resolveWorkerForRoom() で決定的にハッシュ割当し、
 // 自分の担当だった場合のみ含める(複数Workerが同時に処理しても同じ結果になるため競合しない)。
 //
-// 監視対象の条件は watchedRoomFilter() が単一の正。
+// 監視対象の条件は resolveWatchedRoomFilter() が単一の正。
 // subscriberIdsはStreamerのみから作る。事務所はsocket.ioのoverlay/chatを購読しないため、
 // 監視対象だけの部屋はsubscriberIds空で接続される(ギフト保存はroomId単位なのでデータは貯まる)。
 async function getMyRooms(): Promise<MyRoom[]> {
   const { index, count } = getWorkerConfig();
 
   // assignedとunassignedで基準時刻がずれないよう1回だけ評価する。
-  const monitored = watchedRoomFilter(new Date());
+  const monitored = await resolveWatchedRoomFilter(new Date());
 
   const assigned = await prisma.tiktokRoom.findMany({
     where: { workerId: index, ...monitored },

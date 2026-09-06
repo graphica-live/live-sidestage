@@ -15,6 +15,7 @@ type WorkerReportWithAudit = WorkerReport & {
   guardianAuditLog: MigrationAuditEntry[];
   manualReassignAuditLog: ManualReassignAuditEntry[];
   adminRoomList: AssignedRoom[];
+  anonymousRoomAutoStopEnabled: boolean;
 };
 
 // Worker の /status は reconcile 間隔(30秒)と listener heartbeat(30秒)で更新される。
@@ -245,6 +246,74 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
   );
 }
 
+// Sidestageユーザー(Streamer登録/AgencyWatch登録/イベント参加)以外のroomid、
+// つまり匿名観測room(コラボ検知等で自動発見されただけのroom)を、最後の監視指示から
+// 30分放置したら自動停止するかどうか。開発中・データ収集中はOFFにしておきたい想定なので、
+// AddWatchFormと同じ即時PATCH方式(切替のたびに送信、フォーム確定待ちにしない)にする。
+function AnonymousAutoStopToggle({
+  enabled,
+  onChanged,
+}: {
+  enabled: boolean;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const handleToggle = async () => {
+    const next = !enabled;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/workers/anonymous-auto-stop", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setErr((data as { error?: string } | null)?.error ?? "切替に失敗しました");
+        return;
+      }
+      onChanged();
+    } catch {
+      setErr("切替に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-4 px-4 py-3 rounded border border-border bg-panel flex items-center gap-3 flex-wrap">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        onClick={handleToggle}
+        disabled={busy}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+          enabled ? "bg-brand" : "bg-border"
+        }`}
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+            enabled ? "translate-x-4" : "translate-x-1"
+          }`}
+        />
+      </button>
+      <div className="min-w-0">
+        <div className="text-sm font-bold text-strong">
+          Sidestageユーザー以外のroomid監視を自動停止
+        </div>
+        <div className="text-xs text-muted">
+          Streamer/事務所監視/イベント参加のいずれにも該当しないroom(コラボ検知等の匿名観測room。上の「監視対象IDを追加」で手動追加したroomも含む)を、最後の監視指示から30分放置したら自動停止する。開発中・データ収集中はOFF推奨。
+        </div>
+      </div>
+      {err && <span className="text-xs text-red-400 break-all">{err}</span>}
+    </div>
+  );
+}
+
 export default function WorkersAdminPage() {
   const [report, setReport] = useState<WorkerReportWithAudit | null>(null);
   const [error, setError] = useState("");
@@ -413,6 +482,13 @@ export default function WorkersAdminPage() {
       </div>
 
       <AddWatchForm onAdded={load} />
+
+      {report && (
+        <AnonymousAutoStopToggle
+          enabled={report.anonymousRoomAutoStopEnabled}
+          onChanged={load}
+        />
+      )}
 
       <div className="mb-4 inline-flex rounded border border-border overflow-hidden text-xs">
         {(
