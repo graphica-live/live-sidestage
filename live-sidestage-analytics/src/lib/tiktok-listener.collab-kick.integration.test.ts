@@ -91,6 +91,17 @@ function groupChangePayload(ownDisplayId: string, partnerDisplayId: string) {
   };
 }
 
+function battleOpenPayload(battleId: string, ownDisplayId: string, partnerDisplayId: string) {
+  return {
+    battleId,
+    action: 4, // BATTLE_ACTION.OPEN
+    anchorInfo: [
+      { user: { userId: "1", displayId: ownDisplayId, nickName: "own" } },
+      { user: { userId: "2", displayId: partnerDisplayId, nickName: "partner" } },
+    ],
+  };
+}
+
 beforeEach(() => {
   MockConnection.instances.length = 0;
   emitOverlaySnapshotMock.mockClear();
@@ -232,5 +243,105 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
     expect(getListenerStatus(orphanRoom.id)).toBeNull();
 
     await cleanupRoom(orphanRoom.id);
+  });
+});
+
+describe("linkLayer: subscriberIds空(Streamer未登録)roomでもコラボ検知が発火する(ガード撤廃)", () => {
+  it("Streamer登録0件のroomでもlinkLayerのコラボ承諾で相手roomを作成する", async () => {
+    const ownTiktokId = `itest_noguard_own_${Date.now()}`;
+    const partnerTiktokId = `itest_noguard_partner_${Date.now()}`;
+    // resolveRoomForStreamerを経由せず、Streamer紐付けなしのroomを直接作る。
+    const ownRoom = await prisma.tiktokRoom.create({ data: { tiktokId: ownTiktokId } });
+
+    await startListener(ownRoom.id, ownTiktokId, []); // subscriberIds空
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
+
+    await vi.waitFor(async () => {
+      const partnerRoom = await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } });
+      expect(partnerRoom).not.toBeNull();
+    });
+
+    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
+      where: { tiktokId: partnerTiktokId },
+    });
+    expect(partnerRoom.watchSource).toBe("collab");
+
+    await stopListener(ownRoom.id);
+    await stopListener(partnerRoom.id);
+    await cleanupRoom(ownRoom.id);
+    await cleanupRoom(partnerRoom.id);
+  });
+});
+
+describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める補助トリガー", () => {
+  it("相手roomが未監視ならbattle_start経由で作成し、opponentWatchへ記録する", async () => {
+    const ownTiktokId = `itest_battlewatch_own_${Date.now()}`;
+    const partnerTiktokId = `itest_battlewatch_partner_${Date.now()}`;
+    const battleId = `itest_battle_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokId, "itest-battlewatch");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire("linkMicBattle", battleOpenPayload(battleId, ownTiktokId, partnerTiktokId));
+
+    await vi.waitFor(async () => {
+      const partnerRoom = await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } });
+      expect(partnerRoom).not.toBeNull();
+    });
+    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
+      where: { tiktokId: partnerTiktokId },
+    });
+    expect(partnerRoom.watchSource).toBe("battle_start");
+
+    await vi.waitFor(async () => {
+      const battle = await prisma.tiktokBattle.findUniqueOrThrow({
+        where: { roomId_battleId: { roomId: ownRoomId, battleId } },
+      });
+      const opponentWatch = battle.opponentWatch as Record<string, { source: string }>;
+      expect(opponentWatch["2"]?.source).toBe("battle_start");
+    });
+
+    await stopListener(ownRoomId);
+    await stopListener(partnerRoom.id);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+    await cleanupRoom(partnerRoom.id);
+  });
+
+  it("相手roomが既にcollab経由で監視中なら、watchSourceを上書きせずopponentWatchへcollabと記録する", async () => {
+    const ownTiktokId = `itest_battlewatch_kept_own_${Date.now()}`;
+    const partnerTiktokId = `itest_battlewatch_kept_partner_${Date.now()}`;
+    const battleId = `itest_battle_kept_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokId, "itest-battlewatch-kept");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+    const partnerRoom = await prisma.tiktokRoom.create({
+      data: { tiktokId: partnerTiktokId, watchSource: "collab" },
+    });
+
+    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire("linkMicBattle", battleOpenPayload(battleId, ownTiktokId, partnerTiktokId));
+
+    await vi.waitFor(async () => {
+      const battle = await prisma.tiktokBattle.findUnique({
+        where: { roomId_battleId: { roomId: ownRoomId, battleId } },
+      });
+      expect(battle).not.toBeNull();
+      const opponentWatch = battle!.opponentWatch as Record<string, { source: string }>;
+      expect(opponentWatch["2"]?.source).toBe("collab");
+    });
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: partnerRoom.id } });
+    expect(after.watchSource).toBe("collab"); // 上書きされない
+
+    await stopListener(ownRoomId);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+    await cleanupRoom(partnerRoom.id);
   });
 });

@@ -230,6 +230,12 @@ model TiktokRoom {
   deviceId          String?
   workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定するが既定値にすぎない。worker-guardianの死亡移送・コラボ自己申告(ensureRoomWatchedForCollab)がhashと無関係な値を書くため、この列の値が常に正)
   proxyKey          String? // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
+  // このroomの監視をensureRoomWatchedForCollab()が新規作成/再開したときの発見経路。
+  // "collab"(コラボ承諾のlinkLayer検知) | "battle_start"(バトル開始action:4の補助検知)。
+  // Streamer登録・AgencyWatch・イベント監視由来はnullのまま。最初に監視を始めた経路を残す
+  // (以後同じroomが別経路で再検知されても上書きしない。tiktok-room.ts参照)。
+  watchSource       String?
+  watchSourceAt     DateTime?
   listenerStatus    String?
   listenerMessage   String?
   listenerUpdatedAt DateTime?
@@ -932,6 +938,10 @@ model TiktokBattle {
   hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
   hostProfiles   Json      @default("{}") // anchorIdStr -> {displayId, nickName, avatarUrl}。tiktok-battle.tsのHostProfiles
   hostTeams      Json      @default("{}") // anchorIdStr -> teamId(teamArmies由来。1vs1等チーム情報が無いバトルは{})
+  // anchorIdStr -> OpponentWatchEntry(tiktok-battle.tsのOpponentWatch)。相手roomの監視が
+  // どの経路(コラボ承諾/バトル開始補助/元々監視中/失敗)で始まったかの記録。表示には使わず、
+  // コラボ承諾トリガー(recordCollabGroupChange)の取りこぼし率を事後検証するためだけの記録。
+  opponentWatch  Json      @default("{}")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

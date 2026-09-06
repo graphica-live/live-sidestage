@@ -44,6 +44,25 @@ export type HostProfiles = Record<string /* anchorId */, HostProfile>;
  */
 export type HostTeams = Record<string /* anchorId */, string /* teamId */>;
 
+/**
+ * 相手roomの監視がどの経路で始まった(始まらなかった)かの記録。tiktok-listener.ts の
+ * watchDiscoveredRooms() が書く。表示には使わず、コラボ承諾トリガー(recordCollabGroupChange)の
+ * 取りこぼし率を事後検証するためだけの記録(採用理由は tlc-sidestage-rosy-conway plan 参照)。
+ */
+export type OpponentWatchSource =
+  | "collab" // linkLayerのコラボ承諾検知で新規作成/再開した
+  | "battle_start" // linkMicBattle action:4の補助検知で新規作成/再開した(=collabを取りこぼした)
+  | "registered" // 既に監視中だった(Streamer登録/AgencyWatch/イベント監視由来。watchSourceがnull)
+  | "unassigned" // 新規作成したがownWorkerIndex不明で即キックせず(reconcile待ち)
+  | "skipped"; // ensureRoomWatchedForCollabがnullを返した(不正ID/上限到達)
+export type OpponentWatchEntry = {
+  tiktokId: string;
+  roomId: string | null;
+  source: OpponentWatchSource;
+  watchedAt: string | null;
+};
+export type OpponentWatch = Record<string /* anchorId */, OpponentWatchEntry>;
+
 export type ParsedBattle = {
   battleId: string;
   /** 最後に観測した BattleAction。armies イベントには action が無いので null */

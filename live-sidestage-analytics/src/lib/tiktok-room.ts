@@ -222,6 +222,8 @@ export async function upsertRoom(tiktokId: string): Promise<{ id: string }> {
   }
 }
 
+export type CollabWatchSource = "collab" | "battle_start";
+
 export type CollabWatchResult = {
   roomId: string;
   tiktokId: string;
@@ -231,6 +233,9 @@ export type CollabWatchResult = {
    * 即接続キック(startListener)を検討してよい — false(既存room再利用/再開)で毎回キックすると
    * 同じ相手を検知するたびに再接続してしまう */
   created: boolean;
+  /** このroomの TiktokRoom.watchSource(最初にこの経路で発見された記録)。呼び出し元が
+   * 監視中だった既存roomを再検知した場合は DB の値(null もありうる)をそのまま返す。 */
+  watchSource: CollabWatchSource | null;
 };
 
 // コラボ経由で新規発見できるroomの上限。ensureRoomForEvent()のMAX_ACTIVE_LEASESと同じ理由
@@ -242,18 +247,22 @@ export type CollabWatchResult = {
 const MAX_COLLAB_DISCOVERED_ROOMS = 500;
 
 /**
- * コラボ(linkMic)相手を監視対象へ入れる。tiktok-listener.ts の linkLayer ハンドラから呼ぶ
- * (呼び出し元でStreamer登録済みのroomからの検知に限定済み — 未登録roomからの連鎖発見は
- * 呼び出し元で止めている)。
+ * コラボ(linkMic)相手・バトル相手を監視対象へ入れる。tiktok-listener.ts の linkLayer
+ * ハンドラ(コラボ承諾検知、source:"collab")と linkMicBattle ハンドラ(バトル開始検知、
+ * source:"battle_start")の両方から呼ぶ。呼び出し元roomのStreamer登録有無は問わない
+ * (2026-09にガードを撤廃。歯止めは下記のMAX_COLLAB_DISCOVERED_ROOMSのみ)。
  *
  * - 未登録(TiktokRoomが無い) → 上限未満なら新規作成する。新規行の monitoringSuspended は既定
- *   false なのでそのまま監視対象になる(resumed: false)。上限に達している場合は作成せず null
- * - 登録済み・監視中(monitoringSuspended: false) → 何もしない(resumed: false)。resolveRoomForStreamer()と
- *   同じく、AgencyWatch/monitorUntilが理由で監視中の場合もここでは関知しない
+ *   false なのでそのまま監視対象になる(resumed: false)。watchSource/watchSourceAtに発見経路を
+ *   記録する。上限に達している場合は作成せず null
+ * - 登録済み・監視中(monitoringSuspended: false) → 何もしない(resumed: false)。watchSourceも
+ *   書き換えない(最初に監視を始めた経路を残す)。resolveRoomForStreamer()と同じく、
+ *   AgencyWatch/monitorUntilが理由で監視中の場合もここでは関知しない
  *   (watchedRoomFilter()のOR条件のどれか1つでも満たせばよいため)
  * - 登録済み・休止中(monitoringSuspended: true) → false に書き換える(resumed: true)。
  *   NOT_FOUND判定用フィールドもreviveSuspendedMonitoring()が併せてリセットする
- *   (残したままだと復活直後の実在確認で古いstreakを引き継ぎ、誤って早期に再停止しうるため)
+ *   (残したままだと復活直後の実在確認で古いstreakを引き継ぎ、誤って早期に再停止しうるため)。
+ *   watchSourceがまだnull(この経路で発見されたのが初めて)のときだけ記録する
  *
  * tiktokId の形式が不正(TIKTOK_ID_PATTERN)な場合は何もせず null を返す — コラボ相手の
  * displayId は TikTok 側の値をそのまま受け取るだけの経路で、主催者入力のような検証は
@@ -273,41 +282,55 @@ const MAX_COLLAB_DISCOVERED_ROOMS = 500;
  */
 export async function ensureRoomWatchedForCollab(
   rawTiktokId: string,
-  workerId?: number
+  workerId: number | undefined,
+  source: CollabWatchSource
 ): Promise<CollabWatchResult | null> {
   const tiktokId = normalizeTiktokId(rawTiktokId);
   if (!TIKTOK_ID_PATTERN.test(tiktokId)) return null;
 
   const existing = await prisma.tiktokRoom.findUnique({
     where: { tiktokId },
-    select: { id: true },
+    select: { id: true, watchSource: true },
   });
 
   if (existing) {
     const resumedCount = await reviveSuspendedMonitoring(existing.id);
-    return { roomId: existing.id, tiktokId, resumed: resumedCount > 0, created: false };
+    let watchSource = existing.watchSource as CollabWatchSource | null;
+    if (resumedCount > 0 && watchSource === null) {
+      await prisma.tiktokRoom.update({
+        where: { id: existing.id },
+        data: { watchSource: source, watchSourceAt: new Date() },
+      });
+      watchSource = source;
+    }
+    return { roomId: existing.id, tiktokId, resumed: resumedCount > 0, created: false, watchSource };
   }
 
   // 上限判定は「新規作成になる」場合のみ(既存roomの監視再開は総数を増やさないため対象外)。
   const watchedCount = await prisma.tiktokRoom.count({ where: { monitoringSuspended: false } });
   if (watchedCount >= MAX_COLLAB_DISCOVERED_ROOMS) {
     console.warn(
-      `[collab] 監視中room数が上限(${MAX_COLLAB_DISCOVERED_ROOMS})に達しているため、コラボ相手の新規room作成をスキップした`,
-      { tiktokId }
+      `[collab] 監視中room数が上限(${MAX_COLLAB_DISCOVERED_ROOMS})に達しているため、相手roomの新規作成をスキップした`,
+      { tiktokId, source }
     );
     return null;
   }
 
   try {
     const room = await prisma.tiktokRoom.create({
-      data: { tiktokId, ...(workerId !== undefined ? { workerId } : {}) },
+      data: {
+        tiktokId,
+        watchSource: source,
+        watchSourceAt: new Date(),
+        ...(workerId !== undefined ? { workerId } : {}),
+      },
       select: { id: true },
     });
-    return { roomId: room.id, tiktokId, resumed: false, created: true };
+    return { roomId: room.id, tiktokId, resumed: false, created: true, watchSource: source };
   } catch (err) {
     // findUnique と create の間に別リクエストが同じ部屋を作った場合。
     if ((err as { code?: string })?.code === "P2002") {
-      return ensureRoomWatchedForCollab(rawTiktokId, workerId);
+      return ensureRoomWatchedForCollab(rawTiktokId, workerId, source);
     }
     throw err;
   }
