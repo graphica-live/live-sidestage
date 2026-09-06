@@ -173,6 +173,12 @@ enum名を信用して実装しないこと。
 - `1` → 確定。報酬区間は発生しない
 - `2` → 確定。`rewardStartTimestamp`が報酬区間の開始(ただし下記のとおり実開始より約10秒早い予告値)
 
+**中間settleと`rewardSettle`は、その区間を達成した側にしか飛ばない。** 未達成側は中間settleを挟まず
+いきなり`taskResult=1`が1回だけ届き、報酬区間が無いので`rewardSettle`も来ない。
+2026-09-06に同一アカウント2つ(`yu_ki_nojo`/`sub_nojo`)で「片方だけ達成」を2回、達成側を入れ替えて実施し、
+4区間すべてで**達成側=中間settle有り / 未達成側=`1`が1回だけ**を確認した。
+したがって**未達成側の区間で「区間の終了時刻が入っていない」のは異常ではない**。欠損として扱わないこと。
+
 **`rewardSettle.sum`はトップレベルには無い。** proto上の`WebcastLinkmicBattleTaskMessage_BattleRewardSettle`は
 `rewardSettlePrompt`と`status`の2フィールドだけ。区間中の獲得ボーナスpt合計は
 **`rewardSettle.rewardSettlePrompt.promptElements`の中の`{promptFieldKey:"sum", promptFieldValue:"<数値>"}`**
