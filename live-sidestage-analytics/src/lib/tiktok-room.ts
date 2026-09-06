@@ -250,8 +250,9 @@ const MAX_COLLAB_DISCOVERED_ROOMS = 500;
 /**
  * コラボ(linkMic)相手・バトル相手を監視対象へ入れる。tiktok-listener.ts の linkLayer
  * ハンドラ(コラボ承諾検知、source:"collab")と linkMicBattle ハンドラ(バトル開始検知、
- * source:"battle_start")の両方から呼ぶ。呼び出し元roomのStreamer登録有無は問わない
- * (2026-09にガードを撤廃。歯止めは下記のMAX_COLLAB_DISCOVERED_ROOMSのみ)。
+ * source:"battle_start")の両方から呼ぶ。呼び出し元room側の歯止め(Streamer購読または
+ * specialWatchのroomからしか呼ばない)は tiktok-listener.ts のハンドラ側にあり、この関数自身の
+ * 歯止めは下記のMAX_COLLAB_DISCOVERED_ROOMSのみ。
  *
  * - 未登録(TiktokRoomが無い) → 上限未満なら新規作成する。新規行の monitoringSuspended は既定
  *   false なのでそのまま監視対象になる(resumed: false)。watchSource/watchSourceAtに発見経路を

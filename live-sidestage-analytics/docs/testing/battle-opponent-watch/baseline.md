@@ -2,8 +2,8 @@
 project: live-sidestage-analytics
 feature: battle-opponent-watch
 last_updated: 2026-09-07
-last_risk: MEDIUM
-last_reviewers: Design Mode=DeepSeek単独。Code Mode=DeepSeek単独(TestCaseレビューは本Skillで単独実施)
+last_risk: HIGH
+last_reviewers: Design Mode=DeepSeek+Fable(Codex/Geminiともquota切れ、ユーザー承認の上でFableを代理)。Code Mode=DeepSeek+Fable(同上)
 ---
 
 # テストベースライン: battle-opponent-watch
@@ -42,7 +42,14 @@ last_reviewers: Design Mode=DeepSeek単独。Code Mode=DeepSeek単独(TestCase�
 | TC-BOW-017 | 判定材料が無い場合・`unavailable`の場合は格上げも格下げもしない | `refineCaptureByScore` | 異常 | スコア観測0件 / 窓尾gapで最終スコアもnull / `status: "unavailable"` / スコアが減少する異常データ | いずれも元の`status`を維持(`missedScore: null`、減少分は負値として足し込まない) | 同上 | PASS | 格上げ専用。coverageが高いのにスコアが欠けているケースはスナップショット側の欠測と区別できないため格下げしない |
 | TC-BOW-018 | `battle_history_participants.captureStatus`の確定保存が上記の格上げを反映し、スナップショット読み出しに回帰が無い | `battle-history-finalize.ts` / `battle-history.ts` | 回帰 | 確定処理のintegrationシナリオ一式 | 既存の確定・再確定・陣営別集計の振る舞いが変わらない | `npx dotenv -e .env.local.test -- vitest run src/lib/battle-history-finalize.integration.test.ts src/lib/battle-history.integration.test.ts src/lib/tiktok-listener.battle-armies-snapshot.integration.test.ts` | PASS | スナップショット取得失敗時は`console.error`のうえ元の判定へフォールバックし、確定処理自体は継続する |
 | TC-BOW-019 | 確定処理が`TiktokBattleArmiesSnapshot`を実DBから読んで格上げ判定に使う(配線の確認) | `refineCaptureWithOfficialScore` | 正常/境界 | 窓300秒のうち先頭30秒が未接続(coverage 0.9)のroomに対し、当該区間のスコア増分が3(格上げ)/400(据え置き)のsnapshot行を投入して`computeBattleSnapshot`を実行 | 増分3では`captureStatus: "complete"` かつ `captureCoverage: 0.9`(実測値のまま)、増分400では`"partial"`のまま | `npx dotenv -e .env.local.test -- vitest run src/lib/battle-history-finalize.integration.test.ts` | PASS | 純関数のunit(TC-BOW-015/016)とは別に、DBクエリ経由の配線を固定する |
-| TC-BOW-012 | プロジェクト全体のunit/integrationテストが今回の変更で壊れていない | プロジェクト全体 | 回帰 | - | 既知の不安定要因([[analytics-vitest-cross-file-interference]])を除き全PASS | `npm run test:unit`、`npm run test:integration -- tiktok-room.collab.integration.test.ts tiktok-listener.collab-kick.integration.test.ts` | PASS | unit: 1311/1311(2026-09-07再実行)。integration(battle系3ファイル): 37/37 PASS |
+| TC-BOW-012 | プロジェクト全体のunit/integrationテストが今回の変更で壊れていない | プロジェクト全体 | 回帰 | - | 既知の不安定要因([[analytics-vitest-cross-file-interference]])を除き全PASS | `npm run test:unit`、`npm run test:integration -- tiktok-room.collab.integration.test.ts tiktok-listener.collab-kick.integration.test.ts` | PASS | unit: 1311/1311(2026-09-07再実行)。integration(battle系3ファイル): 37/37 PASS。collab系マージ後の再実行: unit 1328 / integration 824 PASS |
+| TC-BOW-020 | `userList`に待機者(status:1)が居る招待送信イベントでは相手roomを作成しない(資源暴走の防止) | `shouldWatchCollabSnapshot` / linkLayerハンドラ | 境界/異常 | `source:"SOURCE_TYPE_RECOMMEND_LIST"`、`userList`が`[status:3, status:1]`のmessageType:18を発火 | 相手roomが作成されない(2秒間50ms間隔でpollし続けて`findUnique`がnullのまま) | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.collab-kick.integration.test.ts` | PASS | `userInfos`は招待中の人も含む(probeログ169件中167件で`userInfos`件数=LINKED+WAITING)。sourceを無条件に無視すると招待のたびに接続が張られる |
+| TC-BOW-021 | 待機者0なら`REPLY_STATUS_AGREE`以外のsource(`live_end`等)でも相手roomを`collab`として作成する | `shouldWatchCollabSnapshot` / linkLayerハンドラ | 正常 | `source:"live_end"`、`userList`が全員status:3のmessageType:18を発火 | 相手roomが作成され`watchSource==="collab"` | 同上 | PASS | AGREEは実測で全体の8%しかない。承諾イベントを取り逃すと相手roomをバトル開始まで発見できず`captureStatus`が悪化する |
+| TC-BOW-022 | `userList`が取れないpayload構造の変化ではAGREE以外を採用しない(fail-closed) | `shouldWatchCollabSnapshot` | 異常/境界 | `groupChangeContent`欠落の`messageType:18`を`source:"live_end"` / `source:"x[REPLY_STATUS_AGREE]"` の2通りで判定 | `live_end`はfalse、AGREEはtrue | `npm run test:unit -- src/lib/tiktok-collab.test.ts` | PASS | 構造変化時に資源の暴走側へ倒れないことを優先した既定 |
+| TC-BOW-023 | `userList`のstatusをLINKED(3)/WAITING(1)/その他で数え分ける | `parseCollabGroupChange` | 境界 | `userList`が`[3,3,1,7]` | `linkedCount===2` / `waitingCount===1` / `otherCount===1` | 同上 | PASS | 実測で観測できたstatusは1と3のみだが、protoには`GROUP_STATUS_UNKNOWN=0`がある |
+| TC-BOW-026 | `userList`が空配列(構造は読めるがLINKED 0人)のイベントはAGREE以外を採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `userList: []`かつ`userInfos`に2人、`source:"live_end"` / `source:"x[REPLY_STATUS_AGREE]"` | `live_end`はfalse、AGREEはtrue | `npm run test:unit -- src/lib/tiktok-collab.test.ts` | PASS | `linkedCount > 0`が必須条件であることを名指しで固定する(TC-BOW-022のキー欠落ケースは空配列へ正規化された結果同じ値になるだけ)。probeログ169件では空配列・キー欠落とも0件 |
+| TC-BOW-024 | LINKED以外のstatus(`GROUP_STATUS_UNKNOWN=0`・未定義の2等)が混ざるイベントは採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `source:"live_end"`で`userList`が`[3,0]` / `source:"SOURCE_TYPE_RECOMMEND_LIST"`で`[3,2]` | どちらもfalse | 同上 | PASS | 「WAITINGが0」でなく「LINKED以外が0」で判定する。未知statusをWAITING扱いしないと暴走側へ倒れる(Code Modeレビュー Fable指摘) |
+| TC-BOW-025 | `displayIds`がLINKED件数より多い(`userInfos`に`userList`へ居ない人が混ざる)イベントは採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `userInfos`2人・`userList`が`[3]`(LINKED 1人)、`source:"live_end"` | false | 同上 | PASS | probeログ169件中2件で`userInfos`が`userList`より1人多い実例あり。`displayIds`は重複除去・空文字除去で小さくなる方向にしかずれない |
 
 ## Quality Gate
 
