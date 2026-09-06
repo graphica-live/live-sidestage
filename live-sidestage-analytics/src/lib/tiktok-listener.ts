@@ -1485,14 +1485,14 @@ function queueBattleWrite(key: string, task: () => Promise<void>): void {
  *
  * Gift の保存は persistBattle と非同期・非awaitの別経路(saveGift(...).then(...))なので、
  * END検知の瞬間には集計対象の Gift がまだ INSERT されていない。さらに armies の最終スコアが
- * FINISH 後に届くこともある。30秒待ってから確定処理へ入り、そこでさらに60秒の安定性チェックを行う
- * (2026-09-02に10分から短縮。遅延Giftを取りこぼしたまま確定するリスクは詳細を
- * battle-history-finalize.ts 冒頭コメント参照)。
+ * FINISH 後に届くこともある。10秒待ってから確定処理へ入り、そこでさらに10秒の安定性チェックを行う
+ * (2026-09-02に10分→30秒、2026-09-06に30秒→10秒へさらに短縮。遅延Giftを取りこぼしたまま
+ * 確定するリスクは詳細を battle-history-finalize.ts 冒頭コメント参照)。
  */
-const BATTLE_FINALIZE_DELAY_MS = 30 * 1000;
+const BATTLE_FINALIZE_DELAY_MS = 10 * 1000;
 
 /**
- * 30秒後に確定処理を1回だけ fire-and-forget で呼ぶ。**await しない**(イベントループを塞がない)。
+ * 10秒後に確定処理を1回だけ fire-and-forget で呼ぶ。**await しない**(イベントループを塞がない)。
  *
  * 失敗・プロセス再起動で取りこぼしても、そのバトルは「未確定」のまま残るだけで、読み出しは
  * 従来どおりライブ集計へ正しくフォールバックする。再試行は行わない
