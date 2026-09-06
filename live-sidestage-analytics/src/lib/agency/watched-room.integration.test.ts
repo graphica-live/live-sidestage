@@ -5,6 +5,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { watchedRoomFilter } from "@/lib/tiktok-listener";
+import type { WatchedRoomFilterOptions } from "@/lib/watched-room-filter";
 
 const suffix = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -31,9 +32,13 @@ async function createAgency() {
   return agency;
 }
 
-async function isWatched(roomId: string): Promise<boolean> {
+async function isWatched(
+  roomId: string,
+  now: Date = new Date(),
+  opts?: WatchedRoomFilterOptions
+): Promise<boolean> {
   const hit = await prisma.tiktokRoom.findFirst({
-    where: { id: roomId, ...watchedRoomFilter() },
+    where: { id: roomId, ...watchedRoomFilter(now, opts) },
     select: { id: true },
   });
   return hit !== null;
@@ -128,5 +133,83 @@ describe("watchedRoomFilter", () => {
     });
 
     expect(await isWatched(room.id)).toBe(true);
+  });
+});
+
+// 匿名観測room(Streamer/AgencyWatch/monitorUntilのいずれも無い部屋)自動停止トグル。
+// anonymousStaleBeforeがnull(=トグルOFF)なら現行動作(無条件監視、情報プール方針)と
+// 同一であることは上のdescribeで固定済み。ここではトグルON相当(anonymousStaleBeforeに
+// 具体的な時刻を渡す)の挙動と、Sidestageユーザーのroomはstale判定の影響を受けない
+// (無条件継続)不変条件を固定する。
+describe("watchedRoomFilter (匿名room自動停止トグルON相当)", () => {
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 30 * 60_000);
+
+  it("匿名roomはlastWatchInstructedAtがstaleBeforeより前なら接続対象外", async () => {
+    const room = await createRoom("anon_stale");
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: new Date(staleBefore.getTime() - 60_000) },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(false);
+  });
+
+  it("匿名roomはlastWatchInstructedAtがstaleBeforeより後なら接続対象", async () => {
+    const room = await createRoom("anon_fresh");
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: new Date(staleBefore.getTime() + 60_000) },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
+  });
+
+  it("Streamerが居ればstale(lastWatchInstructedAtが古い)でも接続対象(不変条件)", async () => {
+    const room = await createRoom("anon_streamer_stale");
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: new Date(staleBefore.getTime() - 60_000) },
+    });
+    const user = await prisma.user.create({
+      data: { email: `itest-watched-anon-s-${suffix()}@local.test` },
+    });
+    createdUserIds.push(user.id);
+    await prisma.streamer.create({
+      data: { userId: user.id, tiktokId: room.tiktokId, verificationCode: "x", roomId: room.id },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
+  });
+
+  it("AgencyWatchがあればstaleでも接続対象(不変条件、monitoringSuspended:trueでも同様)", async () => {
+    const room = await createRoom("anon_agency_stale", { monitoringSuspended: true });
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: new Date(staleBefore.getTime() - 60_000) },
+    });
+    const agency = await createAgency();
+    await prisma.agencyWatch.create({
+      data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
+  });
+
+  it("monitorUntilが未来ならstaleでも接続対象(イベント参加中、不変条件)", async () => {
+    const room = await createRoom("anon_event_stale");
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: {
+        lastWatchInstructedAt: new Date(staleBefore.getTime() - 60_000),
+        monitorUntil: new Date(now.getTime() + 60 * 60_000),
+      },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
+  });
+
+  it("monitoringSuspended:trueの匿名roomはfreshでも接続対象外(既存不変条件)", async () => {
+    const room = await createRoom("anon_suspended_fresh", { monitoringSuspended: true });
+    await prisma.tiktokRoom.update({
+      where: { id: room.id },
+      data: { lastWatchInstructedAt: new Date(staleBefore.getTime() + 60_000) },
+    });
+    expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(false);
   });
 });

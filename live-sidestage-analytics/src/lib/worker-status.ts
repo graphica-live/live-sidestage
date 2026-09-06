@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
-import { watchedRoomFilter, type ListenerSnapshot } from "./tiktok-listener";
+import { type ListenerSnapshot } from "./tiktok-listener";
+import { resolveWatchedRoomFilter } from "./watched-room-filter";
 import { normalizeTiktokId } from "./tiktok-room";
 import { reviveSuspendedMonitoring } from "./mark-last-active";
 import { requireExistingTiktokAccount, type ExistenceChecker } from "./tiktok-existence";
@@ -140,10 +141,10 @@ export function parseWorkerInternalUrls(raw: string | undefined): string[] {
   }
 }
 
-/** 監視対象の部屋を DB から取る。条件は watchedRoomFilter() が単一の正。 */
+/** 監視対象の部屋を DB から取る。条件は resolveWatchedRoomFilter() が単一の正。 */
 export async function fetchAssignedRooms(now: Date = new Date()): Promise<AssignedRoom[]> {
   const rooms = await prisma.tiktokRoom.findMany({
-    where: watchedRoomFilter(now),
+    where: await resolveWatchedRoomFilter(now),
     // Streamer.apiKey などを持ってこないよう列は明示する。
     select: {
       id: true,
@@ -369,6 +370,12 @@ export type AddWatchedRoomResult =
 // 既存roomが休止中(monitoringSuspended: true)だった場合はreviveSuspendedMonitoring()で
 // 復帰させる — Streamerのmarkイベント由来の復帰と同じ経路で、追加後の停止判定
 // (tiktok-low-value-cleanup.ts等)もStreamer登録済みroomと同じ基準にそのまま乗る。
+//
+// 匿名観測room自動停止トグル(watched-room-filter.ts)との関係: この経路で追加した
+// roomはStreamer/AgencyWatch/monitorUntilのいずれも持たないため「匿名観測room」に
+// 分類される。トグルON時は追加(=lastWatchInstructedAtの初期化 or revive時の更新)から
+// 30分放置すると自動停止しうる — Sidestageユーザーのroomとは異なり永続監視ではない
+// (仕様確認済み。再度監視したい場合は同じIDをもう一度追加する)。
 export async function addWatchedRoom(
   rawTiktokId: string,
   checker?: ExistenceChecker
