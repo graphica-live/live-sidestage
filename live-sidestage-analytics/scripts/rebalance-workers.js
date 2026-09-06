@@ -32,14 +32,15 @@ async function main() {
   const prisma = new PrismaClient();
   try {
     // 接続対象外の部屋は除外する。条件は src/lib/tiktok-listener.ts の watchedRoomFilter() と
-    // 揃えること — 配信者本人の登録(Streamer)、事務所の監視対象(AgencyWatch)、
+    // 揃えること — 監視停止されていない部屋(monitoringSuspended:false。Streamer登録の有無を
+    // 問わず、コラボ検知で発見しただけの部屋も含む)、事務所の監視対象(AgencyWatch)、
     // イベントの期限付き監視要求(monitorUntil が未来)のいずれかを満たせば対象。
-    // monitorUntil を落とすと、イベント監視だけの部屋が再割当から漏れて旧workerIdに固まる。
+    // Streamer有無で絞ると、Streamer 0人で監視中の部屋が再割当から漏れて旧workerIdに固まる。
     const now = new Date();
     const rooms = await prisma.tiktokRoom.findMany({
       where: {
         OR: [
-          { streamers: { some: {} } },
+          { monitoringSuspended: false },
           { watches: { some: {} } },
           { monitorUntil: { gt: now } },
         ],
