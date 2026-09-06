@@ -27,6 +27,7 @@ Future<AdvancedFilterResult?> showCustomRangeFilterSheet(
   String? initialListenerQuery,
   bool extendedRangeAllowed = true,
   bool listenerFilterAllowed = true,
+  int maxRangeDays = _maxRangeDays,
 }) {
   return showModalBottomSheet<AdvancedFilterResult>(
     context: context,
@@ -36,6 +37,7 @@ Future<AdvancedFilterResult?> showCustomRangeFilterSheet(
       initialListenerQuery: initialListenerQuery,
       extendedRangeAllowed: extendedRangeAllowed,
       listenerFilterAllowed: listenerFilterAllowed,
+      maxRangeDays: maxRangeDays,
     ),
   );
 }
@@ -46,6 +48,7 @@ class _CustomRangeFilterSheet extends StatefulWidget {
     this.initialListenerQuery,
     this.extendedRangeAllowed = true,
     this.listenerFilterAllowed = true,
+    this.maxRangeDays = _maxRangeDays,
   });
 
   final DateTimeRange? initial;
@@ -56,6 +59,10 @@ class _CustomRangeFilterSheet extends StatefulWidget {
 
   /// FREEプランではリスナー名フィルタを使えない(入力欄は見せるが入力不可)。
   final bool listenerFilterAllowed;
+
+  /// 選択可能な範囲の上限(日数)。ギフト履歴は明細の保持期間(90日)に合わせて呼び出し側が
+  /// 縮小して渡す(gift-retention-window.tsのGIFT_RETENTION_DAYSと一致させること)。
+  final int maxRangeDays;
 
   @override
   State<_CustomRangeFilterSheet> createState() => _CustomRangeFilterSheetState();
@@ -97,7 +104,7 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
     if (_hasFullRange) {
       final start = _start!, end = _end!;
       if (!start.isBefore(end)) return false;
-      if (end.difference(start) > const Duration(days: _maxRangeDays)) return false;
+      if (end.difference(start) > Duration(days: widget.maxRangeDays)) return false;
     }
     return true;
   }
@@ -110,10 +117,15 @@ class _CustomRangeFilterSheetState extends State<_CustomRangeFilterSheet> {
       _hasListener;
 
   Future<void> _pickStart() async {
+    final now = DateTime.now();
+    final firstDate = widget.maxRangeDays < _maxRangeDays
+        ? DateTime(now.year, now.month, now.day).subtract(Duration(days: widget.maxRangeDays - 1))
+        : null;
     final picked = await _pickJstWallClock(
       context,
       initial: _start,
       defaultTime: const TimeOfDay(hour: 0, minute: 0),
+      firstDate: firstDate,
     );
     if (picked == null || !mounted) return;
     setState(() => _start = picked);
@@ -260,19 +272,20 @@ Future<DateTime?> _pickJstWallClock(
   BuildContext context, {
   DateTime? initial,
   required TimeOfDay defaultTime,
+  DateTime? firstDate,
 }) async {
   final now = DateTime.now();
-  final firstDate = DateTime(now.year - 5);
+  final resolvedFirstDate = firstDate ?? DateTime(now.year - 5);
   final lastDate = DateTime(now.year + 5, 12, 31);
   final fallbackDate = DateTime(now.year, now.month, now.day);
   final initialDate = initial != null ? DateTime(initial.year, initial.month, initial.day) : fallbackDate;
 
   final date = await showDatePicker(
     context: context,
-    initialDate: initialDate.isBefore(firstDate)
-        ? firstDate
+    initialDate: initialDate.isBefore(resolvedFirstDate)
+        ? resolvedFirstDate
         : (initialDate.isAfter(lastDate) ? lastDate : initialDate),
-    firstDate: firstDate,
+    firstDate: resolvedFirstDate,
     lastDate: lastDate,
   );
   if (date == null || !context.mounted) return null;

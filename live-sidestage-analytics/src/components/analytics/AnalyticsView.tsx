@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
+import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
 
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -352,6 +353,32 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     }
   }, [period, currentDate, viewMode, fetchData, fetchHistory, fetchBattles]);
 
+  // ギフト履歴(明細)は90日で削除される(gift-retention-window.ts)ため`year`を選べない。
+  // また、ランキング/バトル履歴タブ(366日まで許容)で選んだカスタム期間を引き継いで
+  // ギフト履歴タブへ切り替えた場合、90日を超えるcustomStart/customEndがそのまま
+  // fetchHistoryへ渡ってしまう(サーバー側は黙ってクランプするだけでUIのラベル・
+  // 入力欄には反映されない)。year同様、その場合も`month`へ落とす。
+  useEffect(() => {
+    if (viewMode !== "history") return;
+    if (period === "year") {
+      setPeriod("month");
+      setCurrentDate(todayStr());
+      return;
+    }
+    if (period === "custom") {
+      const start = new Date(customStart).getTime();
+      const end = new Date(customEnd).getTime();
+      const tooWide =
+        !Number.isNaN(start) &&
+        !Number.isNaN(end) &&
+        end - start > GIFT_HISTORY_MAX_RANGE_DAYS * 86_400_000;
+      if (tooWide) {
+        setPeriod("month");
+        setCurrentDate(todayStr());
+      }
+    }
+  }, [viewMode, period, customStart, customEnd]);
+
   useEffect(() => {
     if (!showCalendar) return;
     function onMouseDown(e: MouseEvent) {
@@ -479,13 +506,30 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     });
   }, [battlesData, filter, hideLowDiamond]);
 
+  // ギフト履歴のカスタム期間は、明細の保持期間(90日、gift-retention-window.tsの
+  // GIFT_RETENTION_DAYS)より前の開始日時を選ばせない。サーバー側のクランプ
+  // (clampGiftHistoryDatetimeRange)と同じ式(終了日時 - 90日、日付境界の-1補正はしない。
+  // それは日キー版のclampGiftHistoryDayRange専用)で計算する。
+  const historyRangeMinStart = useMemo(() => {
+    if (viewMode !== "history") return undefined;
+    const end = new Date(pendingEnd);
+    if (Number.isNaN(end.getTime())) return undefined;
+    return toLocalDatetimeString(
+      new Date(end.getTime() - GIFT_HISTORY_MAX_RANGE_DAYS * 86_400_000)
+    );
+  }, [viewMode, pendingEnd]);
+
   return (
     <>
     <main className="max-w-4xl mx-auto w-full px-4 py-4 space-y-4">
         {/* Period tabs + View mode toggle */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex gap-0.5 bg-panel border border-border rounded-seg p-[3px] w-fit">
-            {(["day", "week", "month", "year"] as Period[]).map((p) => (
+            {(
+              viewMode === "history"
+                ? (["day", "week", "month"] as Period[])
+                : (["day", "week", "month", "year"] as Period[])
+            ).map((p) => (
               <button
                 key={p}
                 onClick={() => {
@@ -528,6 +572,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                         type="datetime-local"
                         step="1"
                         value={pendingStart}
+                        min={historyRangeMinStart}
                         onChange={(e) => setPendingStart(e.target.value)}
                         className="input-field text-sm w-full"
                       />
@@ -542,6 +587,11 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                         className="input-field text-sm w-full"
                       />
                     </div>
+                    {viewMode === "history" && (
+                      <p className="text-xs text-muted">
+                        ギフト履歴の明細は受信から90日で削除されるため、開始日時はそれより前を選べません。
+                      </p>
+                    )}
                     <button
                       onClick={() => {
                         setCustomStart(pendingStart);
@@ -549,7 +599,12 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                         setPeriod("custom");
                         setShowCalendar(false);
                       }}
-                      disabled={!pendingStart || !pendingEnd || pendingStart >= pendingEnd}
+                      disabled={
+                        !pendingStart ||
+                        !pendingEnd ||
+                        pendingStart >= pendingEnd ||
+                        (!!historyRangeMinStart && pendingStart < historyRangeMinStart)
+                      }
                       className="w-full bg-brand text-on-accent rounded-lg py-2 text-sm font-medium hover:bg-brand-hover disabled:opacity-40 transition-colors"
                     >
                       適用

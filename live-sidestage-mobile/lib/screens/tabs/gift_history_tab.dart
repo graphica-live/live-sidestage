@@ -161,6 +161,9 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       initialListenerQuery: _listenerQuery,
       extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
       listenerFilterAllowed: planGate.canUseListenerFilter,
+      // 明細(Gift)は受信後90日で削除される(gift-retention-window.tsのGIFT_RETENTION_DAYS)。
+      // それより前を選ばせても常に0件になるため、選択自体をここで縮小する。
+      maxRangeDays: 90,
     );
     if (result == null) return;
     setState(() {
@@ -233,6 +236,8 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
             onOpenCustomRangeFilter: _openCustomRangeFilter,
             onShiftCustomRange: _shiftOutOfCustomRange,
+            // 明細は90日で削除される(gift-retention-window.ts)ため、`year`は選ばせない。
+            availablePeriods: const [AnalyticsPeriod.day, AnalyticsPeriod.week, AnalyticsPeriod.month],
           ),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
           if (_loading && result == null)

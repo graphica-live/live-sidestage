@@ -21,6 +21,7 @@ class PeriodSelectorBar extends StatelessWidget {
     this.onOpenCustomRangeFilter,
     this.onShiftCustomRange,
     this.extendedRangeAllowed = true,
+    this.availablePeriods = AnalyticsPeriod.values,
   });
 
   final AnalyticsPeriodSelection selection;
@@ -58,6 +59,11 @@ class PeriodSelectorBar extends StatelessWidget {
   /// 押されたらアップグレード誘導を出す(§14と同じ「onPressedをnullにしない」方針)。
   final bool extendedRangeAllowed;
 
+  /// タブとして出す期間の集合。ギフト履歴タブは明細の保持期間(90日)を超える`year`を
+  /// 選ばせても0件にしかならないため、呼び出し側でここから外す
+  /// (`AnalyticsPeriod`自体は貢献/バトル履歴タブと共有のため、削除ではなく絞り込みで扱う)。
+  final List<AnalyticsPeriod> availablePeriods;
+
   bool _isExtendedPeriod(AnalyticsPeriod p) => p == AnalyticsPeriod.month || p == AnalyticsPeriod.year;
 
   @override
@@ -74,7 +80,7 @@ class PeriodSelectorBar extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
           child: Row(
             children: [
-              for (final p in AnalyticsPeriod.values) ...[
+              for (final p in availablePeriods) ...[
                 KosaiChip(
                   label: p.label,
                   selected: !customRangeActive && selection.period == p,
