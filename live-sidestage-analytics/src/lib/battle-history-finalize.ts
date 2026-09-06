@@ -270,7 +270,9 @@ export async function computeBattleSnapshot(
         uniqueIdSnapshot: identity.displayId,
         nicknameSnapshot: identity.nickName,
         officialScore: score,
-        isSelf: faction.index === 0,
+        // 陣営(faction.index===0)でなく参加者個人がselfHostUserIdと一致するかで判定する。
+        // 陣営全体フラグのままだとチームメイトも isSelf: true として確定保存されてしまう。
+        isSelf: anchorId === selfHostUserId,
       };
     })
   );
