@@ -331,13 +331,15 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     final battles = filter.hideSmall
         ? [
             for (final b in allBattles)
-              if (!isSmallBattle(
-                selfScore: b.selfScore,
-                // 3陣営以上ではopponentScoreがnullなので、他陣営スコアの最大値で代用する
-                // (代用しないと、自分の取り分が小さい大規模バトルまで隠れてしまう)。
-                opponentScore: b.opponentScore ?? b.maxOtherTeamScore,
-                threshold: filter.threshold,
-              ))
+              // 進行中バトルはスコアが未確定なので、しきい値フィルタの対象から除く。
+              if (b.status == BattleStatus.live ||
+                  !isSmallBattle(
+                    selfScore: b.selfScore,
+                    // 3陣営以上ではopponentScoreがnullなので、他陣営スコアの最大値で代用する
+                    // (代用しないと、自分の取り分が小さい大規模バトルまで隠れてしまう)。
+                    opponentScore: b.opponentScore ?? b.maxOtherTeamScore,
+                    threshold: filter.threshold,
+                  ))
                 b,
           ]
         : allBattles;
