@@ -40,6 +40,9 @@ export interface WatchedRoomFilterOptions {
  * monitoringSuspended の値に関わらず無条件で監視対象。
  * それ以外の匿名観測room(コラボ検知等で発見されただけ)は、monitoringSuspended:false かつ
  * (トグルOFF、または最終監視指示が30分以内)の場合のみ監視対象。
+ * 管理画面の「特別監視」(specialWatch:true)は匿名roomでもstale判定を免除する。
+ * 免除しないと、自動停止トグルON環境で特別監視にしても lastWatchInstructedAt が古いままの
+ * roomは監視対象に入らず、worker が接続しない(監視一時停止は特別監視より優先する)。
  */
 export function watchedRoomFilter(
   now: Date = new Date(),
@@ -54,6 +57,7 @@ export function watchedRoomFilter(
       { watches: { some: {} } },
       { monitorUntil: { gt: now } },
       { monitoringSuspended: false, streamers: { some: {} } },
+      { monitoringSuspended: false, specialWatch: true },
       { monitoringSuspended: false, ...anonymousRoomOk },
     ],
   };
