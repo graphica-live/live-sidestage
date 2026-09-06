@@ -17,44 +17,76 @@ afterAll(async () => {
 describe("ensureRoomWatchedForCollab", () => {
   it("未登録のtiktokIdは新規作成し、監視中(resumed: false)として返す", async () => {
     const id = tiktokId("new");
-    const result = await ensureRoomWatchedForCollab(id);
+    const result = await ensureRoomWatchedForCollab(id, undefined, "collab");
     expect(result).not.toBeNull();
     roomIds.push(result!.roomId);
 
     expect(result!.tiktokId).toBe(id);
     expect(result!.resumed).toBe(false);
     expect(result!.created).toBe(true);
+    expect(result!.watchSource).toBe("collab");
 
     const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: result!.roomId } });
     expect(room.monitoringSuspended).toBe(false);
+    expect(room.watchSource).toBe("collab");
+    expect(room.watchSourceAt).not.toBeNull();
   });
 
-  it("既に監視中(monitoringSuspended: false)の部屋はそのまま(resumed: false)", async () => {
+  it("既に監視中(monitoringSuspended: false)の部屋はそのまま(resumed: false)。watchSourceも書き換えない", async () => {
     const id = tiktokId("active");
     const room = await prisma.tiktokRoom.create({
       data: { tiktokId: id, monitoringSuspended: false },
     });
     roomIds.push(room.id);
 
-    const result = await ensureRoomWatchedForCollab(id);
-    expect(result).toEqual({ roomId: room.id, tiktokId: id, resumed: false, created: false });
+    const result = await ensureRoomWatchedForCollab(id, undefined, "battle_start");
+    expect(result).toEqual({
+      roomId: room.id,
+      tiktokId: id,
+      resumed: false,
+      created: false,
+      watchSource: null,
+    });
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.monitoringSuspended).toBe(false);
+    expect(after.watchSource).toBeNull();
   });
 
-  it("休止中(monitoringSuspended: true)の部屋はONへ書き換える(resumed: true)", async () => {
+  it("休止中(monitoringSuspended: true)の部屋はONへ書き換える(resumed: true)。watchSourceがnullなら今回のsourceを書く", async () => {
     const id = tiktokId("suspended");
     const room = await prisma.tiktokRoom.create({
       data: { tiktokId: id, monitoringSuspended: true },
     });
     roomIds.push(room.id);
 
-    const result = await ensureRoomWatchedForCollab(id);
-    expect(result).toEqual({ roomId: room.id, tiktokId: id, resumed: true, created: false });
+    const result = await ensureRoomWatchedForCollab(id, undefined, "battle_start");
+    expect(result).toEqual({
+      roomId: room.id,
+      tiktokId: id,
+      resumed: true,
+      created: false,
+      watchSource: "battle_start",
+    });
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.monitoringSuspended).toBe(false);
+    expect(after.watchSource).toBe("battle_start");
+  });
+
+  it("休止中でも既にwatchSourceが記録済みなら上書きしない(最初の発見経路を残す)", async () => {
+    const id = tiktokId("keepsource");
+    const room = await prisma.tiktokRoom.create({
+      data: { tiktokId: id, monitoringSuspended: true, watchSource: "collab" },
+    });
+    roomIds.push(room.id);
+
+    const result = await ensureRoomWatchedForCollab(id, undefined, "battle_start");
+    expect(result!.resumed).toBe(true);
+    expect(result!.watchSource).toBe("collab");
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.watchSource).toBe("collab");
   });
 
   it("@付き・大文字混じりのtiktokIdは正規化してから既存部屋を引き当てる", async () => {
@@ -64,18 +96,24 @@ describe("ensureRoomWatchedForCollab", () => {
     });
     roomIds.push(room.id);
 
-    const result = await ensureRoomWatchedForCollab(`@${normalized.toUpperCase()}`);
-    expect(result).toEqual({ roomId: room.id, tiktokId: normalized, resumed: true, created: false });
+    const result = await ensureRoomWatchedForCollab(`@${normalized.toUpperCase()}`, undefined, "collab");
+    expect(result).toEqual({
+      roomId: room.id,
+      tiktokId: normalized,
+      resumed: true,
+      created: false,
+      watchSource: "collab",
+    });
   });
 
   it("不正な形式(記号・空文字)はnullを返し、部屋を作らない", async () => {
-    expect(await ensureRoomWatchedForCollab("")).toBeNull();
-    expect(await ensureRoomWatchedForCollab("has space")).toBeNull();
+    expect(await ensureRoomWatchedForCollab("", undefined, "collab")).toBeNull();
+    expect(await ensureRoomWatchedForCollab("has space", undefined, "collab")).toBeNull();
   });
 
   it("workerIdを渡すと新規作成時にそのworkerIdで作成する", async () => {
     const id = tiktokId("worker");
-    const result = await ensureRoomWatchedForCollab(id, 2);
+    const result = await ensureRoomWatchedForCollab(id, 2, "collab");
     expect(result).not.toBeNull();
     roomIds.push(result!.roomId);
     expect(result!.created).toBe(true);
@@ -91,7 +129,7 @@ describe("ensureRoomWatchedForCollab", () => {
     });
     roomIds.push(room.id);
 
-    const result = await ensureRoomWatchedForCollab(id, 2); // 別workerが検知した想定
+    const result = await ensureRoomWatchedForCollab(id, 2, "battle_start"); // 別workerが検知した想定
     expect(result!.created).toBe(false);
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });

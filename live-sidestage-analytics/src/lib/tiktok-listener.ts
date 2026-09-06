@@ -45,13 +45,19 @@ import {
   type BattleRecordState,
   type HostProfiles,
   type HostTeams,
+  type OpponentWatch,
   type ParsedBattle,
 } from "./tiktok-battle";
 import { ensureAvatarCached } from "./avatar-storage";
 import { materializeBattleHistory } from "./battle-history-finalize";
 import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
 import { isCollabJoinSource, parseCollabGroupChange } from "./tiktok-collab";
-import { ensureRoomWatchedForCollab, normalizeTiktokId } from "./tiktok-room";
+import {
+  ensureRoomWatchedForCollab,
+  normalizeTiktokId,
+  type CollabWatchResult,
+  type CollabWatchSource,
+} from "./tiktok-room";
 import { existenceChecker } from "./tiktok-existence";
 
 export type ListenerStatus =
@@ -1636,6 +1642,73 @@ function recordBattleEvent(
 }
 
 /**
+ * このWorkerプロセス自身のWORKER_INDEXを取る。失敗時は自己割当を諦めて既存動作
+ * (workerId未設定で作成、次のreconcileのハッシュ割当を待つ)にフォールバックする。
+ * 呼び出し元でthrowさせない(linkLayer/linkMicBattleのイベント処理全体、
+ * watchdogのmarkAlive等を巻き込むため)。
+ */
+function tryGetOwnWorkerIndex(logPrefix: string): number | undefined {
+  try {
+    return getWorkerConfig().index;
+  } catch (err) {
+    console.error(`[${logPrefix}] getWorkerConfig失敗。自己割当なしで従来どおり処理を続ける`, err);
+    return undefined;
+  }
+}
+
+/**
+ * 相手roomを発見経路ごと(コラボ承諾検知/バトル開始補助検知)に監視対象へ入れる共通処理。
+ * ensureRoomWatchedForCollab()でDB行を用意し、このプロセスが新規作成できた場合のみ
+ * 即接続キックする。
+ *
+ * `created===true`のときだけ即キックする。この分岐は「その部屋のTiktokRoom行を
+ * このプロセスが初めて作った」場合にのみ通り、以後同じtiktokIdへ何度呼ばれても
+ * ensureRoomWatchedForCollab()は既存行(existing)分岐に落ちてcreated:falseを返す
+ * (DBのunique制約が二重作成自体を防ぐため)。したがって二重キック・再接続ループは
+ * 起こらない — startListener()を「新規作成の瞬間に1回だけ」しか呼ばない設計そのものが
+ * ガードになっている。
+ *
+ * ownWorkerIndexが取れていない(getWorkerConfig失敗)ときはDB上のworkerIdもnullのまま
+ * 作成されるため、ここでキックすると次のreconcileが別workerへhash割当した際に
+ * 二重接続(最大1周回ぶんのgift二重受信)を招く。そのケースは即キックせず従来どおり
+ * reconcileに委ねる。
+ *
+ * 戻り値は正規化済みtiktokId -> CollabWatchResult(失敗/スキップ時はnull)。呼び出し元
+ * (linkLayerハンドラ)がfire-and-forgetで済ませる場合はPromiseを待たなくてよい。
+ */
+async function watchDiscoveredRooms(
+  displayIds: string[],
+  ownTiktokId: string,
+  source: CollabWatchSource,
+  ownWorkerIndex: number | undefined
+): Promise<Map<string, CollabWatchResult | null>> {
+  const targets = [...new Set(displayIds.map(normalizeTiktokId))].filter((id) => id !== ownTiktokId);
+
+  const entries = await Promise.all(
+    targets.map(async (tiktokId): Promise<[string, CollabWatchResult | null]> => {
+      try {
+        const result = await ensureRoomWatchedForCollab(tiktokId, ownWorkerIndex, source);
+        if (result?.created && ownWorkerIndex !== undefined) {
+          await startListener(result.roomId, result.tiktokId, []).catch((err) => {
+            console.error(`[${source}] 新規roomの即時接続に失敗。次のreconcileで拾われる`, {
+              roomId: result.roomId,
+              tiktokId: result.tiktokId,
+              err,
+            });
+          });
+        }
+        return [tiktokId, result];
+      } catch (err) {
+        console.error(`[${source}] 相手roomの監視対象追加に失敗`, { tiktokId, err });
+        return [tiktokId, null];
+      }
+    })
+  );
+
+  return new Map(entries);
+}
+
+/**
  * コラボ(linkMic)への参加を検知し、相手roomを監視対象へ入れる。
  *
  * `linkLayer`(`WebcastLinkLayerMessage`)の`messageType:18`(groupChangeContent)のうち、
@@ -1658,46 +1731,104 @@ function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unkn
     return;
   }
 
-  // 自分(このWorkerプロセス)のWORKER_INDEXを取れないなら自己割当を諦めて既存動作
-  // (workerId未設定で作成、次のreconcileのハッシュ割当を待つ)にフォールバックする。
-  // ここでthrowするとlinkLayerのイベント処理全体(watchdogのmarkAlive等)を巻き込むため、
-  // 例外は握って以前の挙動に落とす。
-  let ownWorkerIndex: number | undefined;
+  const ownWorkerIndex = tryGetOwnWorkerIndex("collab");
+  void watchDiscoveredRooms(parsed.displayIds, ownTiktokId, "collab", ownWorkerIndex);
+}
+
+/**
+ * 相手roomの監視開始経路をTiktokBattle.opponentWatchへ記録する。書き込み対象の行は
+ * recordBattleEvent()が同じ`${roomId}:${battleId}`キーのwrite queueへ先にpersistBattle()を
+ * enqueue済みなので、この関数呼び出し時点で行は必ず存在する(persistBattle自体が失敗した
+ * 場合のみP2025になり、その場合は警告して捨てる — バトル記録自体の失敗はここでは扱わない)。
+ */
+async function recordOpponentWatch(
+  roomId: string,
+  battleId: string,
+  entries: OpponentWatch
+): Promise<void> {
+  if (Object.keys(entries).length === 0) return;
   try {
-    ownWorkerIndex = getWorkerConfig().index;
+    await prisma.tiktokBattle.update({
+      where: { roomId_battleId: { roomId, battleId } },
+      data: { opponentWatch: entries },
+    });
   } catch (err) {
-    console.error("[collab] getWorkerConfig失敗。自己割当なしで従来どおり処理を続ける", err);
+    if ((err as { code?: string })?.code === "P2025") {
+      console.warn("[battle-watch] opponentWatch書き込み対象のTiktokBattle行が無い", { roomId, battleId });
+      return;
+    }
+    console.error("[battle-watch] opponentWatch書き込みに失敗", { roomId, battleId, err });
+  }
+}
+
+/**
+ * バトル開始(`linkMicBattle` action:4)を検知し、相手roomを監視対象へ入れる補助トリガー。
+ *
+ * 主トリガーは`recordCollabGroupChange`(コラボ承諾検知)で、これはworker再起動・デプロイの
+ * タイミングで既にコラボ済みだった相手を取りこぼす(承諾通知は接続開始前に流れてしまっている
+ * ため)。このトリガーはその取りこぼしを埋める補助であり、`recordCollabGroupChange`を置き換える
+ * ものではない — 開始通知が最初の観測になる場合、相手roomへの接続完了までの数秒間は
+ * ギフトを取りこぼす(captureStatus: "partial")。
+ *
+ * どちらの経路で監視が始まった(始まらなかった)かはopponentWatchへ記録し、事後に
+ * recordCollabGroupChangeの取りこぼし率を検証できるようにする。
+ */
+function watchBattleOpponents(roomId: string, ownTiktokId: string, parsed: ParsedBattle): void {
+  if (parsed.phase !== "START") return;
+
+  // opponentWatchはanchorId(TiktokBattle.hostProfilesと同じキー)で引けるようにする。
+  // 同じdisplayIdへ複数のanchorIdが束ねられることは無い前提(hostProfilesの生成元と同一)。
+  const opponentsByAnchorId = new Map<string, string>(); // anchorId -> displayId
+  for (const [anchorId, profile] of Object.entries(parsed.hostProfiles)) {
+    if (profile.displayId === null) continue;
+    if (normalizeTiktokId(profile.displayId) === ownTiktokId) continue;
+    opponentsByAnchorId.set(anchorId, profile.displayId);
   }
 
-  for (const displayId of parsed.displayIds) {
-    if (normalizeTiktokId(displayId) === ownTiktokId) continue; // 自分自身(own room)は除外
+  if (opponentsByAnchorId.size === 0) {
+    console.warn("[battle-watch] バトル開始だがhostProfilesに相手のdisplayIdが無い", {
+      roomId,
+      battleId: parsed.battleId,
+    });
+    return;
+  }
 
-    ensureRoomWatchedForCollab(displayId, ownWorkerIndex)
-      .then((result) => {
-        // created===trueのときだけ即キックする。この分岐は「その部屋のTiktokRoom行を
-        // このプロセスが初めて作った」場合にのみ通り、以後同じtiktokIdへ何度
-        // recordCollabGroupChangeが呼ばれてもensureRoomWatchedForCollab()は
-        // 既存行(existing)分岐に落ちてcreated:falseを返す(DBのunique制約が
-        // 二重作成自体を防ぐため)。したがって二重キック・再接続ループは起こらない
-        // — startListener()を「新規作成の瞬間に1回だけ」しか呼ばない設計そのものが
-        // ガードになっている。
-        // ownWorkerIndexが取れていない(getWorkerConfig失敗)ときはDB上のworkerIdもnullのまま
-        // 作成されているため、ここでキックすると次のreconcileが別workerへhash割当した際に
-        // 二重接続(最大1周回ぶんのgift二重受信)を招く。そのケースは即キックせず従来どおり
-        // reconcileに委ねる。
-        if (!result || !result.created || ownWorkerIndex === undefined) return;
-        return startListener(result.roomId, result.tiktokId, []).catch((err) => {
-          console.error("[collab] 新規コラボroomの即時接続に失敗。次のreconcileで拾われる", {
+  const ownWorkerIndex = tryGetOwnWorkerIndex("battle-watch");
+
+  watchDiscoveredRooms([...opponentsByAnchorId.values()], ownTiktokId, "battle_start", ownWorkerIndex)
+    .then((results) => {
+      const entries: OpponentWatch = {};
+      for (const [anchorId, displayId] of opponentsByAnchorId) {
+        const tiktokId = normalizeTiktokId(displayId);
+        const result = results.get(tiktokId);
+        const watchedAt = new Date().toISOString();
+        if (!result) {
+          entries[anchorId] = { tiktokId, roomId: null, source: "skipped", watchedAt: null };
+        } else if (!result.created) {
+          // 既存room。watchSourceが"collab"なら主トリガーで既に拾えていた(理想)。
+          // nullならStreamer登録/AgencyWatch/イベント監視由来で元々監視中だった。
+          entries[anchorId] = {
+            tiktokId,
             roomId: result.roomId,
-            tiktokId: result.tiktokId,
-            err,
-          });
-        });
-      })
-      .catch((err) => {
-        console.error("[collab] コラボ相手の監視対象追加に失敗", { roomId, displayId, err });
-      });
-  }
+            source: result.watchSource ?? "registered",
+            watchedAt,
+          };
+        } else if (ownWorkerIndex === undefined) {
+          entries[anchorId] = { tiktokId, roomId: result.roomId, source: "unassigned", watchedAt };
+        } else {
+          entries[anchorId] = { tiktokId, roomId: result.roomId, source: "battle_start", watchedAt };
+        }
+      }
+      // persistBattle(recordBattleEventがrecordBattleEvent内で同じkeyへenqueue済み)の
+      // 後に必ず走るよう、同じ write queue keyへ乗せる。これが無いとバトル検知直後の
+      // opponentWatch更新がTiktokBattle行のcreateより先に走りP2025になりうる(実測)。
+      queueBattleWrite(`${roomId}:${parsed.battleId}`, () =>
+        recordOpponentWatch(roomId, parsed.battleId, entries)
+      );
+    })
+    .catch((err) => {
+      console.error("[battle-watch] 相手roomの監視対象追加に失敗", { roomId, battleId: parsed.battleId, err });
+    });
 }
 
 // ── バトル終了通知の転送 ──────────────────────────────────────────────────────
@@ -1869,12 +2000,11 @@ async function connectAndAttach(
   // バトル中はチャットが流れない配信もあるので、バトルのイベントもwatchdogの生存判定に含める。
   conn.on("linkMicBattle", (data: unknown) => {
     markAlive();
-    recordBattleEvent(
-      roomId,
-      inst.state.tiktokId,
-      Array.from(inst.subscriberIds),
-      parseBattleEvent(data)
-    );
+    const parsed = parseBattleEvent(data);
+    recordBattleEvent(roomId, inst.state.tiktokId, Array.from(inst.subscriberIds), parsed);
+    // 補助トリガー: コラボ承諾(linkLayer)の取りこぼし(worker再起動等で承諾より後に接続した場合)を
+    // 埋める。主トリガーはlinkLayer側のrecordCollabGroupChange。詳細はwatchBattleOpponents参照。
+    if (parsed) watchBattleOpponents(roomId, inst.state.tiktokId, parsed);
   });
   conn.on("linkMicArmies", (data: unknown) => {
     markAlive();
@@ -1889,14 +2019,12 @@ async function connectAndAttach(
   // コラボ(linkMic本体。バトルでない)の参加・離脱通知。fork独自追加のイベント
   // (shared/tiktok-live-connector/CHANGELOG.md 1.1.0参照)。
   //
-  // 検知はStreamer登録済み(subscriberIdsが空でない)roomからの通知に限定する。コラボ由来で
-  // 新規発見したroomも次のreconcileで監視対象になり同じlinkLayerを購読するため、ここを
-  // 限定しないとコラボの連鎖に沿って無制限に監視対象が広がる(実装後レビューで指摘。
-  // AgencyWatch/イベントmonitorUntil由来のroomでも同様に広がりうるが、Streamer登録という
-  // 最も安価な判定だけでも連鎖の起点を大きく絞れる)。
+  // 監視中roomすべてで発火する(2026-09にStreamer登録済みroom限定のガードを撤廃)。
+  // コラボ由来で新規発見したroomも次のreconcileで監視対象になり同じlinkLayerを購読するため
+  // 連鎖的に監視対象が広がりうるが、歯止めは`ensureRoomWatchedForCollab`内の
+  // `MAX_COLLAB_DISCOVERED_ROOMS`(監視中room総数の上限)のみに一本化した。
   conn.on("linkLayer", (data: unknown) => {
     markAlive();
-    if (inst.subscriberIds.size === 0) return;
     recordCollabGroupChange(roomId, inst.state.tiktokId, data);
   });
 

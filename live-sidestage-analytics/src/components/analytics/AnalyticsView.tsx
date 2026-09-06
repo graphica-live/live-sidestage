@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { BattleDetailModal } from "./BattleDetailModal";
-import { Avatar, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
+import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -1034,49 +1034,29 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
             <>
               {/* モバイル(sm未満): カード表示。列間引きでは対戦相手名・スコアが収まらないため */}
               <div className="sm:hidden space-y-2">
-                {filteredBattles.map((battle) => {
-                  const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
-                  const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
-                  const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
-
-                  return (
-                    <div
-                      key={battle.battleId}
-                      onClick={() => setOpenBattleId(battle.battleId)}
-                      className="rounded-xl border border-border bg-panel p-3 space-y-2 cursor-pointer active:bg-row-hover transition-colors"
-                    >
-                      <div className="flex items-center justify-between text-xs text-muted">
-                        <span className="whitespace-nowrap">{formatEventTime(battle.startedAt, period)}</span>
-                        <span className={`whitespace-nowrap ${battleStatusClass(battle.status)}`}>
-                          {BATTLE_STATUS_LABELS[battle.status]}
-                        </span>
-                      </div>
-                      <BattleOpponentInfo battle={battle} />
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-sm">
-                          {battle.selfScore === null ? (
-                            "-"
-                          ) : (
-                            <span className={win ? "text-brand font-semibold" : ""}>
-                              {Number(battle.selfScore).toLocaleString()}
-                            </span>
-                          )}
-                          {" / "}
-                          {battle.opponentScore === null ? (
-                            "-"
-                          ) : (
-                            <span className={lose ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
-                              {Number(battle.opponentScore).toLocaleString()}
-                            </span>
-                          )}
-                        </span>
-                        <span className="font-mono text-xs text-muted whitespace-nowrap">
-                          💎{battle.selfTotalDiamonds.toLocaleString()}
-                        </span>
-                      </div>
+                {filteredBattles.map((battle) => (
+                  <div
+                    key={battle.battleId}
+                    onClick={() => setOpenBattleId(battle.battleId)}
+                    className="rounded-xl border border-border bg-panel p-3 space-y-2 cursor-pointer active:bg-row-hover transition-colors"
+                  >
+                    <div className="flex items-center justify-between text-xs text-muted">
+                      <span className="whitespace-nowrap">{formatEventTime(battle.startedAt, period)}</span>
+                      <span className={`whitespace-nowrap ${battleStatusClass(battle.status)}`}>
+                        {BATTLE_STATUS_LABELS[battle.status]}
+                      </span>
                     </div>
-                  );
-                })}
+                    <BattleOpponentInfo battle={battle} />
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-sm">
+                        <BattleScoreLine battle={battle} />
+                      </span>
+                      <span className="font-mono text-xs text-muted whitespace-nowrap">
+                        💎{battle.selfTotalDiamonds.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {/* sm以上: テーブル表示 */}
@@ -1094,10 +1074,6 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                   </thead>
                   <tbody>
                     {filteredBattles.map((battle) => {
-                      const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
-                      const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
-                      const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
-
                       return (
                         <tr
                           key={battle.battleId}
@@ -1111,21 +1087,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                             <BattleOpponentInfo battle={battle} />
                           </td>
                           <td className="py-2 px-3 text-right font-mono whitespace-nowrap">
-                            {battle.selfScore === null ? (
-                              "-"
-                            ) : (
-                              <span className={win ? "text-brand font-semibold" : ""}>
-                                {Number(battle.selfScore).toLocaleString()}
-                              </span>
-                            )}
-                            {" / "}
-                            {battle.opponentScore === null ? (
-                              "-"
-                            ) : (
-                              <span className={lose ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
-                                {Number(battle.opponentScore).toLocaleString()}
-                              </span>
-                            )}
+                            <BattleScoreLine battle={battle} />
                           </td>
                           <td className="py-2 px-3 text-center text-xs whitespace-nowrap">
                             <span className={battleStatusClass(battle.status)}>

@@ -174,6 +174,69 @@ export function BattleVersus({
   );
 }
 
+/**
+ * バトル一覧のスコア表示。`battle.teams`があれば全陣営(3陣営以上を含む)を" / "区切りで
+ * 陣営順(index0=自陣営)に並べる。無ければ既存の2値(selfScore/opponentScore)表示にフォールバックする
+ * (相手不明・チーム未解決のmulti・solo)。
+ *
+ * 色付けは自陣営のみ: 自陣営が単独最高ならbrand、自陣営より高い陣営があればred、
+ * 同点(最高と同値だが単独でない)・null陣営混在時は無着色。font-monoは呼び出し元(親要素)が持つ前提で
+ * ここでは付けない(mobileカード・テーブルtdで既にfont-monoが当たっている)。
+ */
+export function BattleScoreLine({ battle }: { battle: BattleListItem }) {
+  if (battle.teams) {
+    const scores = battle.teams.map((team) => (team.score !== null ? BigInt(team.score) : null));
+    const maxScore = scores.reduce<bigint | null>(
+      (max, score) => (score !== null && (max === null || score > max) ? score : max),
+      null
+    );
+    const maxCount = scores.filter((score) => score !== null && score === maxScore).length;
+    const hasNullScore = scores.some((score) => score === null);
+
+    return (
+      <>
+        {battle.teams.map((team, i) => {
+          const score = scores[i];
+          let colorClass = "";
+          if (team.isSelf && score !== null && maxScore !== null && !hasNullScore) {
+            if (score === maxScore && maxCount === 1) colorClass = "text-brand font-semibold";
+            else if (score < maxScore) colorClass = "text-red-600 dark:text-red-400 font-semibold";
+          }
+          return (
+            <span key={team.index}>
+              {i > 0 ? " / " : null}
+              {score === null ? "-" : <span className={colorClass}>{score.toLocaleString()}</span>}
+            </span>
+          );
+        })}
+      </>
+    );
+  }
+
+  const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
+  const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
+  const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
+  return (
+    <>
+      {battle.selfScore === null ? (
+        "-"
+      ) : (
+        <span className={win ? "text-brand font-semibold" : ""}>
+          {Number(battle.selfScore).toLocaleString()}
+        </span>
+      )}
+      {" / "}
+      {battle.opponentScore === null ? (
+        "-"
+      ) : (
+        <span className={lose ? "text-red-600 dark:text-red-400 font-semibold" : ""}>
+          {Number(battle.opponentScore).toLocaleString()}
+        </span>
+      )}
+    </>
+  );
+}
+
 function BattleTeamColumn({ team, size }: { team: BattleParticipant[]; size: "sm" | "md" }) {
   const nameMaxWidth = size === "sm" ? "max-w-[100px]" : "max-w-[160px]";
   const nameTextClass = size === "sm" ? "text-xs" : "text-sm";
