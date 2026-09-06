@@ -1035,8 +1035,11 @@ model TiktokBattleBonusMission {
 // linkMicArmies受信の都度追記する時系列スコアスナップショット。TiktokBattle.hostScores
 // (最新値への累積上書き、mergeBattleStateで増える方向のみマージ)と異なり、
 // 「初ギフトx倍」区間の逆算(ギフトのdiamondCountとスコア増分を突き合わせる、BATTLE-EVENTS.md
-// 4節)専用の中間データとして時系列を残す。確定後は逆算結果(BattleHistory.openingMultiplier)
-// のみが恒久化対象で、このテーブル自体はBattleHistory側へ複製しない。
+// 4節)の入力として時系列を残す。
+//
+// **2026-09-07に方針変更**: 以前はここに「確定後は逆算結果のみが恒久化対象で、このテーブル自体は
+// BattleHistory側へ複製しない」と書いていたが、バトル再生機能ではスコア曲線そのものが表示対象に
+// なったため、確定時に自roomのwindow内スナップショットを BattleHistoryScorePoint へ複製する。
 model TiktokBattleArmiesSnapshot {
   id         String   @id @default(cuid())
   roomId     String
@@ -1082,15 +1085,38 @@ model BattleHistory {
   finalizedAt       DateTime // 確定処理を実行した時刻
 
   // 「初ギフトx倍」区間の逆算結果(TiktokBattleArmiesSnapshotとGiftのdiamondCountの突き合わせ)。
-  // 2/3/null(判定不能または倍率なし)。room非依存のバトル全体の値として1つ持つ
+  // **1(倍率なしと判定できた) / 2 / 3 / null(判定不能)**。room非依存のバトル全体の値として1つ持つ
   // (陣営間で値が食い違う観測が出た場合はBattleHistoryParticipant単位への変更を検討)。
+  // 以前は「2/3/null(判定不能または倍率なし)」で1とnullを区別していなかったが、再生UIが
+  // 「倍率なし」と「わからない」を別の表示にするため2026-09-07に分離した。
   openingMultiplier            Int?
-  openingMultiplierBasisGiftId String? // 判定に使ったGift.idの記録用。監査用途、FKは張らない
+  // 判定に使ったGift.idの記録用。監査用途、FKは張らない。候補が複数あった場合は最初の候補
+  // (occurredAtが最も早いもの)を入れる。
+  openingMultiplierBasisGiftId String?
+  // 逆算の確からしさ。"measured"(候補2件以上が全一致) / "inferred"(候補1件、または倍率刻印が
+  // 未観測のため TOP_2/TOP_3 ブースターと区別できない) / "unknown"(候補なし・不一致)。
+  // **再生UIの赤帯を出してよいのは "measured" のときだけ。**
+  openingMultiplierConfidence  String?
+  // 逆算に使った候補区間の実測範囲。**仮定値(60秒)からは書かない。** 実測できた場合のみ埋め、
+  // 再生UIのカウントダウン表示はこの2列が揃っているときだけ出す。
+  openingWindowStartedAt       DateTime?
+  openingWindowEndedAt         DateTime?
+
+  // 再生可否の判定材料。**replayReady のような真偽値は持たない**(判定条件は今後変わるため、
+  // 件数だけ保存して判定は isReplayable() 1箇所に置く)。
+  replayScorePointCount Int @default(0)
+  replayGiftEventCount  Int @default(0)
+
+  // 公開シェアリンクのトークン。Streamer.overlayTokenと同じ「平文・ハッシュ化なし・遅延発行」。
+  // crypto.randomBytes(24)で生成する(cuid等の推測可能な識別子は使わない)。
+  shareToken       String?   @unique
+  shareTokenIssuedAt DateTime?
 
   room          TiktokRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
   participants  BattleHistoryParticipant[]
   teams         BattleTeam[]
   bonusMissions BattleHistoryBonusMission[]
+  scorePoints   BattleHistoryScorePoint[]
 
   @@unique([roomId, battleId])
   @@index([roomId, windowStart])
@@ -1246,6 +1272,31 @@ model BattleHistoryBonusMission {
   @@index([battleHistoryId])
   @@index([participantId])
   @@map("battle_history_bonus_missions")
+  @@schema("public")
+}
+
+// 確定済みバトルのスコア曲線(バトル再生のスコアバー用)。確定時に自room・window内の
+// TiktokBattleArmiesSnapshot を複製する。
+//
+// **participantId ではなく anchorId で持つ。** commitBattleSnapshot は participant を毎回削除・
+// 再生成するため、participantId を持つと再確定のたびに全点を張り替えることになる。
+//
+// **offsetMs(windowStartからの経過ミリ秒)を持つのは再生側に時刻演算をさせないため。**
+// 負値と窓超過はコミット時にクランプ済みなので、再生側は 0 <= offsetMs <= 窓長 を前提にしてよい。
+// score は累積スコア(TiktokBattleArmiesSnapshot.scoreと同じ理由でString)。公式スコアは階段関数
+// なので、再生側は点と点の間を補間せず「t <= elapsedMs の最後の点」を採ること。
+model BattleHistoryScorePoint {
+  id              String   @id @default(cuid())
+  battleHistoryId String
+  anchorId        String
+  offsetMs        Int
+  occurredAt      DateTime
+  score           String
+
+  battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
+
+  @@index([battleHistoryId, offsetMs])
+  @@map("battle_history_score_points")
   @@schema("public")
 }
 

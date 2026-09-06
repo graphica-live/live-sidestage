@@ -40,6 +40,7 @@ import {
   type BattleRow,
 } from "@/lib/battle-history";
 import type { HostProfiles } from "@/lib/tiktok-battle";
+import { inferOpeningMultiplier, type OpeningMultiplierResult } from "@/lib/battle-opening-multiplier";
 
 /** BattleHistoryGiftEvent等の子行createManyを分割する単位。Postgresのbind数上限対策
  * (1バトルのギフト送信回数は数百〜数千になりうる)。Prismaの自動分割に依存しない。 */
@@ -124,6 +125,16 @@ export type BattleSnapshotBonusMission = {
   rewardSum: number | null;
 };
 
+/** BattleHistoryScorePoint 1行分。**自room(このBattleHistoryを確定させるroom)のwindow内の
+ * TiktokBattleArmiesSnapshotだけを複製する**(itemCardEventsと同じ原則。自roomのarmiesに全anchorの
+ * スコアが含まれるので、4コラボでも全員分のバーが作れる)。offsetMsはwindowStartからの経過ms。 */
+export type BattleSnapshotScorePoint = {
+  anchorId: string;
+  offsetMs: number;
+  occurredAt: Date;
+  score: string;
+};
+
 /** BattleTeam 1行分。teamIndexでBattleSnapshotParticipant.teamIndexと対応づける
  * (BattleTeam自体はteamIndex列を持たないため、作成順=factions順で紐付ける)。 */
 export type BattleSnapshotTeam = {
@@ -149,6 +160,10 @@ export type BattleSnapshot = {
   giftEvents: BattleSnapshotGiftEvent[];
   itemCardEvents: BattleSnapshotItemCardEvent[];
   bonusMissions: BattleSnapshotBonusMission[];
+  /** バトル再生のスコアバー用。件数が0でも確定はする(再生できないだけ)。 */
+  scorePoints: BattleSnapshotScorePoint[];
+  /** 「初ギフトx倍」の逆算結果。多くのバトルで unknown になる。 */
+  opening: OpeningMultiplierResult;
 };
 
 export type MaterializeResult =
@@ -385,6 +400,54 @@ export async function computeBattleSnapshot(
     }
   }
 
+  // スコア曲線は**自roomのwindow内だけ**読む(itemCardEventsと同じ原則)。自roomのarmiesには
+  // 全anchorのスコアが入っているので、4コラボでも全員分のバーが作れる。participantとして
+  // 確定しないanchorId(観測の揺れ)は捨てる。
+  const armiesRows = await prisma.tiktokBattleArmiesSnapshot.findMany({
+    where: { roomId, battleId, occurredAt: { gte: windowStart, lte: windowEnd } },
+    select: { anchorId: true, occurredAt: true, score: true },
+    // 1イベントで全anchor分を同一occurredAtで書くため同着が常態。anchorIdまで指定しないと
+    // 並びが非決定になり、逆算の入力順も再生の点順もDBの気分次第になる。
+    orderBy: [{ occurredAt: "asc" }, { anchorId: "asc" }],
+  });
+  const windowStartMs = windowStart.getTime();
+  const windowLengthMs = Math.max(0, windowEnd.getTime() - windowStartMs);
+  // (anchorId, offsetMs)が重複したら後勝ち。同一msに複数点があっても再生側は1点しか使えない。
+  const scorePointByKey = new Map<string, BattleSnapshotScorePoint>();
+  for (const row of armiesRows) {
+    if (!participantAnchorIds.has(row.anchorId)) continue;
+    const offsetMs = Math.min(windowLengthMs, Math.max(0, row.occurredAt.getTime() - windowStartMs));
+    scorePointByKey.set(`${row.anchorId}:${offsetMs}`, {
+      anchorId: row.anchorId,
+      offsetMs,
+      occurredAt: row.occurredAt,
+      score: row.score,
+    });
+  }
+  const scorePoints = [...scorePointByKey.values()].sort(
+    (a, b) => a.offsetMs - b.offsetMs || a.anchorId.localeCompare(b.anchorId)
+  );
+
+  // 「初ギフトx倍」の逆算。既に読んである armies と giftEvents / bonusMissions を渡すだけで、
+  // 追加クエリは発生しない。自陣営(self)のギフトとスコアだけを使う(相手roomのギフトは
+  // 相手のスコアへ効くが、時刻基準が揃わないうえ相手roomのarmiesは読んでいないため)。
+  const opening = inferOpeningMultiplier({
+    windowStart,
+    // 配信途中から接続した場合 windowStart は「気づいた時刻」でしかない(startedAtEstimated)。
+    // その60秒はバトル中盤なので、倍率区間として判定させない。
+    windowStartReliable: !own.startedAtEstimated,
+    scorePoints: armiesRows.filter((r) => r.anchorId === selfHostUserId),
+    gifts: giftEvents
+      .filter((g) => g.participantAnchorId === selfHostUserId)
+      .map((g) => ({
+        id: g.sourceGiftId,
+        occurredAt: g.occurredAt,
+        totalDiamonds: g.totalDiamonds,
+        multiplierType: g.multiplierType,
+      })),
+    bonusIntervals: bonusMissions.map((m) => ({ startedAt: m.rewardStartedAt, endedAt: m.rewardEndedAt })),
+  });
+
   // BattleTeamはfactions順(=teamIndex順)で1件ずつ作る。externalTeamIdはteamArmies由来の
   // hostTeams(kind==="teams"のときだけ意味を持つ。1v1/solo/multiはteamの概念が無いのでnull)。
   const teamOf = new Map(asTeamEntries(own.hostTeams));
@@ -418,6 +481,8 @@ export async function computeBattleSnapshot(
     giftEvents,
     itemCardEvents,
     bonusMissions,
+    scorePoints,
+    opening,
   };
 }
 
@@ -425,6 +490,25 @@ export async function computeBattleSnapshot(
  * 「直近10秒で値が変化していない」ことの判定。**sourceUpdatedAt は比較しない**
  * (行のupdatedAtだけが動いても、導出値が同じなら安定しているとみなしてよい)。
  */
+/** anchorIdごとの最終スコア(offsetMsが最大の点)が両者で一致するか。配列の並び順に依存しない。 */
+function lastScoreByAnchorEqual(a: BattleSnapshotScorePoint[], b: BattleSnapshotScorePoint[]): boolean {
+  const lastByAnchor = (points: BattleSnapshotScorePoint[]) => {
+    const map = new Map<string, BattleSnapshotScorePoint>();
+    for (const p of points) {
+      const current = map.get(p.anchorId);
+      if (current === undefined || p.offsetMs >= current.offsetMs) map.set(p.anchorId, p);
+    }
+    return map;
+  };
+  const aLast = lastByAnchor(a);
+  const bLast = lastByAnchor(b);
+  if (aLast.size !== bLast.size) return false;
+  for (const [anchorId, point] of aLast) {
+    if (bLast.get(anchorId)?.score !== point.score) return false;
+  }
+  return true;
+}
+
 export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
   if (
     a.windowStart.getTime() !== b.windowStart.getTime() ||
@@ -436,7 +520,14 @@ export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
     a.participants.length !== b.participants.length ||
     a.giftEvents.length !== b.giftEvents.length ||
     a.itemCardEvents.length !== b.itemCardEvents.length ||
-    a.bonusMissions.length !== b.bonusMissions.length
+    a.bonusMissions.length !== b.bonusMissions.length ||
+    // scorePointsは**件数とanchorIdごとの最終スコアだけ**比較する(全点比較はしない)。armiesが
+    // 届き続けている最中は件数が増えるので、安定性判定としてはこれで十分。
+    // **「配列末尾1点」で比較しない。** armiesは1イベントで全anchor分を同一occurredAtで
+    // createManyするため同着が常態で、DBの返却順が入れ替わると別anchorのスコアを比べて
+    // 偽の不一致になる(= 確定されずに再生データが永久に付かない)。
+    a.scorePoints.length !== b.scorePoints.length ||
+    !lastScoreByAnchorEqual(a.scorePoints, b.scorePoints)
   ) {
     return false;
   }
@@ -505,6 +596,13 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         selfTotalDiamonds: snapshot.selfTotalDiamonds,
         sourceUpdatedAt: snapshot.sourceUpdatedAt,
         finalizedAt: now,
+        openingMultiplier: snapshot.opening.multiplier,
+        openingMultiplierBasisGiftId: snapshot.opening.basisGiftId,
+        openingMultiplierConfidence: snapshot.opening.confidence,
+        openingWindowStartedAt: snapshot.opening.windowStartedAt,
+        openingWindowEndedAt: snapshot.opening.windowEndedAt,
+        replayScorePointCount: snapshot.scorePoints.length,
+        replayGiftEventCount: snapshot.giftEvents.length,
       };
 
       let battleHistoryId: string;
@@ -528,6 +626,8 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         // 旧構造BattleHistoryContributorはPhase3(Contract)で削除済み(新構造giftEventsに一本化)。
         await tx.battleHistoryParticipant.deleteMany({ where: { battleHistoryId: existing.id } });
         await tx.battleTeam.deleteMany({ where: { battleHistoryId: existing.id } });
+        // scorePointsはparticipantにぶら下がっていない(anchorIdで持つ)ので、cascadeでは消えない。
+        await tx.battleHistoryScorePoint.deleteMany({ where: { battleHistoryId: existing.id } });
         battleHistoryId = existing.id;
         action = "updated";
       } else {
@@ -599,6 +699,13 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
         }
       }
 
+      // scorePointsはparticipantIdを使わないので、上のparticipant引き直しブロックの外で書く。
+      for (let i = 0; i < snapshot.scorePoints.length; i += GIFT_EVENT_CHUNK_SIZE) {
+        await tx.battleHistoryScorePoint.createMany({
+          data: snapshot.scorePoints.slice(i, i + GIFT_EVENT_CHUNK_SIZE).map((p) => ({ battleHistoryId, ...p })),
+        });
+      }
+
       return { finalized: true, action };
     }, COMMIT_TX_OPTIONS);
   } catch (err) {
@@ -607,6 +714,150 @@ export async function commitBattleSnapshot(snapshot: BattleSnapshot, now: Date):
     if (isUniqueConstraintError(err)) return { finalized: false, reason: "conflict" };
     throw err;
   }
+}
+
+export type AttachReplayResult =
+  | { attached: true; scorePointCount: number; giftEventCount: number }
+  | { attached: false; reason: "not-found" | "self-host-unresolved" };
+
+/**
+ * 確定済みの BattleHistory へ**再生用データだけを後付けする**(バックフィル用)。
+ *
+ * `materializeBattleHistory` による全置換と違い、**`participants` / `giftEvents` /
+ * `itemCardEvents` / `bonusMissions` / `teams` には一切触らない**。触ると
+ * (a) 旧room削除で armies/bonusMission が cascade 消滅している (b) 発見済みの相手roomが
+ * 消えていると相手側 giftEvents が失われる (c) RoomConnectionInterval の変化で
+ * captureCoverage が変わる、といった経路で**確定済みデータを劣化させる**ため。
+ *
+ * 書くのは `battle_history_score_points` の全入れ替えと、opening 4列・`replay*Count` の
+ * update だけ。sourceUpdatedAt の CAS は行わない(既存の確定値を上書きしないため)。並行する
+ * `commitBattleSnapshot` とは **BattleHistory 行のロックで直列化する**(後述)。
+ * 何度実行しても同じ結果になる(冪等)。
+ */
+export async function attachReplayData(battleHistoryId: string): Promise<AttachReplayResult> {
+  const history = await prisma.battleHistory.findUnique({
+    where: { id: battleHistoryId },
+    select: { id: true, roomId: true, battleId: true, windowStart: true, windowEnd: true },
+  });
+  if (!history) return { attached: false, reason: "not-found" };
+
+  const room = await prisma.tiktokRoom.findUnique({
+    where: { id: history.roomId },
+    select: { hostUserId: true },
+  });
+  const selfHostUserId = room?.hostUserId ?? null;
+  // hostUserId は fill-once の遅延バックフィルでしか埋まらない。未解決なら「自陣営のギフト」を
+  // 特定できず opening を誤って埋めうるので、付加そのものを見送る(後日再実行で拾える)。
+  if (selfHostUserId === null) return { attached: false, reason: "self-host-unresolved" };
+
+  const participants = await prisma.battleHistoryParticipant.findMany({
+    where: { battleHistoryId },
+    select: { anchorId: true },
+  });
+  const participantAnchorIds = new Set(participants.map((p) => p.anchorId));
+
+  const armiesRows = await prisma.tiktokBattleArmiesSnapshot.findMany({
+    where: {
+      roomId: history.roomId,
+      battleId: history.battleId,
+      occurredAt: { gte: history.windowStart, lte: history.windowEnd },
+    },
+    select: { anchorId: true, occurredAt: true, score: true },
+    // 1イベントで全anchor分を同一occurredAtで書くため同着が常態。anchorIdまで指定しないと
+    // 並びが非決定になり、逆算の入力順も再生の点順もDBの気分次第になる。
+    orderBy: [{ occurredAt: "asc" }, { anchorId: "asc" }],
+  });
+
+  const windowStartMs = history.windowStart.getTime();
+  const windowLengthMs = Math.max(0, history.windowEnd.getTime() - windowStartMs);
+  const scorePointByKey = new Map<string, BattleSnapshotScorePoint>();
+  for (const row of armiesRows) {
+    if (!participantAnchorIds.has(row.anchorId)) continue;
+    const offsetMs = Math.min(windowLengthMs, Math.max(0, row.occurredAt.getTime() - windowStartMs));
+    scorePointByKey.set(`${row.anchorId}:${offsetMs}`, {
+      anchorId: row.anchorId,
+      offsetMs,
+      occurredAt: row.occurredAt,
+      score: row.score,
+    });
+  }
+  const scorePoints = [...scorePointByKey.values()].sort(
+    (a, b) => a.offsetMs - b.offsetMs || a.anchorId.localeCompare(b.anchorId)
+  );
+
+  // ギフトは元の Gift ではなく**確定済みの複製**から読む。Gift は90日で削除されるため、
+  // 元テーブルを引くと古いバトルほど「ギフトが無い」ことになって逆算が不能になる。
+  const giftRows = await prisma.battleHistoryGiftEvent.findMany({
+    where: { participant: { battleHistoryId } },
+    select: {
+      occurredAt: true,
+      totalDiamonds: true,
+      multiplierType: true,
+      sourceGiftId: true,
+      participant: { select: { anchorId: true } },
+    },
+  });
+
+  const bonusRows = await prisma.battleHistoryBonusMission.findMany({
+    where: { battleHistoryId },
+    select: { rewardStartedAt: true, rewardEndedAt: true },
+  });
+
+  // 窓の開始が実測かどうかは TiktokBattle 側にしか無い。行が消えている(古いバトル)なら
+  // 実測と断定できないので判定させない。
+  const sourceBattle = await prisma.tiktokBattle.findUnique({
+    where: { roomId_battleId: { roomId: history.roomId, battleId: history.battleId } },
+    select: { startedAtEstimated: true },
+  });
+
+  const opening = inferOpeningMultiplier({
+    windowStart: history.windowStart,
+    windowStartReliable: sourceBattle !== null && !sourceBattle.startedAtEstimated,
+    scorePoints: armiesRows.filter((r) => r.anchorId === selfHostUserId),
+    gifts: giftRows
+      .filter((g) => g.participant.anchorId === selfHostUserId)
+      .map((g) => ({
+        id: g.sourceGiftId,
+        occurredAt: g.occurredAt,
+        totalDiamonds: g.totalDiamonds,
+        multiplierType: g.multiplierType,
+      })),
+    bonusIntervals: bonusRows.map((m) => ({ startedAt: m.rewardStartedAt, endedAt: m.rewardEndedAt })),
+  });
+
+  const committed = await prisma.$transaction(async (tx) => {
+    // **先に BattleHistory 行のロックを取る。** commitBattleSnapshot は updateMany で行ロックを
+    // 取ってから score points を消すので、こちらが後にロックを取ると「相手の deleteMany が
+    // こちらの未コミット行を見ない」窓ができ、点が二重に残る(Read Committed)。
+    const locked = await tx.battleHistory.updateMany({
+      where: { id: battleHistoryId },
+      data: { replayScorePointCount: 0 },
+    });
+    // 最初の findUnique とこの時点の間に行が消えた(room削除など)。FK違反で投げる前に諦める。
+    if (locked.count === 0) return false;
+    await tx.battleHistoryScorePoint.deleteMany({ where: { battleHistoryId } });
+    for (let i = 0; i < scorePoints.length; i += GIFT_EVENT_CHUNK_SIZE) {
+      await tx.battleHistoryScorePoint.createMany({
+        data: scorePoints.slice(i, i + GIFT_EVENT_CHUNK_SIZE).map((p) => ({ battleHistoryId, ...p })),
+      });
+    }
+    await tx.battleHistory.update({
+      where: { id: battleHistoryId },
+      data: {
+        openingMultiplier: opening.multiplier,
+        openingMultiplierBasisGiftId: opening.basisGiftId,
+        openingMultiplierConfidence: opening.confidence,
+        openingWindowStartedAt: opening.windowStartedAt,
+        openingWindowEndedAt: opening.windowEndedAt,
+        replayScorePointCount: scorePoints.length,
+        replayGiftEventCount: giftRows.length,
+      },
+    });
+    return true;
+  }, COMMIT_TX_OPTIONS);
+
+  if (!committed) return { attached: false, reason: "not-found" };
+  return { attached: true, scorePointCount: scorePoints.length, giftEventCount: giftRows.length };
 }
 
 function isUniqueConstraintError(err: unknown): boolean {
