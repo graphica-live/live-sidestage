@@ -289,6 +289,19 @@ export const BATTLE_TASK_MESSAGE_TYPE = {
   REWARD_SETTLE: 3,
 } as const;
 
+/**
+ * taskSettle の taskResult(実測値)。BATTLE-EVENTS.md 3節。
+ *
+ * **生成コードの enum(`WebcastLinkmicBattleTaskMessage_BattleTaskSettle_Result` =
+ * `RESULT_SUCCEED`/`RESULT_FAILED`/`RESULT_BOTH_SUCCEED`)は実際の意味と一致しない。**
+ * `INTERIM`(0)は進捗到達直後の暫定通知で、区間はまだ確定していない。
+ */
+export const BATTLE_TASK_RESULT = {
+  INTERIM: 0,
+  FAILED: 1,
+  ACHIEVED: 2,
+} as const;
+
 export type ParsedBattleTask = {
   battleId: string;
   messageType: number;
@@ -298,7 +311,11 @@ export type ParsedBattleTask = {
   progressTarget: number | null;
   /** taskStart のみ。2 or 3 */
   rewardMultiple: number | null;
-  /** taskSettle のみ。0=中間settle / 1=未達成 / 2=達成 */
+  /**
+   * taskSettle のみ。**0=中間settle / 1=未達成 / 2=達成**(実測値。生成コードの enum 名
+   * `RESULT_SUCCEED`/`RESULT_FAILED`/`RESULT_BOTH_SUCCEED` は実際の意味と一致しないので使わない)。
+   * 0 は進捗到達直後に飛ぶ暫定通知で、そのあと 1 か 2 が別メッセージで届く。
+   */
   taskResult: number | null;
   /**
    * taskSettle のみ。報酬区間の開始予告。**実開始より数秒〜十数秒早い値を取りうる**
@@ -306,9 +323,10 @@ export type ParsedBattleTask = {
    */
   rewardStartTime: Date | null;
   /**
-   * rewardSettle のみ。observing room がその区間中に獲得したボーナスpt合計。
-   * **proto(WebcastLinkmicBattleTaskMessage_BattleRewardSettle)にこのフィールドは無く**、
-   * 実payloadに `sum` が乗っている場合だけ取れる best-effort 値。
+   * rewardSettle のみ。observing room がその区間中に獲得したボーナスpt合計(倍率適用後)。
+   * **トップレベルの `rewardSettle.sum` ではなく**
+   * `rewardSettle.rewardSettlePrompt.promptElements` の `promptFieldKey === "sum"` に入る
+   * (BATTLE-EVENTS.md 3節。room ごとに別の値が返る)。
    */
   rewardSum: number | null;
 };
@@ -318,6 +336,20 @@ function parseIntish(value: unknown): number | null {
   if (raw === null) return null;
   const num = Number(raw);
   return Number.isFinite(num) ? Math.trunc(num) : null;
+}
+
+/**
+ * `promptElements`(`[{promptFieldKey, promptFieldValue}, ...]`)から指定キーの値を取る。
+ * TikTok は数値を表示用プロンプトの中に入れて配信してくるので、専用フィールドが無い値はここから拾う。
+ */
+function findPromptValue(prompt: unknown, key: string): string | null {
+  const elements = asRecord(prompt)?.promptElements;
+  if (!Array.isArray(elements)) return null;
+  for (const element of elements) {
+    const record = asRecord(element);
+    if (record?.promptFieldKey === key) return nonEmptyString(record.promptFieldValue);
+  }
+  return null;
 }
 
 /**
@@ -352,7 +384,9 @@ export function parseBattleTaskEvent(data: unknown): ParsedBattleTask | null {
     rewardStartTime: taskSettle
       ? (parseTimeMs(taskSettle.rewardStartTimestamp) ?? parseTimeMs(taskSettle.rewardStartTime))
       : null,
-    rewardSum: parseIntish(rewardSettle?.sum),
+    rewardSum: parseIntish(
+      findPromptValue(rewardSettle?.rewardSettlePrompt, "sum") ?? rewardSettle?.sum
+    ),
   };
 }
 
