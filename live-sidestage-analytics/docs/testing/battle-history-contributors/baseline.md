@@ -3,7 +3,7 @@ risk: MEDIUM
 reviewers: [claude-manual-verification]
 review_summary: { findings: 0, valid: 0, fixed: 0 }
 last_updated: 2026-09-06
-last_risk: MEDIUM
+last_risk: LOW
 last_reviewers: [claude-manual-verification]
 ---
 
@@ -30,7 +30,7 @@ last_reviewers: [claude-manual-verification]
 | - | --- | --- | --- |
 | 4 | `Gift.nickname` が空文字(TikTok側nickname未提供)のギフト送信者 | 手動シード(`local_test_streamer`ルームへnickname:""のGiftを作成)→ `/analytics` バトル履歴タブでモーダルを開く | `aggregateGiftUsers` の表示名が `uniqueId` にフォールバックする(空文字のまま表示されない) |
 | 5 | 4のケースで `FallbackContributorList`(狭い1カラム) | 同上、実ブラウザで確認 | アバター+名前(flex-1 truncate)+💎コイン数のみを1行で表示し、`@uniqueId` の重複表示や折り返しによるレイアウト崩れが起きない |
-| 11 | 絵文字混在・長い配信者名(例:「Nana☺️🐾ファンダム最強伝説」「けん玉最弱王2nd配信中〜今日も練習配信するよ〜」)の`TeamCard`ラベルおよび`TeamContributorColumn`セレクタボタン | 手動シード+Playwright(390px/900px両方の幅で確認) | いずれの幅でも改行されず`truncate`で1行省略表示され、左右の貢献者パネルの高さ・対称性が崩れない |
+| 11 | 絵文字混在・長い配信者名(例:「Nana☺️🐾ファンダム最強伝説」「けん玉最弱王2nd配信中〜今日も練習配信するよ〜」)の`TeamCard`ラベルおよび`TeamContributorColumn`セレクタボタン群(「合算」+参加者ごとのボタン) | 手動シード+Playwright(390px/900px両方の幅で確認) | `TeamCard`ラベルは改行されず`truncate`で1行省略表示される。`TeamContributorColumn`のセレクタボタン群は名前の長さ・ボタン数に関わらず常に1段で表示され(折り返さない)、親幅に収まらない場合は各ボタンが均等に縮小し`truncate`で省略される(ボタンが枠外にはみ出さない)。左右の貢献者パネルの高さ・対称性が崩れない |
 
 ## 異常
 
@@ -49,7 +49,7 @@ last_reviewers: [claude-manual-verification]
 | # | ケース | 実行方法 | 期待結果 |
 | - | --- | --- | --- |
 | 8 | ライブバトルモーダルの貢献者欄(5人、うち3人nickname未取得) | Playwright(headless)で `/analytics` → バトル履歴タブ → 進行中バトルをクリック | スクリーンショットで各行が1行に収まり、プロフィール名がある人物は日本語名で表示される |
-| 13 | 2vs2チーム戦の詳細モーダル(`TeamCard`ヘッダー+`TeamContributorColumn`セレクタ+貢献者順位) | Playwright(headless、390px/900px)で `/analytics` → バトル履歴タブ → 該当バトルの詳細を開く | ケース9・10・11・14・15を実ブラウザで確認。自分/チームメイトとも実名・同色で表示され、長い名前でも改行せず、貢献者順位も桁数に関わらずアイコン位置が揃う |
+| 13 | 2vs2チーム戦の詳細モーダル(`TeamCard`ヘッダー+`TeamContributorColumn`セレクタ+貢献者順位) | Playwright(headless、390px/900px)で `/analytics` → バトル履歴タブ → 該当バトルの詳細を開く | ケース9・10・11・14・15を実ブラウザで確認。自分/チームメイトとも実名・同色で表示され、セレクタボタン群は常に1段で名前の長さに関わらず段数が変わらず、貢献者順位も桁数に関わらずアイコン位置が揃う |
 
 ## 変更履歴
 
@@ -79,3 +79,11 @@ last_reviewers: [claude-manual-verification]
   - 上記に伴い、当初`BattleParticipant`(`battle-history.ts`/`battle-types.tsx`)へ追加した参加者個別の`isSelf: boolean`はUI側の分岐が全て無くなり不要になったため撤去(データ層に不要なフィールドを残さない)。`battle-history-finalize.ts`の確定処理が`BattleHistoryParticipant.isSelf`を`faction.index===0`(陣営全体)ではなく`anchorId === selfHostUserId`で保存するよう修正した部分のみ残した(この列自体は表示に使っていないが、スキーマのコメントが「正はこちら」と明記する正規の参加者単位フラグであり、誤った値のまま確定保存を続ける理由がないため)
 - レビュー: OmniRoute(`ext-agent.mjs`)/Qwen(`qwen-review.ps1`)とも利用不能・不安定(OmniRoute未設定、Qwenはカナリア検証で機能不全と判明)だったため、Claude自身が実コード照合で代替。`isSelf`削除後に参照が残っていないか(`grep isSelf`)、`selfHostUserId`のクロージャ一貫性、ライブ/確定済み両コードパスへの反映、rank採番のズレ(0始まり/1始まり)を確認
 - テスト結果: `npm run typecheck` PASS。`npx vitest run src/lib/battle-history.test.ts` 43 tests PASS。`npx dotenv -e .env.local.test -- vitest run src/lib/battle-history.integration.test.ts src/lib/battle-history-finalize.integration.test.ts` 32 tests PASS。手動シード(`BattleHistory`+`BattleHistoryParticipant`、teamIndex0に自分+チームメイト、teamIndex1に絵文字名含む相手2名、貢献者14名)を作成し、Playwright(headless、390px/900px)で詳細モーダルを開き、ケース9・10・11・14・15を実画面で確認(PASS)。pre-commit全体実行時に`tiktok-room-cleanup.integration.test.ts`が3件FAILすることがあるが、単体実行では14 tests全PASSであり既知のクロスファイル干渉(auto-memory `analytics-vitest-cross-file-interference`)で本diffと無関係と確認
+
+### 2026-09-06 セレクタボタン群の段数可変を修正(commit後の追加フィードバック)
+
+- 症状: 上記commit後、ユーザーからスクリーンショット指摘。`TeamContributorColumn`のセレクタボタン群が親div`flex flex-wrap`のため、ボタン合計幅が親幅を超えると2段目へ折り返っており、名前の長さ・ボタン数次第で1段/2段が入れ替わっていた(前回のshrink-0対策は「1個のボタン内の文字が折り返る」問題のみを解消しており、この「ボタン塊単位の折り返し」は未対策のままだった)
+- 最初の対策案(`flex-nowrap`+固定幅+`overflow-x-auto`)を試したところ、390px幅でボタンが3個以上あると枠外にはみ出て見切れる(横スクロールでは見えるが視覚的に非対称に見える)ことが判明し、ユーザーからのフィードバックで「スケールダウン」方式(固定幅でなく親幅に収まるよう均等縮小)を採用
+- 最終的な変更: `TeamContributorColumn`のセレクタ親divを`flex flex-wrap`→`flex flex-nowrap`(折り返し禁止)。「陣営全体合算」ボタンを「合算」に短縮しテキスト量を削減。全ボタンのclassNameを固定幅(`max-w-[100px] shrink-0`)から`min-w-0 max-w-[Npx] flex-1 truncate`(親幅に応じて均等に縮小し、上限を超えて間延びしない可変幅)に変更
+- レビュー: OmniRoute/DeepSeek/Qwenとも利用不能・不安定(既知)のため、Claude自身が実コード照合で代替。flex-1縮小とtruncateの両立に必要な`min-w-0`が両方のボタンに付与されているか、選択中/非選択のstyle上書き(borderColor/color)がclassName変更で壊れていないかを確認
+- テスト結果: `npm run typecheck` PASS。Playwright(headless、390px/900px)で再確認し、両幅とも常に1段で全ボタンが枠内に収まり、名前の長さに関わらず段数が変わらないことを確認(PASS)

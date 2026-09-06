@@ -427,19 +427,19 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
       </div>
 
       {team.participants.length > 1 ? (
-        <div className="mb-2.5 flex flex-wrap gap-1">
+        <div className="mb-2.5 flex flex-nowrap gap-1">
           {!isIndividual && (
             <button
               type="button"
               onClick={() => setSelectedAnchorId(null)}
-              className="shrink-0 rounded-full border px-2 py-0.5 text-[10px]"
+              className="min-w-0 max-w-[52px] flex-1 truncate rounded-full border px-2 py-0.5 text-[10px]"
               style={
                 selectedAnchorId === null
                   ? { borderColor: color, color }
                   : { borderColor: "rgb(var(--border))", color: "#9a9ea6" }
               }
             >
-              陣営全体合算
+              合算
             </button>
           )}
           {team.participants.map((p) => (
@@ -447,7 +447,7 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
               key={p.anchorId}
               type="button"
               onClick={() => setSelectedAnchorId(p.anchorId)}
-              className="block max-w-[100px] shrink-0 truncate rounded-full border px-2 py-0.5 text-[10px]"
+              className="min-w-0 max-w-[72px] flex-1 truncate rounded-full border px-2 py-0.5 text-[10px]"
               style={
                 selectedAnchorId === p.anchorId
                   ? { borderColor: color, color }
