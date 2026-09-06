@@ -281,6 +281,81 @@ export function parseArmiesEvent(data: unknown): ParsedBattle | null {
   };
 }
 
+/** linkMicBattleTask の battleTaskMessageType。BATTLE-EVENTS.md 3節。 */
+export const BATTLE_TASK_MESSAGE_TYPE = {
+  TASK_START: 0,
+  TASK_UPDATE: 1,
+  TASK_SETTLE: 2,
+  REWARD_SETTLE: 3,
+} as const;
+
+export type ParsedBattleTask = {
+  battleId: string;
+  messageType: number;
+  /** taskStart のみ。1=人数系 / 2=実弾pt系 / 8=チーム戦pt系 */
+  targetType: number | null;
+  /** taskStart のみ。人数 or pt数 */
+  progressTarget: number | null;
+  /** taskStart のみ。2 or 3 */
+  rewardMultiple: number | null;
+  /** taskSettle のみ。0=中間settle / 1=未達成 / 2=達成 */
+  taskResult: number | null;
+  /**
+   * taskSettle のみ。報酬区間の開始予告。**実開始より数秒〜十数秒早い値を取りうる**
+   * (準備演出の分。BATTLE-EVENTS.md 3節)。
+   */
+  rewardStartTime: Date | null;
+  /**
+   * rewardSettle のみ。observing room がその区間中に獲得したボーナスpt合計。
+   * **proto(WebcastLinkmicBattleTaskMessage_BattleRewardSettle)にこのフィールドは無く**、
+   * 実payloadに `sum` が乗っている場合だけ取れる best-effort 値。
+   */
+  rewardSum: number | null;
+};
+
+function parseIntish(value: unknown): number | null {
+  const raw = nonEmptyString(value);
+  if (raw === null) return null;
+  const num = Number(raw);
+  return Number.isFinite(num) ? Math.trunc(num) : null;
+}
+
+/**
+ * linkMicBattleTask(ボーナスミッション区間)の payload を解釈する。
+ *
+ * ライフサイクルは taskStart(0) → taskUpdate(1)×n → taskSettle(2) → [報酬区間] → rewardSettle(3)。
+ * taskUpdate は高頻度なので保存対象外だが、パース自体は行い messageType で呼び出し側が捨てる。
+ */
+export function parseBattleTaskEvent(data: unknown): ParsedBattleTask | null {
+  const record = asRecord(data);
+  if (!record) return null;
+
+  const battleId = nonEmptyString(record.battleId);
+  if (battleId === null) return null;
+
+  const messageType = parseIntish(record.battleTaskMessageType);
+  if (messageType === null) return null;
+
+  const bonusConfig = asRecord(asRecord(record.taskStart)?.battleBonusConfig);
+  const taskPeriodConfig = asRecord(bonusConfig?.taskPeriodConfig);
+  const rewardPeriodConfig = asRecord(bonusConfig?.rewardPeriodConfig);
+  const taskSettle = asRecord(record.taskSettle);
+  const rewardSettle = asRecord(record.rewardSettle);
+
+  return {
+    battleId,
+    messageType,
+    targetType: parseIntish(taskPeriodConfig?.targetType),
+    progressTarget: parseIntish(taskPeriodConfig?.progressTarget),
+    rewardMultiple: parseIntish(rewardPeriodConfig?.rewardMultiple),
+    taskResult: parseIntish(taskSettle?.taskResult),
+    rewardStartTime: taskSettle
+      ? (parseTimeMs(taskSettle.rewardStartTimestamp) ?? parseTimeMs(taskSettle.rewardStartTime))
+      : null,
+    rewardSum: parseIntish(rewardSettle?.sum),
+  };
+}
+
 export type BattleRecordState = {
   action: number;
   startedAt: Date;
