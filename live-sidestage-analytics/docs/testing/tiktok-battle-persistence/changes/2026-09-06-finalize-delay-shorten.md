@@ -1,0 +1,11 @@
+- date: 2026-09-06
+- feature: tiktok-battle-persistence
+- change summary: バトル確定処理の待機時間を短縮。`BATTLE_FINALIZE_DELAY_MS`(END検知→1回目計算) 30秒→10秒、`STABILITY_DELAY_MS`(1回目→2回目の安定性チェック間隔) 60秒→10秒。END検知から確定判定までの最短実時間は90秒→20秒。ロジック変更なし(定数値+関連コメント+テスト名のみ)。ユーザーからの明示指示(「10秒で1回目、20秒で2回目にして」)による
+- risk: MEDIUM(定数変更のみだが、確定タイミングの実質的なトレードオフ変更のためLOWではなくMEDIUM判定)
+- reason: ユーザー体感で「バトル終了後の集計中表示が長い」という指摘があり、表示速度を優先して短縮。ただし遅延Gift INSERT・armiesのscore_updatedを取りこぼしたまま確定するリスクが従来より明確に上がるトレードオフを伴う(battle-history-finalize.ts冒頭コメント参照)
+- affected baseline cases: TC-TBP-002(更新)、TC-TBP-007(更新)、TC-TBP-008(新規)
+- reviewers: 全滅。Qwen(フォールバック経路)はカナリア検証(既知SQLi混入)を検出できず「未読み」判定で無効。Codex(quota切れ、2026-09-07 19:54復旧予定)。Gemini(Codex代理として起動、quota切れ、約143時間後復旧)。OmniRoute(ext-agent.mjs)自体もこのセッションでは`OMNIROUTE_API_KEY`未設定で使用不可
+- important findings: なし(外部レビュー未実施)
+- VALID・INVALIDの重要判断: なし(外部レビュー未実施)。ユーザーへ状況を提示し、レビュー省略の明示承認を得たうえで実施(AskUserQuestionで確認、「レビュー省略して進める」を選択)
+- verification: `npm run typecheck` PASS。対象integration(`battle-history-finalize.integration.test.ts`, `battle-history.integration.test.ts`, `gift-retention.integration.test.ts`)37件 PASS。プロジェクト全体unit test 1290件 PASS。UI変更なしのためスクリーンショット提示は対象外
+- remaining risks: 短縮した待機時間により、遅延Gift取りこぼしのまま確定するケースが従来より増える可能性がある(表示速度とのトレードオフとして明示的に許容)。取りこぼして確定した行は自動では直らず、手動削除+backfill再実行が必要(既存の既知の制約)

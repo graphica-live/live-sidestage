@@ -9,22 +9,23 @@
 // 確定してよい条件は「時間が経ったこと」ではなく「値が実際に静止していること」で判定する:
 //
 // 1. Gift の保存は persistBattle と非同期・非awaitの別経路(saveGift(...).then(...))なので、
-//    END検知の瞬間には集計対象の Gift がまだ INSERT されていない。トリガはEND検知の**30秒後**
-//    (2026-09-02に10分から短縮)。
-// 2. 30秒後でも「スコアが一度も観測できていない」ことがある(resolveBattleScore の
+//    END検知の瞬間には集計対象の Gift がまだ INSERT されていない。トリガはEND検知の**10秒後**
+//    (2026-09-02に10分→30秒、2026-09-06に30秒→10秒へさらに短縮)。
+// 2. 10秒後でも「スコアが一度も観測できていない」ことがある(resolveBattleScore の
 //    kind !== "unknown" は自分の anchorId を識別できたことしか保証しない)。selfScore が null なら
 //    確定しない。不完全な値を確定すると、行が存在するせいでライブ集計へ戻れなくなり永久に残る。
-// 3. さらに**60秒待って同じ計算をやり直し、全項目が完全一致した場合のみ**確定する。
+// 3. さらに**10秒待って同じ計算をやり直し、全項目が完全一致した場合のみ**確定する。
 //    armies の score_updated や遅延 Gift INSERT が届き続けている最中に確定しないための実測。
 //
-// 既知の残存リスク: 60秒の無変化は「今後もう変化しない」ことの証明ではない(TikTok側に完了
+// 既知の残存リスク: 10秒の無変化は「今後もう変化しない」ことの証明ではない(TikTok側に完了
 // マーカーが無い)。2回目の計算直後〜コミット後に遅延更新が届くと、確定値がわずかに古いまま
-// 残ることがありうる。**トリガを10分→30秒に短縮したことで、END検知から確定判定(2回目の計算)
-// までの実時間は最短90秒(30秒+60秒)となり、以前(11分)より遅延Giftを取りこぼすリスクが明確に
-// 上がる。取りこぼして確定した行は BattleHistory に存在してしまうため、
-// scripts/backfill-battle-history.ts は「既確定スキップ」で素通りし、自動では直らない
-// (手動で該当行を削除してから backfill を再実行する必要がある)。** 実害は「表示が数ダイヤ・
-// 数秒古い」程度に限られる、という従来の想定はこの変更で崩れうる。
+// 残ることがありうる。**トリガを10分→30秒→10秒、安定性チェック間隔を60秒→10秒へ短縮した
+// ことで、END検知から確定判定(2回目の計算)までの実時間は最短20秒(10秒+10秒)となり、
+// 以前(90秒、さらに以前は11分)より遅延Giftを取りこぼすリスクが明確に上がる。**表示速度を
+// 優先した明示的なトレードオフ。** 取りこぼして確定した行は BattleHistory に存在してしまう
+// ため、scripts/backfill-battle-history.ts は「既確定スキップ」で素通りし、自動では直らない
+// (手動で該当行を削除してから backfill を再実行する必要がある)。実害は「表示が数ダイヤ・
+// 数秒古い」程度に限られる、という従来の想定はこの変更でさらに崩れやすくなる。
 
 import { prisma } from "@/lib/prisma";
 import { computeCaptureCoverage } from "@/lib/room-connection-log";
@@ -45,7 +46,7 @@ import type { HostProfiles } from "@/lib/tiktok-battle";
 const GIFT_EVENT_CHUNK_SIZE = 1000;
 
 /** 安定性チェックの待ち時間。1回目と2回目の計算の間隔。 */
-export const STABILITY_DELAY_MS = 60 * 1000;
+export const STABILITY_DELAY_MS = 10 * 1000;
 
 export type BattleSnapshotParticipant = {
   /** 後方互換の2値。teamIndex===0 が "self"、それ以外が "opponent"。 */
@@ -419,7 +420,7 @@ export async function computeBattleSnapshot(
 }
 
 /**
- * 「直近60秒で値が変化していない」ことの判定。**sourceUpdatedAt は比較しない**
+ * 「直近10秒で値が変化していない」ことの判定。**sourceUpdatedAt は比較しない**
  * (行のupdatedAtだけが動いても、導出値が同じなら安定しているとみなしてよい)。
  */
 export function snapshotsEqual(a: BattleSnapshot, b: BattleSnapshot): boolean {
@@ -619,11 +620,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * バトルの確定処理本体。1回目の計算 → 60秒待って2回目 → 完全一致した場合のみコミット。
+ * バトルの確定処理本体。1回目の計算 → 10秒待って2回目 → 完全一致した場合のみコミット。
  *
  * 1回のトリガにつき再試行はしない(「確定は最適化」の原則)。不一致・情報不足なら未確定のまま。
  *
- * `stabilityDelayMs` はテスト用の注入口。本番では既定の60秒を使う。
+ * `stabilityDelayMs` はテスト用の注入口。本番では既定の10秒を使う。
  */
 export async function materializeBattleHistory(
   roomId: string,

@@ -302,7 +302,7 @@ describe("materializeBattleHistory", () => {
     expect(self?.captureCoverage).toBe(1);
   });
 
-  it("60秒の安定性チェックの間に値が変わったら確定しない", async () => {
+  it("安定性チェックの間に値が変わったら確定しない", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "mat_unstable") });
     await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
 

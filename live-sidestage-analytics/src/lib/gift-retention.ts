@@ -211,7 +211,7 @@ async function recomputeLifetimeAndAdvanceWatermark(watermark: string): Promise<
  * 削除対象期間に残っている未確定バトルを先に確定する。
  *
  * 確定処理は Gift を読むので、**削除より必ず先**。90日前のバトルは値がとうに静止しているため、
- * `materializeBattleHistory()` の60秒安定性チェックは省いて `computeBattleSnapshot` を
+ * `materializeBattleHistory()` の安定性チェック(既定10秒)は省いて `computeBattleSnapshot` を
  * 1回だけ呼ぶ(scripts/backfill-battle-history.ts と同じ判断)。
  */
 async function finalizePendingBattles(
