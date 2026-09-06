@@ -494,7 +494,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     if (!battlesData) return [];
     const q = filter.toLowerCase();
     return battlesData.battles.filter((b) => {
-      if (hideLowDiamond && b.selfTotalDiamonds <= 100) return false;
+      if (hideLowDiamond && b.status !== "live" && b.selfTotalDiamonds <= 100) return false;
       if (!q) return true;
       const opponent = b.opponent;
       return (
