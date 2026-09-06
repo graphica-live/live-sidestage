@@ -216,6 +216,68 @@ describe("computeBattleSnapshot", () => {
     ]);
   });
 
+  it("窓頭に接続の欠落があっても、その区間の公式スコア増分が無視できる量ならcaptureStatus: completeへ格上げする", async () => {
+    await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "snap_refine_up") });
+    // 窓300秒のうち先頭30秒が未接続 = coverage 0.9(閾値0.98割れ)。
+    await prisma.roomConnectionInterval.create({
+      data: { roomId: selfRoomId, startedAt: new Date(STARTED_AT.getTime() + 30_000), endedAt: ENDED_AT },
+    });
+    await prisma.tiktokBattleArmiesSnapshot.createMany({
+      data: [
+        {
+          roomId: selfRoomId,
+          battleId: "snap_refine_up",
+          anchorId: SELF_ANCHOR_ID,
+          occurredAt: new Date(STARTED_AT.getTime() + 30_000),
+          score: "3",
+        },
+        {
+          roomId: selfRoomId,
+          battleId: "snap_refine_up",
+          anchorId: SELF_ANCHOR_ID,
+          occurredAt: new Date(STARTED_AT.getTime() + 200_000),
+          score: "1200",
+        },
+      ],
+    });
+
+    const snapshot = await computeBattleSnapshot(selfRoomId, "snap_refine_up", NOW);
+    const self = snapshot!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    expect(self?.captureStatus).toBe("complete");
+    // 格上げしてもcoverageは実測値のまま残す(監査用)。
+    expect(self?.captureCoverage).toBeCloseTo(0.9, 5);
+  });
+
+  it("窓頭の欠落区間で無視できない量の公式スコアが動いていた場合はcaptureStatus: partialのまま据え置く", async () => {
+    await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "snap_refine_keep") });
+    await prisma.roomConnectionInterval.create({
+      data: { roomId: selfRoomId, startedAt: new Date(STARTED_AT.getTime() + 30_000), endedAt: ENDED_AT },
+    });
+    await prisma.tiktokBattleArmiesSnapshot.createMany({
+      data: [
+        {
+          roomId: selfRoomId,
+          battleId: "snap_refine_keep",
+          anchorId: SELF_ANCHOR_ID,
+          occurredAt: new Date(STARTED_AT.getTime() + 30_000),
+          score: "400",
+        },
+        {
+          roomId: selfRoomId,
+          battleId: "snap_refine_keep",
+          anchorId: SELF_ANCHOR_ID,
+          occurredAt: new Date(STARTED_AT.getTime() + 200_000),
+          score: "1200",
+        },
+      ],
+    });
+
+    const snapshot = await computeBattleSnapshot(selfRoomId, "snap_refine_keep", NOW);
+    const self = snapshot!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    expect(self?.captureStatus).toBe("partial");
+    expect(self?.captureCoverage).toBeCloseTo(0.9, 5);
+  });
+
   // 実データで3陣営以上のバトルを観測できていないため、TikTokのteamArmies由来の
   // hostTeams(anchorId -> teamId)を3チーム分そろえたフィクスチャで検証する。
   it("3陣営(1vs1vs1)を「自分1人vs残り全員」へ丸めず、陣営ごとにteamIndex・スコアを保存する", async () => {
