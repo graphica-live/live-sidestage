@@ -447,8 +447,10 @@ class _BattleCard extends StatelessWidget {
   final String? myTiktokId;
   final VoidCallback onTap;
 
-  /// comp `.battle-card` の `min-height:118px` 相当。
-  static const double _minHeight = 142;
+  /// comp `.battle-card` の `min-height:118px` 相当。2026-09-06、配信者フィードバックで約20%拡大。
+  /// 2026-09-06 再調整: アバター40dp化でコンテンツ自然高さが増えた分、168dpだと
+  /// フッター上の空き(spaceBetweenの吸収先)が間延びして見えたため148dpへ縮小。
+  static const double _minHeight = 148;
 
   /// 陣営ラベル。自陣は自分のハンドル、相手陣は先頭メンバーのハンドル(無ければ表示名)。
   String _teamLabel(BattleTeam team) {
@@ -476,7 +478,16 @@ class _BattleCard extends StatelessWidget {
     final BigInt? self;
     final BigInt? opponent;
     final String countLabel;
-    final Widget scoreRow;
+    final Widget rawScoreRow;
+
+    // 区切り「–」(comp `.score-line` の区切り文字)。2026-09-06以降、陣営数に関わらず
+    // 1vs1と同じサイズで統一する(下のFittedBoxが収まらないときだけ全体を縮小する)。
+    Widget divider() => Container(
+          height: 32,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text('–', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: sub)),
+        );
 
     if (multiTeam) {
       final selfTeamData = teams.firstWhere((t) => t.isSelf, orElse: () => teams.first);
@@ -501,35 +512,23 @@ class _BattleCard extends StatelessWidget {
 
       final segments = <Widget>[];
       for (var i = 0; i < teams.length; i++) {
-        if (i > 0) {
-          segments.add(
-            Container(
-              height: 19,
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text('–', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: sub)),
-            ),
-          );
-        }
+        if (i > 0) segments.add(divider());
         final team = teams[i];
         segments.add(
-          Flexible(
-            child: _ScoreSegment(
-              own: team.isSelf,
-              many: true,
-              name: _teamLabel(team),
-              score: _BattleHistoryTabState._formatScore(team.score),
-              winning: topCount == 1 && scores[i] != null && scores[i] == top,
-              avatars: [
-                for (final p in team.participants) p.avatarUrl,
-                if (team.participants.isEmpty) null,
-              ],
-            ),
+          _ScoreSegment(
+            own: team.isSelf,
+            name: _teamLabel(team),
+            score: _BattleHistoryTabState._formatScore(team.score),
+            winning: topCount == 1 && scores[i] != null && scores[i] == top,
+            avatars: [
+              for (final p in team.participants) p.avatarUrl,
+              if (team.participants.isEmpty) null,
+            ],
           ),
         );
       }
-      scoreRow = Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      rawScoreRow = Row(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: segments,
       );
@@ -538,8 +537,6 @@ class _BattleCard extends StatelessWidget {
       final opponentTeam = battle.opponentTeam;
       final selfCount = selfTeam?.length ?? 1;
       final opponentCount = opponentTeam?.length ?? battle.opponent?.count ?? 1;
-      // 3陣営以上は comp `.score-line.many` の縮小サイズで横に並べる。
-      final many = selfCount + opponentCount > 2;
 
       self = BigInt.tryParse(battle.selfScore ?? '');
       opponent = BigInt.tryParse(battle.opponentScore ?? '');
@@ -551,58 +548,47 @@ class _BattleCard extends StatelessWidget {
       final opponentLabel = opponentCount > 1 ? '$opponentBase 他${opponentCount - 1}名' : opponentBase;
       countLabel = '$selfCount vs $opponentCount';
 
-      scoreRow = Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      rawScoreRow = Row(
+        mainAxisSize: MainAxisSize.min,
         // セグメントはスコア行の下に名前を持つので、既定の中央揃えだと
         // 区切りの「–」がスコアより下へずれる。上端で揃えて、区切り自体を
         // スコア行(=アバターの高さ)の中で中央に置く。
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Flexible(
-            child: _ScoreSegment(
-              own: true,
-              many: many,
-              name: selfLabel,
-              score: _BattleHistoryTabState._formatScore(battle.selfScore),
-              winning: self != null && opponent != null && self > opponent,
-              avatars: [
-                for (final p in selfTeam ?? const <BattleParticipant>[]) p.avatarUrl,
-                if (selfTeam == null) null,
-              ],
-            ),
+          _ScoreSegment(
+            own: true,
+            name: selfLabel,
+            score: _BattleHistoryTabState._formatScore(battle.selfScore),
+            winning: self != null && opponent != null && self > opponent,
+            avatars: [
+              for (final p in selfTeam ?? const <BattleParticipant>[]) p.avatarUrl,
+              if (selfTeam == null) null,
+            ],
           ),
-          Container(
-            height: many ? 19 : 26,
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              '–',
-              style: TextStyle(
-                fontSize: many ? 11 : 13,
-                fontWeight: FontWeight.w700,
-                color: sub,
-              ),
-            ),
-          ),
-          Flexible(
-            child: _ScoreSegment(
-              own: false,
-              many: many,
-              name: opponentLabel,
-              score: _BattleHistoryTabState._formatScore(battle.opponentScore),
-              winning: self != null && opponent != null && opponent > self,
-              avatars: [
-                for (final p in opponentTeam ?? const <BattleParticipant>[]) p.avatarUrl,
-                if (opponentTeam == null) battle.opponent?.avatarUrl,
-              ],
-            ),
+          divider(),
+          _ScoreSegment(
+            own: false,
+            name: opponentLabel,
+            score: _BattleHistoryTabState._formatScore(battle.opponentScore),
+            winning: self != null && opponent != null && opponent > self,
+            avatars: [
+              for (final p in opponentTeam ?? const <BattleParticipant>[]) p.avatarUrl,
+              if (opponentTeam == null) battle.opponent?.avatarUrl,
+            ],
           ),
         ],
       );
     }
 
+    // 2026-09-06: 事前の縮小サイズ決め打ち(旧`many`分岐)をやめ、常に1vs1と同じサイズで
+    // 組んだ上で、カード幅に収まらない陣営数のときだけ全体をまとめて縮小する
+    // (配信者フィードバック「1vs1だけいい感じ、他も揃えて。収まらない時だけ小さくして」)。
+    final scoreRow = Center(
+      child: FittedBox(fit: BoxFit.scaleDown, child: rawScoreRow),
+    );
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
       constraints: const BoxConstraints(minHeight: _minHeight),
       decoration: BoxDecoration(
         color: kosaiCardColor(context),
@@ -616,7 +602,7 @@ class _BattleCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               // カードの高さを揃えるため、余った縦の空きはフッターとの間に逃がす
@@ -630,7 +616,7 @@ class _BattleCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(countLabel, style: TextStyle(fontSize: 11, color: sub)),
+                          child: Text(countLabel, style: TextStyle(fontSize: 13, color: sub)),
                         ),
                         _OutcomeBadge(status: battle.status, self: self, opponent: opponent),
                       ],
@@ -645,7 +631,7 @@ class _BattleCard extends StatelessWidget {
                     '${_BattleHistoryTabState._formatStartedAt(battle.startedAt)} '
                     '${_BattleHistoryTabState._statusLabel(battle.status)}',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 10, color: sub),
+                    style: TextStyle(fontSize: 11, color: sub),
                   ),
                 ),
               ],
@@ -661,7 +647,6 @@ class _BattleCard extends StatelessWidget {
 class _ScoreSegment extends StatelessWidget {
   const _ScoreSegment({
     required this.own,
-    required this.many,
     required this.name,
     required this.score,
     required this.winning,
@@ -669,21 +654,22 @@ class _ScoreSegment extends StatelessWidget {
   });
 
   final bool own;
-
-  /// 3陣営以上のときの縮小表示(comp `.score-line.many`)。
-  final bool many;
   final String name;
   final String score;
   final bool winning;
   final List<String?> avatars;
 
+  /// 2026-09-06: 陣営数に関わらず1vs1と同一サイズを使う(配信者フィードバック
+  /// 「1vs1だけいい感じ、他も揃えて」)。収まらない陣営数のときだけ、呼び出し側
+  /// (`_BattleCard.build`)がスコア行全体を`FittedBox(scaleDown)`で自動縮小する。
+  static const double avatarSize = 40.0;
+  static const double scoreSize = 24.0;
+  static const double nameSize = 11.5;
+  static const double maxWidth = 124.0;
+
   @override
   Widget build(BuildContext context) {
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
-    final avatarSize = many ? 19.0 : 26.0;
-    final scoreSize = many ? 13.0 : 20.0;
-    final nameSize = many ? 8.0 : 10.0;
-    final maxWidth = many ? 50.0 : 104.0;
 
     final stack = KosaiAvatarStack(
       size: avatarSize,
@@ -692,7 +678,7 @@ class _ScoreSegment extends StatelessWidget {
     );
 
     // 勝っている側だけスコアをグラデーション文字にする(comp `.team-score.grad`)。
-    final scoreStyle = TextStyle(fontSize: scoreSize, fontWeight: FontWeight.w800);
+    const scoreStyle = TextStyle(fontSize: scoreSize, fontWeight: FontWeight.w800);
     final scoreWidget = winning
         ? GradientText(score, style: scoreStyle, gradient: KosaiPalette.score)
         : Text(score, style: scoreStyle);
@@ -704,12 +690,12 @@ class _ScoreSegment extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: own
-              ? [stack, SizedBox(width: many ? 3 : 6), scoreWidget]
-              : [scoreWidget, SizedBox(width: many ? 3 : 6), stack],
+              ? [stack, const SizedBox(width: 6), scoreWidget]
+              : [scoreWidget, const SizedBox(width: 6), stack],
         ),
         const SizedBox(height: 3),
         ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
+          constraints: const BoxConstraints(maxWidth: maxWidth),
           child: Text(
             name,
             maxLines: 1,
@@ -738,8 +724,8 @@ class _OutcomeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    const textStyle = TextStyle(fontSize: 11, fontWeight: FontWeight.w800);
-    const padding = EdgeInsets.symmetric(horizontal: 12, vertical: 4);
+    const textStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
+    const padding = EdgeInsets.symmetric(horizontal: 14, vertical: 6);
 
     Widget outlined(String label, Color color) => Container(
           padding: padding,
