@@ -185,6 +185,7 @@ export async function POST(req: NextRequest) {
     logEntry?: GiftLogEntry;
     emitOverlay?: boolean;
     chatEvent?: ChatCommentPayload;
+    chatCommentEvent?: Omit<ChatCommentPayload, "streamerId">;
     chatGiftEvent?: unknown;
     chatFollowEvent?: unknown;
     listenerEvent?: unknown;
@@ -207,12 +208,32 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // **単数形は消さないこと。** デプロイ中は新旧Workerが並走し、旧Workerはこの形で
+  // 送り続ける(6サービスが独立にビルドするので起動に分単位のずれがある)。
   if (body.chatEvent) {
     const delivered = await emitChatComment(body.chatEvent).catch((err) => {
       console.error("[internal/gift-event] chat emit error:", err);
       return true;
     });
     if (!delivered) return ioUnavailable();
+  }
+
+  // 新Workerが送るまとめ形。chatEventと同じく**構造検証はしない** — emotesの
+  // サニタイズと件数上限はlistener側のnormalizeChatCommentEmotes()で済んでおり、
+  // この経路はINTERNAL_API_SECRETで保護された内部呼び出しに限られる。
+  if (body.chatCommentEvent) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    if (!streamerIds) {
+      return NextResponse.json({ error: "Invalid chatCommentEvent" }, { status: 400 });
+    }
+    const comment = body.chatCommentEvent;
+    for (const streamerId of streamerIds) {
+      const delivered = await emitChatComment({ streamerId, ...comment }).catch((err) => {
+        console.error("[internal/gift-event] chat emit error:", err);
+        return true;
+      });
+      if (!delivered) return ioUnavailable();
+    }
   }
 
   // --- 新Workerのみが送る2種 ---

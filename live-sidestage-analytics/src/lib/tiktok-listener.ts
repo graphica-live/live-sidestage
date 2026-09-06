@@ -498,25 +498,39 @@ function acquireForwardSlot(): Promise<boolean> {
   });
 }
 
-async function forwardToWeb(payload: Record<string, unknown>) {
+/**
+ * `retryOnce` を渡してよいのは**受け手が冪等な種別だけ**。
+ * `chat:comment` は Web 側の [isDuplicateChatEvent] が msgId で畳むので二重到達しても
+ * 端末には1回しか出ない。一方 `likeEvent` は applyLikeEventInProcess() が**加算**する
+ * ため、再送すると二重計上になる。
+ *
+ * queue full のドロップは再送しない — 枠が枯渇している状態への追い撃ちは悪化させるだけ。
+ */
+async function forwardToWeb(payload: Record<string, unknown>, opts?: { retryOnce?: boolean }) {
   const acquired = await acquireForwardSlot();
   if (!acquired) return;
 
+  // 再送はスロットを保持したまま行う(解放して取り直すと、その隙に他のイベントが
+  // 割り込んで再送だけキュー末尾へ回る)。
+  const attempts = opts?.retryOnce ? 2 : 1;
   try {
-    const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      console.error("[listener] internal notify failed:", res.status, await res.text().catch(() => ""));
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
+        });
+        if (res.ok) return;
+        console.error("[listener] internal notify failed:", res.status, await res.text().catch(() => ""));
+      } catch (err) {
+        console.error("[listener] internal notify error:", err);
+      }
     }
-  } catch (err) {
-    console.error("[listener] internal notify error:", err);
   } finally {
     releaseForwardSlot();
   }
@@ -540,12 +554,30 @@ async function notifyOverlayUpdate(streamerId: string) {
   await forwardToWeb({ streamerId, emitOverlay: true });
 }
 
-async function notifyChatComment(chat: ChatCommentPayload) {
+// ギフト/フォローと同じく、同じ部屋を購読している全Streamer分を1リクエストにまとめる。
+// **購読者ごとにHTTPを撃たないこと** — 転送スロット(FORWARD_MAX_CONCURRENCY/QUEUE)は
+// worker プロセス全体の共有枠で、chatだけ購読者数倍のリクエストを出すと like/gift に
+// 押し出されてコメントが無言で落ちる。
+async function notifyChatComment(
+  streamerIds: string[],
+  comment: Omit<ChatCommentPayload, "streamerId">
+) {
+  if (streamerIds.length === 0) return;
+
   if (!isWorkerProcess) {
-    emitChatComment(chat).catch((err) => console.error("[chat] emit error:", err));
+    for (const streamerId of streamerIds) {
+      emitChatComment({ streamerId, ...comment }).catch((err) =>
+        console.error("[chat] emit error:", err)
+      );
+    }
     return;
   }
-  await forwardToWeb({ streamerId: chat.streamerId, chatEvent: chat });
+  // 再送はmsgIdがある場合だけ。Web側のdedupはmsgId基準なので、msgIdがnullのまま
+  // 再送すると端末へ二重に届き、同じコメントを2回読み上げる。
+  await forwardToWeb(
+    { streamerIds, chatCommentEvent: comment },
+    { retryOnce: typeof comment.msgId === "string" }
+  );
 }
 
 // ギフト/フォローは同じ部屋を購読している全Streamerへ配る。購読者ごとにHTTPを撃つと
@@ -2265,9 +2297,7 @@ async function connectAndAttach(
       ...(emotes.length > 0 ? { emotes } : {}),
     };
     // 同じ部屋を複数のStreamerが購読している場合、全員分のchatルームへ配信する。
-    for (const streamerId of Array.from(inst.subscriberIds)) {
-      notifyChatComment({ streamerId, ...payload });
-    }
+    notifyChatComment(Array.from(inst.subscriberIds), payload);
   });
 
   // フォローはモバイルの効果音トリガー専用(集計・保存はしない)。
