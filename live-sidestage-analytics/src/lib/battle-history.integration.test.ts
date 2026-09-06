@@ -975,6 +975,26 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
       { index: 0, score: "777", nickNames: ["確定自分"] },
       { index: 1, score: "555", nickNames: ["確定相手"] },
     ]);
+
+    // 再生可否は一覧の各行に載る(モーダルを開く前にボタン活性が決まる)。
+    // 未確定行は他の値によらず not_finalized、スコア点が無い確定行は no_score_points。
+    expect(live.replay).toEqual({ available: false, reason: "not_finalized" });
+    expect(finalized.replay).toEqual({ available: false, reason: "no_score_points" });
+  });
+
+  it("スコア点が揃った確定済みバトルは一覧の replay が available になる", async () => {
+    const range = { start: new Date("2026-09-05T00:00:00Z"), end: new Date("2026-09-06T00:00:00Z") };
+    const startedAt = new Date("2026-09-05T10:00:00Z");
+    await prisma.tiktokBattle.create({ data: finalBattleData("replay_ready", startedAt) });
+    const history = await createHistory("replay_ready", startedAt, []);
+    await prisma.battleHistory.update({
+      where: { id: history.id },
+      data: { replayScorePointCount: 6 },
+    });
+
+    const { battles } = await queryBattles(finalRoomId, VIEWER, range);
+    const item = battles.find((b) => b.battleId === "replay_ready")!;
+    expect(item.replay).toEqual({ available: true, reason: null });
   });
 
   it("teamIndex付きで確定した3陣営バトルは、陣営ごとのスコアをスナップショットから復元する", async () => {

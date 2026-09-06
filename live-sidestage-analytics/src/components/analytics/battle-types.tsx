@@ -1,6 +1,8 @@
 // page.tsx(Next.jsのpage moduleはdefault export等の限られたexportしか許可しない)と
 // BattleDetailModal.tsxで共有する型・コンポーネント。
 
+import type { ReplayAvailability } from "@/lib/battle-replay-contract";
+
 export type BattleStatus = "live" | "finished" | "cut_short" | "unknown";
 
 export interface BattleOpponent {
@@ -44,6 +46,8 @@ export interface BattleListItem {
   selfScore: string | null;
   opponentScore: string | null;
   selfTotalDiamonds: number;
+  /** 再生ボタンの活性判定。サーバー側 `src/lib/battle-history.ts` の同名フィールドと対。 */
+  replay: ReplayAvailability;
 }
 
 export type BattleTeamCaptureStatus = "complete" | "partial" | "unavailable";
