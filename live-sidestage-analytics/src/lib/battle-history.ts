@@ -5,6 +5,8 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { queryGifts, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
+import { isReplayable } from "@/lib/battle-replay";
+import type { ReplayAvailability } from "@/lib/battle-replay-contract";
 
 const BATTLE_SELECT = {
   battleId: true,
@@ -413,6 +415,11 @@ export type BattleListItem = {
   opponentScore: string | null;
   /** 自分が受け取った実ダイヤ合計。区間が確定できない(unknown、end===nullのcut_short)場合は0。 */
   selfTotalDiamonds: number;
+  /**
+   * バトル再生の可否。**モーダルを開く前にボタンの活性が決まる**ようにするための追加フィールド。
+   * 未確定バトルは常に `{ available: false, reason: "not_finalized" }`。
+   */
+  replay: ReplayAvailability;
 };
 
 /**
@@ -721,6 +728,10 @@ export type FinalizedBattle = {
   selfScore: string | null;
   opponentScore: string | null;
   selfTotalDiamonds: number;
+  /** 再生可否の判定材料。窓・スコア点数は BattleHistory 側にしか無い。 */
+  windowStart: Date;
+  windowEnd: Date;
+  replayScorePointCount: number;
   participants: {
     /** 後方互換の2値。teamIndex===0が"self"、それ以外が"opponent"。 */
     side: string;
@@ -750,6 +761,9 @@ async function loadFinalizedBattles(roomId: string, battleIds: string[]): Promis
       selfScore: true,
       opponentScore: true,
       selfTotalDiamonds: true,
+      windowStart: true,
+      windowEnd: true,
+      replayScorePointCount: true,
       participants: {
         select: {
           side: true,
@@ -859,6 +873,7 @@ async function buildBattleListItems(
      * 非nullのときはhostProfiles/otherRoomByIdを引かず、この値をそのまま表示に使う。
      */
     storedIdentities: Map<string, BattleParticipantIdentity> | null;
+    replay: ReplayAvailability;
   };
 
   // 左右split表示・旧opponentフィールドの両方に使うアイコンをdistinctで集め、まとめて1回だけ解決する。
@@ -935,6 +950,14 @@ async function buildBattleListItems(
       hostProfiles: null,
       otherRoomIdsForBattle: [],
       storedIdentities,
+      replay: isReplayable({
+        finalized: true,
+        scorePointCount: finalized.replayScorePointCount,
+        windowStart: finalized.windowStart,
+        windowEnd: finalized.windowEnd,
+        participantCount: finalized.participants.length,
+        hasSelfParticipant: selfParticipants.length > 0,
+      }),
     };
   }
 
@@ -1016,6 +1039,8 @@ async function buildBattleListItems(
       hostProfiles: own.hostProfiles as HostProfiles | null,
       otherRoomIdsForBattle: others.map((o) => o.roomId),
       storedIdentities: null,
+      // 未確定バトルは BattleHistory 行が無い。再生データも当然無い。
+      replay: { available: false, reason: "not_finalized" },
     };
   });
 
@@ -1062,6 +1087,7 @@ async function buildBattleListItems(
     selfScore: p.selfScore,
     opponentScore: p.opponentScore,
     selfTotalDiamonds: p.selfTotalDiamonds,
+    replay: p.replay,
   }));
 
   return battles;

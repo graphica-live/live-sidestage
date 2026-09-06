@@ -58,7 +58,8 @@ last_reviewers: [deepseek-v4-flash, fable]
 
 ## Out of Scope
 
-- 再生API(`/api/analytics/battles/{battleId}/replay`)・再生UI・シェアリンク(P4〜P6)
+- 再生API(読み出し側)。別ベースライン `docs/testing/battle-replay-api/baseline.md` が正本
+- 再生UI(P5)・シェアページ `/b/[token]`(P6)
 - `scripts/attach-replay-data.ts` のバッチ制御(id カーソル・`--dry-run` / `--force`・件数集計)。
   `attachReplayData` の薄いラッパであり、本番DBに対する実行はユーザーの明示指示があってから行う
 - `attachReplayData` と `commitBattleSnapshot` の並行実行。attach は armies / giftEvents / participants を
