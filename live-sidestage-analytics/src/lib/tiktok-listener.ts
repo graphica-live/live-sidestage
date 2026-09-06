@@ -44,6 +44,7 @@ import {
   parseBattleEvent,
   parseBattleTaskEvent,
   BATTLE_TASK_MESSAGE_TYPE,
+  BATTLE_TASK_RESULT,
   type BattleRecordState,
   type ParsedBattleTask,
   type HostProfiles,
@@ -1255,6 +1256,9 @@ type BattleItemSaveResult = "saved" | "duplicate" | "error";
  * **未確定の行のうち最も古いもの**を findFirst で1行選んで update する。**taskStart を
  * 取りこぼした状態の settle は捨てる**(startedAt も条件も無い部分行を作らないため)。
  *
+ * **taskSettle は1区間につき複数回飛ぶ。** `taskResult=0`(中間settle)は無視し、
+ * 1(未達成)か 2(達成)だけを確定として書く(詳細は該当分岐のコメント)。
+ *
  * 最古を採る(`startedAt: "asc"`)のは、区間が重なって未確定行が2つ以上あるときに
  * FIFO で対応づけるため。BATTLE-EVENTS.md 3節のライフサイクル
  * (taskStart→taskSettle→rewardSettle→次のtaskStart)が保たれる限り未確定行は常に1つだが、
@@ -1292,6 +1296,12 @@ async function saveBattleBonusMission(
     }
 
     if (task.messageType === BATTLE_TASK_MESSAGE_TYPE.TASK_SETTLE) {
+      // taskResult=0 は進捗到達直後に飛ぶ中間settleで、このあと 1(未達成) か 2(達成) が
+      // 別メッセージで届く。これを確定として書くと settledAt が埋まってしまい、本settleが
+      // 「未確定の行が無い」として捨てられ、rewardStartTimestamp(報酬区間の開始)を永久に失う。
+      // 2026-09-06 本番で実際に発生(達成した区間が taskResult=0 のまま固定され開始時刻が欠損)。
+      // null(taskSettle 自体が欠落など、確定と判別できない形)も同じ理由で捨てる。
+      if (task.taskResult === null || task.taskResult === BATTLE_TASK_RESULT.INTERIM) return;
       const open = await prisma.tiktokBattleBonusMission.findFirst({
         where: { roomId, battleId: task.battleId, settledAt: null },
         orderBy: { startedAt: "asc" },

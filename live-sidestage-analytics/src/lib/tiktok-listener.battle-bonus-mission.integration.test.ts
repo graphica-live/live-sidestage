@@ -157,6 +157,44 @@ describe("ボーナスミッション区間(TiktokBattleBonusMission)の収集",
     }
   });
 
+  it("taskResult=0(中間settle)は確定させず、後続の本settleが同じ行へ着く", async () => {
+    const ctx = await setupRoom("interim-settle");
+    try {
+      const battleId = "7500000000000000008";
+      ctx.conn.fire("linkMicBattleTask", taskStartPayload(battleId));
+      await vi.waitFor(async () => {
+        expect(await missionRows(ctx.roomId, battleId)).toHaveLength(1);
+      });
+
+      // 進捗到達直後に飛ぶ中間settle。rewardStartTimestamp は "0" で届く。
+      ctx.conn.fire("linkMicBattleTask", {
+        battleId,
+        battleTaskMessageType: 2,
+        taskSettle: { taskResult: 0, rewardStartTimestamp: "0" },
+      });
+      await new Promise((r) => setTimeout(r, 300));
+      const [interim] = await missionRows(ctx.roomId, battleId);
+      expect(interim.settledAt).toBeNull();
+      expect(interim.taskResult).toBeNull();
+
+      // 本settle(達成)。中間settleで確定していないので同じ行へ着く。
+      ctx.conn.fire("linkMicBattleTask", {
+        battleId,
+        battleTaskMessageType: 2,
+        taskSettle: { taskResult: 2, rewardStartTimestamp: String(Math.floor(Date.now() / 1000)) },
+      });
+      await vi.waitFor(async () => {
+        const [row] = await missionRows(ctx.roomId, battleId);
+        expect(row.settledAt).not.toBeNull();
+        expect(row.taskResult).toBe(2);
+        expect(row.rewardStartedAt).not.toBeNull();
+      });
+      expect(await missionRows(ctx.roomId, battleId)).toHaveLength(1);
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
   it("taskStartを取りこぼした状態のtaskSettle / rewardSettleは行を作らない", async () => {
     const ctx = await setupRoom("orphan-settle");
     try {

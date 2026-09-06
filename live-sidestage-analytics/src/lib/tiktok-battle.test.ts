@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   BATTLE_ACTION,
   BATTLE_TASK_MESSAGE_TYPE,
+  BATTLE_TASK_RESULT,
   battleNotifyDecision,
   mergeBattleState,
   parseArmiesEvent,
@@ -701,13 +702,31 @@ describe("parseBattleTaskEvent", () => {
     expect(parsed?.rewardStartTime?.getTime()).toBe(START_MS);
   });
 
-  it("rewardSettle に sum が無ければ rewardSum は null(protoに存在しないフィールドのため)", () => {
+  it("rewardSettle の sum は promptElements から取る", () => {
     const parsed = parseBattleTaskEvent({
       battleId: "7300000000000000000",
       battleTaskMessageType: 3,
-      rewardSettle: { status: 1 },
+      rewardSettle: {
+        status: 0,
+        rewardSettlePrompt: {
+          promptKey: "pm_mt_live_match_desc_2",
+          promptElements: [
+            { promptFieldKey: "other", promptFieldValue: "9" },
+            { promptFieldKey: "sum", promptFieldValue: "78000" },
+          ],
+        },
+      },
     });
     expect(parsed?.messageType).toBe(BATTLE_TASK_MESSAGE_TYPE.REWARD_SETTLE);
+    expect(parsed?.rewardSum).toBe(78000);
+  });
+
+  it("rewardSettle に sum が無ければ rewardSum は null", () => {
+    const parsed = parseBattleTaskEvent({
+      battleId: "7300000000000000000",
+      battleTaskMessageType: 3,
+      rewardSettle: { status: 1, rewardSettlePrompt: { promptElements: [] } },
+    });
     expect(parsed?.rewardSum).toBeNull();
   });
 
@@ -717,7 +736,17 @@ describe("parseBattleTaskEvent", () => {
       battleTaskMessageType: 2,
       taskSettle: { taskResult: 0 },
     });
-    expect(parsed?.taskResult).toBe(0);
+    expect(parsed?.taskResult).toBe(BATTLE_TASK_RESULT.INTERIM);
+  });
+
+  it("taskResult=1 は未達成として返る(報酬区間の開始予告は付かない)", () => {
+    const parsed = parseBattleTaskEvent({
+      battleId: "7300000000000000000",
+      battleTaskMessageType: 2,
+      taskSettle: { taskResult: 1, rewardStartTimestamp: "0" },
+    });
+    expect(parsed?.taskResult).toBe(BATTLE_TASK_RESULT.FAILED);
+    expect(parsed?.rewardStartTime).toBeNull();
   });
 
   it("battleId が無い payload は null", () => {

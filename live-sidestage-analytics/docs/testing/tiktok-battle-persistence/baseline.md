@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: tiktok-battle-persistence
 last_updated: 2026-09-06
 last_risk: MEDIUM
-last_reviewers: Code Mode=DeepSeek V4 Flash単独(MEDIUM)。TestCase Mode=DeepSeek V4 Flash単独(finding 3件をTC-TBP-016〜018として反映)
+last_reviewers: Code Mode=DeepSeek V4 Flash単独(MEDIUM)。TestCase レビューは Code Mode で同時実施(--testcase-file)
 ---
 
 # テストベースライン: tiktok-battle-persistence
@@ -31,7 +31,9 @@ TikTok LinkMicバトル(linkMicBattle/linkMicArmies)の受信payloadを`TiktokBa
 | TC-TBP-016 | 未確定行が2つ重なった場合、settleは古い方から順(FIFO)に対応づく | `saveBattleBonusMission`(`startedAt: "asc"`) | 境界 | 同一battleIdで taskStart×2 の後に taskSettle(result=2)→taskSettle(result=1) | 先に始まった行(targetType=1)に result=2、後の行(targetType=2)に result=1 が入る | `npx dotenv -e .env.local.test -- npx vitest run src/lib/tiktok-listener.battle-bonus-mission.integration.test.ts` | PASS | payloadに区間の識別子が無いため、ライフサイクルが崩れた場合の対応づけ規則を固定する |
 | TC-TBP-017 | rewardSettle が taskSettle より先に届いた場合は捨てる | 同上 | 境界/異常 | taskStart→rewardSettle→taskSettle の順で受信 | 行は settledAt / taskResult まで埋まり、`rewardEndedAt` は null のまま。例外もキューのrejectも起きない | 同上 | PASS | 観測できる劣化として許容(区間終了時刻が欠けるだけ) |
 | TC-TBP-018 | matchInfo が無くフラットな倍率フィールドだけでも保存される | `resolveGiftMultiplier` | 境界/回帰 | `gift` イベントに matchInfo 無し・`multiplierType:2` / `multiplierValue:"10"` | `gifts.multiplierType=2` / `multiplierValue=10` | 同上 | PASS | data-converter.ts が将来 matchInfo を平坦化した場合の保険経路 |
-| TC-TBP-007 | 全体unit/integrationテストに回帰がない | プロジェクト全体 | 回帰 | - | 既存の全テストが通る | `npx vitest run --exclude "**/*.integration.test.ts"` / `npx dotenv -e .env.local.test -- npx vitest run src/lib/battle-history-finalize.integration.test.ts src/lib/battle-history.integration.test.ts src/lib/gift-retention.integration.test.ts` | PASS(unit 1290件、対象integration 37件) | 2026-09-06はロジック変更なし(定数+コメントのみ)のため対象integrationのみ実行。typecheckも別途PASS |
+| TC-TBP-019 | taskResult=0(中間settle)は確定させず、後続の本settleが同じ行へ着く | `saveBattleBonusMission` | 境界/回帰 | taskStart→taskSettle(taskResult=0, rewardStartTimestamp="0")→taskSettle(taskResult=2, 実時刻) | 中間settle後は settledAt / taskResult とも null のまま。本settle後に settledAt・taskResult=2・rewardStartedAt が埋まり、行は1件のまま | `npx dotenv -e .env.local.test -- npx vitest run src/lib/tiktok-listener.battle-bonus-mission.integration.test.ts` | PASS | taskSettle は1区間につき複数回飛ぶ。中間settleで確定すると本settleが「未確定行なし」で捨てられ報酬区間の開始時刻を永久に失う(2026-09-06 本番で8区間中4区間が該当) |
+| TC-TBP-020 | rewardSettle のボーナスpt合計は promptElements から取れる | `parseBattleTaskEvent` | 正常/境界 | `rewardSettle.rewardSettlePrompt.promptElements` に `{promptFieldKey:"sum", promptFieldValue:"78000"}` を含む payload と、promptElements が空の payload | 前者は `rewardSum=78000`、後者は null | `npx vitest run src/lib/tiktok-battle.test.ts` | PASS | トップレベルの `rewardSettle.sum` は実payloadに存在しない。room ごとに別の値が返る |
+| TC-TBP-007 | 全体unit/integrationテストに回帰がない | プロジェクト全体 | 回帰 | - | 既存の全テストが通る | `npx vitest run --exclude "**/*.integration.test.ts"` / `npx dotenv -e .env.local.test -- npx vitest run src/lib/battle-history-finalize.integration.test.ts src/lib/battle-history.integration.test.ts src/lib/gift-retention.integration.test.ts` | PASS(unit 1298件、対象integration 37+11件) | typecheckも別途PASS |
 
 ## Quality Gate
 
@@ -43,5 +45,5 @@ TikTok LinkMicバトル(linkMicBattle/linkMicArmies)の受信payloadを`TiktokBa
 
 - 本番DBへの`prisma db push --accept-data-loss`実行そのもの(デプロイ時に自動実行される運用。今回はmigrationファイル追加のみで実行はしていない)
 - `raw`列の過去データが必要になった場合の復旧手段(データはdb push実行時に失われる。ユーザー承認済みでOut of Scope)
-- **実payloadでの検証**: `linkMicBattleTask` の生payloadと `WebcastGiftMessage.matchInfo` は実配信のバトルでしか観測できない。上記TC-TBP-009〜015は型定義(tiktok-schema.ts)とBATTLE-EVENTS.mdから組んだ合成payloadで固めたもので、**本番デプロイ後に `SELECT count(*) FROM tiktok_battle_bonus_missions` と `SELECT count(*) FROM gifts WHERE "multiplierType" IS NOT NULL` が0でないことを確認する工程が別途要る**(0件ならフィールド名の想定が誤り)
-- `rewardSum`: proto(`WebcastLinkmicBattleTaskMessage_BattleRewardSettle`)に `sum` フィールドが存在せず、実payloadに乗っているかも未確認。乗っていなければ常にnullになる(best-effort)
+- **実payloadでの検証**: `linkMicBattleTask` の生payloadと `WebcastGiftMessage.matchInfo` は実配信のバトルでしか観測できない。上記TC-TBP-009〜020は合成payloadで固めたもの。**本番デプロイ後の実測は2026-09-06に完了**(`tiktok_battle_bonus_missions` 9件 / `gifts.multiplierType IS NOT NULL` 1,923件)。TC-TBP-019 の本settle落としもこの実測から見つかったもので、修正の実データ確認は再デプロイ後に別途要る
+- `multiplierType` 2/3(TOP_2 / TOP_3 ブースター)は本番で未観測。観測できるまで扱いは推定のまま
