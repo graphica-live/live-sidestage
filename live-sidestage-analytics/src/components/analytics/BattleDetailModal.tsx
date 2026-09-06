@@ -298,13 +298,11 @@ function TeamCard({
       )}
       <div className="flex min-w-0 flex-col gap-1">
         {team.participants.map((p) => {
-          const label = team.isSelf
-            ? "自分"
-            : p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
+          const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
           return (
             <div key={p.anchorId} className={`flex min-w-0 items-center gap-1.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
               <Avatar src={p.avatarUrl} alt={label} size="sm" />
-              <div className="min-w-0 max-w-[100px] truncate text-xs font-medium" style={team.isSelf ? undefined : { color }}>
+              <div className="min-w-0 max-w-[100px] truncate text-xs font-medium" style={{ color }}>
                 {label}
               </div>
             </div>
@@ -429,19 +427,19 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
       </div>
 
       {team.participants.length > 1 ? (
-        <div className="mb-2.5 flex flex-wrap gap-1">
+        <div className="mb-2.5 flex flex-nowrap gap-1">
           {!isIndividual && (
             <button
               type="button"
               onClick={() => setSelectedAnchorId(null)}
-              className="rounded-full border px-2 py-0.5 text-[10px]"
+              className="min-w-0 max-w-[52px] flex-1 truncate rounded-full border px-2 py-0.5 text-[10px]"
               style={
                 selectedAnchorId === null
                   ? { borderColor: color, color }
                   : { borderColor: "rgb(var(--border))", color: "#9a9ea6" }
               }
             >
-              陣営全体合算
+              合算
             </button>
           )}
           {team.participants.map((p) => (
@@ -449,7 +447,7 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
               key={p.anchorId}
               type="button"
               onClick={() => setSelectedAnchorId(p.anchorId)}
-              className="max-w-[100px] truncate rounded-full border px-2 py-0.5 text-[10px]"
+              className="min-w-0 max-w-[72px] flex-1 truncate rounded-full border px-2 py-0.5 text-[10px]"
               style={
                 selectedAnchorId === p.anchorId
                   ? { borderColor: color, color }
@@ -472,8 +470,8 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
         <div className="py-6 text-center text-[11px] text-muted">貢献者なし</div>
       ) : (
         <div className="max-h-64 space-y-0.5 overflow-y-auto">
-          {contributors.map((c) => (
-            <ExpandableContributorRow key={c.uniqueId} contributor={c} color={color} />
+          {contributors.map((c, i) => (
+            <ExpandableContributorRow key={c.uniqueId} contributor={c} color={color} rank={i + 1} />
           ))}
         </div>
       )}
@@ -483,7 +481,15 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
   );
 }
 
-function ExpandableContributorRow({ contributor, color }: { contributor: BattleContributor; color: string }) {
+function ExpandableContributorRow({
+  contributor,
+  color,
+  rank,
+}: {
+  contributor: BattleContributor;
+  color: string;
+  rank: number;
+}) {
   const [expanded, setExpanded] = useState(false);
   const hasLog = contributor.giftEvents.length > 0;
   return (
@@ -494,16 +500,12 @@ function ExpandableContributorRow({ contributor, color }: { contributor: BattleC
         onClick={() => hasLog && setExpanded((v) => !v)}
         className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left hover:bg-row-hover"
       >
-        <svg
-          viewBox="0 0 16 16"
-          width={10}
-          height={10}
-          fill="currentColor"
-          className={`shrink-0 transition-transform ${expanded ? "rotate-90" : ""} ${hasLog ? "" : "invisible"}`}
+        <span
+          className="w-4 shrink-0 text-right font-mono text-[10px] tabular-nums text-muted"
           style={{ color }}
         >
-          <path d="M6 4l5 4-5 4V4z" />
-        </svg>
+          {rank}
+        </span>
         <span
           className="shrink-0 rounded-full border p-px"
           style={{ borderColor: `color-mix(in srgb, ${color} 50%, transparent)` }}

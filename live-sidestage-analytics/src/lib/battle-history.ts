@@ -1409,7 +1409,7 @@ export async function queryBattleContributors(
         const pContributors = withAvatar(aggregateGiftEventsToContributors(p.giftEvents));
         return {
           anchorId: p.anchorId,
-          displayName: isSelf ? "自分" : displayNameOf(p),
+          displayName: displayNameOf(p),
           captureStatus: (p.captureStatus as BattleTeamCaptureStatus | null) ?? null,
           partialNote: buildPartialNote(finalized.windowStart, p.captureStartedLateMs, p.captureEndedEarlyMs),
           battleScore: p.officialScore ?? p.score ?? null,
