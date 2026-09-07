@@ -22,8 +22,20 @@ export type ReplayClock = {
   setScrubbing: (scrubbing: boolean) => void;
 };
 
+export type ReplayClockOptions = {
+  now?: () => number;
+  /** **再生位置ごとの追加倍率**。無風区間の自動早送りがこれを 1 以外にする。
+   * 速度チップに出るのはユーザーが選んだ `speed` だけで、この倍率は表示に混ぜない。
+   * 位置の関数にしてあるのは、時計の外から状態を押し込むと基準点の付け替えが
+   * 呼び出し側の責任になり、再生位置が飛ぶ経路が増えるため。 */
+  boostAt?: (elapsedMs: number) => number;
+};
+
 /** rAF を 30fps へ間引く。60fps で setState すると隠れた列まで巻き込んで重い。 */
 const FRAME_INTERVAL_MS = 1000 / 30;
+
+/** 再生開始時の既定速度。5分バトルを等倍で見るのは長すぎるため(ユーザー指示)。 */
+export const DEFAULT_REPLAY_SPEED = 4;
 
 /**
  * 既定の時刻源は**モジュールスコープに置く**。引数の既定値としてその場で関数を作ると
@@ -31,22 +43,32 @@ const FRAME_INTERVAL_MS = 1000 / 30;
  * 基準点が 0 に戻る(再生位置が進まなくなる)。
  */
 const defaultNow = () => performance.now();
+const noBoost = () => 1;
 
-export function useReplayClock(durationMs: number, now: () => number = defaultNow): ReplayClock {
+export function useReplayClock(durationMs: number, options: ReplayClockOptions = {}): ReplayClock {
+  const now = options.now ?? defaultNow;
+  const boostAt = options.boostAt ?? noBoost;
+
   const [elapsedMs, setElapsedMs] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeedState] = useState(1);
+  const [speed, setSpeedState] = useState(DEFAULT_REPLAY_SPEED);
 
-  // 再生位置の基準点。elapsedMs = (now() - anchorNow) * speed + anchorElapsed
+  // 再生位置の基準点。elapsedMs = (now() - anchorNow) * speed * appliedBoost + anchorElapsed
   const anchorNowRef = useRef(0);
   const anchorElapsedRef = useRef(0);
   const scrubbingRef = useRef(false);
   const lastPaintRef = useRef(0);
+  // 基準点を張った時点で効いていた追加倍率。rAF の外から書き換えないこと。
+  const appliedBoostRef = useRef(1);
+  // boostAt は毎レンダー別関数になりうるので、rAF の effect の依存には入れない。
+  const boostAtRef = useRef(boostAt);
+  boostAtRef.current = boostAt;
 
   const rebase = useCallback(
     (elapsed: number) => {
       anchorNowRef.current = now();
       anchorElapsedRef.current = elapsed;
+      appliedBoostRef.current = boostAtRef.current(elapsed);
     },
     [now]
   );
@@ -110,7 +132,19 @@ export function useReplayClock(durationMs: number, now: () => number = defaultNo
       if (t - lastPaintRef.current < FRAME_INTERVAL_MS - 8) return;
       lastPaintRef.current = t;
       if (scrubbingRef.current) return;
-      const next = (t - anchorNowRef.current) * speed + anchorElapsedRef.current;
+
+      const next =
+        (t - anchorNowRef.current) * speed * appliedBoostRef.current + anchorElapsedRef.current;
+
+      // 追加倍率が変わる位置に来たら、**その位置で基準点を張り直してから**次のフレームへ渡す。
+      // 張り直さないと、区間へ入る前の経過時間まで新しい倍率で再計算されて位置が飛ぶ。
+      const wanted = boostAtRef.current(next);
+      if (wanted !== appliedBoostRef.current) {
+        anchorNowRef.current = t;
+        anchorElapsedRef.current = next;
+        appliedBoostRef.current = wanted;
+      }
+
       if (next >= durationMs) {
         setElapsedMs(durationMs);
         setPlaying(false);
@@ -129,6 +163,7 @@ export function useReplayClock(durationMs: number, now: () => number = defaultNo
     if (playing) return;
     anchorElapsedRef.current = elapsedMs;
     anchorNowRef.current = now();
+    appliedBoostRef.current = boostAtRef.current(elapsedMs);
   }, [playing, elapsedMs, now]);
 
   return { elapsedMs, playing, speed, play, pause, toggle, seek, setSpeed, setScrubbing };

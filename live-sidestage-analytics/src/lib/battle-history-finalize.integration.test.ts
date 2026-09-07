@@ -759,6 +759,10 @@ describe("初ギフトx倍の逆算(DB経路)", () => {
   /** 逆算がクリーンに成立するフィクスチャ。self へ 1000ダイヤ・倍率刻印ありのギフトを2件。 */
   async function seedOpeningBattle(battleId: string, overrides: Partial<Prisma.TiktokBattleUncheckedCreateInput> = {}) {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, battleId, overrides) });
+    // 逆算はギフト明細が欠けていない anchor だけを候補にするので、窓を覆う接続区間ログが要る。
+    await prisma.roomConnectionInterval.create({
+      data: { roomId: selfRoomId, startedAt: STARTED_AT, endedAt: ENDED_AT },
+    });
     const first = await makeGift(selfRoomId, {
       uniqueId: "fan_a",
       nickname: "エー",
@@ -830,6 +834,40 @@ describe("初ギフトx倍の逆算(DB経路)", () => {
     expect(row!.openingMultiplierConfidence).toBe("unknown");
     // 逆算が不能でもスコア点の複製そのものは行う。
     expect(row!.replayScorePointCount).toBe(4);
+  });
+
+  it("ギフト明細が部分的に欠けた(captureStatus: partial)anchorのギフトは候補にしない", async () => {
+    await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "opening_partial") });
+    // 窓頭30秒が未接続。その間に無視できない量(400)の公式スコアが動いているので partial のまま。
+    await prisma.roomConnectionInterval.create({
+      data: { roomId: selfRoomId, startedAt: new Date(STARTED_AT.getTime() + 30_000), endedAt: ENDED_AT },
+    });
+    await makeGift(selfRoomId, {
+      uniqueId: "fan_a",
+      nickname: "エー",
+      totalDiamonds: 1000,
+      multiplierType: 0,
+      receivedAt: new Date(STARTED_AT.getTime() + 33_000),
+    });
+    await makeGift(selfRoomId, {
+      uniqueId: "fan_b",
+      nickname: "ビー",
+      totalDiamonds: 1000,
+      multiplierType: 0,
+      receivedAt: new Date(STARTED_AT.getTime() + 43_000),
+    });
+    await makeArmies(selfRoomId, "opening_partial", SELF_ANCHOR_ID, 30, "400");
+    await makeArmies(selfRoomId, "opening_partial", SELF_ANCHOR_ID, 35, "2400");
+    await makeArmies(selfRoomId, "opening_partial", SELF_ANCHOR_ID, 45, "4400");
+
+    await materializeBattleHistory(selfRoomId, "opening_partial", NOW, { stabilityDelayMs: 0 });
+    const row = await prisma.battleHistory.findUnique({
+      where: { roomId_battleId: { roomId: selfRoomId, battleId: "opening_partial" } },
+      select: { openingMultiplier: true, openingMultiplierConfidence: true },
+    });
+    // 観測できたギフトだけで公式スコアの増分を割ると比が過大に出るため、赤帯を出してはいけない。
+    expect(row!.openingMultiplierConfidence).toBe("unknown");
+    expect(row!.openingMultiplier).toBeNull();
   });
 });
 

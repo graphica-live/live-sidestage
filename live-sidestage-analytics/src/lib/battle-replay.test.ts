@@ -66,6 +66,7 @@ function participant(
     teamIndex: 0,
     position: 0,
     side: "self",
+    isSelf: true,
     nickName: "自分",
     displayId: "self_id",
     tiktokId: "self_id",

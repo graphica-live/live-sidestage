@@ -144,6 +144,87 @@ export type ReplayContributor = {
 };
 
 /** その瞬間までの貢献者上位。金額降順、同額は先に出た順。 */
+/** ギフトカードが1枚も出ていない区間。自動早送りの対象。 */
+export type QuietRange = { startMs: number; endMs: number };
+
+/** これ以上ギフトが途切れたら無風とみなす。短い間はスキップしても体感が変わらないうえ、
+ * 早送りの出入りが増えて再生が落ち着かない。 */
+export const QUIET_MIN_GAP_MS = 8_000;
+
+/** 次のギフトが出る手前でこれだけ早送りを解除して、等速へ戻ってからカードを迎える。 */
+export const QUIET_LEAD_MS = 1_000;
+
+/** 無風区間での追加倍率。ユーザーが選んだ速度に**掛ける**。 */
+export const QUIET_SKIP_BOOST = 4;
+
+/** `ranges` から `blockers` と重なる部分を取り除く。 */
+function subtractRanges(ranges: QuietRange[], blockers: QuietRange[]): QuietRange[] {
+  let result = ranges;
+  for (const blocker of blockers) {
+    const next: QuietRange[] = [];
+    for (const range of result) {
+      if (blocker.endMs <= range.startMs || blocker.startMs >= range.endMs) {
+        next.push(range);
+        continue;
+      }
+      if (range.startMs < blocker.startMs) next.push({ startMs: range.startMs, endMs: blocker.startMs });
+      if (blocker.endMs < range.endMs) next.push({ startMs: blocker.endMs, endMs: range.endMs });
+    }
+    result = next;
+  }
+  return result;
+}
+
+/**
+ * ギフトカードが1枚も出ていない区間を返す。**赤帯が出ている区間は除く** —
+ * 倍率区間・ボーナス区間はギフトが無くても見せる価値があり、飛ばすと
+ * 「初めてのギフト×N」の帯を見逃す。
+ */
+export function quietRangesOf(
+  payload: BattleReplayPayload,
+  cards: ReplayCard[],
+  durationMs: number
+): QuietRange[] {
+  const spans = [...cards].sort((a, b) => a.startMs - b.startMs);
+  const gaps: QuietRange[] = [];
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.startMs - cursor >= QUIET_MIN_GAP_MS) {
+      gaps.push({ startMs: cursor, endMs: span.startMs - QUIET_LEAD_MS });
+    }
+    cursor = Math.max(cursor, span.endMs);
+  }
+  if (durationMs - cursor >= QUIET_MIN_GAP_MS) gaps.push({ startMs: cursor, endMs: durationMs });
+
+  const bands = payload.segments
+    .filter((segment) => isBandSegment(segment))
+    .map((segment) => ({ startMs: segment.startMs, endMs: segment.endMs }));
+
+  return subtractRanges(gaps, bands).filter((r) => r.endMs - r.startMs >= QUIET_MIN_GAP_MS);
+}
+
+export function isQuietAt(ranges: QuietRange[], elapsedMs: number): boolean {
+  return ranges.some((range) => elapsedMs >= range.startMs && elapsedMs < range.endMs);
+}
+
+/** `payload.anchors` 上での本人の位置。scorePoints / giftEvents の `a` はこの添字を指す。
+ *
+ * 個人の `isSelf` が1件も立たないバトル(確定処理が解決できなかった古い行)では、
+ * **自陣営全員へフォールバックする**。空集合を返すと貢献者ボードが無言で空になる。 */
+export function selfAnchorIndexes(payload: BattleReplayPayload): Set<number> {
+  const byParticipant = new Set<number>();
+  const byTeam = new Set<number>();
+  let index = 0;
+  for (const team of payload.teams) {
+    for (const participant of team.participants) {
+      if (participant.isSelf) byParticipant.add(index);
+      if (team.isSelf) byTeam.add(index);
+      index += 1;
+    }
+  }
+  return byParticipant.size > 0 ? byParticipant : byTeam;
+}
+
 export function contributorsAt(
   payload: BattleReplayPayload,
   cards: ReplayCard[],
@@ -152,9 +233,13 @@ export function contributorsAt(
 ): ReplayContributor[] {
   const totals = new Map<number, ReplayContributor>();
   const giftingSenders = new Set<number>();
+  // **本人へのギフトだけを集計する。** 実バトル画面の下段も自分への貢献者一覧で、
+  // 全 anchor を合算すると相手陣営のほうが多いバトルで相手の貢献者が並んでしまう。
+  const selfAnchors = selfAnchorIndexes(payload);
 
   for (const card of cards) {
     if (card.startMs > elapsedMs) continue;
+    if (!selfAnchors.has(card.anchorIndex)) continue;
     const counted = comboCountAt(card, elapsedMs);
     // combo の途中は、まだ届いていない段のダイヤを足さない。
     const coins =

@@ -20,8 +20,13 @@ import {
   isBandSegment,
   comboCountAt,
   contributorsAt,
+  isQuietAt,
+  quietRangesOf,
   scoresAt,
   segmentAt,
+  selfAnchorIndexes,
+  QUIET_LEAD_MS,
+  QUIET_MIN_GAP_MS,
 } from "./replay-select";
 
 function payload(overrides: Partial<BattleReplayPayload> = {}): BattleReplayPayload {
@@ -36,13 +41,17 @@ function payload(overrides: Partial<BattleReplayPayload> = {}): BattleReplayPayl
         index: 0,
         isSelf: true,
         officialScore: "100",
-        participants: [{ anchorId: "self", displayName: "自分", uniqueId: "self", avatarUrl: null }],
+        participants: [
+          { anchorId: "self", isSelf: true, displayName: "自分", uniqueId: "self", avatarUrl: null },
+        ],
       },
       {
         index: 1,
         isSelf: false,
         officialScore: "80",
-        participants: [{ anchorId: "rival", displayName: "相手", uniqueId: "rival", avatarUrl: null }],
+        participants: [
+          { anchorId: "rival", isSelf: false, displayName: "相手", uniqueId: "rival", avatarUrl: null },
+        ],
       },
     ],
     anchors: ["self", "rival"],
@@ -196,6 +205,65 @@ describe("cardsByAnchor", () => {
   });
 });
 
+describe("contributorsAt の集計対象", () => {
+  it("相手 anchor 宛のギフトは集計しない(下段は自分への貢献者一覧)", () => {
+    const p = payload({
+      giftEvents: [
+        { t: 1000, a: 0, s: 0, g: 0, c: 1, d: 100, k: null, m: null },
+        // 相手陣営へ、額の大きいギフト。全 anchor を合算すると相手の送信者が1位になる
+        { t: 1000, a: 1, s: 1, g: 0, c: 1, d: 9999, k: null, m: null },
+      ],
+    });
+    const list = contributorsAt(p, buildCards(p), 1500);
+    expect(list.map((c) => c.senderIndex)).toEqual([0]);
+  });
+
+  it("個人の isSelf が1件も無い古い行では自陣営全員へフォールバックする", () => {
+    const base = payload();
+    const p = payload({
+      teams: base.teams.map((team) => ({
+        ...team,
+        participants: team.participants.map((participant) => ({ ...participant, isSelf: false })),
+      })),
+      giftEvents: [
+        { t: 1000, a: 0, s: 0, g: 0, c: 1, d: 100, k: null, m: null },
+        { t: 1000, a: 1, s: 1, g: 0, c: 1, d: 9999, k: null, m: null },
+      ],
+    });
+    // 空集合を返すとボードが無言で空になる。自陣営(team.isSelf)の anchor で拾う
+    expect(selfAnchorIndexes(p)).toEqual(new Set([0]));
+    expect(contributorsAt(p, buildCards(p), 1500).map((c) => c.senderIndex)).toEqual([0]);
+  });
+});
+
+describe("selfAnchorIndexes", () => {
+  it("participant.isSelf を優先し、anchors の添字で返す", () => {
+    // 自陣営の participant が2人目にいるケース(anchors の添字は teams をまたいで通し番号)
+    const p = payload({
+      teams: [
+        {
+          index: 0,
+          isSelf: false,
+          officialScore: "80",
+          participants: [
+            { anchorId: "rival", isSelf: false, displayName: "相手", uniqueId: "rival", avatarUrl: null },
+          ],
+        },
+        {
+          index: 1,
+          isSelf: true,
+          officialScore: "100",
+          participants: [
+            { anchorId: "self", isSelf: true, displayName: "自分", uniqueId: "self", avatarUrl: null },
+          ],
+        },
+      ],
+      anchors: ["rival", "self"],
+    });
+    expect(selfAnchorIndexes(p)).toEqual(new Set([1]));
+  });
+});
+
 describe("contributorsAt の人数上限", () => {
   it("7人が投げても上位6人までしか並べない", () => {
     const p = payload({
@@ -335,7 +403,13 @@ describe("buildStageLayout", () => {
         isSelf: index === 0,
         officialScore: "10",
         participants: [
-          { anchorId: `a${index}`, displayName: `a${index}`, uniqueId: null, avatarUrl: null },
+          {
+            anchorId: `a${index}`,
+            isSelf: index === 0,
+            displayName: `a${index}`,
+            uniqueId: null,
+            avatarUrl: null,
+          },
         ],
       })),
       anchors: ["a0", "a1", "a2", "a3"],
@@ -352,7 +426,7 @@ describe("buildStageLayout", () => {
       isSelf,
       officialScore: "10",
       participants: [
-        { anchorId: `a${index}`, displayName: `a${index}`, uniqueId: null, avatarUrl: null },
+        { anchorId: `a${index}`, isSelf, displayName: `a${index}`, uniqueId: null, avatarUrl: null },
       ],
     });
     const pair = (index: number, isSelf: boolean) => ({
@@ -361,6 +435,7 @@ describe("buildStageLayout", () => {
       officialScore: "10",
       participants: [0, 1].map((n) => ({
         anchorId: `t${index}_${n}`,
+        isSelf: isSelf && n === 0,
         displayName: `t${index}_${n}`,
         uniqueId: null,
         avatarUrl: null,
@@ -397,6 +472,7 @@ describe("buildStageLayout", () => {
             officialScore: "10",
             participants: [0, 1, 2].map((n) => ({
               anchorId: `o${n}`,
+              isSelf: false,
               displayName: `o${n}`,
               uniqueId: null,
               avatarUrl: null,
@@ -421,14 +497,16 @@ describe("buildStageLayout", () => {
             isSelf: false,
             officialScore: "80",
             participants: [
-              { anchorId: "rival", displayName: "相手", uniqueId: null, avatarUrl: null },
+              { anchorId: "rival", isSelf: false, displayName: "相手", uniqueId: null, avatarUrl: null },
             ],
           },
           {
             index: 1,
             isSelf: true,
             officialScore: "100",
-            participants: [{ anchorId: "self", displayName: "自分", uniqueId: null, avatarUrl: null }],
+            participants: [
+              { anchorId: "self", isSelf: true, displayName: "自分", uniqueId: null, avatarUrl: null },
+            ],
           },
         ],
         anchors: ["rival", "self"],
@@ -462,5 +540,51 @@ describe("replayTitleOf", () => {
   it("陣営が解決できないバトルでも例外を出さない", () => {
     expect(replayTitleOf([])).toBe("自分");
     expect(replayTitleOf([team(true, "わや")])).toBe("わや");
+  });
+});
+
+describe("quietRangesOf / isQuietAt", () => {
+  const gift = (t: number) => ({ t, a: 0, s: 0, g: 0, c: 1, d: 10, k: null, m: null });
+
+  it("ギフトが8秒以上途切れた区間を無風として返し、次のカードの1秒前で終える", () => {
+    const p = payload({ durationMs: 120_000, giftEvents: [gift(60_000)] });
+    const ranges = quietRangesOf(p, buildCards(p), p.durationMs);
+    expect(ranges[0]).toEqual({ startMs: 0, endMs: 60_000 - QUIET_LEAD_MS });
+    expect(isQuietAt(ranges, 30_000)).toBe(true);
+    // カードが出ている間は無風ではない
+    expect(isQuietAt(ranges, 60_000)).toBe(false);
+    // カードが消えたあとは末尾の無風区間
+    expect(isQuietAt(ranges, 110_000)).toBe(true);
+  });
+
+  it("赤帯が出ている区間は飛ばさない(初めてのギフト×N の帯を見逃さないため)", () => {
+    const p = payload({
+      durationMs: 120_000,
+      giftEvents: [gift(60_000)],
+      segments: [
+        {
+          kind: "opening",
+          startMs: 10_000,
+          endMs: 30_000,
+          multiplier: 2,
+          label: "初めてのギフト×2倍",
+          showCountdown: false,
+          confidence: "measured",
+        },
+      ],
+    });
+    const ranges = quietRangesOf(p, buildCards(p), p.durationMs);
+    expect(isQuietAt(ranges, 20_000)).toBe(false);
+    expect(isQuietAt(ranges, 5_000)).toBe(true);
+    expect(isQuietAt(ranges, 45_000)).toBe(true);
+  });
+
+  it("QUIET_MIN_GAP_MS 未満の切れ目は無風にしない", () => {
+    const p = payload({
+      durationMs: 120_000,
+      giftEvents: [gift(1_000), gift(1_000 + REPLAY_BAR_LIFETIME_MS + QUIET_MIN_GAP_MS - 1)],
+    });
+    const ranges = quietRangesOf(p, buildCards(p), p.durationMs);
+    expect(isQuietAt(ranges, 1_000 + REPLAY_BAR_LIFETIME_MS + 100)).toBe(false);
   });
 });

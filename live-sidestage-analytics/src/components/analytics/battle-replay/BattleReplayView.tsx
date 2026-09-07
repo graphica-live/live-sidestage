@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BATTLE_REPLAY_VERSION,
   type BattleReplayPayload,
 } from "@/lib/battle-replay-contract";
 import { assignFactionColors, FALLBACK_COLOR } from "../battle-colors";
 import { buildStageLayout } from "./replay-layout";
-import { buildCards, contributorsAt } from "./replay-select";
+import {
+  buildCards,
+  contributorsAt,
+  isQuietAt,
+  quietRangesOf,
+  QUIET_SKIP_BOOST,
+} from "./replay-select";
 import { ReplayContributorBoard } from "./ReplayContributorBoard";
 import { ReplayControls } from "./ReplayControls";
 import { ReplayStage } from "./ReplayStage";
@@ -92,8 +98,24 @@ export function BattleReplayView({
 }
 
 function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
-  const clock = useReplayClock(payload.durationMs);
   const cards = useMemo(() => buildCards(payload), [payload]);
+
+  // ギフトが途切れた区間の自動早送り。**既定 ON**(ユーザー指示)。
+  const [quietSkip, setQuietSkip] = useState(true);
+  const quietRanges = useMemo(
+    () => quietRangesOf(payload, cards, payload.durationMs),
+    [payload, cards]
+  );
+  // 時計は毎フレームこれを呼ぶ。ここで state を読まず ref 相当の最新値を閉じ込めるのは
+  // useReplayClock 側の責務(boostAt を rAF の依存に入れない)。
+  const boostAt = useCallback(
+    (elapsedMs: number) =>
+      quietSkip && isQuietAt(quietRanges, elapsedMs) ? QUIET_SKIP_BOOST : 1,
+    [quietSkip, quietRanges]
+  );
+
+  const clock = useReplayClock(payload.durationMs, { boostAt });
+  const quietSkipping = quietSkip && isQuietAt(quietRanges, clock.elapsedMs);
 
   // 再生ボタンを押して入ってきた画面なので、開いた時点から動かす(もう一度押させない)
   const started = useRef(false);
@@ -174,10 +196,13 @@ function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
         speed={clock.speed}
         tickRatios={tickRatios}
         tickColors={tickColors}
+        quietSkip={quietSkip}
+        quietSkipping={quietSkipping}
         onToggle={clock.toggle}
         onSeek={clock.seek}
         onSpeed={clock.setSpeed}
         onScrubbing={clock.setScrubbing}
+        onQuietSkip={setQuietSkip}
       />
 
       <div className="flex flex-wrap gap-[6px] border-t border-row-border px-[12px] py-[9px]">
