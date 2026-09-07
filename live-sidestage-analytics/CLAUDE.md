@@ -41,7 +41,19 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 
 - [server.js](server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay/emit.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合
 - [worker.ts](worker.ts) は Next を持たず、担当 shard の TikTok Webcast 接続だけを維持する軽量プロセス。`hash(streamerId) % WORKER_COUNT` で配信者を分散し、`WORKER_INDEX` が自分の担当番号。`GET /healthz` は初回 `resumeAllListeners()` 完了まで 503 を返し、Railway のゼロダウンタイム切替に使う
-- Worker が接続を維持する部屋の条件は `watchedRoomFilter()`（[src/lib/tiktok-listener.ts](src/lib/tiktok-listener.ts)）の1箇所に集約されていて、`getMyRooms()` はこれを使う。**「`Streamer` が1人以上いる」「`AgencyWatch`（事務所の監視対象）が1件以上ある」「`TiktokRoom.monitorUntil` が未来」のいずれか**で、3つ目はイベント機能が期限付きで監視を要求している状態。どれも満たさなくなった部屋は30秒ごとの reconcile が切断する（ギフトデータは残る）
+- Worker が接続を維持する部屋の条件は `watchedRoomFilter()`（[src/lib/watched-room-filter.ts](src/lib/watched-room-filter.ts)。`tiktok-listener.ts` は re-export するだけ）の1箇所に集約されていて、`getMyRooms()`・`worker-status.ts` の `fetchAssignedRooms()`・`tiktok-room.ts` の上限カウントがすべてこれを経由する。**5つの枝の OR** で、どれも満たさなくなった部屋は30秒ごとの reconcile が切断する（ギフトデータは残る）
+
+  | 枝 | 条件 | 意味 |
+  | --- | --- | --- |
+  | 1 | `watches: { some: {} }` | `AgencyWatch`（事務所の監視対象）が1件以上 |
+  | 2 | `monitorUntil > now` | イベント機能が期限付きで監視を要求中 |
+  | 3 | `!monitoringSuspended && streamers: { some: {} }` | `Streamer` が1人以上 |
+  | 4 | `!monitoringSuspended && specialWatch` | 管理画面の「特別監視」 |
+  | 5 | `!monitoringSuspended && lastWatchInstructedAt > now - 30分` | **匿名観測room**（コラボ・バトル相手発見で作られただけの部屋） |
+
+  **枝1・2は `monitoringSuspended` を無視する**（「Sidestageユーザーの室」は監視一時停止より優先）。形は必ず「OR of 連言」を保つこと — `AND(monitoringSuspended:false, OR[...])` に組み替えるとこの不変条件が壊れる。
+
+  **枝5が「Streamer もイベントも無いのに接続している部屋」の正体。** 特別監視room または Streamer 購読中の room がコラボ相手を見つけると（キック条件は `inst.subscriberIds.size > 0 || inst.specialWatch`）、`ensureRoomWatchedForCollab()` が相手の `TiktokRoom` 行を作って `lastWatchInstructedAt` を更新し、相手も監視対象に入る。期限は `AppSetting.anonymousRoomAutoStopEnabled`（本番 `"true"`）と `ANONYMOUS_ROOM_AUTO_STOP_TIMEOUT_MS`（既定30分）で、トグルOFF時は**匿名roomが無期限で監視対象になる**（枝5が `{ monitoringSuspended: false }` だけになるため）。`specialWatch` は枝4でこの stale 判定を免除される
 - Worker → Web は `POST /api/internal/gift-event`（`INTERNAL_API_SECRET` で保護）。`WEB_INTERNAL_URL` 未設定なら Web/Worker 同居とみなして in-process 直呼びにフォールバックする
 - Worker 数を変えたら全プロセスの `WORKER_COUNT` を揃えてから `npm run rebalance-workers -- --apply`
 - **データモデルの肝**: 同一 `tiktokId` は `TiktokRoom` 1行 = TikTok 接続1本を複数の `Streamer`（登録ユーザー）で共有する。ギフト元データ `Gift` は保持期間内は不変だが、**受信から90日で自動削除される**（`gift-retention.ts`。削除前に `GiftDailyListenerStat` / `GiftLifetimeStat` へロールアップし、読み出しは `src/lib/gift-analytics.ts` の統一アクセサが80日境界で切り替える）。以前あった配信者ごとの手動編集・非表示（`GiftEdit`）は 2026-09 に UI・API・テーブルごと撤去した
