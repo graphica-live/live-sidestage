@@ -193,6 +193,15 @@ export function normalizeCatalogEntries(raw: unknown): CatalogEntry[] {
 }
 
 /**
+ * ひらがな・カタカナを含むか(コミュニティギフト救済フォールバック用の簡易判定)。
+ * CJK統合漢字だけの文字列は中国語の可能性を排除できないため対象外にする
+ * (かな1文字でも含んでいれば日本語表記とみなす。false positive よりも見落としを許容する設計)。
+ */
+function hasJapaneseText(s: string): boolean {
+  return /[぀-ヿ]/.test(s);
+}
+
+/**
  * 英語版と日本語版のカタログを giftId で突き合わせる。
  *
  * **英語版が土台。** `name`(一致キー) と `label` は必ず英語版から採る。ここを日本語に
@@ -202,7 +211,14 @@ export function normalizeCatalogEntries(raw: unknown): CatalogEntry[] {
  *
  * 突合の規則:
  *  - 両方にある → `labelJa` は日本語版の表記
- *  - 英語版のみ → `labelJa` は null。2回の取得は別接続・別時刻なので集合ずれは構造的に起きる
+ *  - 英語版のみ、かつ label が日本語を含まない → `labelJa` は null。2回の取得は別接続・
+ *    別時刻なので集合ずれは構造的に起きる
+ *  - 英語版のみ、かつ label がひらがな・カタカナを含む(=既に日本語表記) → `labelJa` は base の label をそのまま採用。
+ *    配信者固有のコミュニティギフト(`tracker_params.gift_subtype === "community_gift"`)は
+ *    `webcast_language` に関わらず base 取得時点で名前が日本語確定している
+ *    (2026-08-27実測、`gift-name-verification/REPORT.md` 発見2)。`refreshGiftCatalogIfStale`
+ *    はja取得を1部屋成功時点で打ち切るため、打ち切り後の部屋にしか出現しないコミュニティギフトは
+ *    ja版に載らない。ここで拾わないと `labelJa` が永久に null のまま欠落する
  *  - 日本語版のみ → **捨てる**。英語の一致キーが作れないので、入れても効果音に結び付けられない
  *
  * 日本語版が英語と同じ文字列でも null にせずそのまま入れる。日本語環境でも英語表記のままの
@@ -214,7 +230,10 @@ export function mergeLocalizedCatalog(
   ja: CatalogEntry[]
 ): LocalizedCatalogEntry[] {
   const jaByGiftId = new Map(ja.map((e) => [e.giftId, e.label]));
-  return base.map((entry) => ({ ...entry, labelJa: jaByGiftId.get(entry.giftId) ?? null }));
+  return base.map((entry) => ({
+    ...entry,
+    labelJa: jaByGiftId.get(entry.giftId) ?? (hasJapaneseText(entry.label) ? entry.label : null)
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -513,6 +532,12 @@ export async function refreshGiftCatalogIfStale(
       const baseByGiftId = new Map<number, CatalogEntry>();
       const jaByGiftId = new Map<number, CatalogEntry>();
       let anyBaseSucceeded = false;
+      // **ja版は1部屋成功すれば十分。** グローバルギフトの日本語名はどの部屋から取っても同じ値
+      // (2026-08-27実測)なので、2部屋目以降のja取得は完全に冗長。配信者固有のコミュニティギフトは
+      // そもそも base 取得時点で名前が日本語確定(webcast_language非依存、2026-08-27実測
+      // `gift-name-verification/REPORT.md` 発見2)なので、そちらのためにja版を叩く必要もない
+      // (base側の日本語名は mergeLocalizedCatalog の hasJapaneseText フォールバックが拾う)。
+      let jaSucceeded = false;
 
       for (const source of sources) {
         // **英語版は必須。** `name`(一致キー)と `label` の供給元。この部屋で取れなければ
@@ -530,6 +555,8 @@ export async function refreshGiftCatalogIfStale(
           if (!baseByGiftId.has(entry.giftId)) baseByGiftId.set(entry.giftId, entry);
         }
 
+        if (jaSucceeded) continue;
+
         // **日本語版は表示専用なので、落ちてもカタログ更新そのものは通す。** 失敗扱いにすると
         // 名前・価格・画像の更新まで止まる。既存の `labelJa` は writeCatalog() の
         // COALESCE が守るので、ここが空でも日本語表示は消えない。
@@ -538,6 +565,7 @@ export async function refreshGiftCatalogIfStale(
           for (const entry of ja) {
             if (!jaByGiftId.has(entry.giftId)) jaByGiftId.set(entry.giftId, entry);
           }
+          if (ja.length > 0) jaSucceeded = true;
         } catch (err) {
           console.warn(
             "[gift-catalog] ja fetch failed (keeping existing labelJa):",
