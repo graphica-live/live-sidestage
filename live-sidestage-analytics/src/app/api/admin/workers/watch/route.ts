@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { addWatchedRoom } from "@/lib/worker-status";
+import { formatExistenceGateError } from "@/lib/tiktok-existence";
 
 // 管理画面から監視対象のTikTok IDを手動で追加する。Streamer登録・AgencyWatch追加と
 // 同じfail-closedな実在確認を通す。追加した部屋はworkerId未割当のまま作られ、
@@ -26,19 +27,16 @@ export async function POST(req: NextRequest) {
   try {
     const result = await addWatchedRoom(tiktokId);
     if (result.status === "invalid") {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      const { error, status } = formatExistenceGateError("INVALID_FORMAT");
+      return NextResponse.json({ error }, { status });
     }
     if (result.status === "not_found") {
-      return NextResponse.json(
-        { error: "このTikTok IDのアカウントが見つかりません。IDを確認してください。" },
-        { status: 400 }
-      );
+      const { error, status } = formatExistenceGateError("USER_NOT_FOUND");
+      return NextResponse.json({ error }, { status });
     }
     if (result.status === "unverified") {
-      return NextResponse.json(
-        { error: "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください。" },
-        { status: 503 }
-      );
+      const { error, status } = formatExistenceGateError("CHECK_UNVERIFIED");
+      return NextResponse.json({ error }, { status });
     }
     return NextResponse.json({
       ok: true,

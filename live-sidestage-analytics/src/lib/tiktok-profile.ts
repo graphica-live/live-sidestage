@@ -308,6 +308,16 @@ export type AccountExistenceCheck = {
    * ここで同じ応答から抽出することで、実在確認1回で両方を賄う。
    */
   userId: string | null;
+  /**
+   * 実在確認(`EXISTS`)と同じ応答から取れた確認モーダル表示用の付随情報。
+   * TikTok ID登録の確認モーダル(アイコン・BIO・フォロー数/フォロワー数)が使う。
+   * 実在確認1回で賄うため、ここでも追加の問い合わせは発生しない。
+   *
+   * オプショナルなのはテスト用の `fetchExistence` 差し替え(既存の integration test 群)が
+   * この項目を持たないため。`checkAccountExistence`(実装)は必ず設定する。未設定時の
+   * 扱いは呼び出し元(`tiktok-existence.ts`)が空値へフォールバックする。
+   */
+  preview?: TiktokAccountPreview;
 };
 
 /**
@@ -335,6 +345,61 @@ export function extractVerifiedUserId(body: unknown, expectedUniqueId: string): 
   if (user === null) return null;
 
   return parseUserId((user as { id?: unknown }).id);
+}
+
+/**
+ * 確認モーダル表示用の付随情報(アバター・BIO・フォロー数/フォロワー数)。
+ * どれも取れなくても実在確認そのものは失敗にしない(付随情報のため)。
+ */
+export type TiktokAccountPreview = {
+  avatarUrl: string | null;
+  signature: string | null;
+  followingCount: number | null;
+  followerCount: number | null;
+};
+
+/**
+ * `EXISTS` と判定された応答から確認モーダル表示用の付随情報を取り出す。
+ * `extractVerifiedNickname` / `extractVerifiedUserId` と同じ流儀(`parseProfileResponse` を
+ * 経由しない。avatar URL の allowlist 検証に落ちても signature/stats まで消えないようにする)。
+ */
+export function extractVerifiedAccountPreview(
+  body: unknown,
+  expectedUniqueId: string
+): TiktokAccountPreview {
+  const empty: TiktokAccountPreview = {
+    avatarUrl: null,
+    signature: null,
+    followingCount: null,
+    followerCount: null,
+  };
+
+  const user = readVerifiedUser(body, expectedUniqueId);
+  if (user === null) return empty;
+
+  const u = user as {
+    avatarLarger?: unknown;
+    avatarMedium?: unknown;
+    avatarThumb?: unknown;
+    signature?: unknown;
+  };
+  const avatarUrl = [u.avatarLarger, u.avatarMedium, u.avatarThumb].find(isAllowedAvatarUrl) ?? null;
+  const signature =
+    typeof u.signature === "string" && u.signature.trim().length > 0 ? u.signature.trim() : null;
+
+  const root = body as { data?: unknown };
+  const data = typeof root.data === "object" && root.data !== null ? root.data : null;
+  const stats = data ? (data as { stats?: unknown }).stats : null;
+  const s = typeof stats === "object" && stats !== null ? (stats as Record<string, unknown>) : null;
+  const followingCount = parseStatCount(s?.followingCount);
+  const followerCount = parseStatCount(s?.followerCount);
+
+  return { avatarUrl, signature, followingCount, followerCount };
+}
+
+/** `data.stats.*Count` を安全な非負整数として読む。それ以外は付随情報として null に落とす。 */
+function parseStatCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 /**
@@ -422,13 +487,22 @@ export async function checkAccountExistence(
   tiktokId: string,
   options: { timeoutMs?: number } = {}
 ): Promise<AccountExistenceCheck> {
+  const emptyPreview: TiktokAccountPreview = {
+    avatarUrl: null,
+    signature: null,
+    followingCount: null,
+    followerCount: null,
+  };
   const response = await requestUserRoom(tiktokId, options.timeoutMs ?? TIMEOUT_MS);
-  if (response.kind !== "json") return { verdict: "UNVERIFIED", nickname: null, userId: null };
+  if (response.kind !== "json")
+    return { verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview };
 
   const verdict = classifyAccountExistence(response.body, tiktokId);
   const nickname = verdict === "EXISTS" ? extractVerifiedNickname(response.body, tiktokId) : null;
   const userId = verdict === "EXISTS" ? extractVerifiedUserId(response.body, tiktokId) : null;
-  return { verdict, nickname, userId };
+  const preview =
+    verdict === "EXISTS" ? extractVerifiedAccountPreview(response.body, tiktokId) : emptyPreview;
+  return { verdict, nickname, userId, preview };
 }
 
 /**

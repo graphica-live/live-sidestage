@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { TiktokAccountConfirmModal, TiktokAccountConfirmPreview } from "@/components/TiktokAccountConfirmModal";
 
 type Step = "input" | "code_issued" | "verifying" | "verified" | "already_verified";
 
@@ -25,6 +26,8 @@ export default function SetupPage() {
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
   const [recentMerge, setRecentMerge] = useState<RecentMerge | null>(null);
+  const [confirmPreview, setConfirmPreview] = useState<TiktokAccountConfirmPreview | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     fetch("/api/streamer/recent-merge")
@@ -102,23 +105,54 @@ export default function SetupPage() {
       return;
     }
 
-    const res = await fetch("/api/verify/generate", {
+    const res = await fetch("/api/verify/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tiktokId: clean }),
     });
 
+    const data = await res.json();
     setLoading(false);
 
-    if (!res.ok) {
-      const data = await res.json();
+    if (!res.ok || !data.ok) {
       setError(data.error || "エラーが発生しました");
       return;
     }
 
+    setTiktokId(data.tiktokId);
+    setConfirmPreview({
+      tiktokId: data.tiktokId,
+      nickname: data.nickname,
+      avatarUrl: data.avatarUrl,
+      signature: data.signature,
+      followingCount: data.followingCount,
+      followerCount: data.followerCount,
+    });
+  }
+
+  async function handleConfirmRegister() {
+    if (!confirmPreview) return;
+    setConfirming(true);
+    setError("");
+
+    const res = await fetch("/api/verify/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tiktokId: confirmPreview.tiktokId }),
+    });
+
     const data = await res.json();
+    setConfirming(false);
+
+    if (!res.ok) {
+      setError(data.error || "エラーが発生しました");
+      setConfirmPreview(null);
+      return;
+    }
+
+    setConfirmPreview(null);
     setCode(data.code);
-    setTiktokId(clean);
+    setTiktokId(data.tiktokId);
     setStep("code_issued");
   }
 
@@ -224,7 +258,7 @@ export default function SetupPage() {
               {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
 
               <button type="submit" disabled={loading} className="btn-primary w-full">
-                {loading ? "処理中..." : "認証コードを発行する"}
+                {loading ? "確認中..." : "認証コードを発行する"}
               </button>
             </form>
           )}
@@ -358,6 +392,15 @@ export default function SetupPage() {
           </Link>
         </div>
       </div>
+
+      {confirmPreview && (
+        <TiktokAccountConfirmModal
+          preview={confirmPreview}
+          busy={confirming}
+          onCancel={() => setConfirmPreview(null)}
+          onConfirm={handleConfirmRegister}
+        />
+      )}
     </div>
   );
 }

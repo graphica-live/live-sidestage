@@ -10,6 +10,7 @@ import type {
 } from "@/lib/worker-status";
 import type { MigrationAuditEntry } from "@/lib/worker-guardian";
 import { sortAssignedRooms, type RoomSortKey, type RoomSortDir } from "./sort-rooms";
+import { TiktokAccountConfirmModal, TiktokAccountConfirmPreview } from "@/components/TiktokAccountConfirmModal";
 
 type WorkerReportWithAudit = WorkerReport & {
   guardianAuditLog: MigrationAuditEntry[];
@@ -189,6 +190,8 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
+  const [confirmPreview, setConfirmPreview] = useState<TiktokAccountConfirmPreview | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const handleAdd = async () => {
     const trimmed = tiktokId.trim();
@@ -197,23 +200,57 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
     setErr("");
     setDone("");
     try {
-      const res = await fetch("/api/admin/workers/watch", {
+      const res = await fetch("/api/admin/workers/watch/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tiktokId: trimmed }),
       });
       const data = await res.json().catch(() => null);
+      if (!res.ok || !(data as { ok?: boolean } | null)?.ok) {
+        setErr((data as { error?: string } | null)?.error ?? "確認に失敗しました");
+        return;
+      }
+      const preview = data as {
+        tiktokId: string;
+        nickname: string | null;
+        avatarUrl: string | null;
+        signature: string | null;
+        followingCount: number | null;
+        followerCount: number | null;
+      };
+      setConfirmPreview(preview);
+    } catch {
+      setErr("確認に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleConfirmAdd = async () => {
+    if (!confirmPreview) return;
+    setConfirming(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/admin/workers/watch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tiktokId: confirmPreview.tiktokId }),
+      });
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
         setErr((data as { error?: string } | null)?.error ?? "追加に失敗しました");
+        setConfirmPreview(null);
         return;
       }
       setDone(`@${(data as { tiktokId: string }).tiktokId} を追加しました（反映まで最大30秒）`);
       setTiktokId("");
+      setConfirmPreview(null);
       onAdded();
     } catch {
       setErr("追加に失敗しました");
+      setConfirmPreview(null);
     } finally {
-      setBusy(false);
+      setConfirming(false);
     }
   };
 
@@ -242,6 +279,15 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
       </div>
       {err && <div className="mt-1 text-xs text-red-400 break-all">{err}</div>}
       {done && !err && <div className="mt-1 text-xs text-green-400">{done}</div>}
+
+      {confirmPreview && (
+        <TiktokAccountConfirmModal
+          preview={confirmPreview}
+          busy={confirming}
+          onCancel={() => setConfirmPreview(null)}
+          onConfirm={handleConfirmAdd}
+        />
+      )}
     </div>
   );
 }
