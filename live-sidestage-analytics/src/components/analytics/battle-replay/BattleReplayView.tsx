@@ -97,7 +97,11 @@ export function BattleReplayView({
   return <ReplayPlayer payload={state.payload} />;
 }
 
-function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
+/**
+ * ペイロードを既に持っている呼び出し元向け。シェアページ(`/b/[token]`)はサーバー側で
+ * 1回だけ取得して渡すので、fetch を挟む `BattleReplayView` を通さない。
+ */
+export function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
   const cards = useMemo(() => buildCards(payload), [payload]);
 
   // ギフトが途切れた区間の自動早送り。**既定 ON**(ユーザー指示)。

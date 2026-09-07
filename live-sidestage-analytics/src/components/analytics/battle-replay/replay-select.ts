@@ -272,6 +272,64 @@ export function contributorsAt(
     .slice(0, limit);
 }
 
+/** 陣営ごとの貢献者集計(バトル全体)。シェアページの一覧モードが使う。 */
+export type ReplayTeamTotals = {
+  teamIndex: number;
+  isSelf: boolean;
+  /** 陣営の表示名。複数人コラボは全員を「 / 」で連結する。 */
+  displayName: string;
+  officialScore: string | null;
+  /** 観測できたギフトのコイン合計。**公式スコアとは一致しない**(倍率・未観測ぶん)。 */
+  observedCoins: number;
+  contributors: { senderIndex: number; coins: number; giftCount: number }[];
+};
+
+/**
+ * バトル全体の貢献者を陣営ごとに集計する。**`contributorsAt` と違い時刻で切らず、
+ * 自陣営に限定もしない**(シェアページは対戦を第三者が俯瞰する画面のため)。
+ *
+ * ギフト明細が1件も無い陣営(相手room未監視)は `contributors: []` で返す。
+ * 呼び出し側が「観測できなかった」注記を出す判断に使う。
+ */
+export function teamTotalsOf(payload: BattleReplayPayload): ReplayTeamTotals[] {
+  const teamOfAnchor: number[] = [];
+  for (const team of payload.teams) {
+    for (const _ of team.participants) teamOfAnchor.push(team.index);
+  }
+
+  const byTeam = new Map<number, Map<number, { senderIndex: number; coins: number; giftCount: number }>>();
+  for (const event of payload.giftEvents) {
+    const teamIndex = teamOfAnchor[event.a];
+    if (teamIndex === undefined) continue;
+    let senders = byTeam.get(teamIndex);
+    if (!senders) {
+      senders = new Map();
+      byTeam.set(teamIndex, senders);
+    }
+    const current = senders.get(event.s);
+    if (current) {
+      current.coins += event.d;
+      current.giftCount += event.c;
+    } else {
+      senders.set(event.s, { senderIndex: event.s, coins: event.d, giftCount: event.c });
+    }
+  }
+
+  return payload.teams.map((team) => {
+    const contributors = [...(byTeam.get(team.index)?.values() ?? [])].sort(
+      (a, b) => b.coins - a.coins || a.senderIndex - b.senderIndex
+    );
+    return {
+      teamIndex: team.index,
+      isSelf: team.isSelf,
+      displayName: team.participants.map((p) => p.displayName).join(" / "),
+      officialScore: team.officialScore,
+      observedCoins: contributors.reduce((sum, c) => sum + c.coins, 0),
+      contributors,
+    };
+  });
+}
+
 /** これ以上のギフトは、配信者枠いっぱいにギフト画像を出す大演出の対象。 */
 export const BIG_GIFT_MIN_DIAMONDS = 10_000;
 
