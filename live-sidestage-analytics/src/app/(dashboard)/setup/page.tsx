@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TiktokAccountConfirmModal, TiktokAccountConfirmPreview } from "@/components/TiktokAccountConfirmModal";
+import { TIKTOK_ID_CHANGE_LOCK_DAYS } from "@/lib/tiktok-id-lock";
 
-type Step = "input" | "code_issued" | "verifying" | "verified" | "already_verified";
+type Step = "input" | "verified" | "already_verified";
 
 type RecentMerge = {
   id: string;
@@ -18,12 +19,8 @@ export default function SetupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("input");
   const [tiktokId, setTiktokId] = useState("");
-  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState(false);
-  const [issuedApiKey, setIssuedApiKey] = useState("");
-  const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
   const [recentMerge, setRecentMerge] = useState<RecentMerge | null>(null);
   const [confirmPreview, setConfirmPreview] = useState<TiktokAccountConfirmPreview | null>(null);
@@ -48,46 +45,20 @@ export default function SetupPage() {
   }
 
   useEffect(() => {
-    fetch("/api/streamer/api-key")
-      .then((r) => r.json())
-      .then((data) => setHasApiKey(Boolean(data.hasApiKey)))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
     fetch("/api/billing/subscription")
       .then((r) => r.json())
       .then((data) => setPlan(data.plan ?? "FREE"))
       .catch(() => {});
   }, []);
 
-  async function handleIssueApiKey() {
-    setApiKeyLoading(true);
-    const res = await fetch("/api/streamer/api-key", { method: "POST" });
-    const data = await res.json();
-    setApiKeyLoading(false);
-
-    if (!res.ok) {
-      setError(data.error || "APIキーの発行に失敗しました");
-      return;
-    }
-
-    setIssuedApiKey(data.apiKey);
-    setHasApiKey(true);
-  }
-
   useEffect(() => {
     // 認証済み/認証コード発行済みの状態を判定し、初回入力フォームを飛ばす
     fetch("/api/verify/generate", { method: "GET" })
       .then((r) => r.json())
       .then((data) => {
-        if (data.verified && data.tiktokId) {
+        if (data.tiktokId) {
           setTiktokId(data.tiktokId);
           setStep("already_verified");
-        } else if (data.code && data.tiktokId) {
-          setCode(data.code);
-          setTiktokId(data.tiktokId);
-          setStep("code_issued");
         }
       })
       .catch(() => {});
@@ -151,31 +122,7 @@ export default function SetupPage() {
     }
 
     setConfirmPreview(null);
-    setCode(data.code);
     setTiktokId(data.tiktokId);
-    setStep("code_issued");
-  }
-
-  async function handleVerify() {
-    setError("");
-    setLoading(true);
-    setStep("verifying");
-
-    const res = await fetch("/api/verify/check", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tiktokId }),
-    });
-
-    const data = await res.json();
-    setLoading(false);
-
-    if (!res.ok || !data.ok) {
-      setError(data.error || "認証に失敗しました");
-      setStep("code_issued");
-      return;
-    }
-
     setStep("verified");
     setTimeout(() => router.push("/analytics"), 1500);
   }
@@ -183,7 +130,6 @@ export default function SetupPage() {
   function handleReset() {
     setStep("input");
     setTiktokId("");
-    setCode("");
     setError("");
   }
 
@@ -222,13 +168,13 @@ export default function SetupPage() {
             <div className="space-y-4">
               <div className="text-center py-2 space-y-1">
                 <div className="text-3xl">✓</div>
-                <p className="text-green-600 dark:text-green-400 font-semibold">認証済みです</p>
+                <p className="text-green-600 dark:text-green-400 font-semibold">登録済みです</p>
                 <p className="text-sm text-muted">
                   対象のTikTok ID: <span className="font-mono text-brand">@{tiktokId}</span>
                 </p>
               </div>
               <button onClick={handleReset} className="btn-ghost w-full text-sm">
-                別のTikTok IDで認証をやり直す
+                別のTikTok IDに変更する
               </button>
             </div>
           )}
@@ -258,128 +204,18 @@ export default function SetupPage() {
               {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
 
               <button type="submit" disabled={loading} className="btn-primary w-full">
-                {loading ? "確認中..." : "認証コードを発行する"}
+                {loading ? "確認中..." : "TikTok IDを登録する"}
               </button>
             </form>
-          )}
-
-          {(step === "code_issued" || step === "verifying") && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-strong mb-1">認証対象のTikTok ID</p>
-                <p className="font-mono text-brand">@{tiktokId}</p>
-              </div>
-
-              <div className="bg-surface border border-brand/30 rounded-lg p-4">
-                <p className="text-xs text-muted mb-2">
-                  以下のコードを TikTok プロフィールの自己紹介(bio)に追記してください
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="text-lg font-mono font-bold text-strong tracking-wider bg-black/5 dark:bg-white/5 px-3 py-2 rounded flex-1 text-center">
-                    {code}
-                  </code>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(code)}
-                    className="btn-ghost text-xs"
-                    title="コピー"
-                  >
-                    コピー
-                  </button>
-                </div>
-              </div>
-
-              <div className="text-xs text-muted space-y-1">
-                <p>① TikTokアプリ → プロフィール編集 → 自己紹介欄に上記コードを貼り付け</p>
-                <p>② 保存後、下の「確認する」ボタンを押してください</p>
-                <p>③ 認証完了後、コードはbioから削除して構いません</p>
-              </div>
-
-              {error && <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>}
-
-              <div className="flex gap-2">
-                <button
-                  onClick={handleReset}
-                  className="btn-ghost flex-1 text-sm"
-                >
-                  やり直す
-                </button>
-                <button
-                  onClick={handleVerify}
-                  disabled={step === "verifying"}
-                  className="btn-primary flex-1"
-                >
-                  {step === "verifying" ? "確認中..." : "確認する"}
-                </button>
-              </div>
-
-              <a
-                href={`https://www.tiktok.com/@${tiktokId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1 text-xs text-muted hover:text-brand transition-colors"
-              >
-                プロフィールを開く
-                <ExternalLinkIcon />
-              </a>
-
-              <div className="text-center pt-1 border-t border-border">
-                <p className="text-[11px] text-muted mt-2 mb-1">
-                  オーバーレイはBIO認証前でも利用できます。認証は後からでも構いません。
-                </p>
-                <button
-                  onClick={() => router.push("/analytics")}
-                  className="text-xs text-brand hover:underline"
-                >
-                  後で認証する(今すぐダッシュボードへ)
-                </button>
-              </div>
-            </div>
           )}
 
           {step === "verified" && (
             <div className="text-center py-4 space-y-2">
               <div className="text-4xl">✓</div>
-              <p className="text-green-600 dark:text-green-400 font-semibold">認証完了!</p>
+              <p className="text-green-600 dark:text-green-400 font-semibold">登録完了!</p>
               <p className="text-sm text-muted">解析ページへ移動しています...</p>
             </div>
           )}
-        </div>
-
-        <div className="card space-y-3 mt-4">
-          <div>
-            <p className="text-sm text-strong font-semibold">TikEffect連携用APIキー</p>
-            <p className="text-xs text-muted mt-1">
-              TikEffectの称号ウィジェット設定画面にこのキーを貼り付けると、先月度貢献MVP/TOP5を自動反映できます。
-            </p>
-          </div>
-
-          {issuedApiKey && (
-            <div className="bg-surface border border-brand/30 rounded-lg p-4">
-              <p className="text-xs text-muted mb-2">
-                このキーは今だけ表示されます。コピーしてTikEffectに保存してください。
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="text-xs font-mono text-strong break-all bg-black/5 dark:bg-white/5 px-3 py-2 rounded flex-1">
-                  {issuedApiKey}
-                </code>
-                <button
-                  onClick={() => navigator.clipboard.writeText(issuedApiKey)}
-                  className="btn-ghost text-xs"
-                  title="コピー"
-                >
-                  コピー
-                </button>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={handleIssueApiKey}
-            disabled={apiKeyLoading}
-            className="btn-primary w-full text-sm"
-          >
-            {apiKeyLoading ? "処理中..." : hasApiKey ? "APIキーを再発行する" : "APIキーを発行する"}
-          </button>
         </div>
 
         <div className="card space-y-3 mt-4">
@@ -399,25 +235,9 @@ export default function SetupPage() {
           busy={confirming}
           onCancel={() => setConfirmPreview(null)}
           onConfirm={handleConfirmRegister}
+          lockNoticeText={`登録後${TIKTOK_ID_CHANGE_LOCK_DAYS}日間はTikTok IDを変更できません`}
         />
       )}
     </div>
-  );
-}
-
-function ExternalLinkIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="w-3 h-3"
-    >
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
   );
 }
