@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: gift-catalog
-last_updated: 2026-09-06
-last_risk: LOW
-last_reviewers: レビュー省略(ユーザー明示、TC-GC-023b追加分)。過去の HIGH レビュー実績: Qwen(TestCase Mode、NO ISSUESをカナリアで実施確認済み) + Fable(TestCase Mode、Codex/Geminiはquota切れのためユーザー承認済みの代理として起動)
+last_updated: 2026-09-07
+last_risk: MEDIUM
+last_reviewers: DeepSeek(Design Mode 2ラウンド + Code Mode、TestCase十分性レビューはCode Modeで同時実施。TC-GC-027/028追加分)
 ---
 
 # テストベースライン: gift-catalog
@@ -20,7 +20,7 @@ last_reviewers: レビュー省略(ユーザー明示、TC-GC-023b追加分)。�
 | TC-GC-004 | 同名別giftIdは両方保持 | `normalizeCatalogEntries` | 正常 | 同じ表示名で giftId が異なる2件 | 両方残す(giftId照合にしない理由そのもの) | 同上 | PASS | |
 | TC-GC-005 | アイコンURL採用の優先順位 | `normalizeCatalogEntries` | 正常/異常 | `image.url_list`/`giftImage`/`icon`、allowlist外URL混在 | allowlist内を優先採用、無ければnull(エントリは残す) | 同上 | PASS | |
 | TC-GC-006 | 英日突合 | `mergeLocalizedCatalog` | 正常 | 英語版+日本語版レスポンス | giftIdで突合し`labelJa`を付与。`name`/`label`は英語版のまま | 同上 | PASS | |
-| TC-GC-007 | 日本語版欠損時の扱い | `mergeLocalizedCatalog` | 異常 | 日本語版が空、または該当giftIdが日本語版に無い | 全エントリを返しつつ`labelJa: null`(取得失敗を理由にカタログ更新自体は止めない) | 同上 | PASS | |
+| TC-GC-007 | 日本語版欠損時の扱い | `mergeLocalizedCatalog` | 異常 | 日本語版が空、または該当giftIdが日本語版に無い | 全エントリを返しつつ、base の label がひらがな・カタカナを含まなければ`labelJa: null`(取得失敗を理由にカタログ更新自体は止めない) | 同上 | PASS | 2026-09-07: `hasJapaneseText`フォールバック追加に伴い期待結果を更新。日本語を含む場合の挙動はTC-GC-027参照 |
 | TC-GC-008 | TTLキャッシュ | `refreshGiftCatalogIfStale` | 正常/境界 | カタログ空/TTL内/TTL超過 | 空またはTTL超過時のみ取得、TTL内は取得元解決すらしない | 同上 | PASS | |
 | TC-GC-009 | 失敗時の非伝播とバックオフ | `refreshGiftCatalogIfStale` | 異常 | 取得失敗、空/全件不正レスポンス | 呼び出し元へ例外を投げず、`CATALOG_FAILURE_BACKOFF_MS`(30分)は叩き直さない。成功でバックオフ解除 | 同上 | PASS | ライブ接続を巻き込まない不変条件 |
 | TC-GC-010 | 同時呼び出しの単一飛行化 | `refreshGiftCatalogIfStale` | 並行 | 同一プロセスから同時に複数回呼ぶ | 実際の取得は1回にまとまる | 同上 | PASS | |
@@ -41,6 +41,8 @@ last_reviewers: レビュー省略(ユーザー明示、TC-GC-023b追加分)。�
 | TC-GC-024 | 管理画面API: 未認証アクセス | `/api/admin/proxy` | 異常 | 管理者セッションなし(`getAdminSession()`が`null`) | `401 Unauthorized`、`getSetting`を呼ばない | `npx vitest run src/app/api/admin/proxy/route.test.ts` | PASS | 既存`getAdminSession()`ゲートを流用(`admin/workers/route.ts`と同型)。unit化(TestCaseレビューFable指摘) |
 | TC-GC-025 | 管理画面API: 破損/欠損データへの耐性と順序 | `/api/admin/proxy` | 異常/境界 | 設定値が無い/JSON破損/配列でない形状/正常な複数件 | いずれもエラーにせず空配列または正しい配列を返す。正常時は新しい順(reverse)で返す | `npx vitest run src/app/api/admin/proxy/route.test.ts` | PASS | |
 | TC-GC-026 | 管理画面: 履歴0件時の表示 | `/admin/proxy` | 境界/empty state | 監査ログが0件 | エラーにならず空状態の文言を表示する | Playwright(headless) | PASS | 下記「Web実機確認」参照 |
+| TC-GC-027 | コミュニティギフト救済フォールバック | `mergeLocalizedCatalog` | 正常/境界 | 日本語版に無いgiftIdで、base の label がひらがな・カタカナを含む/含まない | 含む場合は`labelJa`にbaseのlabelをそのまま採用、含まない場合は`labelJa: null` | `npx vitest run src/lib/tiktok-gift-catalog.test.ts` | PASS | 配信者固有コミュニティギフト(`tracker_params.gift_subtype === "community_gift"`)はwebcast_language非依存でbase取得時点から日本語名確定(2026-08-27/28実測、`gift-name-verification/REPORT.md`発見2)。次項TC-GC-028のja取得打ち切り最適化とセットで、打ち切り後の部屋固有ギフトの`labelJa`欠落を防ぐ |
+| TC-GC-028 | ja版取得の1部屋成功後スキップ | `refreshGiftCatalogIfStale` | 正常/異常 | 複数部屋(`sources`)構成で、1部屋目のja取得が成功/失敗するケース | 1部屋目成功時は2部屋目以降でja版を叩かない(base のみ継続)。1部屋目失敗時は2部屋目でja取得を再試行する | 同上 | PASS | グローバルギフトの日本語名はどの部屋から取得しても同一値(2026-08-27実測)なので2部屋目以降のja取得は冗長。`GIFT_CATALOG_PROXY_URL`(日本プロキシ)経由のリクエスト削減が目的。base側の複数部屋和集合(TC-GC-011)は変更なし |
 
 ## Quality Gate
 
