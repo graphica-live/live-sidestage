@@ -5,7 +5,7 @@ import { GOLD } from "../battle-colors";
 import { initialOf, rippleScaleForCoins } from "./replay-format";
 import { cellBackground } from "./replay-color";
 import type { StageCell } from "./replay-layout";
-import { BIG_GIFT_DURATION_MS, type ReplayCard } from "./replay-select";
+import { BIG_GIFT_DURATION_MS, bigGiftTierOf, type ReplayCard } from "./replay-select";
 import { ReplayGiftCard } from "./ReplayGiftCard";
 
 /** 大ギフト演出の出入り。`0 → 0.12` で立ち上げ、`0.74 → 1` で伸びながら消える。 */
@@ -78,10 +78,12 @@ export function ReplayCell({
 
   // ギフト画像が取れないときは大演出を出さない(配信者アイコンを隠すだけになるため)。
   const bigGiftImg = bigGift ? gifts[bigGift.giftIndex]?.img ?? null : null;
+  const bigGiftTier = bigGift ? bigGiftTierOf(bigGift.diamonds) : null;
   const cellClass = [
     "replay-cell",
     cell.right ? "replay-cell--right" : "",
-    bigGiftImg ? "replay-cell--biggift" : "",
+    // 配信者アイコンを隠すのは枠いっぱいの `big` だけ。`mid` は枠の半分しか覆わない。
+    bigGiftImg && bigGiftTier === "big" ? "replay-cell--biggift" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -90,7 +92,7 @@ export function ReplayCell({
     <div className={cellClass} style={{ background: cellBackground(color) }}>
       {bigGiftImg && bigGift ? (
         <div
-          className="replay-biggift"
+          className={bigGiftTier === "mid" ? "replay-biggift replay-biggift--mid" : "replay-biggift"}
           // **出入りは CSS アニメではなく elapsedMs から計算する。** CSS の尺は実時間なので、
           // 一時停止・シーク中に走り切ってしまい、opacity 0 の演出が枠に残ったまま
           // 配信者アイコンだけ消えた状態になる(描画は elapsedMs の純関数、が全体の設計)。

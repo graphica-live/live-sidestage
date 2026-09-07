@@ -392,7 +392,8 @@ body {
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
-/* 10000コイン以上のギフトは配信者枠いっぱいの画像で見せる。優しく揺らして最後にフェードアウト。
+/* 10000コイン以上のギフトは配信者枠いっぱいの画像で見せる。1000〜9999コインは同じ演出を半分の
+   大きさ(.replay-biggift--mid)で出す。優しく揺らして最後にフェードアウト。
    --bg-dur は演出の尺で、再生速度で割った値を React が inline で渡す */
 .replay-biggift {
   position: absolute;
@@ -412,6 +413,11 @@ body {
   filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.6));
   /* 揺れは演出尺の 1/4 周期。尺が変わっても揺れの回数は変わらない */
   animation: replay-biggift-shake calc(var(--bg-dur, 3200ms) / 4) ease-in-out infinite;
+}
+/* 1000〜9999コインは大演出の半分。配信者アイコンは隠さない(枠の半分しか覆わないため) */
+.replay-biggift--mid img {
+  width: 44%;
+  height: 44%;
 }
 /* 演出中は配信者アイコンを隠す(枠内で画像を最大に見せる) */
 .replay-cell--biggift .replay-host {

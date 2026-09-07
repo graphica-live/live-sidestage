@@ -29,6 +29,8 @@ import {
   bigGiftsByAnchor,
   BIG_GIFT_DURATION_MS,
   BIG_GIFT_MIN_DIAMONDS,
+  bigGiftTierOf,
+  MID_GIFT_MIN_DIAMONDS,
   QUIET_LEAD_MS,
   QUIET_MIN_GAP_MS,
 } from "./replay-select";
@@ -131,7 +133,7 @@ describe("bigGiftsByAnchor", () => {
     payload({
       giftEvents: [
         // 閾値ちょうど未満 / ちょうど
-        { t: 1000, a: 0, s: 0, g: 0, c: 1, d: BIG_GIFT_MIN_DIAMONDS - 1, k: null, m: null },
+        { t: 1000, a: 0, s: 0, g: 0, c: 1, d: MID_GIFT_MIN_DIAMONDS - 1, k: null, m: null },
         { t: 2000, a: 0, s: 0, g: 0, c: 1, d: BIG_GIFT_MIN_DIAMONDS, k: null, m: null },
         { t: 2500, a: 1, s: 1, g: 0, c: 1, d: 34_999, k: null, m: null },
         // 同じ枠で重なる2発。新しい方を採る
@@ -177,6 +179,37 @@ describe("bigGiftsByAnchor", () => {
     const visible = cardsByAnchor(cardsAt(many, 1200), 2);
     expect(visible[0]!.some((card) => card.diamonds === 50_000)).toBe(false);
     expect(bigGiftsByAnchor(many, 1200, 2)[0]?.diamonds).toBe(50_000);
+  });
+
+  it("1000〜9999コインは mid 段として演出を出す", () => {
+    expect(bigGiftTierOf(MID_GIFT_MIN_DIAMONDS - 1)).toBeNull();
+    expect(bigGiftTierOf(MID_GIFT_MIN_DIAMONDS)).toBe("mid");
+    expect(bigGiftTierOf(BIG_GIFT_MIN_DIAMONDS - 1)).toBe("mid");
+    expect(bigGiftTierOf(BIG_GIFT_MIN_DIAMONDS)).toBe("big");
+
+    const mid = buildCards(
+      payload({
+        giftEvents: [{ t: 1000, a: 0, s: 0, g: 0, c: 1, d: MID_GIFT_MIN_DIAMONDS, k: null, m: null }],
+      })
+    );
+    expect(bigGiftsByAnchor(mid, 1000, 2)[0]?.diamonds).toBe(MID_GIFT_MIN_DIAMONDS);
+  });
+
+  it("同じ枠で段が違うときは big を優先し、mid では上書きしない", () => {
+    const mixed = buildCards(
+      payload({
+        giftEvents: [
+          { t: 1000, a: 0, s: 0, g: 0, c: 1, d: 20_000, k: null, m: null },
+          { t: 1500, a: 0, s: 1, g: 0, c: 1, d: 5_000, k: null, m: null },
+          { t: 2000, a: 1, s: 0, g: 0, c: 1, d: 5_000, k: null, m: null },
+          { t: 2500, a: 1, s: 1, g: 0, c: 1, d: 20_000, k: null, m: null },
+        ],
+      })
+    );
+    // 後から来た mid は、演出中の big を押しのけない
+    expect(bigGiftsByAnchor(mixed, 1600, 2)[0]?.diamonds).toBe(20_000);
+    // 逆に mid の最中に来た big は差し替わる
+    expect(bigGiftsByAnchor(mixed, 2500, 2)[1]?.diamonds).toBe(20_000);
   });
 });
 

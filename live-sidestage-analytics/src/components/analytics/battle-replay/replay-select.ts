@@ -330,14 +330,27 @@ export function teamTotalsOf(payload: BattleReplayPayload): ReplayTeamTotals[] {
   });
 }
 
-/** これ以上のギフトは、配信者枠いっぱいにギフト画像を出す大演出の対象。 */
+/** これ以上のギフトは、配信者枠いっぱい(88%)にギフト画像を出す大演出の対象。 */
 export const BIG_GIFT_MIN_DIAMONDS = 10_000;
 
-/** 大演出の尺(揺れ → フェードアウトまで)。カードの寿命より短くする。 */
+/** これ以上 `BIG_GIFT_MIN_DIAMONDS` 未満のギフトは、`big` の半分(44%)の演出を出す。 */
+export const MID_GIFT_MIN_DIAMONDS = 1_000;
+
+/** 大演出の尺(揺れ → フェードアウトまで)。カードの寿命より短くする。2段で共通。 */
 export const BIG_GIFT_DURATION_MS = 3_200;
 
+export type BigGiftTier = "big" | "mid";
+
+/** ダイヤ額から演出の段を決める。対象外は null。 */
+export function bigGiftTierOf(diamonds: number): BigGiftTier | null {
+  if (diamonds >= BIG_GIFT_MIN_DIAMONDS) return "big";
+  if (diamonds >= MID_GIFT_MIN_DIAMONDS) return "mid";
+  return null;
+}
+
 /**
- * anchor ごとの「今 大演出を出すギフト」。同じ枠で重なったら**新しい方**を採る。
+ * anchor ごとの「今 演出を出すギフト」。同じ枠で重なったら**上の段を優先**し、
+ * 同じ段どうしなら新しい方を採る(`mid` の最中に `big` が来たら差し替わるが、逆は起きない)。
  * カードの表示上限(`cardsByAnchor`)とは独立に、全カードから選ぶ
  * (上限で押し出されたカードの演出だけ消えるのを防ぐ)。
  */
@@ -348,12 +361,22 @@ export function bigGiftsByAnchor(
 ): (ReplayCard | null)[] {
   const result: (ReplayCard | null)[] = new Array(anchorCount).fill(null);
   for (const card of cards) {
-    if (card.diamonds < BIG_GIFT_MIN_DIAMONDS) continue;
+    if (bigGiftTierOf(card.diamonds) === null) continue;
     if (card.startMs > elapsedMs) continue;
     if (elapsedMs >= card.startMs + BIG_GIFT_DURATION_MS) continue;
     const current = result[card.anchorIndex];
     if (current === undefined) continue;
-    if (!current || card.startMs >= current.startMs) result[card.anchorIndex] = card;
+    if (!current) {
+      result[card.anchorIndex] = card;
+      continue;
+    }
+    const isBig = bigGiftTierOf(card.diamonds) === "big";
+    const currentIsBig = bigGiftTierOf(current.diamonds) === "big";
+    if (isBig !== currentIsBig) {
+      if (isBig) result[card.anchorIndex] = card;
+      continue;
+    }
+    if (card.startMs >= current.startMs) result[card.anchorIndex] = card;
   }
   return result;
 }

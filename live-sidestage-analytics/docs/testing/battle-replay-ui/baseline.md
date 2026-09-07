@@ -1,6 +1,6 @@
 ---
-last_updated: 2026-09-07
-last_risk: MEDIUM
+last_updated: 2026-09-08
+last_risk: LOW
 last_reviewers: [deepseek-v4-flash]
 ---
 
@@ -83,7 +83,8 @@ last_reviewers: [deepseek-v4-flash]
 | TC-BRU-047 | ステージ中央の時計は残り時間のカウントダウン | `ReplayScoreBar` | 正常/境界 | 5分バトルの先頭 / 再生位置 30 秒 / 末尾 | 先頭で `05:00`、30 秒地点で `04:30`、末尾で `00:00`（`00:00` 開始のカウントアップではない） | `[pw]` | PASS | 実バトル画面と同じ向き。尺を超えても負値にしない |
 | TC-BRU-046 | `prefers-reduced-motion: reduce` ではスコアバーが補間せず即座に新しい幅になる | `.replay-seg` の `@media (prefers-reduced-motion: reduce)` | 異常系/回帰 | `reducedMotion: "reduce"` のブラウザコンテキストで再生 | セグメントの `transition-property` が `none`。幅の変化が中間値を経ず1フレームで到達する | `[pw]` | PASS（`transition-property=none`、幅の観測値が 400ms 間 1 種類のみ） | 補間時間は速度連動のインライン値なので、ここを止めるのは CSS の media query 側だけ |
 | TC-BRU-049 | ギフトカードのギフト画像に背景色を敷かない | `.replay-thumb` | 正常/回帰 | 画像付きギフトのカードが出ている位置へシーク | `img.replay-thumb` の `background-image` が `none` / `background-color` が透明で、`object-fit: contain`。画像が取れないときのプレースホルダ（`span.replay-thumb`）にだけ面が出る | `[pw]` | PASS（`bgImage=none` / `bgColor=rgba(0,0,0,0)` / `object-fit=contain`） | 透過PNGの下にオレンジのグラデーションを敷いていて絵が読めなかった |
-| TC-BRU-050 | 10,000コイン以上のギフトは配信者枠いっぱいの画像で演出する | `bigGiftsByAnchor` / `.replay-biggift` | 正常/境界/異常系 | ①該当ギフトの発生位置へシーク ②`BIG_GIFT_DURATION_MS` を過ぎた位置 ③閾値未満のギフト ④カード表示上限を超えた枠 | ①枠の 88% までギフト画像が出て揺れ、配信者アイコンが `opacity: 0` で隠れる。演出の尺は再生速度で割られる ②演出が消えて配信者アイコンが戻る ③演出を出さない ④上限で押し出されても演出は出る | `[pw]` `[unit]` | PASS（実測: 演出 226×208px / セル 254×233px、`.replay-host` の `opacity=0`、尺+400ms で要素数 0。境界・上限は unit で固定） | ギフト画像が無いギフトでは演出を出さない（アイコンだけ消えるのを防ぐ） |
+| TC-BRU-050 | 10,000コイン以上のギフトは配信者枠いっぱいの画像で演出する | `bigGiftsByAnchor` / `.replay-biggift` | 正常/境界/異常系 | ①該当ギフトの発生位置へシーク ②`BIG_GIFT_DURATION_MS` を過ぎた位置 ③1,000コイン未満のギフト ④カード表示上限を超えた枠 | ①枠の 88% までギフト画像が出て揺れ、配信者アイコンが `opacity: 0` で隠れる。演出の尺は再生速度で割られる ②演出が消えて配信者アイコンが戻る ③演出を出さない ④上限で押し出されても演出は出る | `[pw]` `[unit]` | PASS（実測: 画像幅 = セル幅の 0.738、`.replay-cell--biggift` あり、`.replay-host` の `opacity=0`、尺+4000ms で要素数 0。境界・上限は unit で固定） | ギフト画像が無いギフトでは演出を出さない（アイコンだけ消えるのを防ぐ） |
+| TC-BRU-055 | 1,000〜9,999コインのギフトは半分の大きさで演出し、配信者アイコンを隠さない | `bigGiftTierOf` / `.replay-biggift--mid` | 正常/境界 | ①該当ギフトの発生位置へシーク ②999コインのギフト ③同じ枠で 10,000コイン以上と重なった位置、およびその逆順 | ①枠の 44%（10,000コイン以上の半分）でギフト画像が出て揺れ、配信者アイコンは見えたまま。出入りと尺は 10,000コイン以上と同じ ②演出を出さない ③どちらの順でも 10,000コイン以上の演出が表示され、配信者アイコンが隠れる | `[pw]` `[unit]` | PASS（実測: mid の画像幅 = セル幅の 0.351 で big の 0.738 の約半分、`.replay-cell--biggift` なし・`.replay-host` の `opacity=1`、尺+4000ms で要素数 0。999コイン境界と段の優先は unit で固定） | 額の段が上のギフトを、後から来た下の段のギフトが押しのけないこと |
 | TC-BRU-052 | 大ギフト演出の出入りは一時停止・シークでも再生位置に従う | `bigGiftPhase` / `.replay-biggift` | 異常系/回帰 | 一時停止したまま演出の区間へシークし、実時間で 2.5 秒待つ。さらに区間の後半・区間外へシーク | 待っても演出は消えず、`opacity` が再生位置に応じた値のまま（立ち上がり 0.26 → 後半 0.12 と単調減少）。区間を出ると要素ごと消え、配信者アイコンが戻る | `[pw]` | PASS（一時停止2.5秒後 `opacity=0.257` / +3000ms `0.121` / +3600ms 要素数 0） | CSS アニメは実時間で走り切るため、一時停止中に `opacity: 0` の演出が残り配信者アイコンだけ消えていた |
 | TC-BRU-051 | 自動早送り中はステージ上部の時計チップも点滅する | `ReplayScoreBar` / `.replay-clock--boost` | 正常/状態遷移 | 無風区間 / 通常区間へシーク。`prefers-reduced-motion: reduce` でも確認 | 無風区間では時計が `--replay-gold`（`rgb(245,196,81)`）の文字色 + 同色 1px の内側リングになり `replay-clock-blink` で点滅する。通常区間では既定の白に戻り `animation-name: none`。reduced-motion では点滅しないが色は残る | `[pw]` | PASS（無風で `replay-clock--boost` / `rgb(245,196,81)` / 点滅、通常で `none`、reduced-motion で `animation-name: none`） | 時計だけ速く進むので、色が変わらないと早送り中か判らない |
 | TC-BRU-053 | 残り時間の時計はスコアバーと重ならない | `.replay-clock` / `.replay-scorebar` | 正常/回帰 | 再生を開始して一時停止し、時計・スコアバー・各セグメントの矩形を測る | 時計の上端がスコアバーの下端より下にあり、どのセグメントとも矩形が交差しない。時計自体は読める | `[pw]` | PASS（実測: バー下端 143 / 時計 149〜169.5、`overlapBar=false` / `overlapSeg=false`） | 以前はバー中央に重ねていてスコア数値と時計が互いに潰し合っていた |
