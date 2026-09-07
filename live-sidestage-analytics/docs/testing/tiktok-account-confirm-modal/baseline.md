@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: tiktok-account-confirm-modal
 last_updated: 2026-09-07
 last_risk: HIGH
-last_reviewers: DeepSeek(Code Mode)
+last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode)
 ---
 
 # テストベースライン: tiktok-account-confirm-modal
@@ -27,7 +27,8 @@ TikTok ID登録(setup画面の初回登録 / admin-workers画面の監視対象�
 | TC-TACM-005 | BIOが空文字の場合はBIO要素を描画しない | モーダル | 境界 | `data.user.signature`が空文字 | BIO領域が表示されずレイアウトが詰まる(空行を残さない) | コードレビュー(`preview.signature`の truthy チェック) + 実データでの目視確認 | PASS | 今回のテストアカウントはBIOありのため空文字ケースは実データで再現できず、コードパスの確認に留める |
 | TC-TACM-006 | 「キャンセル」でモーダルを閉じ登録しない | 両画面 | UI | 確認モーダル表示中に「キャンセル」押下 | モーダルが閉じる。確定API(`/api/verify/generate` 等)は呼ばれない。入力欄の値は保持される | Playwright | PASS | |
 | TC-TACM-007 | Escキーでモーダルを閉じ登録しない | 両画面 | UI | 確認モーダル表示中にEscキー | モーダルが閉じる。確定APIは呼ばれない | Playwright(admin-workers画面で確認) | PASS | |
-| TC-TACM-008 | 「登録する」で確定し既存の登録APIを実行する | 両画面 | 正常 | 確認モーダル表示中に「登録する」押下 | setup: `/api/verify/generate`が呼ばれ認証コード発行画面へ遷移。admin: `/api/admin/workers/watch`が呼ばれ一覧が更新される | Playwright | PASS | |
+| TC-TACM-008 | 「登録する」で確定し既存の登録APIを実行する | 両画面 | 正常 | 確認モーダル表示中に「登録する」押下 | setup: `/api/verify/generate`が呼ばれ、モーダルが閉じて「登録完了!」表示へ直接遷移(BIO認証ステップを経由しない)。admin: `/api/admin/workers/watch`が呼ばれ一覧が更新される | Playwright | PASS | 2026-09: BIO認証UI撤去に伴い、setup側の遷移を「認証コード発行画面」経由から「登録完了」への直接遷移に更新 |
+| TC-TACM-013 | setup画面の確認モーダルにのみ7日ロックの注意書きを表示する | 両画面 | UI | 確認モーダル表示中(setup / admin-workers両方) | setup: 「このユーザーでよろしいですか？」の下に「登録後7日間はTikTok IDを変更できません」を表示。admin-workers: 注意書き非表示(`lockNoticeText`未指定) | Playwright(両画面) | PASS | `TiktokAccountConfirmModal`の`lockNoticeText` propはsetup画面からのみ渡される |
 | TC-TACM-009 | プレビューAPIはDBへ一切書き込まない | `previewTiktokAccount` / preview route | 正常 | 実在するIDでpreview呼び出し | `Streamer.tiktokId`・`TiktokRoom`等に副作用が発生しない(確定APIを呼ぶまでDB状態が変わらない) | コードレビュー(previewエンドポイントの実装がDBアクセスを含まないことを確認) + review-auto Code Modeでの重点確認項目 | PASS | |
 | TC-TACM-010 | preview/確定エンドポイントとも認証必須 | `POST /api/verify/preview` / `POST /api/admin/workers/watch/preview` | 異常 | 未ログイン(session無し) | 401(setup側)、admin側は`getAdminSession()`ガード | コードレビュー(`getServerSession`/`getAdminSession`呼び出し確認、既存確定APIと同じガード) | PASS | |
 | TC-TACM-011 | Visual QA: comp.pngとの照合 | モーダルUI全体 | UI | 実データ(ayane_0327)でモーダル表示、幅1280pxで撮影 | 構造・余白・タイポ・角丸・情報密度・要素インベントリが一致。色のみDESIGN.md記載値(#fe2c55)と実装(`--accent`実測indigo)に乖離があるが、既存`.btn-primary`踏襲でありDESIGN.md側の陳腐化と判断(DESIGN.mdへ注記追加済み) | visual-qa Compare Mode | PASS | 判定根拠: 構造/余白/タイポ/密度/要素インベントリ完全一致、色のみ既存コンポーネント踏襲によるDESIGN.md陳腐化 |

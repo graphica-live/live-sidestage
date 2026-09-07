@@ -6,6 +6,7 @@ import { resolveUserByMobileToken, signMobileToken } from "@/lib/mobile-auth";
 import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
 import { fillHostUserIdAtEntryIfEligible, upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
 import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
+import { checkTiktokIdChangeAllowed, formatTiktokIdLockError } from "@/lib/tiktok-id-lock";
 
 /**
  * 入口の実在確認(書き込み前、fail-closed)。通ったら TikTok の userId を返す —
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
         tiktokId: cleanTiktokId,
         verificationCode: generateVerificationCode(),
         apiKey,
+        tiktokIdChangedAt: new Date(),
       },
     });
     await upsertTiktokIdMergeJob(tx, created.id, normalized);
@@ -125,6 +127,19 @@ export async function PATCH(req: NextRequest) {
   }
 
   const normalized = normalizeTiktokId(cleanTiktokId);
+  const currentNormalized = normalizeTiktokId(user.streamer.tiktokId);
+
+  // 事前チェック: 7日ロック中なら実在確認(TikTok照会)を省いて即409で返す。
+  if (currentNormalized !== normalized) {
+    const preCheck = checkTiktokIdChangeAllowed(
+      { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: user.streamer.tiktokIdChangedAt },
+      normalized
+    );
+    if (!preCheck.ok) {
+      const { error, code, retryAfter } = formatTiktokIdLockError(preCheck.retryAfter);
+      return NextResponse.json({ error, code, retryAfter }, { status: 409 });
+    }
+  }
 
   // tiktokIdが変わらない更新(再送信・冪等リトライ)は実在確認を通さない。
   // 既に登録済みのIDを再送するだけの操作をTikTok側の障害で止める理由がない。
@@ -135,14 +150,64 @@ export async function PATCH(req: NextRequest) {
     entryUserId = entryCheck.userId;
   }
 
-  const streamer = await prisma.$transaction(async (tx) => {
-    const updated = await tx.streamer.update({
+  // tiktokIdの変更にはCAS(楽観的排他)を使う(web /api/verify/generateと同じパターン)。
+  const now = new Date();
+  const result = await prisma.$transaction(async (tx) => {
+    const current = await tx.streamer.findUniqueOrThrow({
       where: { id: user.streamer!.id },
-      data: { tiktokId: cleanTiktokId },
+      select: { id: true, tiktokId: true, tiktokIdChangedAt: true },
     });
+    const currentNormalizedTx = normalizeTiktokId(current.tiktokId);
+
+    if (currentNormalizedTx === normalized) {
+      // 冪等リトライ: tiktokIdは実質変わらない。ロック判定・tiktokIdChangedAt更新はしない。
+      const updated = await tx.streamer.update({
+        where: { id: current.id },
+        data: { tiktokId: cleanTiktokId },
+      });
+      await upsertTiktokIdMergeJob(tx, updated.id, normalized);
+      return { kind: "ok" as const, streamer: updated };
+    }
+
+    const check = checkTiktokIdChangeAllowed(
+      { normalizedTiktokId: currentNormalizedTx, tiktokIdChangedAt: current.tiktokIdChangedAt },
+      normalized,
+      now
+    );
+    if (!check.ok) {
+      return { kind: "locked" as const, retryAfter: check.retryAfter };
+    }
+
+    const { count } = await tx.streamer.updateMany({
+      where: { id: current.id, tiktokIdChangedAt: current.tiktokIdChangedAt },
+      data: {
+        tiktokId: cleanTiktokId,
+        tiktokIdChangedAt: now,
+        // BIO認証(verified)は正しさを保っていない値を新IDへ引き継がない。
+        verified: false,
+        verifiedAt: null,
+      },
+    });
+    if (count === 0) {
+      return { kind: "conflict" as const };
+    }
+    const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
     await upsertTiktokIdMergeJob(tx, updated.id, normalized);
-    return updated;
+    return { kind: "ok" as const, streamer: updated };
   });
+
+  if (result.kind === "locked") {
+    const { error, code, retryAfter } = formatTiktokIdLockError(result.retryAfter);
+    return NextResponse.json({ error, code, retryAfter }, { status: 409 });
+  }
+  if (result.kind === "conflict") {
+    return NextResponse.json(
+      { error: "他のリクエストと競合しました。もう一度お試しください", code: "CONFLICT" },
+      { status: 409 }
+    );
+  }
+
+  const streamer = result.streamer;
 
   // 新しいtiktokIdに対応するTiktokRoomへ付け替える。
   const roomId = await resolveRoomForStreamer(streamer.id);

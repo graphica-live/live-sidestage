@@ -16,13 +16,15 @@ type Props = {
   busy?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  /** setup画面(Streamer.tiktokId登録用)からのみ渡す。admin-workers(AgencyWatch追加)では表示しない */
+  lockNoticeText?: string;
 };
 
 function formatCount(n: number | null): string {
   return n === null ? "-" : n.toLocaleString();
 }
 
-export function TiktokAccountConfirmModal({ preview, busy, onCancel, onConfirm }: Props) {
+export function TiktokAccountConfirmModal({ preview, busy, onCancel, onConfirm, lockNoticeText }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -85,6 +87,10 @@ export function TiktokAccountConfirmModal({ preview, busy, onCancel, onConfirm }
         ) : null}
 
         <div className="mt-4 text-sm leading-relaxed text-[#f0f0f0]">このユーザーでよろしいですか？</div>
+
+        {lockNoticeText ? (
+          <div className="mt-2 text-xs leading-relaxed text-gray-500">{lockNoticeText}</div>
+        ) : null}
 
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className="btn-ghost" onClick={onCancel} disabled={busy}>

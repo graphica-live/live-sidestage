@@ -514,10 +514,12 @@ model ListenerEpoch {
 
 // TikTok ID変更(改名)の自動合流(src/lib/tiktok-id-migration.ts)を実行するジョブキュー。
 //
-// Streamer.tiktokIdを書く3経路(mobile POST/PATCH, verify/generate)は判定を一切行わず、
+// Streamer.tiktokIdを書く3経路(mobile POST/PATCH, verify/generate)は合流の可否判定を一切行わず、
 // この行を1件upsertするだけ。実際の判定・TikTok照会・合流実行はevent-workerのmergeTick()が
 // 非同期で行う(登録APIの同期パスにTikTok照会を置くと、TikTokの不調が新規登録の失敗として
 // 表面化するため。合流は遅延して構わない — 旧データは削除されないので何度でもやり直せる)。
+// (2026-09時点で mobile PATCH と verify/generate は別途 tiktokIdChangedAt による7日間の
+// 再変更ロック判定を行うが、これは合流可否とは無関係の独立したレート制限)
 model TiktokIdMergeJob {
   id            String   @id @default(cuid())
   streamerId    String   @unique // pendingの二重積みを構造的に防ぐ
@@ -606,6 +608,10 @@ model Streamer {
   verifiedAt       DateTime?
   apiKey           String?   @unique
   createdAt        DateTime  @default(now())
+  // ユーザー操作(web /api/verify/generate, mobile PATCH /api/mobile/streamer)によるtiktokId
+  // 設定・変更の最終時刻。7日間の再変更ロックの起点に使う。absorbRooms()による自動ID合流は
+  // ユーザー操作ではないため更新しない(合流でtiktokIdが書き換わってもロック期限は動かさない)。
+  tiktokIdChangedAt DateTime?
   roomId           String? // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
 
   overlayToken             String? @unique
