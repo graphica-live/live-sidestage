@@ -117,6 +117,24 @@ function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
   const clock = useReplayClock(payload.durationMs, { boostAt });
   const quietSkipping = quietSkip && isQuietAt(quietRanges, clock.elapsedMs);
 
+  // スコアバーの伸び縮み。**等速で 420ms、再生速度と自動早送りの倍率で割る**
+  // (16倍速で 420ms かけると常に追いつかず、実際のスコアと見た目がずれる)。
+  // つまみを掴んでいる間は 0 にして即時追従させる。
+  const [scrubbing, setScrubbing] = useState(false);
+  // 依存は `clock` ではなく `clock.setScrubbing`。clock は毎レンダー新しいオブジェクト
+  // リテラルなので、そのまま入れると useCallback が毎回作り直しになる。
+  const clockSetScrubbing = clock.setScrubbing;
+  const onScrubbing = useCallback(
+    (next: boolean) => {
+      setScrubbing(next);
+      clockSetScrubbing(next);
+    },
+    [clockSetScrubbing]
+  );
+  const scoreTransitionMs = scrubbing
+    ? 0
+    : Math.round(420 / (clock.speed * (quietSkipping ? QUIET_SKIP_BOOST : 1)));
+
   // 再生ボタンを押して入ってきた画面なので、開いた時点から動かす(もう一度押させない)
   const started = useRef(false);
   useEffect(() => {
@@ -172,6 +190,7 @@ function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
         cards={cards}
         colorByAnchor={colorByAnchor}
         elapsedMs={clock.elapsedMs}
+        scoreTransitionMs={scoreTransitionMs}
       />
 
       <div className="grid grid-cols-1 gap-px border-t border-row-border bg-row-border">
@@ -201,7 +220,7 @@ function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
         onToggle={clock.toggle}
         onSeek={clock.seek}
         onSpeed={clock.setSpeed}
-        onScrubbing={clock.setScrubbing}
+        onScrubbing={onScrubbing}
         onQuietSkip={setQuietSkip}
       />
 

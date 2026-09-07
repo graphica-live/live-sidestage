@@ -82,6 +82,11 @@ comp は5バリアントを含む。**5つすべてが契約対象**。
 高さ **26px**。セグメント幅 = スコア比。セグメント内 `padding: 0 7px`、左端は左寄せ・右端は右寄せ。境目 `inset 1px 0 0 rgba(0,0,0,0.35)`。
 経過時間チップは絶対配置で中央（`padding: 2px 9px` / `radius 999px`）。
 
+セグメント幅は**即時切り替えではなく補間する**。`transition-property: width`、`timing-function: cubic-bezier(0.22, 0.61, 0.36, 1)`、
+duration は等速で **420ms**、実効速度（速度チップ × 自動早送りブースト4）で割った値をインラインで与える（4x なら 105ms、自動早送り中は 26ms）。
+シークバーのつまみを掴んでいる間は **0ms**（即時追従）。`prefers-reduced-motion: reduce` では `transition-property: none`。
+数値の表示は補間しない（幅だけが動く）。
+
 ### 4.3 陣営グリッド（**縦横比は実バトル画面の実測。計器のために縮めない**）
 
 | 構成 | grid | セルの aspect-ratio |
@@ -125,8 +130,8 @@ comp は5バリアントを含む。**5つすべてが契約対象**。
 `padding: 9px 12px` / `gap: 10px` / 上に `1px solid var(--row-border)` / 背景 `var(--panel)`。
 再生ボタン 30px 円（`var(--accent)` / 文字 `var(--on-accent)`）。先頭へ戻るボタンは ghost（枠 `var(--border)`）。
 シークバー: 高さ 4px / `radius 999px` / 地 `var(--border)` / fill `var(--accent)` / つまみ 11px 円。**スコアが動いた時刻に `--fc-self` の tick**（幅 2px・高さ 8px・`top: -2px`）。
-速度チップ `padding: 1px 7px` / `radius 6px` / 枠 `var(--border)`。無風スキップのトグルも同じ寸法で、ON のとき地 `var(--accent)` / 文字 `var(--on-accent)`、OFF のとき枠 `var(--border)` / 文字 `var(--muted)`。
-シークバーの左は**経過時間** `mm:ss`、右は**残り時間** `-mm:ss`（**尺の固定表示ではない**）。無風スキップ中の残り時間は `animate-pulse`（`motion-reduce` で停止）。
+速度チップ `padding: 1px 7px` / `radius 6px` / 枠 `var(--border)`。自動早送りのトグル（表示は `⏩Auto`、`aria-label="自動早送り"`）も同じ寸法で、ON のとき地 `var(--accent)` / 文字 `var(--on-accent)`、OFF のとき枠 `var(--border)` / 文字 `var(--muted)`。
+シークバーの左は**経過時間** `mm:ss`、右は**残り時間** `-mm:ss`（**尺の固定表示ではない**）。自動早送り中の残り時間は `animate-pulse`（`motion-reduce` で停止）。
 
 ### 4.7 貢献者ボード
 
@@ -180,7 +185,7 @@ comp は5バリアントを含む。**5つすべてが契約対象**。
 | 名前チップ | 配信者の表示名 | `participants[].displayName` |
 | ギフトカード | リスナーアイコン / リスナー名 / ギフト名 / ギフト画像 / `×N` / グローブ | `giftEvents` + `senders` + `gifts` |
 | 赤帯 | 倍率区間・ボーナスミッション | `segments`（`startMs <= elapsedMs < endMs`。重複時は `opening` 優先） |
-| コントロール | 再生・一時停止 / シーク / 速度 1x・2x・4x / 無風スキップ ON・OFF / 先頭へ | — |
+| コントロール | 再生・一時停止 / シーク / 速度 1x・2x・4x / 自動早送り（`⏩Auto`）ON・OFF / 先頭へ | — |
 | 経過時間・残り時間 | 左 `mm:ss` / 右 `-mm:ss` | `elapsedMs` / `durationMs - elapsedMs` |
 | シークの tick | スコアが動いた時刻 | `scorePoints[].t` |
 | 貢献者ボード | 上位貢献者のアイコン + 🪙貢献値 + 順位バッジ | `giftEvents` の `elapsedMs` までの累計。**`isSelf` の anchor 宛だけを集計する**（実バトル画面の下段も自分への貢献者一覧。個人の `isSelf` が1件も無い古い行は自陣営全員へフォールバック） |
@@ -192,7 +197,7 @@ comp は5バリアントを含む。**5つすべてが契約対象**。
 ### 7.2 インタラクション
 
 - 再生/一時停止トグル。シークはドラッグ中だけ clock からの反映を止める。速度は 1x → 2x → 4x の巡回で、**CSS keyframe の duration は `--replay-speed` で割る**
-- **再生開始時の既定は 4x + 無風スキップ ON。** 無風スキップはギフトカードが1枚も出ていない 8 秒以上の区間を選んだ速度の 4 倍で流し、次のカードの 1 秒前で等速へ戻す。**赤帯が出ている区間は飛ばさない**。この追加倍率は速度チップの表示に混ぜない（表示はユーザーが選んだ速度のみ）
+- **再生開始時の既定は 4x + 自動早送り ON。** 自動早送りはギフトカードが1枚も出ていない 8 秒以上の区間を選んだ速度の 4 倍で流し、次のカードの 1 秒前で等速へ戻す。**赤帯が出ている区間は飛ばさない**。この追加倍率は速度チップの表示に混ぜない（表示はユーザーが選んだ速度のみ）
 - 配信者枠の並びは**自分（`isSelf`）が常に左上**。並べ替えはサーバー側（`anchors` の添字が `scorePoints` / `giftEvents` と共通のため）
 - 「貢献者一覧へ戻る」で `mode: "list"`。**Esc は再生中でも `list` へ戻す**（モーダルを閉じない）
 - 再生ボタンは再生不可バトルで `aria-disabled` + `title`（非表示にしない）

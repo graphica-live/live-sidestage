@@ -97,7 +97,7 @@ export function ReplayControls({
         />
       </div>
       <span
-        // 残り時間。**経過時間の再掲ではない**(左のラベルが経過)。無風スキップ中は
+        // 残り時間。**経過時間の再掲ではない**(左のラベルが経過)。自動早送り中は
         // 「いま飛ばしている」ことがここでしか判らないので点滅させる。
         className={`flex-none font-mono text-[11px] tabular-nums ${
           quietSkipping ? "animate-pulse text-strong motion-reduce:animate-none" : "text-muted"
@@ -117,14 +117,14 @@ export function ReplayControls({
       <button
         type="button"
         onClick={() => onQuietSkip(!quietSkip)}
-        aria-label="無風スキップ"
+        aria-label="自動早送り"
         aria-pressed={quietSkip}
-        title="ギフトが途切れた区間を自動で早送りする"
+        title="ギフトが途切れた区間を自動で早送りする（飛ばさずに速く流す）"
         className={`flex-none rounded-[6px] border px-[7px] py-[1px] font-mono text-[11px] ${
           quietSkip ? "border-brand bg-brand text-on-accent" : "border-border text-muted"
         }`}
       >
-        ⏩無風
+        ⏩Auto
       </button>
     </div>
   );
