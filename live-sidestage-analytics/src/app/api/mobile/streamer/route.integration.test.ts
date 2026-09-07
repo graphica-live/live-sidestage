@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { ADMIN_EMAIL } from "@/lib/admin";
 
 const PREFIX = "itest-mobstreamer-";
 const TID_PREFIX = "itestms_";
@@ -103,4 +104,39 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
     expect(reloaded.verified).toBe(false);
     expect(reloaded.tiktokIdChangedAt!.getTime()).toBeGreaterThan(changedAt.getTime());
   });
+
+  it("ADMIN_EMAILのユーザーは7日ロック中でも変更を許可し、tiktokIdChangedAt更新・verifiedリセットは維持される", async () => {
+    const changedAt = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1日前(通常ならロック中)
+    const user = await prisma.user.create({
+      data: { email: ADMIN_EMAIL, name: `${PREFIX}admin` },
+    });
+    try {
+      const streamer = await prisma.streamer.create({
+        data: {
+          userId: user.id,
+          tiktokId: `${TID_PREFIX}adminold`,
+          verificationCode: "x",
+          apiKey: `${PREFIX}${Date.now()}admin`,
+          tiktokIdChangedAt: changedAt,
+          verified: true,
+        },
+      });
+      const token = signMobileToken({ userId: user.id, streamerId: streamer.id });
+
+      const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}adminnew`));
+      expect(res.status).toBe(200);
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      expect(reloaded.tiktokId).toBe(`${TID_PREFIX}adminnew`);
+      // ロック免除であっても他の副作用(tiktokIdChangedAt更新・verifiedリセット)は通常経路と同じ。
+      expect(reloaded.tiktokIdChangedAt!.getTime()).toBeGreaterThan(changedAt.getTime());
+      expect(reloaded.verified).toBe(false);
+    } finally {
+      await prisma.streamer.deleteMany({ where: { userId: user.id } });
+      await prisma.user.delete({ where: { id: user.id } });
+    }
+  });
 });
+// ADMIN_EMAIL経路のCAS(楽観的排他)自体は通常経路と同一コードパスを通る。
+// 実際の同時リクエストによる競合再現はTC-LOCK-301と同様にテストでは行わず、
+// コードレビュー(review-auto Code Mode、Codex)でこのコードパスの同一性を確認済み。

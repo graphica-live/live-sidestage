@@ -5,14 +5,16 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ADMIN_EMAIL } from "@/lib/admin";
 
 const PREFIX = "itest-verifygen-";
 // TikTok IDはハイフン不可・24文字以内(isValidNormalizedTiktokId)なのでメール等とは別のprefixにする。
 const TID_PREFIX = "itestvg_";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ userId: null as string | null, email: null as string | null }));
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () =>
+    auth.userId ? { user: { id: auth.userId, email: auth.email } } : null,
 }));
 vi.mock("@/lib/auth", () => ({ authOptions: {} }));
 
@@ -50,6 +52,8 @@ async function cleanup() {
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  auth.userId = null;
+  auth.email = null;
   await cleanup();
 });
 afterAll(cleanup);
@@ -57,6 +61,7 @@ afterAll(cleanup);
 async function createUserWithStreamer(opts: {
   tiktokId: string;
   tiktokIdChangedAt: Date | null;
+  verified?: boolean;
 }) {
   const user = await prisma.user.create({
     data: { email: `${PREFIX}${Date.now()}@local.test`, name: `${PREFIX}user` },
@@ -68,6 +73,7 @@ async function createUserWithStreamer(opts: {
       verificationCode: "x",
       apiKey: `${PREFIX}${Date.now()}`,
       tiktokIdChangedAt: opts.tiktokIdChangedAt,
+      verified: opts.verified ?? false,
     },
   });
   return { user, streamer };
@@ -157,4 +163,32 @@ describe("POST /api/verify/generate — TikTok ID変更7日ロック", () => {
     expect(streamer.tiktokId).toBe(`${TID_PREFIX}firsttime`);
     expect(streamer.tiktokIdChangedAt).not.toBeNull();
   });
+
+  it("ADMIN_EMAILのセッションは7日ロック中でも変更を許可し、tiktokIdChangedAt更新・verifiedリセットは維持される", async () => {
+    const changedAt = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1日前(通常ならロック中)
+    const { user, streamer } = await createUserWithStreamer({
+      tiktokId: `${TID_PREFIX}old`,
+      tiktokIdChangedAt: changedAt,
+      verified: true,
+    });
+    auth.userId = user.id;
+    auth.email = ADMIN_EMAIL;
+
+    const res = await verifyGeneratePost(req(`${TID_PREFIX}new`));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.tiktokId).toBe(`${TID_PREFIX}new`);
+
+    const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+    expect(reloaded.tiktokId).toBe(`${TID_PREFIX}new`);
+    // ロック免除であっても他の副作用(tiktokIdChangedAt更新・verifiedリセット)は通常経路と同じ。
+    expect(reloaded.tiktokIdChangedAt!.getTime()).toBeGreaterThan(changedAt.getTime());
+    expect(reloaded.verified).toBe(false);
+  });
 });
+// ADMIN_EMAIL経路のCAS(楽観的排他)自体は通常経路と同一コードパスを通る
+// (isAdminEmailはロック判定checkTiktokIdChangeAllowedの呼び出しだけをスキップし、
+// updateManyのwhere句(id + tiktokIdChangedAt)は素通りする)。
+// 実際の同時リクエストによる競合再現はTC-LOCK-301と同様にテストでは行わず、
+// コードレビュー(review-auto Code Mode、Codex)でこのコードパスの同一性を確認済み。
