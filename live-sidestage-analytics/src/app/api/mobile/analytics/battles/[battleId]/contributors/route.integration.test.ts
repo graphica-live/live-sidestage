@@ -94,7 +94,7 @@ describe("GET /api/mobile/analytics/battles/[battleId]/contributors", () => {
     expect(res.status).toBe(404);
   });
 
-  it("バトル区間の貢献者一覧を返す", async () => {
+  it("バトル区間の貢献者一覧を返す(未確定バトルはteams:null)", async () => {
     const res = await GET(request(token), { params: { battleId: "itest-battle-c1" } });
     const body = await res.json();
     expect(res.status).toBe(200);
@@ -102,5 +102,44 @@ describe("GET /api/mobile/analytics/battles/[battleId]/contributors", () => {
     expect(body.contributors).toHaveLength(1);
     expect(body.contributors[0].uniqueId).toBe("user_a");
     expect(body.contributors[0].totalDiamonds).toBe(10);
+    expect(body.teams).toBeNull();
+  });
+
+  it("確定済みバトルはteams(陣営別)を返す", async () => {
+    const battleHistory = await prisma.battleHistory.create({
+      data: {
+        roomId,
+        battleId: "itest-battle-c2",
+        windowStart: new Date("2026-08-27T10:00:00Z"),
+        windowEnd: new Date("2026-08-27T10:05:00Z"),
+        status: "finished",
+        sourceUpdatedAt: new Date("2026-08-27T10:05:00Z"),
+        finalizedAt: new Date("2026-08-27T10:06:00Z"),
+      },
+    });
+    await prisma.battleHistoryParticipant.createMany({
+      data: [
+        { battleHistoryId: battleHistory.id, side: "self", teamIndex: 0, position: 0, anchorId: "anchor_self" },
+        {
+          battleHistoryId: battleHistory.id,
+          side: "opponent",
+          teamIndex: 1,
+          position: 0,
+          anchorId: "anchor_opp",
+          nickName: "相手",
+        },
+      ],
+    });
+
+    const res = await GET(request(token), { params: { battleId: "itest-battle-c2" } });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.teams).not.toBeNull();
+    expect(body.teams).toHaveLength(2);
+    expect(body.teams[0].isSelf).toBe(true);
+    expect(body.teams[1].isSelf).toBe(false);
+    expect(body.teams[1].selectorMode).toBe("aggregate");
+
+    await prisma.battleHistory.delete({ where: { id: battleHistory.id } }).catch(() => {}); // cascades -> participants
   });
 });

@@ -11,7 +11,8 @@ import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
 import '../../models/battle_summary.dart';
-import '../../models/gift_ranking_entry.dart';
+import '../../models/battle_team_contributors.dart';
+import '../battle_replay_webview_screen.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/gradient_kit.dart';
@@ -303,6 +304,34 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     return buffer.toString();
   }
 
+  /// 再生の連打防止に使う。発行中のbattleIdだけ保持し、それ以外は常にnull。
+  String? _replayLoadingBattleId;
+
+  Future<void> _openReplay(BattleSummary battle) async {
+    if (_replayLoadingBattleId != null) return;
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
+    if (token == null) return;
+
+    setState(() => _replayLoadingBattleId = battle.battleId);
+    try {
+      final url = await withTokenRefresh(
+        call: (t) => _api.fetchBattleReplayShareUrl(token: t, battleId: battle.battleId),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => BattleReplayWebViewScreen(url: url)),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _replayLoadingBattleId = null);
+    }
+  }
+
   void _showContributors(BattleSummary battle) {
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
@@ -410,6 +439,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
               battle: battle,
               myTiktokId: myTiktokId,
               onTap: () => _showContributors(battle),
+              onReplayTap: _replayLoadingBattleId == null ? () => _openReplay(battle) : null,
             ),
           if (battles.isNotEmpty && hiddenCount > 0)
             Padding(
@@ -441,11 +471,19 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
 /// バトル1件のカード(comp `.card.flat.battle-card`)。
 /// 見出し行 / スコア行 / フッター行の3段構造で、**カードの高さを揃える**。
 class _BattleCard extends StatelessWidget {
-  const _BattleCard({required this.battle, required this.myTiktokId, required this.onTap});
+  const _BattleCard({
+    required this.battle,
+    required this.myTiktokId,
+    required this.onTap,
+    required this.onReplayTap,
+  });
 
   final BattleSummary battle;
   final String? myTiktokId;
   final VoidCallback onTap;
+
+  /// 再生可能(`battle.replay.available == true`)なときだけ非null。
+  final VoidCallback? onReplayTap;
 
   /// comp `.battle-card` の `min-height:118px` 相当。2026-09-06、配信者フィードバックで約20%拡大。
   /// 2026-09-06 再調整: アバター40dp化でコンテンツ自然高さが増えた分、168dpだと
@@ -627,11 +665,28 @@ class _BattleCard extends StatelessWidget {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    '${_BattleHistoryTabState._formatStartedAt(battle.startedAt)} '
-                    '${_BattleHistoryTabState._statusLabel(battle.status)}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: sub),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_BattleHistoryTabState._formatStartedAt(battle.startedAt)} '
+                          '${_BattleHistoryTabState._statusLabel(battle.status)}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11, color: sub),
+                        ),
+                      ),
+                      if (battle.replay.available)
+                        TextButton.icon(
+                          onPressed: onReplayTap,
+                          icon: const Icon(Icons.play_circle_outline, size: 16),
+                          label: const Text('再生', style: TextStyle(fontSize: 12)),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -774,7 +829,7 @@ class _BattleContributorsSheet extends StatefulWidget {
 }
 
 class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
-  List<GiftRankingEntry>? _contributors;
+  BattleContributorsResult? _result;
   String? _error;
   bool _loading = true;
 
@@ -790,14 +845,14 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
       _error = null;
     });
     try {
-      final contributors = await withTokenRefresh(
+      final result = await withTokenRefresh(
         call: (t) => widget.api.fetchBattleContributors(token: t, battleId: widget.battleId),
         token: widget.token,
         refreshToken: widget.refreshToken,
       );
       if (!mounted) return;
       setState(() {
-        _contributors = contributors;
+        _result = result;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -811,7 +866,10 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final contributors = _contributors;
+    final result = _result;
+    final teams = result?.teams;
+    final contributors = result?.contributors;
+
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(top: 16),
@@ -829,9 +887,12 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
                 child: CircularProgressIndicator(),
               ),
             if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
-            if (!_loading && _error == null && (contributors?.isEmpty ?? false))
+            if (!_loading && _error == null && teams == null && (contributors?.isEmpty ?? false))
               const EmptyListNotice(message: 'このバトルの貢献者はいません'),
-            if (contributors != null && contributors.isNotEmpty)
+            // 陣営が2つ以上あるときだけ陣営別タブ表示。それ以外(2陣営未満・旧サーバー)は
+            // 既存のフラット一覧へフォールバックする。
+            if (teams != null) _TeamsContributorsView(teams: teams),
+            if (teams == null && contributors != null && contributors.isNotEmpty)
               Flexible(
                 child: SingleChildScrollView(
                   child: ListPanel(
@@ -846,6 +907,126 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 陣営別タブ表示。自陣(isSelf)を先頭固定し、各タブは[_TeamTabContent]。
+class _TeamsContributorsView extends StatelessWidget {
+  const _TeamsContributorsView({required this.teams});
+
+  final List<BattleTeamContributors> teams;
+
+  @override
+  Widget build(BuildContext context) {
+    final self = teams.where((t) => t.isSelf).toList();
+    final others = teams.where((t) => !t.isSelf).toList();
+    final ordered = [...self, ...others];
+
+    return DefaultTabController(
+      length: ordered.length,
+      child: SizedBox(
+        height: 380,
+        child: Column(
+          children: [
+            TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [for (final t in ordered) Tab(text: t.displayName)],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [for (final t in ordered) _TeamTabContent(team: t)],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 陣営1タブ分。`selectorMode == "individual"`(相手が3陣営以上に分かれる乱戦の
+/// 統合列)のときだけ参加者セレクタを出し、選択中1人の内訳を表示する。
+class _TeamTabContent extends StatefulWidget {
+  const _TeamTabContent({required this.team});
+
+  final BattleTeamContributors team;
+
+  @override
+  State<_TeamTabContent> createState() => _TeamTabContentState();
+}
+
+class _TeamTabContentState extends State<_TeamTabContent> {
+  String? _selectedAnchorId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedAnchorId = widget.team.participants.isNotEmpty ? widget.team.participants.first.anchorId : null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final team = widget.team;
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    BattleTeamParticipantContributors? selected;
+    if (team.isIndividual && team.participants.isNotEmpty) {
+      selected = team.participants.firstWhere(
+        (p) => p.anchorId == _selectedAnchorId,
+        orElse: () => team.participants.first,
+      );
+    }
+
+    final contributors = selected?.contributors ?? team.contributors;
+    final battleScore = selected?.battleScore ?? team.battleScore;
+    final captureStatus = selected?.captureStatus ?? team.captureStatus;
+    final partialNote = selected?.partialNote ?? team.partialNote;
+
+    final noteParts = [
+      if (battleScore != null) 'スコア: $battleScore',
+      if (captureStatus != null && captureStatus.isNotEmpty) captureStatus,
+      if (partialNote != null && partialNote.isNotEmpty) partialNote,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (team.isIndividual && team.participants.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final p in team.participants)
+                  ChoiceChip(
+                    label: Text(p.displayName),
+                    selected: p.anchorId == _selectedAnchorId,
+                    onSelected: (_) => setState(() => _selectedAnchorId = p.anchorId),
+                  ),
+              ],
+            ),
+          ),
+        if (noteParts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text(noteParts.join(' / '), style: TextStyle(fontSize: 11, color: sub)),
+          ),
+        Expanded(
+          child: contributors.isEmpty
+              ? const EmptyListNotice(message: 'このバトルの貢献者はいません')
+              : SingleChildScrollView(
+                  child: ListPanel(
+                    children: [
+                      for (var i = 0; i < contributors.length; i++)
+                        RankingListTile(rank: i + 1, entry: contributors[i]),
+                    ],
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }

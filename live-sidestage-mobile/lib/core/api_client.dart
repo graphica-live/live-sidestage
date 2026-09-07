@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../models/account_status.dart';
 import '../models/auth_session.dart';
 import '../models/battle_summary.dart';
+import '../models/battle_team_contributors.dart';
 import '../models/gift_history_event.dart';
 import '../models/gift_ranking_entry.dart';
 import '../models/listener_status.dart';
@@ -284,6 +285,15 @@ class BattleListResult {
   });
 }
 
+/// バトル区間の貢献者展開。[teams]は2陣営未満(または旧サーバー)ならnull
+/// (呼び出し側は[contributors]のフラット一覧表示にフォールバックする)。
+class BattleContributorsResult {
+  final List<GiftRankingEntry> contributors;
+  final List<BattleTeamContributors>? teams;
+
+  const BattleContributorsResult({required this.contributors, this.teams});
+}
+
 class LiveAnalyticsApi {
   Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
     final data = await _post('/api/mobile/auth/google', {'idToken': idToken});
@@ -480,8 +490,9 @@ class LiveAnalyticsApi {
     );
   }
 
-  /// バトル区間の貢献者展開。貢献タブ(ランキング)と同じ形状のデータを返す。
-  Future<List<GiftRankingEntry>> fetchBattleContributors({
+  /// バトル区間の貢献者展開。貢献タブ(ランキング)と同じ形状のデータに加え、
+  /// 陣営別内訳([BattleContributorsResult.teams])を返す(2陣営未満ならnull)。
+  Future<BattleContributorsResult> fetchBattleContributors({
     required String token,
     required String battleId,
   }) async {
@@ -492,8 +503,26 @@ class LiveAnalyticsApi {
       token: token,
     );
     final contributors = data['contributors'];
-    if (contributors is! List) return const [];
-    return contributors.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList();
+    return BattleContributorsResult(
+      contributors: contributors is List
+          ? contributors.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
+          : const [],
+      teams: BattleTeamContributors.tryParseList(data['teams']),
+    );
+  }
+
+  /// バトル再生の共有URLを遅延発行する(既発行なら同じURLを返す)。
+  Future<String> fetchBattleReplayShareUrl({
+    required String token,
+    required String battleId,
+  }) async {
+    final data = await _send(
+      'POST',
+      '/api/mobile/analytics/battles/${Uri.encodeComponent(battleId)}/share',
+      const {},
+      token: token,
+    );
+    return data['url'] as String;
   }
 
   /// TikTok Live 接続の状態。socket の `chat:listener` が落ちても収束させるための保険。

@@ -2,15 +2,16 @@
 risk: MEDIUM
 reviewers: [claude-manual-verification]
 review_summary: { findings: 0, valid: 0, fixed: 0 }
-last_updated: 2026-09-06
-last_risk: LOW
-last_reviewers: [claude-manual-verification]
+last_updated: 2026-09-08
+last_risk: HIGH
+last_reviewers: [Codex(low), DeepSeek(high), Codex(medium, user-requested), Gemini(agy/gemini-3.7-flash-medium, user-requested, NO ISSUES)]
 ---
 
 # バトル履歴 貢献者欄
 
 対象: `src/app/(dashboard)/analytics/BattleDetailModal.tsx`, `src/lib/battle-history.ts`,
-`src/lib/battle-history-finalize.ts`, `src/components/analytics/battle-types.tsx`, `src/lib/gift-analytics.ts`
+`src/lib/battle-history-finalize.ts`, `src/components/analytics/battle-types.tsx`, `src/lib/gift-analytics.ts`,
+`src/app/api/mobile/analytics/battles/[battleId]/contributors/route.ts`(mobile向けエンドポイント)
 
 ## 正常
 
@@ -23,6 +24,7 @@ last_reviewers: [claude-manual-verification]
 | 10 | 同上バトルの`TeamContributorColumn`セレクタボタン(陣営全体合算/個別配信者切替) | 同上シード、モーダル内の貢献者欄セレクタを確認 | セレクタの各ボタンが自分/チームメイト双方とも実名(`queryBattleContributors`の`participants[].displayName`)で表示される |
 | 14 | `TeamContributorColumn`の貢献者一覧(`ExpandableContributorRow`)の頭出し表示 | 同上シードに貢献者12名以上を追加(`totalDiamonds`降順)→ Playwrightで貢献者欄を確認 | 各行の先頭が旧アイコン(展開用の三角矢印)ではなく降順の順位番号(1,2,3…)で表示される |
 | 15 | 14のケースで順位が2桁(10以上)になったとき | 同上、貢献者欄を最下部までスクロールして確認 | 2桁の順位でもアバターアイコンの左端位置が1桁の行と揃ったまま(`w-4 text-right tabular-nums`の固定幅右寄せで桁数によるズレが無い) |
+| 17 | mobile向けcontributors routeが確定済みバトルの陣営別内訳(`teams`)を返す(2陣営) | `npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/contributors/route.integration.test.ts"`(手動シード`BattleHistory`+`BattleHistoryParticipant`2件、side:self/opponent) | `body.teams`が2件、`teams[0].isSelf===true`・`teams[1].isSelf===false`・`selectorMode==="aggregate"` |
 
 ## 境界
 
@@ -43,6 +45,7 @@ last_reviewers: [claude-manual-verification]
 | 6 | 既存の統合テスト全体 | `npx dotenv -e .env.local.test -- vitest run src/lib/gift-analytics.integration.test.ts src/lib/battle-history.integration.test.ts src/lib/battle-history-finalize.integration.test.ts "src/app/api/mobile/analytics/battles/[battleId]/contributors/route.integration.test.ts"` | 42 tests 全て PASS |
 | 7 | typecheck | `npm run typecheck` | エラーなし |
 | 12 | `src/lib/battle-history.test.ts`(単体) | `npx vitest run src/lib/battle-history.test.ts` | 43 tests 全て PASS |
+| 16 | mobile向けcontributors route: 未確定バトルは`teams:null`のまま(既存挙動を維持) | `npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/contributors/route.integration.test.ts"` | `GET`の応答が`{contributors, status, teams:null}` |
 
 ## UI
 
@@ -87,3 +90,9 @@ last_reviewers: [claude-manual-verification]
 - 最終的な変更: `TeamContributorColumn`のセレクタ親divを`flex flex-wrap`→`flex flex-nowrap`(折り返し禁止)。「陣営全体合算」ボタンを「合算」に短縮しテキスト量を削減。全ボタンのclassNameを固定幅(`max-w-[100px] shrink-0`)から`min-w-0 max-w-[Npx] flex-1 truncate`(親幅に応じて均等に縮小し、上限を超えて間延びしない可変幅)に変更
 - レビュー: OmniRoute/DeepSeek/Qwenとも利用不能・不安定(既知)のため、Claude自身が実コード照合で代替。flex-1縮小とtruncateの両立に必要な`min-w-0`が両方のボタンに付与されているか、選択中/非選択のstyle上書き(borderColor/color)がclassName変更で壊れていないかを確認
 - テスト結果: `npm run typecheck` PASS。Playwright(headless、390px/900px)で再確認し、両幅とも常に1段で全ボタンが枠内に収まり、名前の長さに関わらず段数が変わらないことを確認(PASS)
+
+### 2026-09-08 mobile向けcontributors routeへteams対応を追加(web版の陣営別貢献欄移植)
+
+- 変更: `src/app/api/mobile/analytics/battles/[battleId]/contributors/route.ts`が`queryBattleContributors()`の`teams`を握り潰していたのを修正。`sanitizeAvatarUrl`を`teams[].contributors`/`teams[].participants[].contributors`へ再帰適用してレスポンスへ含めるようにした
+- レビュー: Codex(low, Design)+DeepSeek(high, Design)+Codex(medium, user-requested)+Gemini(agy/gemini-3.7-flash-medium, user-requested, NO ISSUES)。「複数アプリを跨ぐ変更」でHIGH判定
+- テスト結果: `npm run typecheck` PASS。`npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/contributors/route.integration.test.ts"` 11 tests PASS(新規「確定済みバトルはteams(陣営別)を返す」ケース含む)。既存の`gift-analytics`/`battle-history`/`battle-history-finalize`integrationテスト55 tests回帰PASS

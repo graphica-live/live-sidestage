@@ -217,4 +217,65 @@ void main() {
       expect(battle!.maxOtherTeamScore, huge);
     });
   });
+
+  group('BattleReplayUnavailableReason.tryParse', () {
+    test('4値をそのまま解釈する', () {
+      expect(BattleReplayUnavailableReason.tryParse('not_finalized'), BattleReplayUnavailableReason.notFinalized);
+      expect(BattleReplayUnavailableReason.tryParse('no_score_points'), BattleReplayUnavailableReason.noScorePoints);
+      expect(BattleReplayUnavailableReason.tryParse('window_invalid'), BattleReplayUnavailableReason.windowInvalid);
+      expect(
+        BattleReplayUnavailableReason.tryParse('participants_invalid'),
+        BattleReplayUnavailableReason.participantsInvalid,
+      );
+    });
+
+    test('未知の値・nullはunknown', () {
+      expect(BattleReplayUnavailableReason.tryParse('other'), BattleReplayUnavailableReason.unknown);
+      expect(BattleReplayUnavailableReason.tryParse(null), BattleReplayUnavailableReason.unknown);
+    });
+  });
+
+  group('BattleReplayAvailability.tryParse', () {
+    test('available:trueならreasonはnull', () {
+      final availability = BattleReplayAvailability.tryParse({'available': true, 'reason': 'not_finalized'});
+      expect(availability.available, isTrue);
+      expect(availability.reason, isNull);
+    });
+
+    test('available:falseはreasonを保持する', () {
+      final availability = BattleReplayAvailability.tryParse({'available': false, 'reason': 'no_score_points'});
+      expect(availability.available, isFalse);
+      expect(availability.reason, BattleReplayUnavailableReason.noScorePoints);
+    });
+
+    test('reason欠落・未知値はunknown', () {
+      expect(BattleReplayAvailability.tryParse({'available': false}).reason, BattleReplayUnavailableReason.unknown);
+      expect(
+        BattleReplayAvailability.tryParse({'available': false, 'reason': 'x'}).reason,
+        BattleReplayUnavailableReason.unknown,
+      );
+    });
+
+    test('Map以外・キー自体が無い(旧サーバー)はavailable:falseへフォールバック', () {
+      expect(BattleReplayAvailability.tryParse(null).available, isFalse);
+      expect(BattleReplayAvailability.tryParse('not a map').available, isFalse);
+    });
+  });
+
+  group('BattleSummary.replay', () {
+    test('replayフィールドを解析できる', () {
+      final battle = BattleSummary.tryParse({
+        'battleId': 'b1',
+        'status': 'finished',
+        'replay': {'available': true},
+      });
+      expect(battle!.replay.available, isTrue);
+    });
+
+    test('replayが無い(旧サーバー応答)ならavailable:falseへフォールバック', () {
+      final battle = BattleSummary.tryParse({'battleId': 'b1', 'status': 'finished'});
+      expect(battle!.replay.available, isFalse);
+      expect(battle.replay.reason, isNull);
+    });
+  });
 }
