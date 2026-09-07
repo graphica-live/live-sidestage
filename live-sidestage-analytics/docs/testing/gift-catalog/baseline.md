@@ -3,12 +3,14 @@ project: live-sidestage-analytics
 feature: gift-catalog
 last_updated: 2026-09-07
 last_risk: MEDIUM
-last_reviewers: DeepSeek(Design Mode 2ラウンド + Code Mode、TestCase十分性レビューはCode Modeで同時実施。TC-GC-027/028追加分)
+last_reviewers: DeepSeek(Design Mode 1ラウンド + Code Mode 1ラウンド、TestCase十分性レビューはCode Modeで同時実施。room_id付き複数部屋取得の撤去分)
 ---
 
 # テストベースライン: gift-catalog
 
-`src/lib/tiktok-gift-catalog.ts`(+`src/lib/tiktok-listener.ts`の`resolveGiftCatalogSources`/`orderRoomsLiveFirst`)が担う、TikTokギフトカタログ(`tiktok_gift_catalog`)の定期取得・正規化・英日突合・カタログ取得専用プロキシ(`GIFT_CATALOG_PROXY_URL`)・room_id反映によるコミュニティギフト取り込み・取得成否の監査ログ(`/admin/proxy`)。
+`src/lib/tiktok-gift-catalog.ts`(+`src/lib/tiktok-listener.ts`の`resolveGiftCatalogSources`)が担う、TikTokギフトカタログ(`tiktok_gift_catalog`)の定期取得・正規化・英日突合・カタログ取得専用プロキシ(`GIFT_CATALOG_PROXY_URL`)・取得成否の監査ログ(`/admin/proxy`)。
+
+**2026-09-07: room_id付き複数部屋取得(配信者固有コミュニティギフトの事前収集)を撤去した。** community_giftはLIVE受信時点で既に日本語名確定、`GET /api/mobile/gifts`は受信履歴からも名前・画像を拾う和集合設計のため、事前収集の価値が薄いと判断(詳細は`changes/`参照)。カタログ取得は`GIFT_CATALOG_SOURCE_COUNT=1`件・room_id無しに単純化した。
 
 ## テストケース
 
@@ -24,8 +26,7 @@ last_reviewers: DeepSeek(Design Mode 2ラウンド + Code Mode、TestCase十分�
 | TC-GC-008 | TTLキャッシュ | `refreshGiftCatalogIfStale` | 正常/境界 | カタログ空/TTL内/TTL超過 | 空またはTTL超過時のみ取得、TTL内は取得元解決すらしない | 同上 | PASS | |
 | TC-GC-009 | 失敗時の非伝播とバックオフ | `refreshGiftCatalogIfStale` | 異常 | 取得失敗、空/全件不正レスポンス | 呼び出し元へ例外を投げず、`CATALOG_FAILURE_BACKOFF_MS`(30分)は叩き直さない。成功でバックオフ解除 | 同上 | PASS | ライブ接続を巻き込まない不変条件 |
 | TC-GC-010 | 同時呼び出しの単一飛行化 | `refreshGiftCatalogIfStale` | 並行 | 同一プロセスから同時に複数回呼ぶ | 実際の取得は1回にまとまる | 同上 | PASS | |
-| TC-GC-011 | 複数部屋からの和集合 | `refreshGiftCatalogIfStale` | 正常/異常 | 1部屋目/2部屋目のどちらかまたは両方が失敗・成功 | 成功した部屋の和集合で書き込み、全滅時のみ失敗扱い | 同上 | PASS | |
-| TC-GC-012 | room_idの反映 | `fetchGiftsFromTikTok` | 正常/境界 | `source.roomId`あり/なし | あれば construct後・fetch前に`conn.clientParams.room_id`へ反映、無ければ未設定のまま | 同上 | PASS | `setDisconnected()`のroom_idリセット後に代入する順序が前提。前提自体(`clientParams`が参照getter、`fetchAvailableGifts`が同一`clientParams`を送る)は`TLC-sidestage`の型定義(.d.ts)で確認済みだが、モックでなく実クラスをconstructする直接テストは無い(TestCaseレビューFable指摘、回帰保護なしと明示) |
+| TC-GC-011 | 最初に成功した部屋だけを使う(和集合廃止) | `refreshGiftCatalogIfStale` | 正常 | `resolveSources()`が複数件返す(通常は1件だが防御的にテスト)、1部屋目が成功 | 1部屋目のbase+jaだけで書き込む。2部屋目は試さない | 同上 | PASS | 2026-09-07: room_id付き複数部屋取得の撤去に伴い、旧「和集合」仕様から「最初の1件のみ採用」へ変更 |
 | TC-GC-013 | 日本プロキシの優先とフォールバック | `fetchGiftsFromTikTok` | 正常/境界 | `GIFT_CATALOG_PROXY_URL`が値あり/未設定/空文字列 | 値ありなら`source.proxyUrl`より優先、未設定・空文字列は`source.proxyUrl`へフォールバック | 同上 | PASS | 空文字列を未設定扱いにする境界を明示的にカバー |
 | TC-GC-014 | 日本プロキシ障害時に部屋プロキシへは落とさない | `fetchGiftsFromTikTok` | negative | `GIFT_CATALOG_PROXY_URL`設定済みで取得失敗 | `source.proxyUrl`への自動フォールバックはしない(地域ギフト取りこぼし再発防止、意図的仕様)。接続を作り直さない(construct 1回のみ) | `npx vitest run src/lib/tiktok-gift-catalog.test.ts` | PASS | TestCaseレビュー(Qwen、カナリア検証で本物と確認)指摘により自動テスト化 |
 | TC-GC-015 | 取得成否の監査ログ記録 | `recordProxyAttempt`(`fetchGiftsFromTikTok`経由) | 正常/異常 | 成功/失敗それぞれ1回呼び出し。レスポンスが配列でない異常形状。監査tx自体が例外を投げる(DB障害) | `AppSetting`(`giftCatalogProxyAttemptLog`)へsuccess/failureエントリを1件追加、失敗時は元の例外を投げ直す。`giftCount`は配列でなければ`undefined`。監査tx自体の例外は握り潰し、成功/失敗いずれの結果も呼び出し元へそのまま伝わる(reconcileループを止めない不変条件) | 同上 | PASS | |
@@ -34,26 +35,25 @@ last_reviewers: DeepSeek(Design Mode 2ラウンド + Code Mode、TestCase十分�
 | TC-GC-018 | 並行書き込みのlost update防止 | `recordProxyAttempt` | 並行 | advisory lock取得成功/失敗の両パターン | 失敗時は書き込みをスキップし例外を投げない(監視ログにつき1件欠落は許容)。成功時はread-modify-writeがtx内で完結 | 同上 | PASS | `worker-guardian.ts`の`appendAuditLog`と同型 |
 | TC-GC-019 | 監査ログのFIFO cap | `recordProxyAttempt` | 境界 | 既存50件(`PROXY_ATTEMPT_LOG_MAX_ENTRIES`)に1件追加 | 最新50件のみ保持、最古1件を切り捨て | 同上 | PASS | |
 | TC-GC-020 | 監査ログの破損データからの復旧 | `recordProxyAttempt` | 異常 | 既存`AppSetting.value`がJSON破損 | 空配列から再開し、以後の記録を継続する | 同上 | PASS | |
-| TC-GC-021 | ライブ中の部屋を優先する並べ替え | `orderRoomsLiveFirst` | 正常/境界 | ライブ中(room_id取得可)の要素が末尾寄り、複数、全live、全idle、空配列 | ライブ中要素を先頭に集約しつつ各グループ内の相対順序を保つ。`slice(0, N)`後も枠外だったlive要素が繰り上がる | `npx vitest run src/lib/tiktok-listener.gift-catalog-order.test.ts` | PASS | `MAX_GIFT_CATALOG_SOURCES=3`固定と組み合わせて、担当部屋4件目以降がライブ中でもコミュニティギフトが反映される前提を担保 |
-| TC-GC-022 | roomIdの空文字列正規化 | `resolveGiftCatalogSources` | 境界 | 未接続直後で`connection.roomId`が`""` | `GiftCatalogSource.roomId`を`undefined`に正規化する | コードレビューで確認(`|| undefined`) | PASS | `resolveGiftCatalogSources`自体はDB(`getMyRooms`)依存のためunit分離した自動テストなし |
 | TC-GC-023 | 管理画面: 取得履歴の表示 | `/admin/proxy` + `/api/admin/proxy` | 正常 | 監査ログが1件以上ある管理者セッション | 新しい順に時刻・成功/失敗・locale・部屋・件数またはエラー文言が表示される | Playwright(headless、要ログイン) | PASS | 手順は下記「Web実機確認」参照 |
 | TC-GC-023b | 管理画面: フォールバック成功の警告表示 | `/admin/proxy`(`outcomeBadge`) | 境界 | `outcome: "success"` かつ `usedJpProxy: false`(部屋プロキシへのフォールバック成功) | 緑「成功」ではなく黄色「成功(フォールバック)」と表示する。`usedJpProxy: true`の成功は従来どおり緑「成功」、`outcome: "failure"`は従来どおり赤「失敗」 | Playwright(headless、要ログイン) | PASS | 2026-09-06: フォールバック成功が緑「成功」表示のままで実質失敗に近い状態が区別できないという指摘により追加。下記「Web実機確認」参照 |
 | TC-GC-024 | 管理画面API: 未認証アクセス | `/api/admin/proxy` | 異常 | 管理者セッションなし(`getAdminSession()`が`null`) | `401 Unauthorized`、`getSetting`を呼ばない | `npx vitest run src/app/api/admin/proxy/route.test.ts` | PASS | 既存`getAdminSession()`ゲートを流用(`admin/workers/route.ts`と同型)。unit化(TestCaseレビューFable指摘) |
 | TC-GC-025 | 管理画面API: 破損/欠損データへの耐性と順序 | `/api/admin/proxy` | 異常/境界 | 設定値が無い/JSON破損/配列でない形状/正常な複数件 | いずれもエラーにせず空配列または正しい配列を返す。正常時は新しい順(reverse)で返す | `npx vitest run src/app/api/admin/proxy/route.test.ts` | PASS | |
 | TC-GC-026 | 管理画面: 履歴0件時の表示 | `/admin/proxy` | 境界/empty state | 監査ログが0件 | エラーにならず空状態の文言を表示する | Playwright(headless) | PASS | 下記「Web実機確認」参照 |
-| TC-GC-027 | コミュニティギフト救済フォールバック | `mergeLocalizedCatalog` | 正常/境界 | 日本語版に無いgiftIdで、base の label がひらがな・カタカナを含む/含まない | 含む場合は`labelJa`にbaseのlabelをそのまま採用、含まない場合は`labelJa: null` | `npx vitest run src/lib/tiktok-gift-catalog.test.ts` | PASS | 配信者固有コミュニティギフト(`tracker_params.gift_subtype === "community_gift"`)はwebcast_language非依存でbase取得時点から日本語名確定(2026-08-27/28実測、`gift-name-verification/REPORT.md`発見2)。次項TC-GC-028のja取得打ち切り最適化とセットで、打ち切り後の部屋固有ギフトの`labelJa`欠落を防ぐ |
-| TC-GC-028 | ja版取得の1部屋成功後スキップ | `refreshGiftCatalogIfStale` | 正常/異常 | 複数部屋(`sources`)構成で、1部屋目のja取得が成功/失敗するケース | 1部屋目成功時は2部屋目以降でja版を叩かない(base のみ継続)。1部屋目失敗時は2部屋目でja取得を再試行する | 同上 | PASS | グローバルギフトの日本語名はどの部屋から取得しても同一値(2026-08-27実測)なので2部屋目以降のja取得は冗長。`GIFT_CATALOG_PROXY_URL`(日本プロキシ)経由のリクエスト削減が目的。base側の複数部屋和集合(TC-GC-011)は変更なし |
+| TC-GC-027 | ひらがな・カタカナ含有時のフォールバック(保険) | `mergeLocalizedCatalog` | 正常/境界 | 日本語版に無いgiftIdで、base の label がひらがな・カタカナを含む/含まない | 含む場合は`labelJa`にbaseのlabelをそのまま採用、含まない場合は`labelJa: null` | `npx vitest run src/lib/tiktok-gift-catalog.test.ts` | PASS | 元々は配信者固有コミュニティギフト(base取得時点から日本語名確定、`gift-name-verification/REPORT.md`発見2)の`labelJa`欠落を防ぐ目的だったが、2026-09-07にroom_id付き複数部屋取得(community_gift事前収集)自体を撤去したため通常は発動しない保険コードになった。base側に日本語表記の通常ギフトが紛れた場合の保護として残す |
+| TC-GC-028 | ja版取得は1部屋のみ(2部屋目は試さない) | `refreshGiftCatalogIfStale` | 正常/異常 | 1部屋目のbaseが成功、ja取得が成功/失敗するケース | ja取得の成否に関わらず2部屋目は試さない(base取得が成功した時点で打ち切る) | 同上 | PASS | 2026-09-07: room_id付き複数部屋取得の撤去に伴い、カタログ取得自体が1部屋(`GIFT_CATALOG_SOURCE_COUNT=1`)構成になったため、ja版だけでなくbase側も含めて「最初に成功した部屋のみ」に統一した |
+| TC-GC-029 | base取得失敗時の次部屋フォールバック(防御的) | `refreshGiftCatalogIfStale` | 異常 | `resolveSources()`が複数件返し、1部屋目のbase取得が失敗 | 2部屋目のbase取得を試す(全滅時のみ失敗扱い) | 同上 | PASS | `resolveSources()`は通常1件しか返さないが、複数件返った場合のフォールバックとして`refreshGiftCatalogIfStale`側のforループは維持している |
 
 ## Quality Gate
 
 - `npm run typecheck`
-- `npx vitest run src/lib/tiktok-gift-catalog.test.ts src/lib/tiktok-listener.gift-catalog-order.test.ts`
+- `npx vitest run src/lib/tiktok-gift-catalog.test.ts`
 - `npm run test:unit`
 - `npx next build`
 
 ## Out of Scope
 
-- `MAX_GIFT_CATALOG_SOURCES`(3件固定)自体の引き上げ・reconcileループの起動間隔(既存仕様、今回変更なし)
+- `GIFT_CATALOG_SOURCE_COUNT`(1件固定)自体の引き上げ・reconcileループの起動間隔(既存仕様、今回変更なし)
 - `mergeLocalizedCatalog`/`writeCatalog`の呼び出し元である`worker.ts`の30秒reconcileループ本体(`worker-shard`機能のbaseline対象)
 - ギフト履歴・モバイルピッカー等、カタログを消費する側のロジック(`gift-history.ts`/`api/mobile/gifts/route.ts`。カタログ行が増えれば自動反映されるだけで今回変更していない)
 - Webshare側のプロキシ調達・Railway環境変数設定作業(インフラ運用手順)

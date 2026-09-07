@@ -2902,45 +2902,28 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
 // **ライブ中かどうかは問わない。** fetchAvailableGifts()はHTTPだけで済み、WS接続を必要としない。
 // 「接続成功後」に置くと、担当している配信が全部オフラインのあいだカタログが永久に空のままになり、
 // 「まだ貰ったことのないギフトを事前に仕込む」という目的そのものが果たせない。
-// 1周回のカタログ取得で試す部屋数の上限。
 //
 // **地域限定ギフトの可否はegress IPのリージョンだけで決まり、部屋(アカウント)には依存しない**
 // (2026-09実測: room_id・device_id・regionパラメータ・Cookie等は全て無関係。日本限定ギフトの
-// 取りこぼしは `GIFT_CATALOG_PROXY_URL`(日本プロキシ)で対応済み)。
+// 取りこぼしは `GIFT_CATALOG_PROXY_URL`(日本プロキシ)で対応済み)ので、部屋は1つで足りる。
 //
-// 一方、**配信者固有のコミュニティギフトは`room_id`を渡した部屋でだけ追加される、地域とは
-// 独立した軸**。複数の自部屋から集めるのはこちらのカバレッジを広げるため(1部屋だけだと
-// その配信者以外のコミュニティギフトがカタログへ入らない)。
-//
-// 増やしすぎるとリフレッシュ1周回あたりのTikTokへのリクエスト数(英語+日本語の2倍)が
-// 線形に増えるため、小さめの上限にする。
-export const MAX_GIFT_CATALOG_SOURCES = 3;
-
-// ライブ中(生きている接続から数値room_idが取れる)要素を先頭に、元の相対順序を保ったまま
-// 並べ替える。元の順序のまま slice(0, N) すると、対象配信者がライブ中でも枠外にいるだけで
-// コミュニティギフトが一切反映されない(設計レビュー指摘)。純粋関数として export し単体テスト対象にする。
-export function orderRoomsLiveFirst<T>(rooms: T[], isLive: (room: T) => boolean): T[] {
-  const live: T[] = [];
-  const idle: T[] = [];
-  for (const room of rooms) {
-    (isLive(room) ? live : idle).push(room);
-  }
-  return [...live, ...idle];
-}
+// 以前は`room_id`付きで複数部屋から配信者固有のコミュニティギフトも収集していたが、
+// (1) community_giftはLIVE受信時点で既に日本語名確定(webcast_language非依存、
+// `gift-name-verification/REPORT.md`発見2)、(2) `GET /api/mobile/gifts`は`Gift`受信履歴からも
+// 名前・画像を拾う和集合設計、という実測により「事前収集の価値は初回受信前のピッカー表示だけ」と
+// 判断し2026-09-07に撤去した(未受信の間は自由入力導線で足りる)。
+export const GIFT_CATALOG_SOURCE_COUNT = 1;
 
 export async function resolveGiftCatalogSources(): Promise<GiftCatalogSource[]> {
   const rooms = await getMyRooms();
-  const orderedRooms = orderRoomsLiveFirst(rooms, (room) => Boolean(listeners.get(room.id)?.connection?.roomId));
 
   const sources: GiftCatalogSource[] = [];
-  for (const room of orderedRooms.slice(0, MAX_GIFT_CATALOG_SOURCES)) {
+  for (const room of rooms.slice(0, GIFT_CATALOG_SOURCE_COUNT)) {
     // ライブ接続と同じdeviceId/proxyを使う。カタログ取得だけ別のegress IPから出さない
     // (日本プロキシ未設定時のフォールバックとしてのみ使われる。tiktok-gift-catalog.ts参照)。
     const deviceId = await getOrCreateDeviceId(room.id);
     const proxyUrl = await resolveProxyForRoom(room.id);
-    // 未接続直後は roomId が空文字列 "" になりうるので undefined に正規化する。
-    const roomId = listeners.get(room.id)?.connection?.roomId || undefined;
-    sources.push({ tiktokId: room.tiktokId, deviceId, proxyUrl, roomId });
+    sources.push({ tiktokId: room.tiktokId, deviceId, proxyUrl });
   }
   return sources;
 }
