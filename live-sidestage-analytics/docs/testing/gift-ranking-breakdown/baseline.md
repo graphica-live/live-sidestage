@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-07
-last_risk: HIGH
-last_reviewers: [deepseek-v4-flash, codex]
+last_risk: LOW
+last_reviewers: [deepseek-v4-flash]
 ---
 
 # 貢献ランキングのギフト内訳展開
@@ -64,8 +64,9 @@ last_reviewers: [deepseek-v4-flash, codex]
 | TC-GRB-021 | 取得失敗時はエラー文と再試行を出し、再試行で復帰する | `GiftBreakdownPanel` | 異常 | API が HTTP 500 | エラー文 + 再試行ボタン。押すと再取得する | `[inject]` | PASS | |
 | TC-GRB-022 | 一部期間しか明細が無いときはその旨を注記する | `GiftBreakdownPanel` | 境界 | `coverage.partial: true` / `rawFrom` あり | ギフト一覧に加えて「YYYY-MM-DD 以降のみ」が出る | `[inject]` | PASS | 合計が一覧の値と合わない理由を画面で説明する |
 | TC-GRB-023 | ギフト画像が無いギフトでも壊れた画像を出さない | `GiftBreakdownPanel` | データ欠損 | `giftPictureUrl: null` | 同サイズのプレースホルダ矩形になり、壊れ画像アイコンが出ない | `[inject]` | PASS | |
-| TC-GRB-024 | PC幅・スマホ幅のどちらでも横スクロールが発生しない | 内訳パネル | デバイス差 | 1000px / 390px | 1000px は2カラム、390px は1カラム。どちらも横スクロールなし | `[pw]` | PASS | `sm`(640px) が既存レイアウトの breakpoint |
-| TC-GRB-025 | 実装が凍結済みの視覚契約から外れていない | ranking テーブル + 内訳パネル | 視覚契約 | `comp.png` と同条件（1000px / light・dark） | 余白・タイポ・色・角丸・情報密度が `spec.md` の数値と一致。要素・挙動インベントリに欠落なし。`MAJOR` ゼロ | `[vqa]` | FAIL→修正→PASS | MINOR 2件（スケルトンがパネル幅いっぱいで縞に見える / 再試行ボタンの padding が契約超過）を修正して再撮影。色トークンだけ反映され余白・タイポ・密度が既定へ丸まる乖離を明示的に疑った |
+| TC-GRB-024 | PC幅・スマホ幅のどちらでも横スクロールが発生しない | 内訳パネル | デバイス差 | 1000px / 390px | 1000px・390px とも1カラム固定。どちらも横スクロールなし | `[pw]` | PASS | 2026-09-07: ユーザー指摘によりレイアウトを2カラム(sm以上)→1カラム固定へ変更。breakpoint分岐は廃止 |
+| TC-GRB-025 | 実装が凍結済みの視覚契約から外れていない | ranking テーブル + 内訳パネル | 視覚契約 | `comp.png` と同条件（1000px / light・dark） | 余白・タイポ・色・角丸・情報密度が `spec.md` の数値と一致。要素・挙動インベントリに欠落なし。`MAJOR` ゼロ | `[vqa]` | FAIL→修正→PASS | MINOR 2件（スケルトンがパネル幅いっぱいで縞に見える / 再試行ボタンの padding が契約超過）を修正して再撮影。色トークンだけ反映され余白・タイポ・密度が既定へ丸まる乖離を明示的に疑った。2026-09-07: ユーザーフィードバックで要約行削除・1カラム固定へ`spec.md`側を更新(明示承認)、再照合PASS |
+| TC-GRB-029 | 見出し右の要約「N種類・M回・X」を表示しない | `GiftBreakdownPanel` | 回帰 | 展開状態 | パネル見出しは「ギフト内訳」のみ。件数・回数・合計コインの要約テキストは出ない | `[pw]` | PASS | 2026-09-07追加。要約は一覧の合計コイン数と重複情報で、ユーザーから不要指摘 |
 
 ## Quality Gate
 

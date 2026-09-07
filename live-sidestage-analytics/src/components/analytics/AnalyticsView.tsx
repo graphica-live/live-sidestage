@@ -352,7 +352,7 @@ function GiftBreakdownPanel({
     );
   }
 
-  const { gifts, total, coverage } = state.data;
+  const { gifts, coverage } = state.data;
 
   if (!coverage.detailAvailable) {
     return (
@@ -370,12 +370,6 @@ function GiftBreakdownPanel({
     <div>
       <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
         {BREAKDOWN_HEADING}
-        {gifts.length > 0 && (
-          <span className="text-[.7rem] text-muted">
-            {gifts.length}種類 · {total.repeatCount.toLocaleString()}回 ·{" "}
-            {total.totalDiamonds.toLocaleString()}
-          </span>
-        )}
         {coverage.partial && coverage.rawFrom && (
           <span className="ml-auto text-[.68rem] text-muted">{coverage.rawFrom} 以降のみ</span>
         )}
@@ -384,7 +378,7 @@ function GiftBreakdownPanel({
       {gifts.length === 0 ? (
         <div className="text-[.78rem] text-muted pt-1.5 pb-0.5">この期間の内訳はありません</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-0.5">
+        <div className="grid grid-cols-1 gap-y-0.5">
           {gifts.map((g) => (
             <div
               key={g.giftId}
