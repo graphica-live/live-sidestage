@@ -88,8 +88,6 @@ export interface GiftCatalogSource {
   deviceId: string;
   /** 段階的廃止対象。`GIFT_CATALOG_PROXY_URL`(日本プロキシ)未設定時のみのフォールバックとして使う。 */
   proxyUrl: string | null;
-  /** 生きているライブ接続が持つ数値room_id。コミュニティギフト反映用。無ければ省略。 */
-  roomId?: string;
 }
 
 export interface GiftCatalogDeps {
@@ -216,9 +214,10 @@ function hasJapaneseText(s: string): boolean {
  *  - 英語版のみ、かつ label がひらがな・カタカナを含む(=既に日本語表記) → `labelJa` は base の label をそのまま採用。
  *    配信者固有のコミュニティギフト(`tracker_params.gift_subtype === "community_gift"`)は
  *    `webcast_language` に関わらず base 取得時点で名前が日本語確定している
- *    (2026-08-27実測、`gift-name-verification/REPORT.md` 発見2)。`refreshGiftCatalogIfStale`
- *    はja取得を1部屋成功時点で打ち切るため、打ち切り後の部屋にしか出現しないコミュニティギフトは
- *    ja版に載らない。ここで拾わないと `labelJa` が永久に null のまま欠落する
+ *    (2026-08-27実測、`gift-name-verification/REPORT.md` 発見2)。**2026-09-07にroom_id付き
+ *    複数部屋取得(community_gift事前収集)自体を撤去したため、通常はこの分岐は発動しない**
+ *    (community_giftはそもそもbaseリストに出現しない)。base側にひらがな・カタカナを含む
+ *    通常ギフトが将来紛れ込んだ場合の保険として残す
  *  - 日本語版のみ → **捨てる**。英語の一致キーが作れないので、入れても効果音に結び付けられない
  *
  * 日本語版が英語と同じ文字列でも null にせずそのまま入れる。日本語環境でも英語表記のままの
@@ -365,13 +364,6 @@ export async function fetchGiftsFromTikTok(
         }
       : {}),
   } as unknown as Record<string, unknown>);
-
-  // constructorの setDisconnected() が room_id='' を無条件に上書きするため、
-  // この代入は必ず construct **後**、fetchAvailableGifts() 呼び出し**前**に置く。
-  // clientParams は参照で返るgetterなので、この代入が fetchAvailableGifts() 側にも反映される。
-  if (source.roomId) {
-    conn.clientParams.room_id = source.roomId;
-  }
 
   try {
     const result = await conn.fetchAvailableGifts();
@@ -523,26 +515,19 @@ export async function refreshGiftCatalogIfStale(
       const sources = await resolveSources();
       if (sources.length === 0) return; // 担当している部屋が無い。失敗ではないのでバックオフもしない
 
-      // **複数の部屋から取って和集合にする。** 地域限定ギフト(`is_global_gift: false`)の可否は
-      // egress IP のリージョンだけで決まり部屋非依存(2026-09実測、`GIFT_CATALOG_PROXY_URL` で
-      // 対応済み)。一方、部屋(アカウント)ごとに変わるのは配信者固有のコミュニティギフトで、
-      // これは各部屋の数値room_idを渡したときだけ追加される(`GiftCatalogSource.roomId`)。
-      // 複数部屋から集めるのは、後者を複数配信者ぶん一度に拾うため。先に見つかった部屋の
-      // giftIdを優先し(決定的にするため)、後続の部屋は前の部屋に無かったgiftIdだけ足す。
-      const baseByGiftId = new Map<number, CatalogEntry>();
-      const jaByGiftId = new Map<number, CatalogEntry>();
-      let anyBaseSucceeded = false;
-      // **ja版は1部屋成功すれば十分。** グローバルギフトの日本語名はどの部屋から取っても同じ値
-      // (2026-08-27実測)なので、2部屋目以降のja取得は完全に冗長。配信者固有のコミュニティギフトは
-      // そもそも base 取得時点で名前が日本語確定(webcast_language非依存、2026-08-27実測
-      // `gift-name-verification/REPORT.md` 発見2)なので、そちらのためにja版を叩く必要もない
-      // (base側の日本語名は mergeLocalizedCatalog の hasJapaneseText フォールバックが拾う)。
-      let jaSucceeded = false;
+      // **地域限定ギフト(`is_global_gift: false`)の可否はegress IPのリージョンだけで決まり
+      // 部屋非依存**(2026-09実測、`GIFT_CATALOG_PROXY_URL` で対応済み)なので、部屋は1つで足りる。
+      // 配信者固有のコミュニティギフトの事前収集(room_id付き複数部屋取得)は2026-09-07に撤去した
+      // (community_giftはLIVE受信時点で既に日本語名確定、`GET /api/mobile/gifts`は受信履歴からも
+      // 名前・画像を拾う和集合設計のため、事前収集の価値が薄いと判断)。
+      // `resolveSources()` は通常1件しか返さないが、複数返っても「最初に成功した部屋」だけを使う
+      // フォールバックとして扱う。
+      let base: CatalogEntry[] = [];
+      let ja: CatalogEntry[] = [];
 
       for (const source of sources) {
         // **英語版は必須。** `name`(一致キー)と `label` の供給元。この部屋で取れなければ
-        // 日本語版も叩かず次の部屋へ進む。
-        let base: CatalogEntry[];
+        // 次の部屋へ進む。
         try {
           base = normalizeCatalogEntries(await deps.fetchGifts(source, "default"));
         } catch (err) {
@@ -550,39 +535,27 @@ export async function refreshGiftCatalogIfStale(
           continue;
         }
         if (base.length === 0) continue;
-        anyBaseSucceeded = true;
-        for (const entry of base) {
-          if (!baseByGiftId.has(entry.giftId)) baseByGiftId.set(entry.giftId, entry);
-        }
-
-        if (jaSucceeded) continue;
 
         // **日本語版は表示専用なので、落ちてもカタログ更新そのものは通す。** 失敗扱いにすると
         // 名前・価格・画像の更新まで止まる。既存の `labelJa` は writeCatalog() の
         // COALESCE が守るので、ここが空でも日本語表示は消えない。
         try {
-          const ja = normalizeCatalogEntries(await deps.fetchGifts(source, "ja"));
-          for (const entry of ja) {
-            if (!jaByGiftId.has(entry.giftId)) jaByGiftId.set(entry.giftId, entry);
-          }
-          if (ja.length > 0) jaSucceeded = true;
+          ja = normalizeCatalogEntries(await deps.fetchGifts(source, "ja"));
         } catch (err) {
           console.warn(
             "[gift-catalog] ja fetch failed (keeping existing labelJa):",
             describeError(err)
           );
         }
+        break;
       }
 
-      if (!anyBaseSucceeded) {
+      if (base.length === 0) {
         // 空・全件不正を成功扱いにしない。成功にすると壊れたレスポンスで24時間沈黙する。
         throw new Error("gift/list/ returned no usable entries from any source");
       }
 
-      const entries = mergeLocalizedCatalog(
-        Array.from(baseByGiftId.values()),
-        Array.from(jaByGiftId.values())
-      );
+      const entries = mergeLocalizedCatalog(base, ja);
       await writeCatalog(entries, new Date(deps.now()));
       lastFailureAt = 0;
       // 画像・日本語名が取れたかどうかに関わらず消費する(取れなければ通常のTTLへ戻す)。
