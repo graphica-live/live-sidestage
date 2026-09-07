@@ -8,6 +8,7 @@ import { isValidNormalizedTiktokId } from "@/lib/agency/params";
 import { upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
 import { requireExistingTiktokAccount, formatExistenceGateError } from "@/lib/tiktok-existence";
 import { checkTiktokIdChangeAllowed, formatTiktokIdLockError } from "@/lib/tiktok-id-lock";
+import { isAdminEmail } from "@/lib/admin";
 
 // GET: return existing pending code for current user
 export async function GET() {
@@ -60,7 +61,10 @@ export async function POST(req: NextRequest) {
     where: { userId: session.user.id },
     select: { tiktokId: true, tiktokIdChangedAt: true },
   });
-  if (existingPreCheck) {
+  // デバッグ用アカウント(ADMIN_EMAIL)は7日ロックの対象外。
+  const lockExempt = isAdminEmail(session.user.email);
+
+  if (existingPreCheck && !lockExempt) {
     const currentNormalized = normalizeTiktokId(existingPreCheck.tiktokId);
     const preCheck = checkTiktokIdChangeAllowed(
       { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: existingPreCheck.tiktokIdChangedAt },
@@ -120,13 +124,15 @@ export async function POST(req: NextRequest) {
       return { kind: "ok" as const, streamer: updated };
     }
 
-    const check = checkTiktokIdChangeAllowed(
-      { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: current.tiktokIdChangedAt },
-      normalized,
-      now
-    );
-    if (!check.ok) {
-      return { kind: "locked" as const, retryAfter: check.retryAfter };
+    if (!lockExempt) {
+      const check = checkTiktokIdChangeAllowed(
+        { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: current.tiktokIdChangedAt },
+        normalized,
+        now
+      );
+      if (!check.ok) {
+        return { kind: "locked" as const, retryAfter: check.retryAfter };
+      }
     }
 
     const { count } = await tx.streamer.updateMany({

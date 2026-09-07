@@ -7,6 +7,7 @@ import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
 import { fillHostUserIdAtEntryIfEligible, upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
 import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
 import { checkTiktokIdChangeAllowed, formatTiktokIdLockError } from "@/lib/tiktok-id-lock";
+import { isAdminEmail } from "@/lib/admin";
 
 /**
  * 入口の実在確認(書き込み前、fail-closed)。通ったら TikTok の userId を返す —
@@ -129,8 +130,11 @@ export async function PATCH(req: NextRequest) {
   const normalized = normalizeTiktokId(cleanTiktokId);
   const currentNormalized = normalizeTiktokId(user.streamer.tiktokId);
 
+  // デバッグ用アカウント(ADMIN_EMAIL)は7日ロックの対象外。
+  const lockExempt = isAdminEmail(user.email);
+
   // 事前チェック: 7日ロック中なら実在確認(TikTok照会)を省いて即409で返す。
-  if (currentNormalized !== normalized) {
+  if (currentNormalized !== normalized && !lockExempt) {
     const preCheck = checkTiktokIdChangeAllowed(
       { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: user.streamer.tiktokIdChangedAt },
       normalized
@@ -169,13 +173,15 @@ export async function PATCH(req: NextRequest) {
       return { kind: "ok" as const, streamer: updated };
     }
 
-    const check = checkTiktokIdChangeAllowed(
-      { normalizedTiktokId: currentNormalizedTx, tiktokIdChangedAt: current.tiktokIdChangedAt },
-      normalized,
-      now
-    );
-    if (!check.ok) {
-      return { kind: "locked" as const, retryAfter: check.retryAfter };
+    if (!lockExempt) {
+      const check = checkTiktokIdChangeAllowed(
+        { normalizedTiktokId: currentNormalizedTx, tiktokIdChangedAt: current.tiktokIdChangedAt },
+        normalized,
+        now
+      );
+      if (!check.ok) {
+        return { kind: "locked" as const, retryAfter: check.retryAfter };
+      }
     }
 
     const { count } = await tx.streamer.updateMany({

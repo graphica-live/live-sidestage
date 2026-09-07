@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: tiktok-id-change-lock
-last_updated: 2026-09-07
+last_updated: 2026-09-08
 last_risk: HIGH
-last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode)
+last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode), Codex + DeepSeek(Code Mode、ADMIN_EMAIL例外追加)
 ---
 
 # テストベースライン: tiktok-id-change-lock
@@ -33,6 +33,9 @@ last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code M
 | TC-LOCK-202 | mobile PATCH: 7日経過後の変更は許可され、旧`verified`がリセットされる | `PATCH /api/mobile/streamer` | 正常 | `tiktokIdChangedAt`が8日前、`verified: true`の状態から異なるtiktokIdを送信 | 200、`tiktokId`・`tiktokIdChangedAt`が更新され、`verified: false`にリセットされる | `route.integration.test.ts` | PASS | 古い`verified`が新しいtiktokIdへ引き継がれる回帰の防止 |
 | TC-LOCK-301 | CAS: 楽観的排他により同時書込みの片方は競合として拒否される | `POST /api/verify/generate` / `PATCH /api/mobile/streamer`(`updateMany`のwhere句) | 並行処理 | 同一`tiktokIdChangedAt`を読んだ2リクエストが異なるtiktokIdへ同時に変更しようとする | 1件は200で成功、もう1件は`updateMany`の対象0件により409 `code: "CONFLICT"` | コードレビュー(`updateMany({where: {id, tiktokIdChangedAt: readValue}})`のCAS実装確認。Prisma標準動作でnullも正しく`IS NULL`としてマッチすることをworktree実DBで直接検証済み) | PASS | 実際の同時リクエストによる競合再現はテストでは行わず、CAS実装のレビューとPrisma null-matchの実証で担保 |
 | TC-LOCK-401 | 注意書きはsetup画面の確認モーダルにのみ表示され、admin-workers画面には出ない | `TiktokAccountConfirmModal`(`lockNoticeText` prop) | UI | 両画面で確認モーダルを表示 | setup: 「登録後7日間はTikTok IDを変更できません」表示。admin-workers: 非表示 | Playwright(両画面) → `docs/testing/tiktok-account-confirm-modal/baseline.md` TC-TACM-013 | PASS | 同一コンポーネントのテストケースであるため実体は`tiktok-account-confirm-modal`baselineのTC-TACM-013に集約し、ここでは参照のみ(重複管理を避ける) |
+| TC-LOCK-501 | web: ADMIN_EMAILのセッションはロック中でも変更を許可し、他の副作用(tiktokIdChangedAt更新・verifiedリセット)は通常経路と同じ | `POST /api/verify/generate` | 例外系 | セッションemail=ADMIN_EMAIL、`tiktokIdChangedAt`が1日前、`verified: true`、異なるtiktokIdを送信 | 200、`tiktokId`・`tiktokIdChangedAt`が更新され`verified: false`にリセットされる | `route.integration.test.ts` | PASS | `isAdminEmail`(`src/lib/admin.ts`)はロック判定`checkTiktokIdChangeAllowed`の呼び出しだけをスキップし、CAS(`updateMany`のwhere句)は素通りする |
+| TC-LOCK-502 | mobile PATCH: ADMIN_EMAILのユーザーはロック中でも変更を許可し、他の副作用は通常経路と同じ | `PATCH /api/mobile/streamer` | 例外系 | DB上のuser.email=ADMIN_EMAIL、`tiktokIdChangedAt`が1日前、`verified: true`、異なるtiktokIdを送信 | 200、`tiktokId`・`tiktokIdChangedAt`が更新され`verified: false`にリセットされる | `route.integration.test.ts` | PASS | mobileは(NextAuthセッションでなく)DBの`User.email`列で判定する点がwebと異なる |
+| TC-LOCK-503 | `isAdminEmail`は完全一致のみtrue(大文字小文字・前後空白・null/undefinedはfalse) | `isAdminEmail` | 境界 | `ADMIN_EMAIL`と完全一致/大文字化/前後空白/null/undefined/別メール | 完全一致のみtrue | `src/lib/admin.test.ts` | PASS | |
 
 ## Quality Gate
 
