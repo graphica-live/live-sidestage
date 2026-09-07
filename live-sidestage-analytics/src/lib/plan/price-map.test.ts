@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { priceIdForPlan, isPlanPurchasable, planForPriceId } from "./price-map";
+import { priceIdForPlan, isPlanPurchasable, planForPriceId, WEB_MONTHLY_PRICE_JPY } from "./price-map";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -35,5 +35,10 @@ describe("price-map", () => {
   it("未知のPrice IDはundefinedを返す", () => {
     process.env.STRIPE_PRICE_PRO = "price_pro_123";
     expect(planForPriceId("price_unknown")).toBeUndefined();
+  });
+
+  it("WEB_MONTHLY_PRICE_JPY: PROは表示価格を持ち、ULTRAは価格未定(undefined)", () => {
+    expect(WEB_MONTHLY_PRICE_JPY.PRO).toBe(980);
+    expect(WEB_MONTHLY_PRICE_JPY.ULTRA).toBeUndefined();
   });
 });

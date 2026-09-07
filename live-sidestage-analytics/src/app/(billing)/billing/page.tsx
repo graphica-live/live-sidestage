@@ -91,6 +91,7 @@ function PlanCard({
   current: boolean;
   isActivePaid?: boolean;
 }) {
+  const price = plan !== "FREE" ? WEB_MONTHLY_PRICE_JPY[plan as PaidPlan] : undefined;
   return (
     <div className={`card flex flex-col gap-3 ${current ? "border-brand/60" : ""}`}>
       <div>
@@ -104,8 +105,14 @@ function PlanCard({
         </div>
         {plan !== "FREE" && (
           <p className="mt-1 text-2xl font-bold text-strong">
-            ¥{WEB_MONTHLY_PRICE_JPY[plan as PaidPlan].toLocaleString()}
-            <span className="text-xs font-normal text-muted"> /月</span>
+            {price !== undefined ? (
+              <>
+                ¥{price.toLocaleString()}
+                <span className="text-xs font-normal text-muted"> /月</span>
+              </>
+            ) : (
+              <span className="text-base font-normal text-muted">価格未定</span>
+            )}
           </p>
         )}
         <p className="mt-2 text-xs text-muted">{PLAN_DESCRIPTIONS[plan]}</p>

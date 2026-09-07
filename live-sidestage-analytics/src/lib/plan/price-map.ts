@@ -26,7 +26,8 @@ export function planForPriceId(priceId: string): PlanTier | undefined {
 }
 
 // Web(Stripe)の表示価格。ストア価格帯手動設定という設計上、動的検証は行わない(表示専用定数)。
-export const WEB_MONTHLY_PRICE_JPY: Record<PaidPlan, number> = {
+// undefinedは「価格未定」を意味し、表示側は「未定」等のプレースホルダを出す。
+export const WEB_MONTHLY_PRICE_JPY: Record<PaidPlan, number | undefined> = {
   PRO: 980,
-  ULTRA: 3980,
+  ULTRA: undefined,
 };
