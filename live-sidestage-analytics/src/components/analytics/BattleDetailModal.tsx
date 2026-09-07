@@ -10,6 +10,23 @@ import {
   type BattleTeam,
   type BattleTeamContributors,
 } from "./battle-types";
+import {
+  assignFactionColors,
+  resolveWinningTeamIndex,
+  GOLD,
+  FALLBACK_COLOR,
+} from "./battle-colors";
+import type { ReplayUnavailableReason } from "@/lib/battle-replay-contract";
+import { BattleReplayView } from "./battle-replay/BattleReplayView";
+import { formatClock, replayTitleOf } from "./battle-replay/replay-format";
+
+/** 再生できない理由の文言。サーバーは理由コードだけを返す(契約は battle-replay-contract.ts)。 */
+const REPLAY_UNAVAILABLE_LABEL: Record<ReplayUnavailableReason, string> = {
+  not_finalized: "このバトルはまだ確定していないため再生できない",
+  no_score_points: "このバトルは再生に必要なデータが記録されていない",
+  window_invalid: "バトル区間の長さが想定外のため再生できない",
+  participants_invalid: "参加者を特定できないため再生できない",
+};
 
 // バトル履歴の行クリックで開く対戦詳細モーダル。以前は行内アコーディオン展開だったが、
 // 公開トーナメント表の対戦詳細モーダル(MatchDetailModal.tsx)と表示形式を揃えるため変更した。
@@ -23,10 +40,7 @@ type LoadState =
   | { status: "error" }
   | { status: "ready"; data: BattleContributorsData };
 
-const SELF_COLOR = "#fe4d4d";
-const OPPONENT_COLORS = ["#4d9fff", "#ffa64d", "#b98aff"];
-const GOLD = "#f5c451";
-const FALLBACK_COLOR = "#9a9ea6";
+// 色と勝者判定は battle-colors.ts が正本(再生UIと同じ関数を通す)。
 
 const CAPTURE_STATUS_LABEL: Record<string, string> = {
   partial: "一部",
@@ -34,41 +48,6 @@ const CAPTURE_STATUS_LABEL: Record<string, string> = {
   complete: "完全",
 };
 
-/** 自陣営は常に赤固定、相手陣営はバトルスコア降順で青→橙→紫を割り当てる。 */
-function assignFactionColors(teams: { index: number; isSelf: boolean; score: string | null }[]): Map<number, string> {
-  const colorByIndex = new Map<number, string>();
-  for (const t of teams) if (t.isSelf) colorByIndex.set(t.index, SELF_COLOR);
-  const opponents = teams
-    .filter((t) => !t.isSelf)
-    .slice()
-    .sort((a, b) => {
-      const av = a.score === null ? -1n : BigInt(a.score);
-      const bv = b.score === null ? -1n : BigInt(b.score);
-      return av > bv ? -1 : av < bv ? 1 : 0;
-    });
-  opponents.forEach((t, i) => colorByIndex.set(t.index, OPPONENT_COLORS[i % OPPONENT_COLORS.length]));
-  return colorByIndex;
-}
-
-/** スコアが確定していない陣営が2つ未満、または最高スコアが同点のときはnull(WINバッジを出さない)。 */
-function resolveWinningTeamIndex(teams: { index: number; score: string | null }[]): number | null {
-  const scored = teams.filter((t) => t.score !== null);
-  if (scored.length < 2) return null;
-  let maxIndex: number | null = null;
-  let maxScore: bigint | null = null;
-  let tie = false;
-  for (const t of scored) {
-    const v = BigInt(t.score!);
-    if (maxScore === null || v > maxScore) {
-      maxScore = v;
-      maxIndex = t.index;
-      tie = false;
-    } else if (v === maxScore) {
-      tie = true;
-    }
-  }
-  return tie ? null : maxIndex;
-}
 
 export function BattleDetailModal({
   battle,
@@ -81,8 +60,19 @@ export function BattleDetailModal({
   apiBase?: string;
 }) {
   const [state, setState] = useState<LoadState | null>(null);
+  const [mode, setMode] = useState<"list" | "replay">("list");
+  // ヘッダの副題に出す尺。ペイロードを読むまでは判らないので、再生画面から1回だけ受け取る。
+  const [replayDurationMs, setReplayDurationMs] = useState<number | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const base = apiBase ?? "/api/analytics";
+
+  // 別のバトルを開いたら必ず一覧モードから始める。**依存は battleId** —
+  // 親が同じバトルを別オブジェクトで渡し直す(一覧のポーリング更新)たびに
+  // 再生モードが解除されてしまう。
+  const battleId = battle?.battleId ?? null;
+  useEffect(() => {
+    setMode("list");
+  }, [battleId]);
 
   useEffect(() => {
     if (!battle) return;
@@ -109,12 +99,24 @@ export function BattleDetailModal({
     };
   }, [battle, base]);
 
+  // フォーカス移動は**モーダルを開いた時だけ**。Esc ハンドラの effect と同居させると、
+  // 再生モードの出入りのたびにフォーカスが閉じるボタンへ奪われる
   useEffect(() => {
     if (!battle) return;
     closeButtonRef.current?.focus();
+  }, [battle]);
 
+  useEffect(() => {
+    if (!battle) return;
+
+    // 再生中の Esc はモーダルを閉じず、まず一覧モードへ戻す
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      if (mode === "replay") {
+        setMode("list");
+        return;
+      }
+      onClose();
     };
     document.addEventListener("keydown", onKeyDown);
 
@@ -125,7 +127,7 @@ export function BattleDetailModal({
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
     };
-  }, [battle, onClose]);
+  }, [battle, onClose, mode]);
 
   if (!battle) return null;
 
@@ -160,8 +162,46 @@ export function BattleDetailModal({
           <CloseIcon />
         </button>
 
-        <div className="pr-8 text-xs text-muted">{new Date(battle.startedAt).toLocaleString("ja-JP")}</div>
+        {mode === "replay" ? null : (
+          <div className="pr-8 text-xs text-muted">{new Date(battle.startedAt).toLocaleString("ja-JP")}</div>
+        )}
 
+        {mode === "replay" ? (
+          <div className="mt-2">
+            <div className="mb-2 flex items-start justify-between gap-3 pr-8">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold text-strong">
+                  {replayTitleOf(
+                    (teams ?? []).map((team) => ({
+                      isSelf: team.isSelf,
+                      participants: team.participants.map((p) => ({
+                        label: p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?",
+                      })),
+                    }))
+                  )}
+                </div>
+                <div className="font-mono text-[11px] text-muted">
+                  {new Date(battle.startedAt).toLocaleString("ja-JP")}
+                  {replayDurationMs === null ? "" : ` ・ ${formatClock(replayDurationMs)}`}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMode("list")}
+                className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong"
+              >
+                貢献者一覧へ戻る
+              </button>
+            </div>
+            {/* ステージはモーダルの内側余白を無視して端まで使う(comp と同じ画面比のため) */}
+            <div className="-mx-5 overflow-hidden sm:-mx-6">
+              <BattleReplayView
+                replayUrl={`${base}/battles/${encodeURIComponent(battle.battleId)}/replay`}
+                onDurationMs={setReplayDurationMs}
+              />
+            </div>
+          </div>
+        ) : (
         <div className={useContinuousDivider ? "relative z-0" : undefined}>
           {useContinuousDivider && (
             <div
@@ -178,6 +218,26 @@ export function BattleDetailModal({
               <VersusHeader teams={teams} colorByIndex={colorByIndex!} winningIndex={winningIndex} />
             ) : (
               <FallbackVersusHeader battle={battle} opponent={opponent} win={win} lose={lose} />
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              disabled={!battle.replay.available}
+              aria-disabled={!battle.replay.available}
+              aria-describedby={battle.replay.available ? undefined : "replay-unavailable-reason"}
+              onClick={() => setMode("replay")}
+              title={battle.replay.available ? undefined : REPLAY_UNAVAILABLE_LABEL[battle.replay.reason ?? "not_finalized"]}
+              className="rounded-field bg-brand px-5 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-border disabled:text-muted"
+            >
+              ▶ バトルを再生
+            </button>
+            {/* disabled ボタンの title はホバーでしか読めないので、理由は本文にも出す */}
+            {!battle.replay.available && (
+              <p id="replay-unavailable-reason" className="m-0 text-[11px] text-muted">
+                {REPLAY_UNAVAILABLE_LABEL[battle.replay.reason ?? "not_finalized"]}
+              </p>
             )}
           </div>
 
@@ -219,6 +279,7 @@ export function BattleDetailModal({
               ))}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

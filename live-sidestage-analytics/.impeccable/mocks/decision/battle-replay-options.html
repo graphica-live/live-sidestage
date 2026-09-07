@@ -1,0 +1,1889 @@
+<title>バトル再生 画面構成</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f8f9fb;
+    --border: #e5e7eb;
+    --row-border: #eef0f3;
+    --text: #374151;
+    --strong: #111827;
+    --muted: #6b7280;
+    --accent: #4f46e5;
+    --on-accent: #ffffff;
+
+    /* 陣営色。.impeccable/approved/battle-detail-contributors/spec.md の生HEXをそのまま継承 */
+    --fc-self: #fe4d4d;
+    --fc-1: #4d9fff;
+    --fc-2: #ffa64d;
+    --fc-3: #b98aff;
+    --gold: #f5c451;
+
+    /* ステージは常時ダーク(配信映像の代替面なのでテーマ追従させない) */
+    --stage: #0d0f13;
+    --stage-2: #15181e;
+    --stage-line: rgba(255, 255, 255, 0.12);
+    --stage-text: #f3f4f7;
+    --stage-muted: #9aa1b0;
+
+    /* ボクシンググローブのグリフ(mask用。currentColorで着色する) */
+    --glove: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 1.8h4.1A4.1 4.1 0 0 1 13.2 5.9v2.2a4.1 4.1 0 0 1-4.1 4.1H5z"/><path d="M5 5.9H3.6a1.9 1.9 0 0 0 0 3.8H5z"/><rect x="4.3" y="12.6" width="7.2" height="2.6" rx="1.1"/></svg>');
+
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101216;
+      --panel: #181b21;
+      --border: #2a2e37;
+      --row-border: #22252c;
+      --text: #c7cbd4;
+      --strong: #f3f4f7;
+      --muted: #8890a0;
+      --accent: #8b85ff;
+      --on-accent: #0d0c1a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101216;
+    --panel: #181b21;
+    --border: #2a2e37;
+    --row-border: #22252c;
+    --text: #c7cbd4;
+    --strong: #f3f4f7;
+    --muted: #8890a0;
+    --accent: #8b85ff;
+    --on-accent: #0d0c1a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 24px 96px;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  h1 {
+    font-size: 26px;
+    line-height: 1.35;
+    color: var(--strong);
+    margin: 0 0 8px;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: 19px;
+    color: var(--strong);
+    margin: 0;
+    text-wrap: balance;
+  }
+  h3 {
+    font-size: 13px;
+    color: var(--muted);
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  p { margin: 0; max-width: 66ch; }
+  .lede { color: var(--muted); }
+
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .option {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+  }
+  .option-head { display: flex; flex-direction: column; gap: 6px; }
+  .variants {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .variants { grid-template-columns: 1fr; }
+  }
+  .variant { display: flex; flex-direction: column; gap: 10px; }
+  .variant-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* ---------- モーダル外殻(既存 BattleDetailModal の bg-panel / border-white/10 / rounded-xl) ---------- */
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--row-border);
+  }
+  .modal-title { font-size: 13px; color: var(--strong); font-weight: 600; }
+  .modal-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .back {
+    font-size: 12px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px 9px;
+    background: transparent;
+  }
+
+  /* ---------- ステージ ---------- */
+  .stage {
+    background: var(--stage);
+    color: var(--stage-text);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* スコアバー: セグメント幅=スコア比。両端に数値。中央に経過時間チップ */
+  .scorebar {
+    position: relative;
+    display: flex;
+    height: 26px;
+    align-items: stretch;
+  }
+  .seg {
+    display: flex;
+    align-items: center;
+    color: #0d0f13;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 7px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .seg + .seg { box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.35); }
+  .seg.right { justify-content: flex-end; }
+  .clock {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(6, 8, 12, 0.82);
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+  }
+
+  /* 陣営グリッド */
+  .grid {
+    display: grid;
+    gap: 1px;
+    background: var(--stage-line);
+  }
+  .grid.quad { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .grid.duo { grid-template-columns: 1fr 1fr; }
+  /* 3コラボ: 左に縦長1枠(全高) + 右に上下2枠。実画面の割りに合わせる */
+  .grid.trio { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .grid.trio > .cell:first-child { grid-row: 1 / span 2; aspect-ratio: auto; }
+  /* チーム戦(2vs2): 左列=自チーム / 右列=相手チーム。列の境目だけ太い線でチームを割る */
+  .grid.team22 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; column-gap: 4px; }
+  /* チーム戦(1vs3): 左に自陣1枠(全高) + 右に相手3枠 */
+  .grid.one3 { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); column-gap: 4px; }
+  .grid.one3 > .cell:first-child { grid-row: 1 / span 3; aspect-ratio: auto; }
+  .grid.one3 > .cell:not(:first-child) { aspect-ratio: 1.5; }
+  /* 枠の縦横比は実バトル画面の実測に合わせて固定する。計器のために縮めない。 */
+  .cell {
+    position: relative;
+    aspect-ratio: 1.09;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .grid.duo > .cell { aspect-ratio: 0.55; }
+  .cell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(13, 15, 19, 0) 42%, rgba(13, 15, 19, 0.85) 100%);
+  }
+  .host {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+  }
+  .avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 999px;
+    border: 3px solid rgba(255, 255, 255, 0.8);
+    background: rgba(13, 15, 19, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .avatar.lg { width: 128px; height: 128px; font-size: 44px; }
+
+  /* 配信者アイコンのリップル。--ripple はギフトのスコア加算値から決まる最大倍率。
+     --fc はその陣営色。2枚を 320ms ずらして出す。 */
+  .ripple-host { position: relative; display: flex; align-items: center; justify-content: center; }
+  .ripple-host .ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    border: 2px solid var(--fc);
+    animation: ripple 1100ms cubic-bezier(0.16, 0.9, 0.35, 1) infinite;
+    pointer-events: none;
+  }
+  .ripple-host .ring:nth-child(2) { animation-delay: 320ms; }
+  @keyframes ripple {
+    0% { transform: scale(1); opacity: 0.85; }
+    100% { transform: scale(var(--ripple, 2)); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ripple-host .ring { animation: ripple-quiet 1100ms ease-out infinite; }
+    @keyframes ripple-quiet {
+      0% { transform: scale(1.25); opacity: 0.7; }
+      100% { transform: scale(1.25); opacity: 0; }
+    }
+  }
+  .host-score {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  }
+  .rank {
+    position: absolute;
+    left: 7px;
+    bottom: 7px;
+    z-index: 2;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: #0d0f13;
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+  .namechip {
+    position: absolute;
+    right: 7px;
+    bottom: 7px;
+    z-index: 2;
+    max-width: 62%;
+    background: rgba(6, 8, 12, 0.7);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 11px;
+    color: #e8eaef;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .win {
+    position: absolute;
+    right: 7px;
+    top: 7px;
+    z-index: 2;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: #0d0f13;
+    background: var(--gold);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+
+  /* ギフトのスライドインバー: 上段=少額 / 下段=高額 の2段 */
+  .lanes {
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* 赤帯・コントロールと重ならない高さまで持ち上げる */
+    bottom: var(--lanes-bottom, 14px);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 0 10px;
+    pointer-events: none;
+  }
+  .tier {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    min-height: 1px;
+  }
+  .lane { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .lane.right { align-items: flex-end; }
+  .giftbar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: linear-gradient(90deg, rgba(6, 8, 12, 0.9), rgba(6, 8, 12, 0.55));
+    border-left: 3px solid var(--fc-self);
+    border-radius: 4px 999px 999px 4px;
+    padding: 4px 10px 4px 6px;
+    max-width: 260px;
+  }
+  .lane.right .giftbar {
+    flex-direction: row-reverse;
+    border-left: 0;
+    border-right: 3px solid var(--fc-op, var(--fc-1));
+    border-radius: 999px 4px 4px 999px;
+    padding: 4px 6px 4px 10px;
+    background: linear-gradient(270deg, rgba(6, 8, 12, 0.9), rgba(6, 8, 12, 0.55));
+  }
+  .giftbar .who {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: #2b303a;
+    color: #cfd4de;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    flex: none;
+  }
+  .giftbar .txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .lane.right .giftbar .txt { align-items: flex-end; }
+  .giftbar .nm { font-size: 11px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .giftbar .gf { font-size: 10px; color: var(--stage-muted); white-space: nowrap; }
+  .giftbar .cnt {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gold);
+    flex: none;
+  }
+  .giftbar .thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #ff9a3c, #ff4d6d);
+    flex: none;
+  }
+  .fading { opacity: 0.45; }
+
+  /* スライドイン。自分側(画面左)は左外から、画面右側の枠は右外から入る。
+     prefers-reduced-motion ではフェードだけにする。 */
+  .lane .giftbar,
+  .celllanes .giftbar {
+    animation: slidein-l 420ms cubic-bezier(0.16, 0.9, 0.35, 1) both;
+  }
+  .lane.right .giftbar,
+  .grid.quad > .cell:nth-child(2n) .celllanes .giftbar,
+  .grid.team22 > .cell:nth-child(2n) .celllanes .giftbar,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar {
+    animation-name: slidein-r;
+  }
+  @keyframes slidein-l {
+    from { opacity: 0; transform: translateX(-24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes slidein-r {
+    from { opacity: 0; transform: translateX(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lane .giftbar,
+    .celllanes .giftbar { animation: giftbar-fade 420ms ease-out both; }
+    @keyframes giftbar-fade {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  }
+
+  /* 上段(少額) は一回り小さく、下段(高額) は太いカード */
+  .giftbar.sm { padding: 2px 8px 2px 5px; max-width: 216px; }
+  .lane.right .giftbar.sm { padding: 2px 5px 2px 8px; }
+  .giftbar.sm .who { width: 19px; height: 19px; font-size: 9px; }
+  .giftbar.sm .nm { font-size: 10px; }
+  .giftbar.sm .gf { font-size: 9px; }
+  .giftbar.sm .cnt { font-size: 11px; }
+  .giftbar.sm .thumb { width: 16px; height: 16px; }
+  .giftbar.lg { border-left-width: 4px; padding: 6px 12px 6px 7px; max-width: 292px; }
+  .lane.right .giftbar.lg { border-right-width: 4px; padding: 6px 7px 6px 12px; }
+  .giftbar.lg .who { width: 28px; height: 28px; }
+  .giftbar.lg .nm { font-size: 12px; }
+  .giftbar.lg .cnt { font-size: 14px; }
+  .giftbar.lg .thumb { width: 24px; height: 24px; }
+
+  /* 3人以上のコラボ・チーム戦は、ステージ全幅の左右2レーンでは全員分を同時に置けないので
+     枠(セル)ごとにレーンを持つ。自分の枠は通常サイズ、相手の枠は .op で一回り小さくする。 */
+  .celllanes {
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* 名前チップ・順位バッジ(下端 7px)の上へ載せる */
+    bottom: 26px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    /* カードの背景は内容の長さぶんだけ。枠幅いっぱいに伸ばさない */
+    align-items: flex-start;
+    gap: 4px;
+    padding: 0 6px;
+    pointer-events: none;
+  }
+  .celllanes .giftbar { max-width: 100%; }
+
+  /* 縦が足りない枠(4分割・2vs2・3コラボの右2枠・1vs3の相手枠)は、配信者アイコンを
+     中央に保ったまま、下端の1行へ名前チップと並べる。カードは1行の極小サイズにする。 */
+  .grid.quad .celllanes,
+  .grid.team22 .celllanes,
+  .grid.trio > .cell:not(:first-child) .celllanes,
+  .grid.one3 > .cell:not(:first-child) .celllanes {
+    flex-direction: row;
+    align-items: flex-end;
+    bottom: 7px;
+    left: 6px;
+    right: auto;
+    max-width: 58%;
+    padding: 0;
+  }
+  .grid.quad .celllanes .giftbar,
+  .grid.team22 .celllanes .giftbar,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar {
+    padding: 1px 6px 1px 3px;
+    gap: 5px;
+    border-left-width: 3px;
+  }
+  .grid.quad .celllanes .giftbar .who,
+  .grid.team22 .celllanes .giftbar .who,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .who,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .who {
+    width: 15px;
+    height: 15px;
+    font-size: 8px;
+  }
+  /* 名前とギフト名は縦2段でなく1行に並べる */
+  .grid.quad .celllanes .giftbar .txt,
+  .grid.team22 .celllanes .giftbar .txt,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .txt,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .txt {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .grid.quad .celllanes .giftbar .nm,
+  .grid.team22 .celllanes .giftbar .nm,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .nm,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .nm { font-size: 9px; }
+  .grid.quad .celllanes .giftbar .gf,
+  .grid.team22 .celllanes .giftbar .gf,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .gf,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .gf { font-size: 9px; color: #dfe3ea; }
+  .grid.quad .celllanes .giftbar .cnt,
+  .grid.team22 .celllanes .giftbar .cnt,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .cnt,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .cnt { font-size: 10px; }
+  .grid.quad .celllanes .giftbar .thumb,
+  .grid.team22 .celllanes .giftbar .thumb,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .thumb,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .thumb { width: 13px; height: 13px; }
+  .grid.quad .celllanes .giftbar .glove,
+  .grid.team22 .celllanes .giftbar .glove,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .glove,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .glove { width: 11px; height: 11px; }
+
+  /* 画面右側の枠は右から左へ入る。色の縦帯も右端へ寄せる */
+  .grid.quad > .cell:nth-child(2n) .celllanes,
+  .grid.team22 > .cell:nth-child(2n) .celllanes,
+  .grid.trio > .cell:not(:first-child) .celllanes,
+  .grid.one3 > .cell:not(:first-child) .celllanes {
+    left: auto;
+    right: 6px;
+    justify-content: flex-end;
+    align-items: flex-end;
+  }
+  .grid.quad > .cell:nth-child(2n) .celllanes .giftbar,
+  .grid.team22 > .cell:nth-child(2n) .celllanes .giftbar,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar {
+    flex-direction: row-reverse;
+    border-left: 0;
+    border-right: 3px solid var(--fc-op, var(--fc-1));
+    border-radius: 999px 4px 4px 999px;
+    padding: 1px 3px 1px 6px;
+    background: linear-gradient(270deg, rgba(6, 8, 12, 0.9), rgba(6, 8, 12, 0.55));
+  }
+  .grid.quad > .cell:nth-child(2n) .celllanes .giftbar .txt,
+  .grid.team22 > .cell:nth-child(2n) .celllanes .giftbar .txt,
+  .grid.trio > .cell:not(:first-child) .celllanes .giftbar .txt,
+  .grid.one3 > .cell:not(:first-child) .celllanes .giftbar .txt { flex-direction: row-reverse; }
+
+  /* 右下がカードで埋まるので、右枠だけ名前チップを左下・順位バッジを右上へ入れ替える */
+  .grid.quad > .cell:nth-child(2n) .namechip,
+  .grid.team22 > .cell:nth-child(2n) .namechip,
+  .grid.trio > .cell:not(:first-child) .namechip,
+  .grid.one3 > .cell:not(:first-child) .namechip { left: 7px; right: auto; }
+  .grid.quad > .cell:nth-child(2n) .rank,
+  .grid.trio > .cell:not(:first-child) .rank { left: auto; right: 7px; bottom: auto; top: 7px; }
+
+  /* 1vs3 の相手枠は横長(1.5)で縦が足りないため、この枠だけアイコンを一段小さくする */
+  .grid.one3 > .cell:not(:first-child) .avatar { width: 76px; height: 76px; font-size: 27px; }
+
+  /* 3人以上のコラボ・チーム戦では相手のスライドインも出すが、自分より一回り小さくする。
+     1vs1(duo)だけは左右等寸のまま。 */
+  .giftbar.op { max-width: 168px; padding: 2px 7px 2px 4px; }
+  .lane.right .giftbar.op { padding: 2px 4px 2px 7px; }
+  .giftbar.op .who { width: 16px; height: 16px; font-size: 8px; }
+  /* 相手カードはリスナー名を出さない(アイコン + ギフト名 + 個数だけ) */
+  .giftbar.op .nm { display: none; }
+  .giftbar.op .gf { font-size: 9px; color: #dfe3ea; }
+  .giftbar.op .cnt { font-size: 10px; }
+  .giftbar.op .thumb { width: 14px; height: 14px; }
+  .giftbar.op .glove { width: 12px; height: 12px; }
+  .giftbar.op.lg { max-width: 216px; border-left-width: 3px; border-right-width: 3px; padding: 4px 9px 4px 5px; }
+  .lane.right .giftbar.op.lg { padding: 4px 5px 4px 9px; }
+  .giftbar.op.lg .who { width: 22px; height: 22px; font-size: 9px; }
+  .giftbar.op.lg .gf { font-size: 10px; }
+  .giftbar.op.lg .cnt { font-size: 12px; }
+  .giftbar.op.lg .thumb { width: 19px; height: 19px; }
+  .giftbar.op.lg .glove { width: 15px; height: 15px; }
+
+  /* コンボ(repeatCount が階段状に増えるギフト)の個数表示。
+     畳み込み後の最終値をいきなり出さず、コンボの刻みに合わせて 1 から最終値まで
+     オドメーター(数字が縦に送られる)で上がる。--n が最終値、steps(--n) は inline で与える。 */
+  .odo {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+    line-height: 1;
+    vertical-align: -0.06em;
+  }
+  .odo .reel {
+    display: block;
+    animation: odo-roll 1.9s infinite;
+  }
+  .odo .reel > span {
+    display: block;
+    height: 1em;
+  }
+  @keyframes odo-roll {
+    from { transform: translateY(0); }
+    to { transform: translateY(calc(var(--n) * -1em)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* 送らず最終値のまま出す */
+    .odo .reel { animation: none; transform: translateY(calc(var(--n) * -1em + 1em)); }
+  }
+
+  /* グローブ(critical hit)。multiplierValue 5 は赤、6 は金 */
+  .glove {
+    width: 15px;
+    height: 15px;
+    flex: none;
+    color: #fe4d4d;
+    background: currentColor;
+    -webkit-mask: var(--glove) center / contain no-repeat;
+    mask: var(--glove) center / contain no-repeat;
+  }
+  .glove.gold { color: var(--gold); }
+  .giftbar.lg .glove { width: 18px; height: 18px; }
+
+  /* 赤帯 */
+  .band {
+    background: linear-gradient(90deg, #d81f36, #ff4d5e);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .band .cd { font-family: var(--mono); font-weight: 700; }
+
+  /* コントロール */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+  }
+  .controls.solid {
+    background: var(--panel);
+    border-top: 1px solid var(--row-border);
+  }
+  .btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 0;
+    background: #fff;
+    color: #0d0f13;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex: none;
+  }
+  .controls.solid .btn { background: var(--accent); color: var(--on-accent); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--stage-muted);
+    border: 1px solid var(--stage-line);
+    font-size: 11px;
+  }
+  .controls.solid .btn.ghost { color: var(--muted); border-color: var(--border); background: transparent; }
+  .time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--stage-muted);
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .controls.solid .time { color: var(--muted); }
+  .track {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.22);
+    min-width: 40px;
+  }
+  .controls.solid .track { background: var(--border); }
+  .track .fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 46%;
+    border-radius: 999px;
+    background: #fff;
+  }
+  .controls.solid .track .fill { background: var(--accent); }
+  .track .knob {
+    position: absolute;
+    left: 46%;
+    top: 50%;
+    width: 11px;
+    height: 11px;
+    margin-left: -5px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+  }
+  .controls.solid .track .knob { background: var(--accent); }
+  .track .tick {
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 8px;
+    border-radius: 1px;
+    background: var(--fc-self);
+  }
+  .speed {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 6px;
+    padding: 1px 7px;
+    flex: none;
+  }
+  .controls.solid .speed { color: var(--strong); border-color: var(--border); }
+
+  /* B案の計器 */
+  .instruments {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    background: var(--row-border);
+    border-top: 1px solid var(--row-border);
+  }
+  .inst { background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+  .inst h4 {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  /* 並びが右ほど上位であることを見出しの右端で明示する(row-reverse の補助) */
+  .inst h4::after {
+    content: "上位 ➡";
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  /* 貢献欄はリスナー名を出さず、アイコン + 金額だけで場所を節約する */
+  /* 右端が1位。DOMは1位→下位の順のまま row-reverse で並べる */
+  .board {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 9px 11px;
+  }
+  /* 順位入れ替わりは FLIP(First-Last-Invert-Play)で位置を補間する。
+     並び順そのものは再生位置の純関数なので、DOM順は毎フレーム作り直し、
+     直前フレームとの位置差を transform で埋めてから 0 へ戻す。 */
+  .fan {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    width: 48px;
+    transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  /* 新規に現れた貢献者 */
+  .fan.is-new { animation: fan-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  @keyframes fan-in {
+    from { opacity: 0; transform: translateY(7px) scale(0.82); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fan { transition: none; }
+    .fan.is-new { animation: none; }
+  }
+  .fav {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: #2b303a;
+    color: #cfd4de;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    border: 2px solid transparent;
+  }
+  .fan:first-child .fav { border-color: var(--gold); }
+  /* そのリスナーのギフトスライドインが出ている間だけ、配信者アイコンと同じリップルを出す。
+     --ripple はそのギフトのコイン額から決まる最大倍率、--fc は貢献先の陣営色。 */
+  .fan .fav { position: relative; }
+  .fan.is-gifting .fav::before,
+  .fan.is-gifting .fav::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 999px;
+    border: 2px solid var(--fc, var(--fc-self));
+    animation: ripple 1100ms cubic-bezier(0.16, 0.9, 0.35, 1) infinite;
+    pointer-events: none;
+  }
+  .fan.is-gifting .fav::after { animation-delay: 320ms; }
+  @media (prefers-reduced-motion: reduce) {
+    .fan.is-gifting .fav::before,
+    .fan.is-gifting .fav::after { animation: ripple-quiet 1100ms ease-out infinite; }
+  }
+  /* 上位3人だけ順位バッジ。アイコン上端へ少し重ねる(DOM順=順位なので nth-child で足りる) */
+  .fan:nth-child(-n + 3)::before {
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    min-width: 13px;
+    height: 13px;
+    padding: 0 3px;
+    border-radius: 999px;
+    border: 1px solid var(--stage);
+    font-family: var(--mono);
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 11px;
+    text-align: center;
+    color: #0d0f13;
+  }
+  .fan:nth-child(1)::before { content: "1"; background: var(--gold); }
+  .fan:nth-child(2)::before { content: "2"; background: #c9cedb; }
+  .fan:nth-child(3)::before { content: "3"; background: #cf8f5a; }
+  .fan .amt {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    color: var(--strong);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* 貢献値はダイヤ(コイン)であることを数字の頭で明示する。
+     textContent には入らないので FLIP 側の数値読み書きに影響しない */
+  .fan .amt::before {
+    content: "🪙";
+    font-size: 9px;
+    margin-right: 2px;
+    vertical-align: -0.05em;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .row .pos { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .row .who2 { color: var(--strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .amt { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--strong); font-weight: 600; }
+  .spark { width: 100%; height: 74px; display: block; }
+
+  /* 注記チップ */
+  .notes { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 12px; border-top: 1px solid var(--row-border); }
+  .chip {
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 9px;
+  }
+  .chip.warn { color: #b45309; border-color: #f0c68a; }
+  :root[data-theme="dark"] .chip.warn { color: #f0b357; border-color: #6b4d1c; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .chip.warn { color: #f0b357; border-color: #6b4d1c; }
+  }
+
+  /* 判定表 */
+  .facts { display: flex; flex-direction: column; gap: 10px; }
+  .fact { display: grid; grid-template-columns: 148px 1fr; gap: 14px; align-items: start; }
+  .fact dt { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.04em; padding-top: 2px; }
+  .fact dd { margin: 0; color: var(--text); }
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 16px;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.92em;
+    background: var(--row-border);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <span class="kicker">design-auto gate 1 &middot; battle replay</span>
+    <h1>バトル再生 画面構成</h1>
+    <p class="lede">
+      既存の <code>BattleDetailModal</code> に再生モードを足す<strong>既存サーフェスの拡張</strong>。世界(トークン・陣営色の生HEX・<code>font-mono</code> の数値・<code>rounded-xl</code> のパネル)は
+      <code>.impeccable/approved/battle-detail-contributors/spec.md</code> をそのまま継承し、決めるのは<strong>構成だけ</strong>。
+      ステージ面のみ常時ダークにする(配信映像の代替面であり、ライト背景に置くと元画面と別物になるため)。
+    </p>
+  </header>
+
+  <section class="option">
+    <div class="option-head">
+      <span class="kicker">採用構成</span>
+      <h2>ステージ + 計器 &mdash; 見ながら読める</h2>
+      <p class="lede">
+        ステージの<strong>下に</strong><strong>その瞬間までの貢献者ボード</strong>をパネル地で置き、
+        コントロールもステージへ被せず実バーにする。ステージは一切縮めず、モーダルが縦に伸びる。
+        名前と金額がステージの絵と重ならないので読み取りが確実。そのぶん一目で入る情報の密度は下がり、
+        縦に長いので画面の小さい端末ではスクロールが要る。
+      </p>
+    </div>
+
+    <div class="variants">
+      <!-- B / 4コラボ -->
+      <div class="variant">
+        <span class="variant-label">B &mdash; 4コラボ(1vs1vs1vs1)</span>
+        <div class="modal">
+          <div class="modal-bar">
+            <div>
+              <div class="modal-title">わや &times; 3人バトル</div>
+              <div class="modal-sub">2026-09-04 21:14 &middot; 05:00</div>
+            </div>
+            <button class="back" type="button">貢献者一覧へ戻る</button>
+          </div>
+
+          <div class="stage">
+            <div class="scorebar">
+              <div class="seg" style="background:var(--fc-self);width:41%">3,140,721</div>
+              <div class="seg" style="background:var(--fc-1);width:27%">2,068,400</div>
+              <div class="seg" style="background:var(--fc-2);width:19%">1,455,900</div>
+              <div class="seg right" style="background:var(--fc-3);width:13%">998,120</div>
+              <div class="clock">02:52</div>
+            </div>
+
+            <div class="grid quad">
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(254,77,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-self);--ripple:3.2">
+                    <span class="ring"></span>
+                    <span class="ring"></span>
+                    <div class="avatar">わ</div>
+                  </div>
+                  <div class="host-score">3,140,721</div>
+                </div>
+                <span class="rank" style="background:var(--fc-self)">1位</span>
+                <span class="namechip">わや&#127807;</span>
+                <div class="celllanes">
+                  <div class="giftbar lg">
+                    <div class="who">た</div>
+                    <div class="txt">
+                      <span class="nm">たちら&#127807;</span>
+                      <span class="gf">ウルトラマン</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:5"><span class="reel" style="animation-timing-function:steps(5)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></span></span></span>
+                    <span class="glove gold" title="グローブ &times;6"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-1);--ripple:1.9">
+                    <span class="ring"></span>
+                    <div class="avatar">さ</div>
+                  </div>
+                  <div class="host-score">2,068,400</div>
+                </div>
+                <span class="rank" style="background:var(--fc-1)">2位</span>
+                <span class="namechip">さら&#127774;sara</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">R</div>
+                    <div class="txt">
+                      <span class="gf">バラ</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:3"><span class="reel" style="animation-timing-function:steps(3)"><span>1</span><span>2</span><span>3</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(255,166,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-2);--ripple:1.7">
+                    <span class="ring"></span>
+                    <div class="avatar">ぷ</div>
+                  </div>
+                  <div class="host-score">1,455,900</div>
+                </div>
+                <span class="rank" style="background:var(--fc-2)">3位</span>
+                <span class="namechip">ぷっぷ</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-2);border-left-color:var(--fc-2)">
+                    <div class="who">m</div>
+                    <div class="txt">
+                      <span class="gf">ハート</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:12"><span class="reel" style="animation-timing-function:steps(12)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(185,138,255,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-3);--ripple:3.1">
+                    <span class="ring"></span>
+                    <span class="ring"></span>
+                    <div class="avatar">た</div>
+                  </div>
+                  <div class="host-score">998,120</div>
+                </div>
+                <span class="rank" style="background:var(--fc-3)">4位</span>
+                <span class="namechip">たちら&#127807;</span>
+                <div class="celllanes">
+                  <div class="giftbar lg op" style="--fc-op:var(--fc-3);border-left-color:var(--fc-3)">
+                    <div class="who">k</div>
+                    <div class="txt">
+                      <span class="gf">ライオン</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;1</span>
+                    <span class="glove" title="グローブ &times;5"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="band">
+              <span>初めてのギフト &times;2倍</span>
+              <span class="cd">残り 14秒</span>
+            </div>
+          </div>
+
+          <div class="instruments">
+            
+            <div class="inst">
+              <h4>この時点の貢献者</h4>
+              <div class="board">
+                <div class="fan is-gifting" style="--ripple: 2.4"><span class="fav">た</span><span class="amt">412,900</span></div>
+                <div class="fan"><span class="fav">ド</span><span class="amt">288,110</span></div>
+                <div class="fan"><span class="fav">み</span><span class="amt">96,400</span></div>
+                <div class="fan"><span class="fav">ゆ</span><span class="amt">31,200</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls solid">
+            <button class="btn" type="button">&#9208;</button>
+            <button class="btn ghost" type="button">&#8676;</button>
+            <span class="time">02:52</span>
+            <div class="track">
+              <div class="fill"></div>
+              <span class="tick" style="left:12%"></span>
+              <span class="tick" style="left:31%"></span>
+              <span class="tick" style="left:44%"></span>
+              <span class="tick" style="left:58%;background:var(--fc-1)"></span>
+              <div class="knob"></div>
+            </div>
+            <span class="time">05:00</span>
+            <span class="speed">2&times;</span>
+          </div>
+
+          <div class="notes">
+            <span class="chip">シェア</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B / 3コラボ -->
+      <div class="variant">
+        <span class="variant-label">B &mdash; 3コラボ(1vs1vs1)</span>
+        <div class="modal">
+          <div class="modal-bar">
+            <div>
+              <div class="modal-title">わや &times; 2人バトル</div>
+              <div class="modal-sub">2026-09-03 20:05 &middot; 05:00</div>
+            </div>
+            <button class="back" type="button">貢献者一覧へ戻る</button>
+          </div>
+
+          <div class="stage">
+            <div class="scorebar">
+              <div class="seg" style="background:var(--fc-self);width:69%">621</div>
+              <div class="seg" style="background:var(--fc-1);width:21%">186</div>
+              <div class="seg right" style="background:var(--fc-2);width:10%">96</div>
+              <div class="clock">04:43</div>
+            </div>
+
+            <div class="grid trio">
+              <div class="cell" style="background:radial-gradient(110% 80% at 50% 0%, rgba(254,77,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-self);--ripple:2.6">
+                    <span class="ring"></span>
+                    <div class="avatar lg">わ</div>
+                  </div>
+                  <div class="host-score">621</div>
+                </div>
+                <span class="rank" style="background:var(--fc-self)">1位</span>
+                <span class="namechip">わや&#127807;</span>
+                <div class="celllanes">
+                  <div class="giftbar sm">
+                    <div class="who">ゆ</div>
+                    <div class="txt">
+                      <span class="nm">ゆき</span>
+                      <span class="gf">ハート</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:9"><span class="reel" style="animation-timing-function:steps(9)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span></span></span></span>
+                  </div>
+                  <div class="giftbar lg">
+                    <div class="who">ド</div>
+                    <div class="txt">
+                      <span class="nm">ドン&#9734;ぷっぷ</span>
+                      <span class="gf">ドラゴン</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;1</span>
+                    <span class="glove" title="グローブ &times;5"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(255,166,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-2);--ripple:1.7">
+                    <span class="ring"></span>
+                    <div class="avatar">か</div>
+                  </div>
+                  <div class="host-score">96</div>
+                </div>
+                <span class="rank" style="background:var(--fc-2)">3位</span>
+                <span class="namechip">かもめ...</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-2);border-left-color:var(--fc-2)">
+                    <div class="who">m</div>
+                    <div class="txt">
+                      <span class="gf">バラ</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:2"><span class="reel" style="animation-timing-function:steps(2)"><span>1</span><span>2</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="avatar">森</div>
+                  <div class="host-score">186</div>
+                </div>
+                <span class="rank" style="background:var(--fc-1)">2位</span>
+                <span class="namechip">森岡音...</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">R</div>
+                    <div class="txt">
+                      <span class="gf">ハート</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:5"><span class="reel" style="animation-timing-function:steps(5)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="band">
+              <span>初めてのギフト &times;3倍</span>
+              <span class="cd">残り 30秒</span>
+            </div>
+          </div>
+
+          <div class="instruments">
+            
+            <div class="inst">
+              <h4>この時点の貢献者</h4>
+              <div class="board">
+                <div class="fan is-gifting" style="--ripple: 1.6"><span class="fav">ゆ</span><span class="amt">380</span></div>
+                <div class="fan"><span class="fav">み</span><span class="amt">154</span></div>
+                <div class="fan"><span class="fav">ド</span><span class="amt">87</span></div>
+                <div class="fan"><span class="fav">た</span><span class="amt">0</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls solid">
+            <button class="btn" type="button">&#9208;</button>
+            <button class="btn ghost" type="button">&#8676;</button>
+            <span class="time">04:43</span>
+            <div class="track">
+              <div class="fill" style="width:94%"></div>
+              <span class="tick" style="left:18%"></span>
+              <span class="tick" style="left:52%"></span>
+              <span class="tick" style="left:77%;background:var(--fc-1)"></span>
+              <div class="knob" style="left:94%"></div>
+            </div>
+            <span class="time">05:00</span>
+            <span class="speed">1&times;</span>
+          </div>
+
+          <div class="notes">
+            <span class="chip">シェア</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B / 2コラボ -->
+      <div class="variant">
+        <span class="variant-label">B &mdash; 2コラボ(1vs1)</span>
+        <div class="modal">
+          <div class="modal-bar">
+            <div>
+              <div class="modal-title">わや vs さら&#127774;sara</div>
+              <div class="modal-sub">2026-09-02 22:40 &middot; 05:00</div>
+            </div>
+            <button class="back" type="button">貢献者一覧へ戻る</button>
+          </div>
+
+          <div class="stage">
+            <div class="scorebar">
+              <div class="seg" style="background:var(--fc-self);width:68%">3,140,721</div>
+              <div class="seg right" style="background:var(--fc-1);width:32%">46,021</div>
+              <div class="clock">01:50</div>
+            </div>
+
+            <div class="grid duo">
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(254,77,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-self);--ripple:3.4">
+                    <span class="ring"></span>
+                    <span class="ring"></span>
+                    <div class="avatar lg">わ</div>
+                  </div>
+                  <div class="host-score">3,140,721</div>
+                </div>
+                <span class="win">WIN &times;3</span>
+                <span class="namechip">わや&#127807;</span>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="avatar lg">さ</div>
+                  <div class="host-score">46,021</div>
+                </div>
+                <span class="win" style="background:#2b303a;color:#9aa1b0">WIN &times;0</span>
+                <span class="namechip">さら&#127774;sara</span>
+              </div>
+
+              <div class="lanes">
+                <div class="tier">
+                  <div class="lane">
+                    <div class="giftbar sm">
+                      <div class="who">ゆ</div>
+                      <div class="txt">
+                        <span class="nm">ゆき</span>
+                        <span class="gf">ハート</span>
+                      </div>
+                      <span class="thumb"></span>
+                      <span class="cnt">&times;<span class="odo" style="--n:9"><span class="reel" style="animation-timing-function:steps(9)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span></span></span></span>
+                    </div>
+                  </div>
+                  <div class="lane right"></div>
+                </div>
+                <div class="tier">
+                  <div class="lane">
+                    <div class="giftbar lg">
+                      <div class="who">ド</div>
+                      <div class="txt">
+                        <span class="nm">ドン&#9734;ぷっぷ</span>
+                        <span class="gf">ドラゴン</span>
+                      </div>
+                      <span class="thumb"></span>
+                      <span class="cnt">&times;1</span>
+                      <span class="glove gold" title="グローブ &times;6"></span>
+                    </div>
+                  </div>
+                  <div class="lane right"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="instruments">
+            
+            <div class="inst">
+              <h4>この時点の貢献者</h4>
+              <div class="board">
+                <div class="fan is-gifting" style="--ripple: 2.7"><span class="fav">ド</span><span class="amt">1,820,400</span></div>
+                <div class="fan is-gifting" style="--ripple: 2.1"><span class="fav">ゆ</span><span class="amt">640,200</span></div>
+                <div class="fan"><span class="fav">み</span><span class="amt">210,050</span></div>
+                <div class="fan"><span class="fav">た</span><span class="amt">88,900</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls solid">
+            <button class="btn" type="button">&#9654;</button>
+            <button class="btn ghost" type="button">&#8676;</button>
+            <span class="time">01:50</span>
+            <div class="track">
+              <div class="fill" style="width:37%"></div>
+              <span class="tick" style="left:9%"></span>
+              <span class="tick" style="left:22%"></span>
+              <span class="tick" style="left:35%"></span>
+              <div class="knob" style="left:37%"></div>
+            </div>
+            <span class="time">05:00</span>
+            <span class="speed">1&times;</span>
+          </div>
+
+          <div class="notes">
+            <span class="chip">シェア</span>
+            <span class="chip">初回ボーナス倍率: 記録なし</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B / 2vs2 チーム戦 -->
+      <div class="variant">
+        <span class="variant-label">B &mdash; 2vs2(チーム戦)</span>
+        <div class="modal">
+          <div class="modal-bar">
+            <div>
+              <div class="modal-title">わやチーム vs さらチーム</div>
+              <div class="modal-sub">2026-09-05 21:30 &middot; 05:00</div>
+            </div>
+            <button class="back" type="button">貢献者一覧へ戻る</button>
+          </div>
+
+          <div class="stage">
+            <div class="scorebar">
+              <div class="seg" style="background:var(--fc-self);width:57%">4,596,621</div>
+              <div class="seg right" style="background:var(--fc-1);width:43%">3,472,110</div>
+              <div class="clock">03:12</div>
+            </div>
+
+            <div class="grid team22">
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(254,77,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-self);--ripple:2.8">
+                    <span class="ring"></span>
+                    <span class="ring"></span>
+                    <div class="avatar">わ</div>
+                  </div>
+                  <div class="host-score">3,140,721</div>
+                </div>
+                <span class="win">WIN &times;2</span>
+                <span class="namechip">わや&#127807;</span>
+                <div class="celllanes">
+                  <div class="giftbar sm">
+                    <div class="who">ゆ</div>
+                    <div class="txt">
+                      <span class="nm">ゆき</span>
+                      <span class="gf">ハート</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:9"><span class="reel" style="animation-timing-function:steps(9)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-1);--ripple:1.8">
+                    <span class="ring"></span>
+                    <div class="avatar">さ</div>
+                  </div>
+                  <div class="host-score">2,068,400</div>
+                </div>
+                <span class="namechip">さら&#127774;sara</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">R</div>
+                    <div class="txt">
+                      <span class="gf">バラ</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:4"><span class="reel" style="animation-timing-function:steps(4)"><span>1</span><span>2</span><span>3</span><span>4</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(254,77,77,.30), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-self);--ripple:3.2">
+                    <span class="ring"></span>
+                    <span class="ring"></span>
+                    <div class="avatar">た</div>
+                  </div>
+                  <div class="host-score">1,455,900</div>
+                </div>
+                <span class="namechip">たちら&#127807;</span>
+                <div class="celllanes">
+                  <div class="giftbar lg">
+                    <div class="who">た</div>
+                    <div class="txt">
+                      <span class="nm">たちら&#127807;</span>
+                      <span class="gf">ウルトラマン</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:5"><span class="reel" style="animation-timing-function:steps(5)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></span></span></span>
+                    <span class="glove gold" title="グローブ &times;6"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.30), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="avatar">森</div>
+                  <div class="host-score">1,403,710</div>
+                </div>
+                <span class="namechip">森岡音...</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">m</div>
+                    <div class="txt">
+                      <span class="gf">ハート</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:7"><span class="reel" style="animation-timing-function:steps(7)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="band">
+              <span>ボーナスミッション &nbsp;<span class="cd">3人</span>からギフトを受け取る</span>
+            </div>
+          </div>
+
+          <div class="instruments">
+            <div class="inst">
+              <h4>この時点の貢献者</h4>
+              <div class="board">
+                <div class="fan is-gifting" style="--ripple: 2.5"><span class="fav">ゆ</span><span class="amt">982,400</span></div>
+                <div class="fan"><span class="fav">ド</span><span class="amt">640,110</span></div>
+                <div class="fan"><span class="fav">み</span><span class="amt">312,600</span></div>
+                <div class="fan is-new is-gifting" style="--ripple: 2"><span class="fav">R</span><span class="amt">104,200</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls solid">
+            <button class="btn" type="button">&#9208;</button>
+            <button class="btn ghost" type="button">&#8676;</button>
+            <span class="time">03:12</span>
+            <div class="track">
+              <div class="fill" style="width:64%"></div>
+              <span class="tick" style="left:16%"></span>
+              <span class="tick" style="left:40%"></span>
+              <span class="tick" style="left:55%;background:var(--fc-1)"></span>
+              <div class="knob" style="left:64%"></div>
+            </div>
+            <span class="time">05:00</span>
+            <span class="speed">2&times;</span>
+          </div>
+
+          <div class="notes">
+            <span class="chip">シェア</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- B / 1vs3 チーム戦 -->
+      <div class="variant">
+        <span class="variant-label">B &mdash; 1vs3(人数が非対称なチーム戦)</span>
+        <div class="modal">
+          <div class="modal-bar">
+            <div>
+              <div class="modal-title">わや vs さらチーム(3人)</div>
+              <div class="modal-sub">2026-09-05 23:02 &middot; 05:00</div>
+            </div>
+            <button class="back" type="button">貢献者一覧へ戻る</button>
+          </div>
+
+          <div class="stage">
+            <div class="scorebar">
+              <div class="seg" style="background:var(--fc-self);width:38%">2,041,300</div>
+              <div class="seg right" style="background:var(--fc-1);width:62%">3,328,940</div>
+              <div class="clock">02:20</div>
+            </div>
+
+            <div class="grid one3">
+              <div class="cell" style="background:radial-gradient(110% 80% at 50% 0%, rgba(254,77,77,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-self);--ripple:3.4">
+                    <span class="ring"></span>
+                    <span class="ring"></span>
+                    <div class="avatar lg">わ</div>
+                  </div>
+                  <div class="host-score">2,041,300</div>
+                </div>
+                <span class="namechip">わや&#127807;</span>
+                <div class="celllanes">
+                  <div class="giftbar sm">
+                    <div class="who">み</div>
+                    <div class="txt">
+                      <span class="nm">みかん</span>
+                      <span class="gf">バラ</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:3"><span class="reel" style="animation-timing-function:steps(3)"><span>1</span><span>2</span><span>3</span></span></span></span>
+                  </div>
+                  <div class="giftbar lg">
+                    <div class="who">ド</div>
+                    <div class="txt">
+                      <span class="nm">ドン&#9734;ぷっぷ</span>
+                      <span class="gf">ドラゴン</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;1</span>
+                    <span class="glove" title="グローブ &times;5"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.42), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="ripple-host" style="--fc:var(--fc-1);--ripple:2.4">
+                    <span class="ring"></span>
+                    <div class="avatar">さ</div>
+                  </div>
+                  <div class="host-score">1,806,220</div>
+                </div>
+                <span class="win">WIN &times;1</span>
+                <span class="namechip">さら&#127774;sara</span>
+                <div class="celllanes">
+                  <div class="giftbar lg op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">R</div>
+                    <div class="txt">
+                      <span class="gf">ライオン</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;1</span>
+                    <span class="glove gold" title="グローブ &times;6"></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.30), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="avatar">森</div>
+                  <div class="host-score">1,012,400</div>
+                </div>
+                <span class="namechip">森岡音...</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">m</div>
+                    <div class="txt">
+                      <span class="gf">ハート</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:6"><span class="reel" style="animation-timing-function:steps(6)"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="cell" style="background:radial-gradient(120% 100% at 50% 0%, rgba(77,159,255,.22), rgba(13,15,19,.95))">
+                <div class="host">
+                  <div class="avatar">か</div>
+                  <div class="host-score">510,320</div>
+                </div>
+                <span class="namechip">かもめ...</span>
+                <div class="celllanes">
+                  <div class="giftbar sm op" style="--fc-op:var(--fc-1);border-left-color:var(--fc-1)">
+                    <div class="who">k</div>
+                    <div class="txt">
+                      <span class="gf">バラ</span>
+                    </div>
+                    <span class="thumb"></span>
+                    <span class="cnt">&times;<span class="odo" style="--n:2"><span class="reel" style="animation-timing-function:steps(2)"><span>1</span><span>2</span></span></span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="band">
+              <span>ボーナスタイム &times;3倍</span>
+              <span class="cd">残り 22秒</span>
+            </div>
+          </div>
+
+          <div class="instruments">
+            <div class="inst">
+              <h4>この時点の貢献者</h4>
+              <div class="board">
+                <div class="fan is-gifting" style="--ripple: 2.6"><span class="fav">ド</span><span class="amt">1,204,900</span></div>
+                <div class="fan is-gifting" style="--ripple: 1.9"><span class="fav">み</span><span class="amt">488,300</span></div>
+                <div class="fan"><span class="fav">ゆ</span><span class="amt">210,400</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls solid">
+            <button class="btn" type="button">&#9208;</button>
+            <button class="btn ghost" type="button">&#8676;</button>
+            <span class="time">02:20</span>
+            <div class="track">
+              <div class="fill" style="width:47%"></div>
+              <span class="tick" style="left:11%"></span>
+              <span class="tick" style="left:29%;background:var(--fc-1)"></span>
+              <span class="tick" style="left:44%"></span>
+              <div class="knob" style="left:47%"></div>
+            </div>
+            <span class="time">05:00</span>
+            <span class="speed">1&times;</span>
+          </div>
+
+          <div class="notes">
+            <span class="chip">シェア</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 前提 ============ -->
+  <section class="option">
+    <div class="option-head">
+      <span class="kicker">前提</span>
+      <h2>構成によらず変わらない前提</h2>
+    </div>
+
+    <dl class="facts">
+      <div class="fact">
+        <dt>陣営色</dt>
+        <dd>
+          自陣 <code>#fe4d4d</code> / 相手はバトルスコア降順に <code>#4d9fff</code> &rarr; <code>#ffa64d</code> &rarr; <code>#b98aff</code>。
+          クライアントの <code>assignFactionColors</code> をそのまま使い、一覧・詳細・再生で完全に一致させる(サーバーは色を返さない)。WINバッジは <code>#f5c451</code>。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>枠割</dt>
+        <dd>
+          実画面に合わせる。2コラボ = 左右2分割 / <strong>3コラボ = 左に縦長1枠(全高) + 右に上下2枠</strong> / 4コラボ = 2&times;2。
+          <strong>左の大枠は常に自陣</strong>(実画面と同じ)。右側の枠はバトルスコア降順に並べる。
+          枠の縦横比は実バトル画面の実測に合わせる(2コラボ &asymp; 0.55 の縦長、3コラボの右2枠と4コラボの各枠 &asymp; 1.09)。
+          <strong>貢献者ボードやコントロールのためにステージを縮めない。</strong>
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>採らないもの</dt>
+        <dd>
+          実画面の <code>A1</code> / <code>A3</code> チーム記号バッジ、ファンクラブ導線、ミュートアイコン、フォロー(<code>+</code>)ボタンは出さない。
+          いずれも再生時点では操作対象が存在せず、押せない飾りになるため。順位バッジ・名前チップ・スコアは出す。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>チーム戦</dt>
+        <dd>
+          2vs2 / 1vs3 のように<strong>1陣営に複数人</strong>いる場合、<strong>色はチーム単位</strong>で1色
+          (自チーム <code>#fe4d4d</code> / 相手チーム <code>#4d9fff</code>)。同じチームの2人目以降は同じ色を薄くした背景で区別する。
+          <strong>上部スコアバーは陣営数ぶんのセグメント</strong>(2vs2 も 1vs3 も2本)で、値は
+          <code>BattleTeam.officialScore</code>。枠の中の数字は個人スコアで、合計とは別物。
+          枠割は<strong>列でチームを分け、列の境目だけ太い線</strong>で割る。1vs3 は左に自陣1枠(全高) + 右に相手3枠。
+          WINバッジはチームの先頭枠だけに出す。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>貢献欄</dt>
+        <dd>
+          <strong>リスナー名は出さず、アイコンと金額だけ</strong>並べる(場所の節約)。<strong>右端が1位</strong>で、左へ向かって順位が下がる。
+          1位のアイコンだけ金 <code>#f5c451</code> の枠。
+          金額は <code>font-mono</code> + <code>tabular-nums</code>。名前はホバー/長押しの <code>title</code> に持たせる。
+          公開シェアではアバターURLを出せないので、ここもニックネーム頭文字の円になる。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>ギフトレーン</dt>
+        <dd>
+          <strong>上下2段</strong>。<strong>上段は少額ギフト、下段は高額ギフト</strong>を消化する。
+          下段に流す高額ギフトが無い区間は、<strong>上下段とも少額の消化に使う</strong>(下段を空けたままにしない)。
+          下段のカードは一回り太く、アイコン・ギフト画像・件数も大きい。各段の同時表示は最大5本、超過時は新しい方を優先。
+          <strong>1vs1 は左右2レーン(自陣=左から / 相手=右から)。3人以上のコラボは自陣のレーンだけ出す</strong>
+          (相手が2〜3人いると誰の分か判らず、枠も潰れるため)。
+          位置は赤帯・コントロールに被らない高さまで持ち上げる。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>グローブ</dt>
+        <dd>
+          クリティカル(グローブ)が刺さったギフトは、スライドインカードの<strong>外側末端にグローブのマーク</strong>を出す。
+          <code>multiplierValue</code> が <strong>5 は赤 <code>#fe4d4d</code>、6 は金 <code>#f5c451</code></strong>。マークだけで、倍率の数字は出さない。
+          <strong>P4 で凍結した <code>giftEvents</code>(<code>t,a,s,g,c,d</code>)に倍率が無いので、<code>battle-replay-contract.ts</code> へ
+          倍率フィールドを1つ足す</strong>(既存フィールドは変えない)。P2 デプロイ前のギフトは倍率が未観測 &rarr; マークを出さない。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>リップル</dt>
+        <dd>
+          ギフトのスライドインに同期して、<strong>受け取った配信者のアイコンから陣営色の輪が広がる</strong>。
+          輪の最大倍率は<strong>そのギフトのスコア加算値で変わる</strong>(小口は1.5倍程度、大口は3倍超)。
+          CSS変数 <code>--ripple</code> / <code>--fc</code> を要素に載せ、keyframes は1本だけ持つ。ライブラリは足さない。
+          <code>prefers-reduced-motion</code> では拡大せず不透明度だけ落とす。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>映像がない</dt>
+        <dd>実映像は保存していない。枠は陣営色の放射グラデ + 配信者アイコン + 名前チップで埋める。実写風の合成画像は作らない(無い映像があるように見せない)。</dd>
+      </div>
+      <div class="fact">
+        <dt>公開シェア時</dt>
+        <dd>
+          P4 の対応でリスナーのアバターURLは公開ペイロードに載らない(URLのパスにTikTokハンドルが含まれるため)。
+          公開再生では<strong>ギフトバーのアイコンをニックネーム頭文字の円で描く</strong>。配信者アイコンは公開でも出る。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>赤帯の条件</dt>
+        <dd>
+          <code>measured</code> のときだけ赤帯 + 残り秒数。<code>inferred</code> は帯を出さず隅のチップ「初回ボーナス: &times;2(推定)」。
+          <code>unknown</code> はチップ「初回ボーナス倍率: 記録なし」。
+          <strong>帯は赤1種類で、文言だけ差し替える</strong>(紫など別色の帯は作らない)。
+          ボーナスミッションも同じ赤帯に載せ、カウントダウンは出さない。文言は目標の種別で2通り:
+          <strong>人数系は「ボーナスミッション &nbsp;3人からギフトを受け取る」、
+          スコア系は「ボーナスミッション &nbsp;5,000pt受け取る」</strong>。数値は <code>font-mono</code>。
+          種別は <code>targetType</code>、値は <code>progressTarget</code> から出す。
+          <strong>ミッション達成後のボーナスタイムは「ボーナスタイム &nbsp;&times;3倍」+ 残り秒数</strong>
+          (倍率は <code>rewardMultiple</code>、区間は <code>settledAt</code> 以降。ここだけはカウントダウンを出す)。
+          <code>tiktok_battle_bonus_missions</code> は本番0件で、収集はP1で実装する。
+        </dd>
+      </div>
+      <div class="fact">
+        <dt>シークバーの目盛</dt>
+        <dd>大口ギフト(<code>totalDiamonds</code> 上位)の位置に陣営色のティックを立てる。どこで動いたかが再生前に見える。</dd>
+      </div>
+      <div class="fact">
+        <dt>スコアは階段</dt>
+        <dd>公式スコアは補間しない。<code>t &lt;= elapsedMs</code> の最後の点をそのまま出す。数値は必ず <code>font-mono</code> + <code>tabular-nums</code>。</dd>
+      </div>
+    </dl>
+
+    <div class="callout">
+      <h3>画像素材の判定</h3>
+      <p>
+        <strong>該当なし。</strong> 生成画像を1点も使わない。理由は3つ。
+      </p>
+      <p>
+        (1) ステージの枠は「記録の無い映像」を表す面であり、それらしい人物・配信風の絵を置くと<strong>実際には保存していない映像があるかのような偽装</strong>になる。
+        (2) 配信者・リスナーのアイコンは TikTok 由来の実アバター(署名付きURL)で、生成画像で代替する対象がない。
+        (3) ギフト画像は <code>TiktokGiftCatalog</code> の実画像を <code>giftId</code> で引く。空状態のアイコンも既存の <code>lucide-react</code> で足りる。
+      </p>
+      <p>
+        グローブのマークだけ <code>lucide-react</code> に無いので、<strong>単色SVGを自作して <code>mask</code> で着色する</strong>(銀 <code>#aab1c0</code> / 金 <code>#f5c451</code>)。
+        1グリフのUIアイコンであり、生成画像の対象にしない。
+      </p>
+      <p class="lede">
+        公開再生でリスナーアイコンが出せない件は、生成画像ではなく<strong>ニックネーム頭文字の円</strong>で埋める(恒久対応は不透明IDのプロキシで、P5の範囲外)。
+      </p>
+    </div>
+  </section>
+</div>
+
+<script>
+  // 貢献者ボードの挙動デモ。実装では「並び順は再生位置の純関数」なので DOM を作り直し、
+  // 直前フレームとの位置差を transform で埋めてから 0 へ戻す(FLIP)。ここでは
+  // 一定間隔で金額を足して並べ替え、たまに新規貢献者を差し込んで同じ動きを再現する。
+  (function () {
+    var POOL = ["ゆ", "み", "ド", "た", "R", "k", "な", "え", "そ", "ま"];
+    var MAX_FANS = 6;
+
+    // 貢献値の省略表記。切り捨て(四捨五入しない)。
+    //   1000未満        → そのまま         (0, 380)
+    //   1,000〜9,999    → k + 小数第1位    (1.2k, 9.9k)
+    //   10,000〜999,999 → k + 小数なし     (12k, 999k)
+    //   1,000,000〜     → M + 小数第1位    (1.2M)、10,000,000〜 は小数なし (12M)
+    function formatShort(v) {
+      function cut(n, unit, decimals) {
+        var scaled = Math.floor(n / unit * Math.pow(10, decimals)) / Math.pow(10, decimals);
+        return scaled.toFixed(decimals);
+      }
+      if (v >= 10000000) return cut(v, 1000000, 0) + "M";
+      if (v >= 1000000) return cut(v, 1000000, 1) + "M";
+      if (v >= 10000) return cut(v, 1000, 0) + "k";
+      if (v >= 1000) return cut(v, 1000, 1) + "k";
+      return String(Math.floor(v));
+    }
+
+    // 生値は data-v が正本。表示テキストは省略表記なので読み書きの根拠にしない
+    function amountOf(fan) {
+      return Number(fan.querySelector(".amt").dataset.v) || 0;
+    }
+    function setAmount(fan, v) {
+      var el = fan.querySelector(".amt");
+      el.dataset.v = String(v);
+      el.textContent = formatShort(v);
+    }
+
+    // ギフト着弾。コイン額 → リップルの最大倍率(1.5〜2.8)。カードの表示時間だけ出す
+    function pulse(fan, coins) {
+      var r = 1.5 + Math.min(1, Math.log10(Math.max(coins, 1)) / 6) * 1.3;
+      fan.style.setProperty("--ripple", r.toFixed(2));
+      fan.classList.add("is-gifting");
+      setTimeout(function () {
+        fan.classList.remove("is-gifting");
+      }, 1900);
+    }
+
+    // 静的HTML側は生値を書いてあるので、初回に data-v へ移して省略表記へ差し替える
+    document.querySelectorAll(".amt").forEach(function (el) {
+      if (el.dataset.v === undefined) el.dataset.v = String(Number(el.textContent.replace(/,/g, "")) || 0);
+      el.textContent = formatShort(Number(el.dataset.v));
+    });
+
+    // FLIP: 変更前の位置を採り、DOMを書き換え、差分を打ち消してから 0 へ戻す
+    function flip(board, mutate) {
+      var before = [];
+      board.querySelectorAll(".fan").forEach(function (el) {
+        before.push([el, el.getBoundingClientRect()]);
+      });
+      mutate();
+      before.forEach(function (pair) {
+        var el = pair[0];
+        var f = pair[1];
+        if (!el.isConnected) return;
+        var l = el.getBoundingClientRect();
+        var dx = f.left - l.left;
+        var dy = f.top - l.top;
+        if (!dx && !dy) return;
+        el.style.transition = "none";
+        el.style.transform = "translate(" + dx + "px," + dy + "px)";
+        requestAnimationFrame(function () {
+          el.style.transition = "";
+          el.style.transform = "";
+        });
+      });
+    }
+
+    function tick(board) {
+      flip(board, function () {
+        var fans = Array.prototype.slice.call(board.querySelectorAll(".fan"));
+        fans.forEach(function (f) {
+          f.classList.remove("is-new");
+        });
+
+        // 新規貢献者の出現(まれ)。それ以外は既存の誰かが積み増す
+        if (fans.length < MAX_FANS && Math.random() < 0.35) {
+          var used = fans.map(function (f) {
+            return f.querySelector(".fav").textContent;
+          });
+          var free = POOL.filter(function (c) {
+            return used.indexOf(c) < 0;
+          });
+          if (free.length) {
+            var el = document.createElement("div");
+            el.className = "fan is-new";
+            el.innerHTML =
+              '<span class="fav">' + free[0] + '</span><span class="amt">0</span>';
+            var first = Math.floor(Math.random() * 40000) + 1000;
+            setAmount(el, first);
+            board.appendChild(el);
+            fans.push(el);
+            pulse(el, first);
+          }
+        } else {
+          var target = fans[Math.floor(Math.random() * fans.length)];
+          if (target) {
+            var add = Math.floor(Math.random() * 260000) + 20000;
+            setAmount(target, amountOf(target) + add);
+            pulse(target, add);
+          }
+        }
+
+        // 並びは常に金額降順。DOM は1位が先頭(表示は row-reverse で右端が1位)
+        fans
+          .sort(function (a, b) {
+            return amountOf(b) - amountOf(a);
+          })
+          .forEach(function (f) {
+            board.appendChild(f);
+          });
+      });
+    }
+
+    document.querySelectorAll(".inst .board").forEach(function (board, i) {
+      setTimeout(function () {
+        setInterval(function () {
+          tick(board);
+        }, 2200);
+      }, i * 420);
+    });
+  })();
+</script>

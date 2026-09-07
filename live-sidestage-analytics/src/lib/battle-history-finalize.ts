@@ -97,6 +97,8 @@ export type BattleSnapshotGiftEvent = {
   totalDiamonds: number;
   multiplierType: number | null;
   multiplierValue: number | null;
+  /** Gift.groupId のコピー。comboの段を再生側で束ねる鍵。単発ギフトはnull。 */
+  senderGroupId: string | null;
   sourceGiftId: string;
 };
 
@@ -362,6 +364,7 @@ export async function computeBattleSnapshot(
         totalDiamonds: true,
         multiplierType: true,
         multiplierValue: true,
+        groupId: true,
         receivedAt: true,
       },
     });
@@ -380,6 +383,7 @@ export async function computeBattleSnapshot(
         totalDiamonds: g.totalDiamonds,
         multiplierType: g.multiplierType,
         multiplierValue: g.multiplierValue,
+        senderGroupId: g.groupId,
         sourceGiftId: g.id,
       });
     }
@@ -903,7 +907,55 @@ export async function attachReplayData(battleHistoryId: string): Promise<AttachR
   }, COMMIT_TX_OPTIONS);
 
   if (!committed) return { attached: false, reason: "not-found" };
+
+  await backfillSenderGroupIds(battleHistoryId);
+
   return { attached: true, scorePointCount: scorePoints.length, giftEventCount: giftRows.length };
+}
+
+/**
+ * `senderGroupId`(コンボの束ね鍵)を元 `Gift` から後追いで写す。
+ *
+ * この列は再生UIのために後から足したので、既存の確定済み行は全て null。**取れなくても
+ * 劣化するだけ**(コンボが1段ずつ別カードになる)なので、元 `Gift` が90日保持を過ぎて
+ * 消えている行は諦めて null のまま残す。トランザクションの外に置いてあるのは、失敗しても
+ * スコア点の付加を巻き戻したくないため。
+ */
+export async function backfillSenderGroupIds(battleHistoryId: string): Promise<void> {
+  const pending = await prisma.battleHistoryGiftEvent.findMany({
+    where: { participant: { battleHistoryId }, senderGroupId: null },
+    select: { id: true, sourceGiftId: true },
+  });
+  if (pending.length === 0) return;
+
+  // `in` も更新と同じ幅で刻む(1バトルのギフト明細は数千件になりうる。bind 数の上限対策)
+  const groupBySourceId = new Map<string, string | null>();
+  for (let i = 0; i < pending.length; i += GIFT_EVENT_CHUNK_SIZE) {
+    const sourceGifts = await prisma.gift.findMany({
+      where: { id: { in: pending.slice(i, i + GIFT_EVENT_CHUNK_SIZE).map((e) => e.sourceGiftId) } },
+      select: { id: true, groupId: true },
+    });
+    for (const gift of sourceGifts) groupBySourceId.set(gift.id, gift.groupId);
+  }
+
+  // 同じ groupId の行はまとめて1回の updateMany にする(1行1クエリだと数千件で効かない)。
+  const idsByGroup = new Map<string, string[]>();
+  for (const event of pending) {
+    const groupId = groupBySourceId.get(event.sourceGiftId);
+    if (!groupId) continue;
+    const bucket = idsByGroup.get(groupId);
+    if (bucket) bucket.push(event.id);
+    else idsByGroup.set(groupId, [event.id]);
+  }
+
+  for (const [groupId, ids] of idsByGroup) {
+    for (let i = 0; i < ids.length; i += GIFT_EVENT_CHUNK_SIZE) {
+      await prisma.battleHistoryGiftEvent.updateMany({
+        where: { id: { in: ids.slice(i, i + GIFT_EVENT_CHUNK_SIZE) } },
+        data: { senderGroupId: groupId },
+      });
+    }
+  }
 }
 
 function isUniqueConstraintError(err: unknown): boolean {

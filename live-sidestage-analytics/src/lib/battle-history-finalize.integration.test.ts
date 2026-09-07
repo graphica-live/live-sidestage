@@ -10,6 +10,7 @@ import { prisma } from "./prisma";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 import {
   attachReplayData,
+  backfillSenderGroupIds,
   commitBattleSnapshot,
   computeBattleSnapshot,
   materializeBattleHistory,
@@ -829,5 +830,68 @@ describe("初ギフトx倍の逆算(DB経路)", () => {
     expect(row!.openingMultiplierConfidence).toBe("unknown");
     // 逆算が不能でもスコア点の複製そのものは行う。
     expect(row!.replayScorePointCount).toBe(4);
+  });
+});
+
+describe("senderGroupId(コンボの束ね鍵)", () => {
+  it("確定時に元Giftの groupId / multiplierValue を giftEvent へ写す", async () => {
+    await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "grp_commit") });
+    await makeGift(selfRoomId, {
+      uniqueId: "fan_a",
+      nickname: "エー",
+      totalDiamonds: 30,
+      groupId: "combo_group_1",
+      multiplierValue: 2,
+    });
+
+    await materializeBattleHistory(selfRoomId, "grp_commit", NOW, { stabilityDelayMs: 0 });
+
+    const history = await prisma.battleHistory.findUnique({
+      where: { roomId_battleId: { roomId: selfRoomId, battleId: "grp_commit" } },
+      select: { id: true },
+    });
+    const events = await prisma.battleHistoryGiftEvent.findMany({
+      where: { participant: { battleHistoryId: history!.id } },
+      select: { senderGroupId: true, multiplierValue: true },
+    });
+    expect(events).toEqual([{ senderGroupId: "combo_group_1", multiplierValue: 2 }]);
+  });
+
+  it("後追いの backfill は null 行だけ埋め、元Giftが消えた行は null のまま残す", async () => {
+    await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "grp_backfill") });
+    const kept = await makeGift(selfRoomId, {
+      uniqueId: "fan_a",
+      nickname: "エー",
+      totalDiamonds: 30,
+      groupId: "combo_group_2",
+    });
+    await makeGift(selfRoomId, { uniqueId: "fan_b", nickname: "ビー", totalDiamonds: 40, groupId: "combo_group_3" });
+
+    await materializeBattleHistory(selfRoomId, "grp_backfill", NOW, { stabilityDelayMs: 0 });
+    const history = await prisma.battleHistory.findUnique({
+      where: { roomId_battleId: { roomId: selfRoomId, battleId: "grp_backfill" } },
+      select: { id: true },
+    });
+
+    // 再生UIのために後から足した列なので、既存の確定済み行は全て null という状態を作る。
+    await prisma.battleHistoryGiftEvent.updateMany({
+      where: { participant: { battleHistoryId: history!.id } },
+      data: { senderGroupId: null },
+    });
+    // 90日保持を過ぎて元 Gift が消えた行(fan_b)は諦めて null のまま残す。
+    await prisma.gift.deleteMany({ where: { roomId: selfRoomId, uniqueId: "fan_b" } });
+
+    await backfillSenderGroupIds(history!.id);
+
+    const events = await prisma.battleHistoryGiftEvent.findMany({
+      where: { participant: { battleHistoryId: history!.id } },
+      select: { senderUniqueIdSnapshot: true, senderGroupId: true },
+      orderBy: { senderUniqueIdSnapshot: "asc" },
+    });
+    expect(events).toEqual([
+      { senderUniqueIdSnapshot: "fan_a", senderGroupId: "combo_group_2" },
+      { senderUniqueIdSnapshot: "fan_b", senderGroupId: null },
+    ]);
+    expect(kept.groupId).toBe("combo_group_2");
   });
 });

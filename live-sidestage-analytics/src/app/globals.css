@@ -141,3 +141,797 @@ body {
     filter: drop-shadow(0 0 7px rgba(239, 68, 68, 0.8));
   }
 }
+
+/* ============================================================================
+   バトル再生(battle-replay)。視覚契約は .impeccable/approved/battle-replay/spec.md。
+   数値はすべて契約値なので、既存コンポーネントの既定へ丸めないこと。
+
+   Tailwind のユーティリティで書かない理由: 枠の縦横比・カードの4バリアント・
+   左右ミラー・レーンの段組みが数値の塊で、arbitrary value に散らすと
+   comp との照合ができなくなる。ステージ面は配信映像の代替なので**常時ダーク固定**で、
+   globals.css のテーマトークンを使わない。
+   ============================================================================ */
+.replay-stage {
+  --stage: #0d0f13;
+  --stage-2: #15181e;
+  --stage-line: rgba(255, 255, 255, 0.12);
+  --stage-text: #f3f4f7;
+  --stage-muted: #9aa1b0;
+  --replay-gold: #f5c451;
+  --replay-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* ボクシンググローブ(critical hit)のグリフ。mask で currentColor に着色する */
+  --replay-glove: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M5 1.8h4.1A4.1 4.1 0 0 1 13.2 5.9v2.2a4.1 4.1 0 0 1-4.1 4.1H5z"/><path d="M5 5.9H3.6a1.9 1.9 0 0 0 0 3.8H5z"/><rect x="4.3" y="12.6" width="7.2" height="2.6" rx="1.1"/></svg>');
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--stage);
+  color: var(--stage-text);
+}
+
+/* ---------- スコアバー ---------- */
+.replay-scorebar {
+  position: relative;
+  display: flex;
+  height: 26px;
+  align-items: stretch;
+}
+.replay-seg {
+  display: flex;
+  align-items: center;
+  color: #0d0f13;
+  font-family: var(--replay-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 7px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.replay-seg + .replay-seg {
+  box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.35);
+}
+.replay-seg--right {
+  justify-content: flex-end;
+}
+.replay-clock {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(6, 8, 12, 0.82);
+  color: #fff;
+  font-family: var(--replay-mono);
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- 陣営グリッド。縦横比は実バトル画面の実測値で、計器のために縮めない ---------- */
+.replay-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--stage-line);
+}
+.replay-grid--quad {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.replay-grid--duo {
+  grid-template-columns: 1fr 1fr;
+}
+.replay-grid--trio {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.replay-grid--trio > .replay-cell:first-child {
+  grid-row: 1 / span 2;
+  aspect-ratio: auto;
+}
+/* チーム戦は列の境目だけ太い線でチームを割る */
+.replay-grid--team22 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  column-gap: 4px;
+}
+.replay-grid--one3 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(3, 1fr);
+  column-gap: 4px;
+}
+.replay-grid--one3 > .replay-cell:first-child {
+  grid-row: 1 / span 3;
+  aspect-ratio: auto;
+}
+.replay-grid--one3 > .replay-cell:not(:first-child) {
+  aspect-ratio: 1.5;
+}
+.replay-cell {
+  position: relative;
+  aspect-ratio: 1.09;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.replay-grid--duo > .replay-cell {
+  aspect-ratio: 0.55;
+}
+.replay-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(13, 15, 19, 0) 42%, rgba(13, 15, 19, 0.85) 100%);
+}
+/* 配信者ブロックは常にセルの縦中央 */
+.replay-host {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+.replay-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  background: rgba(13, 15, 19, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  font-weight: 700;
+  color: #fff;
+  overflow: hidden;
+}
+.replay-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.replay-avatar--lg {
+  width: 128px;
+  height: 128px;
+  font-size: 44px;
+}
+/* 1vs3 の相手枠は横長(1.5)で縦が足りないため一段小さくする */
+.replay-grid--one3 > .replay-cell:not(:first-child) .replay-avatar {
+  width: 76px;
+  height: 76px;
+  font-size: 27px;
+}
+/* リップル。--replay-ripple はギフトのスコア加算値から決まる最大倍率、--fc は陣営色 */
+.replay-ripple {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.replay-ripple > .replay-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid var(--fc);
+  animation: replay-ripple 1100ms cubic-bezier(0.16, 0.9, 0.35, 1) infinite;
+  pointer-events: none;
+}
+.replay-ripple > .replay-ring:nth-child(2) {
+  animation-delay: 320ms;
+}
+@keyframes replay-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(var(--replay-ripple, 2));
+    opacity: 0;
+  }
+}
+.replay-host-score {
+  font-family: var(--replay-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+.replay-rank {
+  position: absolute;
+  left: 7px;
+  bottom: 7px;
+  z-index: 2;
+  font-family: var(--replay-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #0d0f13;
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.replay-namechip {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  z-index: 2;
+  max-width: 62%;
+  background: rgba(6, 8, 12, 0.7);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  color: #e8eaef;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replay-win {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  z-index: 2;
+  font-family: var(--replay-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #0d0f13;
+  background: var(--replay-gold);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+/* ---------- ギフトカード ---------- */
+/* 1vs1 はステージ全幅の2段レーン */
+.replay-lanes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 10px;
+  pointer-events: none;
+}
+.replay-tier {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  min-height: 1px;
+}
+.replay-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.replay-lane--right {
+  align-items: flex-end;
+}
+/* 3人以上のコラボ・チーム戦は枠ごとにレーンを持つ。
+   カードの背景は内容の長さぶんだけで、枠幅いっぱいに伸ばさない */
+.replay-celllanes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0 6px;
+  pointer-events: none;
+}
+.replay-celllanes .replay-card {
+  max-width: 100%;
+}
+.replay-card {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(90deg, rgba(6, 8, 12, 0.9), rgba(6, 8, 12, 0.55));
+  border-left: 3px solid var(--fc);
+  border-radius: 4px 999px 999px 4px;
+  padding: 4px 10px 4px 6px;
+  max-width: 260px;
+  animation: replay-slidein-l 420ms cubic-bezier(0.16, 0.9, 0.35, 1) both;
+}
+.replay-card--mirror {
+  flex-direction: row-reverse;
+  border-left: 0;
+  border-right: 3px solid var(--fc);
+  border-radius: 999px 4px 4px 999px;
+  padding: 4px 6px 4px 10px;
+  background: linear-gradient(270deg, rgba(6, 8, 12, 0.9), rgba(6, 8, 12, 0.55));
+  animation-name: replay-slidein-r;
+}
+@keyframes replay-slidein-l {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes replay-slidein-r {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.replay-card .replay-who {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #2b303a;
+  color: #cfd4de;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex: none;
+  overflow: hidden;
+}
+.replay-card .replay-who img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.replay-card .replay-txt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+.replay-card--mirror .replay-txt {
+  align-items: flex-end;
+}
+.replay-card .replay-nm {
+  font-size: 11px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replay-card .replay-gf {
+  font-size: 10px;
+  color: var(--stage-muted);
+  white-space: nowrap;
+}
+.replay-card .replay-cnt {
+  font-family: var(--replay-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--replay-gold);
+  flex: none;
+}
+.replay-card .replay-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ff9a3c, #ff4d6d);
+  flex: none;
+  object-fit: cover;
+}
+/* 上段(少額)は一回り小さく、下段(高額)は太いカード */
+.replay-card--sm {
+  padding: 2px 8px 2px 5px;
+  max-width: 216px;
+}
+.replay-card--sm.replay-card--mirror {
+  padding: 2px 5px 2px 8px;
+}
+.replay-card--sm .replay-who {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+}
+.replay-card--sm .replay-nm {
+  font-size: 10px;
+}
+.replay-card--sm .replay-gf {
+  font-size: 9px;
+}
+.replay-card--sm .replay-cnt {
+  font-size: 11px;
+}
+.replay-card--sm .replay-thumb {
+  width: 16px;
+  height: 16px;
+}
+.replay-card--lg {
+  border-left-width: 4px;
+  padding: 6px 12px 6px 7px;
+  max-width: 292px;
+}
+.replay-card--lg.replay-card--mirror {
+  border-right-width: 4px;
+  padding: 6px 7px 6px 12px;
+}
+.replay-card--lg .replay-who {
+  width: 28px;
+  height: 28px;
+}
+.replay-card--lg .replay-nm {
+  font-size: 12px;
+}
+.replay-card--lg .replay-cnt {
+  font-size: 14px;
+}
+.replay-card--lg .replay-thumb {
+  width: 24px;
+  height: 24px;
+}
+/* 相手陣営のカードは一回り小さく、リスナー名を出さない */
+.replay-card--op {
+  max-width: 168px;
+  padding: 2px 7px 2px 4px;
+}
+.replay-card--op.replay-card--mirror {
+  padding: 2px 4px 2px 7px;
+}
+.replay-card--op .replay-who {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+}
+.replay-card--op .replay-nm {
+  display: none;
+}
+.replay-card--op .replay-gf {
+  font-size: 9px;
+  color: #dfe3ea;
+}
+.replay-card--op .replay-cnt {
+  font-size: 10px;
+}
+.replay-card--op .replay-thumb {
+  width: 14px;
+  height: 14px;
+}
+.replay-card--op .replay-glove {
+  width: 12px;
+  height: 12px;
+}
+.replay-card--op.replay-card--lg {
+  max-width: 216px;
+  border-left-width: 3px;
+  border-right-width: 3px;
+  padding: 4px 9px 4px 5px;
+}
+.replay-card--op.replay-card--lg.replay-card--mirror {
+  padding: 4px 5px 4px 9px;
+}
+.replay-card--op.replay-card--lg .replay-who {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+.replay-card--op.replay-card--lg .replay-gf {
+  font-size: 10px;
+}
+.replay-card--op.replay-card--lg .replay-cnt {
+  font-size: 12px;
+}
+.replay-card--op.replay-card--lg .replay-thumb {
+  width: 19px;
+  height: 19px;
+}
+.replay-card--op.replay-card--lg .replay-glove {
+  width: 15px;
+  height: 15px;
+}
+/* 縦が足りない枠は、配信者アイコンを中央に保ったままカードを下端の1行へ寄せる */
+.replay-celllanes--inline {
+  flex-direction: row;
+  align-items: flex-end;
+  bottom: 7px;
+  left: 6px;
+  right: auto;
+  max-width: 58%;
+  padding: 0;
+}
+.replay-celllanes--inline .replay-card {
+  padding: 1px 6px 1px 3px;
+  gap: 5px;
+  border-left-width: 3px;
+  /* 1行レーンは横並びなので、min-width の既定(auto)のままだと2本目が枠外へ押し出される。
+     縮められるようにして、あふれる文字は省略記号で畳む */
+  min-width: 0;
+}
+.replay-celllanes--inline .replay-txt > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.replay-celllanes--inline .replay-card--mirror {
+  padding: 1px 3px 1px 6px;
+  border-left-width: 0;
+  border-right-width: 3px;
+}
+.replay-celllanes--inline .replay-who {
+  width: 15px;
+  height: 15px;
+  font-size: 8px;
+}
+/* 名前とギフト名は縦2段でなく1行に並べる */
+.replay-celllanes--inline .replay-txt {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+}
+.replay-celllanes--inline .replay-card--mirror .replay-txt {
+  flex-direction: row-reverse;
+}
+.replay-celllanes--inline .replay-nm {
+  font-size: 9px;
+}
+.replay-celllanes--inline .replay-gf {
+  font-size: 9px;
+  color: #dfe3ea;
+}
+.replay-celllanes--inline .replay-cnt {
+  font-size: 10px;
+}
+.replay-celllanes--inline .replay-thumb {
+  width: 13px;
+  height: 13px;
+}
+.replay-celllanes--inline .replay-glove {
+  width: 11px;
+  height: 11px;
+}
+/* 画面右側の枠は右から左へ入り、色の縦帯も右端。右下がカードで埋まるので
+   名前チップを左下・順位バッジを右上へ入れ替える */
+.replay-celllanes--right {
+  left: auto;
+  right: 6px;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+.replay-cell--right .replay-namechip {
+  left: 7px;
+  right: auto;
+}
+.replay-cell--right .replay-rank {
+  left: auto;
+  right: 7px;
+  bottom: auto;
+  top: 7px;
+}
+/* コンボの個数。畳み込み後の最終値をいきなり出さず、刻みに合わせて 1 から上げる。
+   --replay-n が最終値、steps() は inline で与える */
+.replay-odo {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  line-height: 1;
+  vertical-align: -0.06em;
+}
+.replay-odo > .replay-reel {
+  display: block;
+  animation: replay-odo-roll var(--replay-odo-ms, 1900ms) steps(var(--replay-n)) 1 both;
+}
+.replay-odo > .replay-reel > span {
+  display: block;
+  height: 1em;
+}
+@keyframes replay-odo-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(var(--replay-n) * -1em));
+  }
+}
+/* グローブ(critical hit)。multiplierValue 5 は赤、6 は金 */
+.replay-glove {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: #fe4d4d;
+  background: currentColor;
+  -webkit-mask: var(--replay-glove) center / contain no-repeat;
+  mask: var(--replay-glove) center / contain no-repeat;
+}
+.replay-glove--gold {
+  color: var(--replay-gold);
+}
+.replay-card--lg .replay-glove {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---------- 赤帯 ---------- */
+.replay-band {
+  background: linear-gradient(90deg, #d81f36, #ff4d5e);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.replay-band .replay-cd {
+  font-family: var(--replay-mono);
+  font-weight: 700;
+}
+
+/* ---------- 貢献者ボード ---------- */
+.replay-board {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px 11px;
+}
+/* 貢献者0人でも `.replay-fan` と同じ高さを占めて、下のコントロールを飛ばさない */
+.replay-board-empty {
+  display: flex;
+  align-items: center;
+  height: 45px;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* 順位入れ替わりは FLIP。並び順は再生位置の純関数なので DOM は毎フレーム作り直し、
+   直前フレームとの位置差を transform で埋めてから 0 へ戻す */
+.replay-fan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 48px;
+  transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.replay-fav {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #2b303a;
+  color: #cfd4de;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  border: 2px solid transparent;
+  overflow: hidden;
+}
+.replay-fav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.replay-fan:first-child .replay-fav {
+  border-color: var(--replay-gold);
+}
+/* そのリスナーのカードが出ている間だけ、配信者と同じリップルを出す */
+.replay-fan--gifting .replay-fav::before,
+.replay-fan--gifting .replay-fav::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  border: 2px solid var(--fc);
+  animation: replay-ripple 1100ms cubic-bezier(0.16, 0.9, 0.35, 1) infinite;
+  pointer-events: none;
+}
+.replay-fan--gifting .replay-fav::after {
+  animation-delay: 320ms;
+}
+.replay-amt {
+  font-family: var(--replay-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* 貢献値はダイヤ(コイン)であることを数字の頭で明示する */
+.replay-amt::before {
+  content: "🪙";
+  font-size: 9px;
+  margin-right: 2px;
+  vertical-align: -0.05em;
+}
+/* 上位3人だけ順位バッジ。アイコン上端へ少し重ねる */
+.replay-fan-rank {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 999px;
+  border: 1px solid #0d0f13;
+  font-family: var(--replay-mono);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 11px;
+  text-align: center;
+  color: #0d0f13;
+}
+
+/* ---------- コントロール ---------- */
+.replay-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  min-width: 40px;
+}
+.replay-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+}
+.replay-track-knob {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  margin-left: -5px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+/* スコアが動いた時刻 */
+.replay-track-tick {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 8px;
+  border-radius: 1px;
+  background: #fe4d4d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replay-card {
+    animation: replay-card-fade 420ms ease-out both;
+  }
+  @keyframes replay-card-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .replay-ripple > .replay-ring,
+  .replay-fan--gifting .replay-fav::before,
+  .replay-fan--gifting .replay-fav::after {
+    animation: replay-ripple-quiet 1100ms ease-out infinite;
+  }
+  @keyframes replay-ripple-quiet {
+    0% {
+      transform: scale(1.25);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.25);
+      opacity: 0;
+    }
+  }
+  /* 送らず最終値のまま出す */
+  .replay-odo > .replay-reel {
+    animation: none;
+    transform: translateY(calc(var(--replay-n) * -1em + 1em));
+  }
+  .replay-fan {
+    transition: none;
+  }
+}
