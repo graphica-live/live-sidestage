@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
@@ -26,6 +26,32 @@ interface AnalyticsData {
   total: { giftCount: number; totalDiamonds: number };
   verified?: boolean;
 }
+
+// 貢献ランキングの行を展開したときに出す、その送信者のギフト名別内訳。
+// 明細(Gift)は90日で削除されるので、古い期間は coverage.detailAvailable=false で返ってくる
+// (エラーではない。src/lib/gift-breakdown.ts 参照)。
+interface GiftBreakdownEntry {
+  giftId: number;
+  giftName: string;
+  giftPictureUrl: string | null;
+  repeatCount: number;
+  diamondCount: number;
+  totalDiamonds: number;
+  lastReceivedAt: string;
+}
+
+interface GiftBreakdownData {
+  uniqueId: string;
+  gifts: GiftBreakdownEntry[];
+  total: { repeatCount: number; totalDiamonds: number };
+  coverage: { detailAvailable: boolean; rawFrom: string | null; partial: boolean };
+  dateRange: { start: string; end: string };
+}
+
+type BreakdownState =
+  | { status: "loading" }
+  | { status: "ready"; data: GiftBreakdownData }
+  | { status: "error" };
 
 interface GiftEvent {
   id: string;
@@ -249,6 +275,144 @@ function GiftNameDisplay({ ev }: { ev: GiftEvent }) {
   );
 }
 
+function ChevronDownIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="w-3.5 h-3.5"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** ギフト画像の下地。透過PNGが多いので、読み込み前後で行の高さと見え方を揃えるために敷く。 */
+const GIFT_TILE_BG = "rgba(127,127,127,.12)";
+const SKELETON_BG = "rgba(127,127,127,.16)";
+
+const BREAKDOWN_HEADING = (
+  <span className="text-[.68rem] tracking-[.06em] font-semibold text-muted">ギフト内訳</span>
+);
+
+function BreakdownMessage({ title, body }: { title: string; body?: string }) {
+  return (
+    <div className="text-[.78rem] text-muted pt-1.5 pb-0.5">
+      <b className="block text-[.8rem] font-semibold text-strong mb-0.5">{title}</b>
+      {body}
+    </div>
+  );
+}
+
+function GiftBreakdownPanel({
+  state,
+  onRetry,
+}: {
+  state: BreakdownState | undefined;
+  onRetry: () => void;
+}) {
+  if (!state || state.status === "loading") {
+    return (
+      <div aria-busy="true">
+        <div className="mb-2.5">{BREAKDOWN_HEADING}</div>
+        {/* パネル幅いっぱいに伸ばすと縞模様に見えるので、ギフト1行ぶんの幅に収める。 */}
+        <div className="max-w-[380px]">
+          {["78%", "60%", "69%"].map((w) => (
+            <div
+              key={w}
+              className="h-3 rounded my-[9px]"
+              style={{ width: w, backgroundColor: SKELETON_BG }}
+            />
+          ))}
+        </div>
+        <span className="sr-only">ギフト内訳を読み込み中</span>
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div>
+        <div className="mb-2.5">{BREAKDOWN_HEADING}</div>
+        <BreakdownMessage title="内訳を取得できませんでした" body="通信に失敗しました。" />
+        <button
+          type="button"
+          onClick={onRetry}
+          className="btn-secondary mt-2 text-[.75rem] px-2.5 py-1"
+        >
+          再試行
+        </button>
+      </div>
+    );
+  }
+
+  const { gifts, coverage } = state.data;
+
+  if (!coverage.detailAvailable) {
+    return (
+      <div>
+        <div className="mb-2.5">{BREAKDOWN_HEADING}</div>
+        <BreakdownMessage
+          title="この期間の内訳は残っていません"
+          body="ギフト明細は90日で削除されます。合計コイン数は集計から表示しています。"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-baseline gap-2 flex-wrap mb-2.5">
+        {BREAKDOWN_HEADING}
+        {coverage.partial && coverage.rawFrom && (
+          <span className="ml-auto text-[.68rem] text-muted">{coverage.rawFrom} 以降のみ</span>
+        )}
+      </div>
+
+      {gifts.length === 0 ? (
+        <div className="text-[.78rem] text-muted pt-1.5 pb-0.5">この期間の内訳はありません</div>
+      ) : (
+        <div className="grid grid-cols-1 gap-y-0.5">
+          {gifts.map((g) => (
+            <div
+              key={g.giftId}
+              className="flex items-center gap-2 min-w-0 py-[7px] border-b border-row-border"
+            >
+              {g.giftPictureUrl ? (
+                <img
+                  src={g.giftPictureUrl}
+                  alt=""
+                  className="w-6 h-6 shrink-0 object-contain rounded-md"
+                  style={{ backgroundColor: GIFT_TILE_BG }}
+                />
+              ) : (
+                <div
+                  className="w-6 h-6 shrink-0 rounded-md"
+                  style={{ backgroundColor: GIFT_TILE_BG }}
+                  aria-hidden="true"
+                />
+              )}
+              <span className="flex-1 min-w-0 truncate text-[.8rem] text-strong">{g.giftName}</span>
+              <span className="shrink-0 font-mono text-[.72rem] text-muted">
+                ×{g.repeatCount.toLocaleString()}
+              </span>
+              <span className="shrink-0 font-mono text-[.8rem] font-bold text-strong min-w-[56px] text-right">
+                {g.totalDiamonds.toLocaleString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AnalyticsView({ apiBase }: { apiBase: string }) {
   const [period, setPeriod] = useState<Period>("day");
   const [currentDate, setCurrentDate] = useState(todayStr());
@@ -265,6 +429,8 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [battlesLoading, setBattlesLoading] = useState(false);
   const [openBattleId, setOpenBattleId] = useState<string | null>(null);
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
+  const [breakdowns, setBreakdowns] = useState<Record<string, BreakdownState>>({});
   const [hideLowDiamond, setHideLowDiamond] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -301,6 +467,89 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
       }
     },
     [apiBase, sortKey, sortOrder, customStart, customEnd]
+  );
+
+  // 内訳キャッシュの有効範囲キー。期間が変わったら内訳は別物になるので破棄する。
+  const rangeKey = useMemo(
+    () => (period === "custom" ? `custom|${customStart}|${customEnd}` : `${period}|${currentDate}`),
+    [period, currentDate, customStart, customEnd]
+  );
+  // 内訳が属する取得スコープ。期間だけでなく apiBase(admin の対象room)も含める。
+  // room を切り替えても同じ期間なら鍵が一致してしまい、旧roomの応答が新roomへ混ざるため。
+  const scopeKey = `${apiBase}|${rangeKey}`;
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
+  // ユーザーごとの発行連番。期間を往復して同じ鍵に戻る(A→B→A)ときは鍵だけでは
+  // 追い越しを検出できないので、最新の発行だけを採用する。
+  // **スコープが変わってもリセットしない。** リセットすると連番が 1 に戻り、
+  // 往復前に投げた古い応答と往復後の新しい応答が同じ番号になって判定が効かなくなる。
+  const seqRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    setOpenUserId(null);
+    setBreakdowns({});
+  }, [scopeKey]);
+
+  const fetchBreakdown = useCallback(
+    async (uniqueId: string, opts?: { silent?: boolean }) => {
+      // 取得中に期間やroomが変わったら、遅れて返ってきた応答でキャッシュを汚さない。
+      const issuedFor = scopeRef.current;
+      const seq = (seqRef.current[uniqueId] ?? 0) + 1;
+      seqRef.current[uniqueId] = seq;
+      const apply = (next: BreakdownState) => {
+        if (scopeRef.current !== issuedFor) return;
+        if (seqRef.current[uniqueId] !== seq) return;
+        setBreakdowns((prev) => ({ ...prev, [uniqueId]: next }));
+      };
+
+      // 自動更新での取り直しは、開いているパネルを毎回スケルトンへ戻さない。
+      if (!opts?.silent) apply({ status: "loading" });
+      try {
+        const range =
+          period === "custom"
+            ? `startDatetime=${encodeURIComponent(new Date(customStart).toISOString())}&endDatetime=${encodeURIComponent(new Date(customEnd).toISOString())}`
+            : `period=${period}&date=${currentDate}`;
+        const res = await fetch(
+          `${apiBase}/gifts/breakdown?${range}&uniqueId=${encodeURIComponent(uniqueId)}`
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        apply({ status: "ready", data: (await res.json()) as GiftBreakdownData });
+      } catch {
+        // 自動更新の失敗で、表示中の内訳をエラー画面へ落とさない(次の更新で取り直す)。
+        if (!opts?.silent) apply({ status: "error" });
+      }
+    },
+    [apiBase, period, currentDate, customStart, customEnd]
+  );
+
+  const openUserIdRef = useRef(openUserId);
+  openUserIdRef.current = openUserId;
+  const breakdownsRef = useRef(breakdowns);
+  breakdownsRef.current = breakdowns;
+
+  // 配信中は15秒ごとにランキングが自動更新される。そのときキャッシュ済みの内訳は古く、
+  // 放置すると行のコイン数と内訳の合計が食い違う。開いている行は黙って取り直し、
+  // 閉じている行のキャッシュは捨てる(次に開いたときに最新を取る)。
+  const prevDataRef = useRef(data);
+  useEffect(() => {
+    if (prevDataRef.current === data) return;
+    const hadPrevious = prevDataRef.current !== null;
+    prevDataRef.current = data;
+    if (!hadPrevious) return; // 初回ロードには捨てるキャッシュが無い
+    const open = openUserIdRef.current;
+    setBreakdowns((prev) => (open && prev[open] ? { [open]: prev[open] } : {}));
+    if (open) void fetchBreakdown(open, { silent: true });
+  }, [data, fetchBreakdown]);
+
+  const toggleBreakdown = useCallback(
+    (uniqueId: string) => {
+      const willOpen = openUserIdRef.current !== uniqueId;
+      setOpenUserId(willOpen ? uniqueId : null);
+      // 未取得のときだけ初回fetch。取得済み(成功・失敗とも)は再取得しない
+      // (失敗は展開先の「再試行」ボタンから明示的に取り直す)。
+      if (willOpen && !breakdownsRef.current[uniqueId]) void fetchBreakdown(uniqueId);
+    },
+    [fetchBreakdown]
   );
 
   const fetchHistory = useCallback(async (p: Period, d: string, silent = false) => {
@@ -885,14 +1134,30 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                     <th className="py-[9px] px-3 text-right hidden md:table-cell font-semibold text-muted">
                       最終
                     </th>
+                    <th className="w-[34px]">
+                      <span className="sr-only">ギフト内訳</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedFiltered.map((user, idx) => (
+                  {sortedFiltered.map((user, idx) => {
+                    const open = openUserId === user.uniqueId;
+                    const panelId = `gift-breakdown-${idx}`;
+                    return (
+                    <Fragment key={user.uniqueId}>
                     <tr
-                      key={user.uniqueId}
-                      className={`border-b border-row-border hover:bg-row-hover transition-colors ${
-                        idx === 0 ? "bg-yellow-500/5" : ""
+                      // 行全体をポインタでの展開トリガにする。行内のリンク・ボタン
+                      // (プロフィールリンク、チェブロン)を押したときは展開しない。
+                      // 個々の子要素の stopPropagation に頼ると、後から要素を足したときに
+                      // 黙って展開が誤発火するため、ここで一括して弾く。
+                      // キーボード操作はチェブロンの <button> が担う(行に role/tabIndex を
+                      // 足すとネストしたインタラクティブ要素になり、かえってa11yが壊れる)。
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest("a,button")) return;
+                        toggleBreakdown(user.uniqueId);
+                      }}
+                      className={`border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer ${
+                        open ? "bg-row-hover" : idx === 0 ? "bg-yellow-500/5" : ""
                       }`}
                     >
                       <td className="py-[9px] px-3 text-right text-muted font-mono text-xs">
@@ -906,6 +1171,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                             rel="noopener noreferrer"
                             title="TikTokプロフィールを開く"
                             className="shrink-0"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <Avatar
                               src={user.profileImageUrl}
@@ -919,6 +1185,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                               rel="noopener noreferrer"
                               title="TikTokプロフィールを開く"
                               className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
+                              onClick={(e) => e.stopPropagation()}
                             >
                               {user.nickname}
                             </a>
@@ -949,8 +1216,39 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                       <td className="py-[9px] px-3 text-right text-muted text-xs hidden md:table-cell">
                         {formatRelativeTime(user.lastGiftAt)}
                       </td>
+                      <td className="py-[9px] px-0 text-center">
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          aria-controls={panelId}
+                          aria-label={`${user.nickname} のギフト内訳を${open ? "閉じる" : "開く"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleBreakdown(user.uniqueId);
+                          }}
+                          className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-lg motion-safe:transition-transform duration-150 ${
+                            open ? "text-brand rotate-180" : "text-muted"
+                          }`}
+                        >
+                          <ChevronDownIcon />
+                        </button>
+                      </td>
                     </tr>
-                  ))}
+                    {open && (
+                      <tr className="border-b border-row-border">
+                        <td id={panelId} colSpan={6} className="p-0 bg-panel">
+                          <div className="breakdown-enter pt-2.5 pb-3 px-3 sm:pl-[52px]">
+                            <GiftBreakdownPanel
+                              state={breakdowns[user.uniqueId]}
+                              onRetry={() => void fetchBreakdown(user.uniqueId)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
