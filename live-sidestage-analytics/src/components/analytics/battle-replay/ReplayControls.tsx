@@ -1,6 +1,7 @@
 "use client";
 
 import { formatClock } from "./replay-format";
+import { QUIET_SKIP_BOOST } from "./replay-select";
 
 const SPEEDS = [1, 2, 4];
 
@@ -110,9 +111,15 @@ export function ReplayControls({
         type="button"
         onClick={() => onSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]!)}
         aria-label="再生速度"
-        className="flex-none rounded-[6px] border border-border px-[7px] py-[1px] font-mono text-[11px] text-strong"
+        className={`flex-none rounded-[6px] border px-[7px] py-[1px] font-mono text-[11px] ${
+          // 自動早送り中は**実効倍率**を出す。無風区間は5〜10秒と短く、点滅だけだと
+          // 早送りが効いているのか判らない。
+          quietSkipping
+            ? "animate-pulse border-brand text-brand motion-reduce:animate-none"
+            : "border-border text-strong"
+        }`}
       >
-        {speed}×
+        {quietSkipping ? `${speed * QUIET_SKIP_BOOST}×` : `${speed}×`}
       </button>
       <button
         type="button"

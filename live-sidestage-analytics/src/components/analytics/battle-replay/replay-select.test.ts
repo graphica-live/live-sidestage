@@ -25,6 +25,9 @@ import {
   scoresAt,
   segmentAt,
   selfAnchorIndexes,
+  bigGiftsByAnchor,
+  BIG_GIFT_DURATION_MS,
+  BIG_GIFT_MIN_DIAMONDS,
   QUIET_LEAD_MS,
   QUIET_MIN_GAP_MS,
 } from "./replay-select";
@@ -119,6 +122,60 @@ describe("buildCards", () => {
     expect(cards[0]!.multiplierValue).toBe(5);
     expect(cards[0]!.endMs).toBe(1400 + REPLAY_BAR_LIFETIME_MS);
     expect(cards[1]!.comboSpanMs).toBe(0);
+  });
+});
+
+describe("bigGiftsByAnchor", () => {
+  const cards = buildCards(
+    payload({
+      giftEvents: [
+        // 閾値ちょうど未満 / ちょうど
+        { t: 1000, a: 0, s: 0, g: 0, c: 1, d: BIG_GIFT_MIN_DIAMONDS - 1, k: null, m: null },
+        { t: 2000, a: 0, s: 0, g: 0, c: 1, d: BIG_GIFT_MIN_DIAMONDS, k: null, m: null },
+        { t: 2500, a: 1, s: 1, g: 0, c: 1, d: 34_999, k: null, m: null },
+        // 同じ枠で重なる2発。新しい方を採る
+        { t: 3000, a: 0, s: 1, g: 0, c: 1, d: 20_000, k: null, m: null },
+      ],
+    })
+  );
+
+  it("閾値未満のギフトでは演出を出さない", () => {
+    expect(bigGiftsByAnchor(cards, 1200, 2)).toEqual([null, null]);
+  });
+
+  it("閾値ちょうどから演出を出し、尺を過ぎたら消す", () => {
+    expect(bigGiftsByAnchor(cards, 2000, 2)[0]?.diamonds).toBe(BIG_GIFT_MIN_DIAMONDS);
+    expect(bigGiftsByAnchor(cards, 2000, 2)[1]).toBeNull();
+    // anchor 1 のギフトは 2500ms 開始。尺の終端(排他)で消える
+    expect(bigGiftsByAnchor(cards, 2500 + BIG_GIFT_DURATION_MS - 1, 2)[1]?.diamonds).toBe(34_999);
+    expect(bigGiftsByAnchor(cards, 2500 + BIG_GIFT_DURATION_MS, 2)[1]).toBeNull();
+  });
+
+  it("同じ枠で重なったら新しい方を採る", () => {
+    expect(bigGiftsByAnchor(cards, 3100, 2)[0]?.diamonds).toBe(20_000);
+  });
+
+  it("カードの表示上限で押し出されても演出は出る(全カードから選ぶ)", () => {
+    const many = buildCards(
+      payload({
+        giftEvents: [
+          { t: 1000, a: 0, s: 0, g: 0, c: 1, d: 50_000, k: null, m: null },
+          ...Array.from({ length: 8 }, (_, i) => ({
+            t: 1100 + i * 10,
+            a: 0,
+            s: 1,
+            g: 0,
+            c: 1,
+            d: 1,
+            k: null,
+            m: null,
+          })),
+        ],
+      })
+    );
+    const visible = cardsByAnchor(cardsAt(many, 1200), 2);
+    expect(visible[0]!.some((card) => card.diamonds === 50_000)).toBe(false);
+    expect(bigGiftsByAnchor(many, 1200, 2)[0]?.diamonds).toBe(50_000);
   });
 });
 
@@ -515,8 +572,9 @@ describe("buildStageLayout", () => {
     expect(duo.cells[0]!.anchorIndex).toBe(1);
     expect(duo.cells[0]!.isSelf).toBe(true);
     expect(duo.cells[0]!.right).toBe(false);
-    expect(duo.cells[0]!.largeAvatar).toBe(true);
     expect(duo.cells[1]!.right).toBe(true);
+    // 1vs1 は左右等寸。相手枠も大アイコンにする
+    expect(duo.cells.map((c) => c.largeAvatar)).toEqual([true, true]);
   });
 });
 
