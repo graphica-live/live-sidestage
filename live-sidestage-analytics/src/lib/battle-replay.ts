@@ -96,6 +96,7 @@ const REPLAY_SELECT = {
       teamIndex: true,
       position: true,
       side: true,
+      isSelf: true,
       nickName: true,
       displayId: true,
       tiktokId: true,
@@ -154,6 +155,8 @@ export type ReplayRow = {
     teamIndex: number;
     position: number;
     side: string;
+    /** 確定処理が解決できなかった古い行では null。判定は `=== true` で行う。 */
+    isSelf: boolean | null;
     nickName: string | null;
     displayId: string | null;
     tiktokId: string | null;
@@ -306,9 +309,15 @@ export function buildPayload(
 
   const teamIndexes = [...new Set(row.participants.map((p) => p.teamIndex))].sort((a, b) => a - b);
   const teams: ReplayTeam[] = teamIndexes.map((teamIndex) => {
-    const members = row.participants.filter((p) => p.teamIndex === teamIndex);
+    // **本人(isSelf)を陣営の先頭へ寄せる。** DB の position は TikTok が配信してくる並びで、
+    // 自陣コラボでは本人が position 1 以降に来ることがある(実バトルで確認)。ステージは
+    // participants の順にマス目を埋めるので、そのままだと本人が左上に出ない。
+    const members = [...row.participants.filter((p) => p.teamIndex === teamIndex)].sort(
+      (a, b) => Number(b.isSelf === true) - Number(a.isSelf === true) || a.position - b.position
+    );
     const participants: ReplayParticipant[] = members.map((p) => ({
       anchorId: p.anchorId,
+      isSelf: p.isSelf === true,
       displayName: displayNameOf(p, variant),
       // 配信者のハンドルは私的バリアントのみ。公開ではニックネームとアイコンだけで足りる。
       uniqueId: isPublic ? null : p.displayId ?? p.tiktokId,

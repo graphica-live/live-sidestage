@@ -67,6 +67,10 @@ export type ReplaySegment = {
 
 export type ReplayParticipant = {
   anchorId: string;
+  /** **この再生を見ている配信者本人か。** 陣営(`ReplayTeam.isSelf`)ではなく個人の判定で、
+   * 多人数コラボの自陣にも本人でないメンバーがいる。ステージの並び順と、
+   * 下段の貢献者ボードを誰への貢献に絞るかがこの値で決まる。 */
+  isSelf: boolean;
   displayName: string;
   /** TikTokハンドル。**公開バリアントでは常に null。** */
   uniqueId: string | null;

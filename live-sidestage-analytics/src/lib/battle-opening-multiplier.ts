@@ -16,8 +16,22 @@ export const OPENING_WINDOW_MS = 60_000;
 
 /** スコア点の直前どこまでのギフトをその増分の原因とみなすか。
  * **armies の occurredAt はサーバー受信時刻、Gift.receivedAt は TikTok の createTime 由来**で
- * 時刻の基準が違う。その差(配送遅延 + 時刻基準のズレ)を吸収するための補正値。 */
-export const GIFT_TO_SCORE_LAG_MS = 1_500;
+ * 時刻の基準が違う。その差(配送遅延 + 時刻基準のズレ)を吸収するための補正値。
+ *
+ * 本番実測(n=4838、100ダイヤ以上かつ multiplierType=0 のギフトと、その後6秒以内に
+ * `delta >= totalDiamonds` を満たしたスコア点の時間差): p25=1043ms / p50=1533ms / p75=3111ms、
+ * 最頻帯は 1000〜1500ms。中央値が 1500 を超えるので、旧値 1500 では正常な反映の半分を
+ * 「離れすぎ」として捨てていた。 */
+export const GIFT_TO_SCORE_LAG_MS = 3_000;
+
+/** ギフトが区間の終端スコア点のこれだけ手前に届いていたら、その増分が t[i] に出たのか
+ * t[i+1] に出たのかを時刻から決められないとみなす。
+ *
+ * **`GIFT_TO_SCORE_LAG_MS` と兼用してはいけない。** 反映遅延の最頻帯が 1000〜1500ms なので、
+ * 曖昧判定にも 1500 を使うと「正常に反映されたケースほど確実に除外される」ことになる
+ * (実際それで本番 976 バトル中 774 件が unknown になっていた)。実測の下位5%が 349ms
+ * なので、それより内側だけを「速すぎて原因を特定できない」として外す。 */
+export const SCORE_ASSIGNMENT_AMBIGUITY_MS = 250;
 
 /** これ未満のギフトは候補にしない。小粒ギフトは1ダイヤの誤差が比を大きく動かすため。 */
 export const MIN_CANDIDATE_DIAMONDS = 100;
@@ -38,6 +52,9 @@ export type OpeningScorePoint = {
 export type OpeningGift = {
   /** Gift.id。basisGiftId として記録する。 */
   id: string;
+  /** **このギフトが加算された配信者。** スコア点は anchor ごとに独立して動くので、
+   * 別 anchor のギフトを他人の増分の原因として割り当ててはいけない。 */
+  anchorId: string;
   /** Gift.receivedAt(TikTok createTime 由来)。 */
   occurredAt: Date;
   totalDiamonds: number;
@@ -131,25 +148,27 @@ export function inferOpeningMultiplier(input: {
 
   const candidates: Candidate[] = [];
 
-  for (const points of pointsByAnchor.values()) {
+  for (const [anchorId, points] of pointsByAnchor) {
     const sorted = [...points].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+    // スコア点はこの anchor のものなので、原因になりうるのは同じ anchor 宛のギフトだけ。
+    const anchorGifts = gifts.filter((g) => g.anchorId === anchorId);
 
     // **各ギフトは高々1つの区間へ割り当てる。** 区間を (t[i-1] - lag, t[i]] と素朴に重ねると
     // 隣接区間が lag 分だけ重なり、配送遅延が lag を超えたときに「区間内ちょうど1件」が
     // 誤って成立する。ギフトは occurredAt 以上で最初に来るスコア点へ1回だけ渡す。
     const assigned = new Map<number, typeof gifts>();
-    // **反映先が確定できない区間**。ギフトが区間の終端スコア点の直前(lag 未満)に届いた場合、
+    // **反映先が確定できない区間**。ギフトが区間の終端スコア点のごく直前に届いた場合、
     // その増分が t[i] に出たのか t[i+1] に出たのかを時刻からは決められない
     // (armies はサーバー受信時刻、Gift は TikTok の createTime で基準が違う)。
     // どちらへ寄せても比が壊れるので、両方の区間を候補から外す。
     const ambiguous = new Set<number>();
-    for (const gift of gifts) {
+    for (const gift of anchorGifts) {
       const giftAt = gift.occurredAt.getTime();
       const index = sorted.findIndex((p, i) => i > 0 && p.occurredAt.getTime() >= giftAt);
       if (index <= 0) continue;
       // 先頭区間より前(窓の開始点より lag 以上前)のギフトは、その増分の原因とみなすには離れすぎている。
       if (giftAt <= sorted[index - 1].occurredAt.getTime() - GIFT_TO_SCORE_LAG_MS) continue;
-      if (sorted[index].occurredAt.getTime() - giftAt < GIFT_TO_SCORE_LAG_MS) {
+      if (sorted[index].occurredAt.getTime() - giftAt < SCORE_ASSIGNMENT_AMBIGUITY_MS) {
         ambiguous.add(index);
         ambiguous.add(index + 1);
       }
@@ -160,12 +179,18 @@ export function inferOpeningMultiplier(input: {
 
     for (const [index, giftsInInterval] of assigned) {
       if (ambiguous.has(index)) continue;
-      if (giftsInInterval.length !== 1) continue;
-      const gift = giftsInInterval[0];
-      if (gift.totalDiamonds < MIN_CANDIDATE_DIAMONDS) continue;
-      if (overlapsBonus(gift.occurredAt, input.bonusIntervals)) continue;
-      // multiplierType が 0 以外なら別の倍率(グローブcrit・TOP_2/TOP_3ブースター)が乗っている。
-      if (gift.multiplierType !== null && gift.multiplierType !== 0) continue;
+      if (giftsInInterval.length === 0) continue;
+      // **区間内のギフトは合算する。** armies の更新間隔は数百ms〜数秒で、その間に複数の
+      // ギフトが届くのが普通のため、「区間内ちょうど1件」を要求すると実バトルではほぼ成立せず、
+      // 本番 976 バトル中 774 件が unknown になっていた(2026-09-07 実測)。
+      // 合算しても、区間内の全ギフトが同じ倍率区間に属する限り比は保たれる。
+      // 別の倍率(グローブcrit・TOP_2/TOP_3ブースター)やボーナス区間が1件でも混ざる区間は、
+      // 比が壊れるので区間ごと捨てる。
+      if (giftsInInterval.some((g) => overlapsBonus(g.occurredAt, input.bonusIntervals))) continue;
+      if (giftsInInterval.some((g) => g.multiplierType !== null && g.multiplierType !== 0)) continue;
+
+      const totalDiamonds = giftsInInterval.reduce((sum, g) => sum + g.totalDiamonds, 0);
+      if (totalDiamonds < MIN_CANDIDATE_DIAMONDS) continue;
 
       const before = parseScore(sorted[index - 1].score);
       const after = parseScore(sorted[index].score);
@@ -173,16 +198,17 @@ export function inferOpeningMultiplier(input: {
       const delta = after - before;
       if (delta <= 0) continue;
 
-      const ratio = delta / gift.totalDiamonds;
+      const ratio = delta / totalDiamonds;
       const rounded = Math.round(ratio);
       if (Math.abs(ratio - rounded) > RATIO_TOLERANCE) continue;
       if (!(ALLOWED_MULTIPLIERS as readonly number[]).includes(rounded)) continue;
 
+      const basis = giftsInInterval[0];
       candidates.push({
-        giftId: gift.id,
-        occurredAt: gift.occurredAt,
+        giftId: basis.id,
+        occurredAt: basis.occurredAt,
         multiplier: rounded,
-        multiplierObserved: gift.multiplierType === 0,
+        multiplierObserved: giftsInInterval.every((g) => g.multiplierType === 0),
       });
     }
   }

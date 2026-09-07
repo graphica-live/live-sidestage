@@ -19,10 +19,13 @@ export function ReplayControls({
   speed,
   tickRatios,
   tickColors,
+  quietSkip,
+  quietSkipping,
   onToggle,
   onSeek,
   onSpeed,
   onScrubbing,
+  onQuietSkip,
 }: {
   elapsedMs: number;
   durationMs: number;
@@ -31,10 +34,15 @@ export function ReplayControls({
   /** スコアが動いた位置(0〜1)。 */
   tickRatios: number[];
   tickColors: string[];
+  /** 無風区間の自動早送りが有効か。 */
+  quietSkip: boolean;
+  /** **いま無風区間を早送り中か。** 残り時間の点滅がこの状態の唯一の手がかりになる。 */
+  quietSkipping: boolean;
   onToggle: () => void;
   onSeek: (ms: number) => void;
   onSpeed: (speed: number) => void;
   onScrubbing: (scrubbing: boolean) => void;
+  onQuietSkip: (enabled: boolean) => void;
 }) {
   const ratio = durationMs > 0 ? Math.min(1, Math.max(0, elapsedMs / durationMs)) : 0;
   const percent = `${ratio * 100}%`;
@@ -88,8 +96,15 @@ export function ReplayControls({
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
       </div>
-      <span className="flex-none font-mono text-[11px] tabular-nums text-muted">
-        {formatClock(durationMs)}
+      <span
+        // 残り時間。**経過時間の再掲ではない**(左のラベルが経過)。自動早送り中は
+        // 「いま飛ばしている」ことがここでしか判らないので点滅させる。
+        className={`flex-none font-mono text-[11px] tabular-nums ${
+          quietSkipping ? "animate-pulse text-strong motion-reduce:animate-none" : "text-muted"
+        }`}
+        aria-label="残り時間"
+      >
+        -{formatClock(Math.max(0, durationMs - elapsedMs))}
       </span>
       <button
         type="button"
@@ -98,6 +113,18 @@ export function ReplayControls({
         className="flex-none rounded-[6px] border border-border px-[7px] py-[1px] font-mono text-[11px] text-strong"
       >
         {speed}×
+      </button>
+      <button
+        type="button"
+        onClick={() => onQuietSkip(!quietSkip)}
+        aria-label="自動早送り"
+        aria-pressed={quietSkip}
+        title="ギフトが途切れた区間を自動で早送りする（飛ばさずに速く流す）"
+        className={`flex-none rounded-[6px] border px-[7px] py-[1px] font-mono text-[11px] ${
+          quietSkip ? "border-brand bg-brand text-on-accent" : "border-border text-muted"
+        }`}
+      >
+        ⏩Auto
       </button>
     </div>
   );

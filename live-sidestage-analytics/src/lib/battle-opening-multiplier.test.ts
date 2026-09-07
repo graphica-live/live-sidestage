@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   inferOpeningMultiplier,
   GIFT_TO_SCORE_LAG_MS,
+  SCORE_ASSIGNMENT_AMBIGUITY_MS,
   MIN_CANDIDATE_DIAMONDS,
   type OpeningGift,
   type OpeningScorePoint,
@@ -26,6 +27,7 @@ function gift(overrides: Partial<OpeningGift> & { offsetMs: number }): OpeningGi
   const { offsetMs, ...rest } = overrides;
   return {
     id: `gift-${offsetMs}`,
+    anchorId: ANCHOR,
     occurredAt: at(offsetMs),
     totalDiamonds: 1000,
     multiplierType: 0,
@@ -100,13 +102,44 @@ describe("inferOpeningMultiplier", () => {
     expect(result.confidence).toBe("inferred");
   });
 
-  it("1区間に2件のギフトが入ったら候補にしない(同時多発)", () => {
+  it("1区間に複数のギフトが入っても合算して比を出す", () => {
+    // armies の更新間隔は数百ms〜数秒あるので、1区間に複数ギフトが入るのはむしろ普通。
+    // 「ちょうど1件」を要求していた頃は本番 976 バトル中 774 件が unknown だった。
     const result = infer(scoreSeries([{ offsetMs: 5_000, score: 4000 }]), [
       gift({ offsetMs: 4_400 }),
       gift({ offsetMs: 4_600 }),
     ]);
+    expect(result.multiplier).toBe(2);
+    expect(result.confidence).toBe("inferred");
+  });
+
+  it("区間内に別倍率(グローブcrit)が1件でも混ざれば区間ごと捨てる", () => {
+    const result = infer(scoreSeries([{ offsetMs: 5_000, score: 4000 }]), [
+      gift({ offsetMs: 4_400 }),
+      gift({ offsetMs: 4_600, multiplierType: 1 }),
+    ]);
     expect(result.confidence).toBe("unknown");
-    expect(result.multiplier).toBeNull();
+  });
+
+  it("反映遅延が1.4秒でも候補として拾う(本番実測の最頻帯)", () => {
+    // 本番実測 n=4838 で p50=1533ms・最頻帯 1000〜1500ms。ここを ambiguous として捨てていたのが
+    // unknown 多発の主因だった。
+    const result = infer(
+      scoreSeries([
+        { offsetMs: 5_000, score: 2000 },
+        { offsetMs: 15_000, score: 4000 },
+      ]),
+      [gift({ offsetMs: 3_600 }), gift({ offsetMs: 13_600 })]
+    );
+    expect(result.multiplier).toBe(2);
+    expect(result.confidence).toBe("measured");
+  });
+
+  it("別 anchor 宛のギフトを他人のスコア増分の原因にしない", () => {
+    const result = infer(scoreSeries([{ offsetMs: 5_000, score: 2000 }]), [
+      gift({ offsetMs: 3_000, anchorId: "anchor-rival" }),
+    ]);
+    expect(result.confidence).toBe("unknown");
   });
 
   it("小粒ギフトは候補にしない", () => {
@@ -192,14 +225,14 @@ describe("inferOpeningMultiplier", () => {
     expect(result.confidence).toBe("inferred");
   });
 
-  it("スコア点の直前(lag未満)に届いたギフトは、その区間も次の区間も候補にしない", () => {
+  it("スコア点の直前(曖昧判定の閾値未満)に届いたギフトは、その区間も次の区間も候補にしない", () => {
     // 増分がこのスコア点に出たのか次の点に出たのか、時刻からは決められない。
     const result = infer(
       scoreSeries([
         { offsetMs: 5_000, score: 2000 },
         { offsetMs: 15_000, score: 4000 },
       ]),
-      [gift({ offsetMs: 5_000 - GIFT_TO_SCORE_LAG_MS / 2 }), gift({ offsetMs: 13_000 })]
+      [gift({ offsetMs: 5_000 - SCORE_ASSIGNMENT_AMBIGUITY_MS / 2 }), gift({ offsetMs: 13_000 })]
     );
     expect(result.confidence).toBe("unknown");
     expect(result.multiplier).toBeNull();

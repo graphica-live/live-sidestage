@@ -209,6 +209,14 @@ body {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  /* 幅は React が %, 補間時間は inline style(再生速度で割った値)。 */
+  transition-property: width;
+  transition-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-seg {
+    transition-property: none;
+  }
 }
 .replay-seg + .replay-seg {
   box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.35);

@@ -479,18 +479,35 @@ export async function computeBattleSnapshot(
   );
 
   // 「初ギフトx倍」の逆算。既に読んである armies と giftEvents / bonusMissions を渡すだけで、
-  // 追加クエリは発生しない。自陣営(self)のギフトとスコアだけを使う(相手roomのギフトは
-  // 相手のスコアへ効くが、時刻基準が揃わないうえ相手roomのarmiesは読んでいないため)。
+  // 追加クエリは発生しない。
+  //
+  // **自陣営に絞らず全 anchor を渡す。ただし `captureStatus === "complete"` の anchor だけ。**
+  // 自roomの armies には対戦相手を含む全 anchor のスコアが入っており、相手room監視
+  // (watchBattleOpponents)が動いている今は相手側のギフト明細も揃う。片側だけだと候補が1件しか
+  // 立たず confidence が inferred 止まりになって帯が出ない一方、両側を見れば同じ倍率の候補が
+  // 2件そろって measured になる(2026-09-07 の実バトルで確認)。anchor をまたいだ誤割当は
+  // inferOpeningMultiplier 側が OpeningGift.anchorId で防ぐ。
+  //
+  // **完全性の確認が要るのは「全欠落」ではなく「部分欠落」のため。** ギフトが1件も無い anchor は
+  // 候補が立たないので無害だが、途中接続・切断で**一部だけ**取れた anchor は、公式スコアの増分
+  // (armies は自room由来なので欠けない)を観測できたギフトだけで割ることになり、比が過大に出る。
+  // 同額のギフトが2連投された区間で1件だけ観測すれば ratio はちょうど 2.0 になり、同じ欠落が
+  // 2区間で起きれば候補2件が一致して `measured` へ昇格する。`measured` は赤帯＝事実として
+  // 表示されるので、推定を事実に見せないという表示契約(設計レビュー F5-3)を破る。
+  const completeAnchorIds = new Set(
+    [...captureByAnchorId.entries()].filter(([, c]) => c.status === "complete").map(([anchorId]) => anchorId)
+  );
   const opening = inferOpeningMultiplier({
     windowStart,
     // 配信途中から接続した場合 windowStart は「気づいた時刻」でしかない(startedAtEstimated)。
     // その60秒はバトル中盤なので、倍率区間として判定させない。
     windowStartReliable: !own.startedAtEstimated,
-    scorePoints: armiesRows.filter((r) => r.anchorId === selfHostUserId),
+    scorePoints: armiesRows,
     gifts: giftEvents
-      .filter((g) => g.participantAnchorId === selfHostUserId)
+      .filter((g) => completeAnchorIds.has(g.participantAnchorId))
       .map((g) => ({
         id: g.sourceGiftId,
+        anchorId: g.participantAnchorId,
         occurredAt: g.occurredAt,
         totalDiamonds: g.totalDiamonds,
         multiplierType: g.multiplierType,
@@ -844,7 +861,7 @@ export async function attachReplayData(battleHistoryId: string): Promise<AttachR
       totalDiamonds: true,
       multiplierType: true,
       sourceGiftId: true,
-      participant: { select: { anchorId: true } },
+      participant: { select: { anchorId: true, captureStatus: true } },
     },
   });
 
@@ -863,11 +880,14 @@ export async function attachReplayData(battleHistoryId: string): Promise<AttachR
   const opening = inferOpeningMultiplier({
     windowStart: history.windowStart,
     windowStartReliable: sourceBattle !== null && !sourceBattle.startedAtEstimated,
-    scorePoints: armiesRows.filter((r) => r.anchorId === selfHostUserId),
+    // 自陣営に絞らない理由と、`captureStatus === "complete"` に限る理由は
+    // computeBattleSnapshot 側の同じ呼び出しのコメントを参照。
+    scorePoints: armiesRows,
     gifts: giftRows
-      .filter((g) => g.participant.anchorId === selfHostUserId)
+      .filter((g) => g.participant.captureStatus === "complete")
       .map((g) => ({
         id: g.sourceGiftId,
+        anchorId: g.participant.anchorId,
         occurredAt: g.occurredAt,
         totalDiamonds: g.totalDiamonds,
         multiplierType: g.multiplierType,

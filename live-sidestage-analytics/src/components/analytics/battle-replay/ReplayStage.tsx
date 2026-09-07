@@ -44,12 +44,15 @@ export const ReplayStage = memo(function ReplayStage({
   cards,
   colorByAnchor,
   elapsedMs,
+  scoreTransitionMs,
 }: {
   payload: BattleReplayPayload;
   layout: StageLayout;
   cards: ReplayCard[];
   colorByAnchor: string[];
   elapsedMs: number;
+  /** スコアバーの幅補間時間(ms)。シーク中は 0。 */
+  scoreTransitionMs: number;
 }) {
   const scores = scoresAt(payload, elapsedMs);
   const ranks = ranksOf(scores);
@@ -69,7 +72,12 @@ export const ReplayStage = memo(function ReplayStage({
 
   return (
     <div className="replay-stage">
-      <ReplayScoreBar scores={scores} colors={colorByAnchor} elapsedMs={elapsedMs} />
+      <ReplayScoreBar
+        scores={scores}
+        colors={colorByAnchor}
+        elapsedMs={elapsedMs}
+        transitionMs={scoreTransitionMs}
+      />
 
       {/* レーンはグリッド全体に重ねるので、赤帯を巻き込まないようここで位置基準を作る */}
       <div className="relative">
