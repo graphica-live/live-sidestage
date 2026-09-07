@@ -205,6 +205,8 @@ interface ListenerInstance {
   // 合算しても無損失。
   pendingLikes: Map<string, { uniqueId: string; nickname: string; profilePictureUrl: string | null; likeCount: number }>;
   likeFlushTimer: NodeJS.Timeout | null;
+  // 進行中バトルのタップ点集計。バトル外は null。詳細は TapTally の定義コメント。
+  tapTally: TapTally | null;
 }
 
 // ack未達等によるTikTok側の再送バッチは、盛り上がっている配信だと直近のコメントとの間隔が
@@ -1742,6 +1744,184 @@ function scheduleBattleHistoryFinalize(roomId: string, battleId: string): void {
   timer.unref?.();
 }
 
+// ===== タップ点(いいね由来のスコア)の集計 =====
+//
+// 公式スコアはギフトだけでは増えず「ギフト点 x 倍率 + タップ点」で増える。差し引かないと
+// 初ギフトx倍の逆算(battle-opening-multiplier.ts)の比が一方向に上振れし、正しい倍率が
+// 「判定不能」として棄却される(本番実例: 406/200 = 2.03)。
+//
+// 仕様(ユーザー提示。TikTok公式では裏取りできていない): **1リスナーが10タップで3点。それが上限**で、
+// 上限はバトル単位。次のバトルでは全員が再び権利を得る。したがって行が増えるのは
+// 「あるリスナーがそのバトルで10タップに到達した瞬間」だけで、毎秒書く方式ではない。
+
+/** これだけタップしたリスナーに TAP_POINTS_PER_LISTENER が入る。 */
+const TAP_THRESHOLD_COUNT = 10;
+
+/** 10タップ到達1人あたりのスコア。**定数で埋めずDBへ保存する**(仕様が違っていたと後で判るように)。 */
+const TAP_POINTS_PER_LISTENER = 3;
+
+/** 1バトルで追跡するリスナー数の上限(counts と reached の合計)。超えたら計上を止めて
+ * complete=false にする。バトルは5分なので tally はその間だけ生きる。 */
+export const MAX_TAP_TALLY_ENTRIES = 20_000;
+
+/**
+ * 進行中バトル1本ぶんのタップ集計。**write queue 上ではなくイベントハンドラ内で同期的に作る。**
+ * persistBattle() は queueBattleWrite() で非同期に積まれるため、そこで作るとバトル開始イベント
+ * 受信から実行までの like を構造的に取りこぼす。
+ */
+type TapTally = {
+  battleId: string;
+  /** このroomの配信者のanchorId。行に持たせて読み出し時のroom->anchor解決を不要にする。 */
+  anchorId: string;
+  /** uniqueId -> 累積タップ数(10未満のリスナーのみ)。 */
+  counts: Map<string, number>;
+  /** 10到達済み。メモリ上の二重書き込み抑制で、正は DB の unique 制約。 */
+  reached: Set<string>;
+  /** insert の結果(成功=true)。**fire-and-forget にせず参照を残す**。最終化タスクがこれを
+   * 待たないと、FINISH 後に reject した insert を取りこぼしたまま tracked=true を書いてしまう。 */
+  pendingWrites: Promise<boolean>[];
+  /** バトル開始から取りこぼしなく観測できているか。**単調に false へ落ちるだけ。** */
+  complete: boolean;
+};
+
+/**
+ * 自room の配信者の anchorId を解決する。
+ *
+ * `TiktokRoom.hostUserId` は fill-once の遅延バックフィルでしか埋まらず null がありうるので、
+ * payload 内の `hostProfiles`(anchorId -> {displayId,...})と接続中のハンドルの一致で引く。
+ * 解決できなければタリーを作らない(= tapPointsTracked は false のまま)。
+ */
+function resolveSelfAnchorId(parsed: ParsedBattle, tiktokId: string): string | null {
+  const target = tiktokId.trim().toLowerCase();
+  if (!target) return null;
+  for (const [anchorId, profile] of Object.entries(parsed.hostProfiles)) {
+    const displayId = profile?.displayId;
+    if (typeof displayId === "string" && displayId.trim().toLowerCase() === target) return anchorId;
+  }
+  return null;
+}
+
+/**
+ * バトルイベントを受けてタリーを生成・切替・最終化する。**ハンドラ内で同期的に呼ぶこと。**
+ */
+function syncTapTally(inst: ListenerInstance, roomId: string, parsed: ParsedBattle | null): void {
+  if (!parsed) return;
+  const current = inst.tapTally;
+
+  if (parsed.phase === "END") {
+    if (current && current.battleId === parsed.battleId) {
+      inst.tapTally = null;
+      finalizeTapTally(roomId, current);
+    }
+    return;
+  }
+
+  if (current?.battleId === parsed.battleId) return;
+
+  // 別のバトルが始まった。上限3点はバトル単位なので必ず作り直す。
+  if (current) {
+    inst.tapTally = null;
+    finalizeTapTally(roomId, current);
+  }
+
+  const anchorId = resolveSelfAnchorId(parsed, inst.state.tiktokId);
+  if (anchorId === null) return;
+
+  inst.tapTally = {
+    battleId: parsed.battleId,
+    anchorId,
+    counts: new Map(),
+    reached: new Set(),
+    pendingWrites: [],
+    // **START 以外で初めて見たバトルは開始からの観測連続性が無い。** armies 先着(配信途中から
+    // 接続した・worker再起動)の場合、それ以前のタップを失っているので計測済みを名乗れない。
+    complete: parsed.phase === "START",
+  };
+}
+
+/**
+ * `TiktokBattle.tapPointsTracked` へ書く**唯一の経路**。
+ *
+ * false 化を別経路で即時に書くと、FINISH 後に reject した insert の false を、後から走る true が
+ * 上書きしうる。既定値が false なので「complete を確認できたときだけ true を書く」だけでよく、
+ * 途中の失敗は DB を触らずメモリ上のフラグを落とすだけで済む(プロセスが落ちても安全側)。
+ *
+ * 同じ `${roomId}:${battleId}` キーへ積むので、persistBattle() による TiktokBattle 行の作成より
+ * 後に走る(createWriteQueue は key 単位で直列)。
+ *
+ * **absorbRooms(TikTok ID 改名の合流)と競合しても安全側に倒れる。** 合流は1トランザクションで
+ * タップ点の移送と候補room削除まで行うので、外から見える状態は合流前か合流後のどちらかしかない。
+ * 合流後に届いた insert は room が無く FK 違反で reject し、ここで false のまま残る。
+ * 合流の直前に commit した insert は cascade で失われうるが、その場合この updateMany の
+ * `roomId` が候補room を指すのに対し `TiktokBattle` 行は survivor へ移っているため 0 件更新となり、
+ * **「行は消えたのに tracked=true」にはならない**(= 逆算は差し引かず、導入前と同じ判定に戻る)。
+ */
+function finalizeTapTally(roomId: string, tally: TapTally): void {
+  queueBattleWrite(`${roomId}:${tally.battleId}`, async () => {
+    const results = await Promise.all(tally.pendingWrites);
+    if (!tally.complete || !results.every(Boolean)) return; // 既定値 false のまま残す
+    await prisma.tiktokBattle.updateMany({
+      // **roomId を必ず含める。** 同じ battleId の行を相手roomも持つので、battleId だけで
+      // 絞ると相手roomのフラグまで書き換える。対象0件でも updateMany は例外を投げない。
+      where: { roomId, battleId: tally.battleId },
+      data: { tapPointsTracked: true },
+    });
+  });
+}
+
+/**
+ * like 1件ぶんをタリーへ反映する。10到達で1行 insert し、以後そのリスナーは計上しない。
+ */
+function recordTapProgress(
+  roomId: string,
+  tally: TapTally,
+  uniqueId: string,
+  likeCount: number,
+  occurredAt: Date
+): void {
+  if (tally.reached.has(uniqueId)) return;
+
+  if (!tally.counts.has(uniqueId) && tally.counts.size + tally.reached.size >= MAX_TAP_TALLY_ENTRIES) {
+    tally.complete = false;
+    return;
+  }
+
+  const next = (tally.counts.get(uniqueId) ?? 0) + likeCount;
+  if (next < TAP_THRESHOLD_COUNT) {
+    tally.counts.set(uniqueId, next);
+    return;
+  }
+
+  tally.counts.delete(uniqueId);
+  tally.reached.add(uniqueId);
+
+  // reject させない(最終化タスクが待つまでの間に unhandled rejection になるため)。
+  // 成否を boolean で持ち帰り、1件でも失敗していたら tracked=true を書かない。
+  const write = prisma.tiktokBattleTapPoint
+    .createMany({
+      data: [
+        {
+          roomId,
+          battleId: tally.battleId,
+          anchorId: tally.anchorId,
+          occurredAt,
+          uniqueId,
+          points: TAP_POINTS_PER_LISTENER,
+        },
+      ],
+      // 再接続でメモリ上の reached が消えても二重計上しない(正は unique 制約)。
+      skipDuplicates: true,
+    })
+    .then(
+      () => true,
+      (err) => {
+        console.error("[tiktok-listener] tap point write failed", { roomId, battleId: tally.battleId, err });
+        return false;
+      }
+    );
+  tally.pendingWrites.push(write);
+}
+
 async function persistBattle(
   roomId: string,
   tiktokId: string,
@@ -2236,6 +2416,10 @@ async function connectAndAttach(
     const likeCount = Math.max(0, Number(data.likeCount) || 0);
     if (!uniqueId || likeCount <= 0) return;
 
+    // バトル中だけタップ点を集計する。like と armies はどちらもサーバー受信時刻なので、
+    // ここで取る時刻がそのまま逆算側の区間割当の基準になる。
+    if (inst.tapTally) recordTapProgress(roomId, inst.tapTally, uniqueId, likeCount, new Date());
+
     const existing = inst.pendingLikes.get(uniqueId);
     const nickname = String(data.nickname || "");
     const profilePictureUrl = data.profilePictureUrl ? String(data.profilePictureUrl) : null;
@@ -2262,6 +2446,9 @@ async function connectAndAttach(
   conn.on("linkMicBattle", (data: unknown) => {
     markAlive();
     const parsed = parseBattleEvent(data);
+    // **recordBattleEvent より先に、ここで同期的に**タリーを作る。recordBattleEvent は
+    // persistBattle を write queue へ積むだけなので、そこで作ると開始直後の like を取りこぼす。
+    syncTapTally(inst, roomId, parsed);
     recordBattleEvent(roomId, inst.state.tiktokId, Array.from(inst.subscriberIds), parsed);
     // 補助トリガー: コラボ承諾(linkLayer)の取りこぼし(worker再起動等で承諾より後に接続した場合)を
     // 埋める。主トリガーはlinkLayer側のrecordCollabGroupChange。詳細はwatchBattleOpponents参照。
@@ -2273,12 +2460,9 @@ async function connectAndAttach(
   });
   conn.on("linkMicArmies", (data: unknown) => {
     markAlive();
-    recordBattleEvent(
-      roomId,
-      inst.state.tiktokId,
-      Array.from(inst.subscriberIds),
-      parseArmiesEvent(data)
-    );
+    const parsed = parseArmiesEvent(data);
+    syncTapTally(inst, roomId, parsed);
+    recordBattleEvent(roomId, inst.state.tiktokId, Array.from(inst.subscriberIds), parsed);
   });
 
   // コラボ(linkMic本体。バトルでない)の参加・離脱通知。fork独自追加のイベント
@@ -2722,6 +2906,7 @@ export async function startListener(
     recentLikeMsgIdOrder: [],
     pendingLikes: new Map(),
     likeFlushTimer: null,
+    tapTally: null,
   };
 
   listeners.set(roomId, inst);

@@ -239,6 +239,8 @@ export type AbsorbStats = {
   giftDailyStatsDiscarded: number;
   battlesMoved: number;
   battlesDiscarded: number;
+  tapPointsMoved: number;
+  tapPointsDiscarded: number;
   battleHistoriesMoved: number;
   battleHistoriesDiscarded: number;
   agencyWatchesMoved: number;
@@ -335,6 +337,8 @@ export async function absorbRooms(
         giftsDiscarded: 0,
         battlesMoved: 0,
         battlesDiscarded: 0,
+        tapPointsMoved: 0,
+        tapPointsDiscarded: 0,
         battleHistoriesMoved: 0,
         battleHistoriesDiscarded: 0,
         giftDailyStatsMerged: 0,
@@ -448,6 +452,33 @@ export async function absorbRooms(
         await tx.$executeRawUnsafe(`DELETE FROM public."tiktok_battles" WHERE "id" = $1`, row.oId);
         stats.battlesDiscarded++;
       }
+
+      // --- 3.5 TiktokBattleTapPoint(unique [roomId,battleId,uniqueId]) ---
+      // **`TiktokRoom` への onDelete: Cascade なので、ここで移さないと候補room削除で消える。**
+      // TiktokBattle 行だけが survivingRoomId へ移って `tapPointsTracked = true` のまま残り、
+      // タップ点の行だけ消えた状態になると、初ギフトx倍の逆算が「差し引いてよい」と判断したまま
+      // 差し引く額を失う(= 補正なしで倍率が誤判定される)。
+      //
+      // 衝突行(同じ battleId で同じリスナーが両roomから観測されている)は同一事象の重複なので
+      // survivor 側を残して候補側を捨てる。点数はリスナーごとに一意(10タップ到達で3点)であり、
+      // どちらを残しても値は同じ。
+      const tapMoved = await tx.$executeRawUnsafe(
+        `UPDATE public."tiktok_battle_tap_points" o
+            SET "roomId" = $1
+          WHERE o."roomId" = $2
+            AND NOT EXISTS (
+              SELECT 1 FROM public."tiktok_battle_tap_points" n
+               WHERE n."roomId" = $1 AND n."battleId" = o."battleId" AND n."uniqueId" = o."uniqueId"
+            )`,
+        survivingRoomId,
+        candidateRoomId
+      );
+      stats.tapPointsMoved += tapMoved;
+      const tapDiscarded = await tx.$executeRawUnsafe(
+        `DELETE FROM public."tiktok_battle_tap_points" WHERE "roomId" = $1`,
+        candidateRoomId
+      );
+      stats.tapPointsDiscarded += tapDiscarded;
 
       // --- 4. BattleHistory(unique [roomId,battleId]) ---
       // 衝突は sourceUpdatedAt が大きい方を残す(同値ならN=survivor優先)。
