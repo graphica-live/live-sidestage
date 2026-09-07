@@ -47,6 +47,8 @@ last_reviewers: [deepseek-v4-flash, fable]
 | TC-BRD-023 | `attachReplayData` は `TiktokBattle` 行が消えていても付加でき、倍率は判定しない | `attachReplayData` | 異常/データ欠損 | 確定後に `TiktokBattle` を削除してから実行 | スコア点の付加は成功し、`openingMultiplier` は null / `confidence: "unknown"` | `[itg]` | PASS | `startedAtEstimated` が引けない＝窓の開始を信用できないため |
 | TC-BRD-024 | 対象の `BattleHistory` 行が無ければ書かずに `not-found` を返す | `attachReplayData` | 異常 | 存在しないid | `{ attached: false, reason: "not-found" }`。FK違反で落ちない | `[itg]` | PASS | tx冒頭の行ロック `updateMany` の `count === 0`(findUniqueとロックの間に消えた場合)はコードレビューのみでテスト未到達 |
 | TC-BRD-025 | 自roomの `hostUserId` が未解決なら付加を見送る | `attachReplayData` | 異常/データ欠損 | `TiktokRoom.hostUserId` を null にしてから実行 | `{ attached: false, reason: "self-host-unresolved" }`。スコア点は0行のまま | `[itg]` | PASS | 現行コードパスでは到達しない(hostUserIdはfill-onceでnullへ戻らない)が、防御的分岐が生きていることを固定する |
+| TC-BRD-027 | 確定時に元 `Gift` の `groupId` / `multiplierValue` が giftEvent へ写る | `computeBattleSnapshot` / `commitBattleSnapshot` | 正常 | `groupId` と `multiplierValue` を持つギフト1件のバトルを確定 | `battle_history_gift_events` の `senderGroupId` / `multiplierValue` が元 `Gift` と一致する | `[itg]` | PASS | 再生UIのコンボ畳み込みの鍵。取れないと連打が1段ずつ別カードになる |
+| TC-BRD-028 | `senderGroupId` の後追い付加は null 行だけを埋め、元 `Gift` が消えた行は null のまま残す | `backfillSenderGroupIds` | データ欠損/回帰 | 確定済み行の `senderGroupId` を null に戻し、片方の元 `Gift` を削除してから実行 | 元 `Gift` が残る行だけ埋まる。消えた行は null のまま。例外を投げない | `[itg]` | PASS | 90日保持を過ぎたギフトは諦める（取れなくても劣化するだけ）。トランザクション外なので失敗してもスコア点の付加を巻き戻さない |
 | TC-BRD-026 | schema変更に対応する migration ファイルがある | `prisma/migrations/` | 回帰 | 新テーブル・新列の追加 | 差分出力が `20260907000000_add_battle_replay_data/migration.sql` と一致し、DROP を含まない | `git show HEAD:live-sidestage-analytics/prisma/schema.prisma > <scratch>/old.prisma` → `npx prisma migrate diff --from-schema-datamodel <scratch>/old.prisma --to-schema-datamodel prisma/schema.prisma --script` | PASS | 本番は `db push` 運用で実行されない。履歴ドキュメントとして残す |
 
 ## Quality Gate
@@ -60,8 +62,10 @@ last_reviewers: [deepseek-v4-flash, fable]
 
 - 再生API(読み出し側)。別ベースライン `docs/testing/battle-replay-api/baseline.md` が正本
 - 再生UI(P5)・シェアページ `/b/[token]`(P6)
-- `scripts/attach-replay-data.ts` のバッチ制御(id カーソル・`--dry-run` / `--force`・件数集計)。
-  `attachReplayData` の薄いラッパであり、本番DBに対する実行はユーザーの明示指示があってから行う
+- `scripts/attach-replay-data.ts` のバッチ制御(id カーソル・`--dry-run` / `--force` / `--sender-group-only`・件数集計)。
+  `--sender-group-only` は付加済み行(`replayScorePointCount > 0`)が通常モードでスキップされるための専用経路で、
+  中身は `attachReplayData`(通常モード)と `backfillSenderGroupIds`(TC-BRD-028)の薄いラッパであり、
+  本番DBに対する実行はユーザーの明示指示があってから行う
 - `attachReplayData` と `commitBattleSnapshot` の並行実行。attach は armies / giftEvents / participants を
   トランザクションの外で読んでから行ロックを取るので、直列化されるのは書き込みだけ。
   読み元が同じ `Gift` / armies なので実害は無いが、暗黙の保証にはしない

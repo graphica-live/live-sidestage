@@ -88,6 +88,8 @@ function giftEvent(
     occurredAt: new Date(WINDOW_START.getTime() + 10_000),
     giftId: 5655,
     giftNameSnapshot: "Rose",
+    senderGroupId: null,
+    multiplierValue: null,
     ...overrides,
   };
 }
@@ -129,6 +131,61 @@ describe("buildPayload", () => {
       { t: 0, a: 0, s: "0" },
       { t: 0, a: 1, s: "0" },
     ]);
+  });
+
+  it("コンボの束ね鍵 k は送信者・ギフト・groupId が揃ったときだけ一致する", () => {
+    const payload = buildPayload(
+      row({
+        participants: [
+          participant({
+            giftEvents: [
+              giftEvent({ senderGroupId: "g1" }),
+              giftEvent({ senderGroupId: "g1", occurredAt: new Date(WINDOW_START.getTime() + 11_000) }),
+              // 同じ groupId でも別ギフトなら別カード(groupId の再利用で畳み込まれない)
+              giftEvent({ senderGroupId: "g1", giftId: 5269, giftNameSnapshot: "Galaxy", occurredAt: new Date(WINDOW_START.getTime() + 12_000) }),
+              // 別の送信者も別カード
+              giftEvent({ senderGroupId: "g1", senderUniqueIdSnapshot: "fan_b", occurredAt: new Date(WINDOW_START.getTime() + 13_000) }),
+              // "0" は combo 判定に使えないので単発扱い
+              giftEvent({ senderGroupId: "0", occurredAt: new Date(WINDOW_START.getTime() + 14_000) }),
+              giftEvent({ senderGroupId: "0", occurredAt: new Date(WINDOW_START.getTime() + 15_000) }),
+            ],
+          }),
+        ],
+      }),
+      "private",
+      NO_AVATARS,
+      NO_AVATARS,
+      NO_CATALOG
+    );
+    const keys = payload.giftEvents.map((e) => e.k);
+    expect(keys[0]).not.toBeNull();
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+    expect(keys[3]).not.toBe(keys[0]);
+    expect(keys[4]).toBeNull();
+    expect(keys[5]).toBeNull();
+  });
+
+  it("倍率刻印 m は確定行の値をそのまま載せる(未観測は null のまま)", () => {
+    const payload = buildPayload(
+      row({
+        participants: [
+          participant({
+            giftEvents: [
+              giftEvent({ multiplierValue: 2 }),
+              // P2デプロイ前のギフトは未観測。0(倍率なしと明示的に観測)と混同しない。
+              giftEvent({ multiplierValue: null, occurredAt: new Date(WINDOW_START.getTime() + 11_000) }),
+              giftEvent({ multiplierValue: 0, occurredAt: new Date(WINDOW_START.getTime() + 12_000) }),
+            ],
+          }),
+        ],
+      }),
+      "private",
+      NO_AVATARS,
+      NO_AVATARS,
+      NO_CATALOG
+    );
+    expect(payload.giftEvents.map((e) => e.m)).toEqual([2, null, 0]);
   });
 
   it("participant として存在しない anchorId のスコア点は落とす", () => {

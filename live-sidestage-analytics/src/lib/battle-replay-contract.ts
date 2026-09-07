@@ -118,10 +118,24 @@ export type ReplayGiftEvent = {
   s: number;
   /** ギフト。`gifts` の添字。 */
   g: number;
-  /** 連打数。 */
+  /**
+   * 連打数。**そのイベント単体の数であって累計ではない**
+   * (`saveComboGift()` は combo の各段を差分として別行に残すため)。
+   */
   c: number;
   /** ダイヤ合計。 */
   d: number;
+  /**
+   * コンボのグループ添字。同じ値のイベントは1回の連打の各段。
+   * 単発ギフトと、groupId を持たない旧データは null。
+   * クライアントはこれで段を束ね、`×1` から最終値までカウントアップして見せる。
+   */
+  k: number | null;
+  /**
+   * バトルアイテム効果の倍率(`Gift.multiplierValue` のコピー)。
+   * 5 = グローブ crit、6 = 金グローブ。未観測は null で、**0(倍率なし)と区別する**。
+   */
+  m: number | null;
 };
 
 export type BattleReplayPayload = {

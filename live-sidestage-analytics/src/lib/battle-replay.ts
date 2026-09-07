@@ -111,6 +111,8 @@ const REPLAY_SELECT = {
           occurredAt: true,
           giftId: true,
           giftNameSnapshot: true,
+          senderGroupId: true,
+          multiplierValue: true,
         },
         orderBy: [{ occurredAt: "asc" }, { sourceGiftId: "asc" }],
       },
@@ -166,6 +168,8 @@ export type ReplayRow = {
       occurredAt: Date;
       giftId: number;
       giftNameSnapshot: string;
+      senderGroupId: string | null;
+      multiplierValue: number | null;
     }[];
   }[];
   scorePoints: { anchorId: string; offsetMs: number; score: string }[];
@@ -333,7 +337,16 @@ export function buildPayload(
 
   // 辞書は truncate を確定させてから作る。先に作ると、落としたイベントからしか参照されない
   // 送信者・ギフトが辞書に残り、公開ペイロードに余計なリスナー情報が載る。
-  type RawEvent = { t: number; a: number; sender: string; giftId: number; c: number; d: number };
+  type RawEvent = {
+    t: number;
+    a: number;
+    sender: string;
+    giftId: number;
+    c: number;
+    d: number;
+    group: string | null;
+    m: number | null;
+  };
   const rawEvents: RawEvent[] = [];
 
   for (const participant of row.participants) {
@@ -347,6 +360,8 @@ export function buildPayload(
         giftId: event.giftId,
         c: event.repeatCount,
         d: event.totalDiamonds,
+        group: event.senderGroupId,
+        m: event.multiplierValue,
       });
     }
   }
@@ -366,6 +381,21 @@ export function buildPayload(
       if (!giftNameById.has(event.giftId)) giftNameById.set(event.giftId, event.giftNameSnapshot);
     }
   }
+
+  // コンボの段を束ねる添字。groupId をそのまま載せるとリスナー横断で衝突しうるうえ、
+  // **"0" が本番に3591件流入していて combo か単発か判定できない**(schema の Gift.giftType
+  // コメント参照)ので、"0" は鍵として使わず単発扱いにする。
+  const comboIndex = new Map<string, number>();
+  const comboKeyOf = (event: RawEvent): number | null => {
+    if (!event.group || event.group === "0") return null;
+    const key = `${event.a}|${event.sender}|${event.giftId}|${event.group}`;
+    let pos = comboIndex.get(key);
+    if (pos === undefined) {
+      pos = comboIndex.size;
+      comboIndex.set(key, pos);
+    }
+    return pos;
+  };
 
   const senderIndex = new Map<string, number>();
   const senders: ReplaySender[] = [];
@@ -401,7 +431,16 @@ export function buildPayload(
       });
     }
 
-    return { t: event.t, a: event.a, s: senderPos, g: giftPos, c: event.c, d: event.d };
+    return {
+      t: event.t,
+      a: event.a,
+      s: senderPos,
+      g: giftPos,
+      c: event.c,
+      d: event.d,
+      k: comboKeyOf(event),
+      m: event.m,
+    };
   });
 
   const selfAnchorIds = new Set(

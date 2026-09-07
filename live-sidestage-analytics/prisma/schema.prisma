@@ -1219,6 +1219,14 @@ model BattleHistoryGiftEvent {
   multiplierType  Int? // Gift.multiplierTypeのコピー
   multiplierValue Int? // Gift.multiplierValueのコピー
 
+  // Gift.groupIdのコピー。comboの各段は saveComboGift() が「差分」を別行として残すので、
+  // repeatCount は累計ではない。再生でコンボのカウントアップ(×1→×N)を復元するには、
+  // どの行が同じ連打に属するかを示すこの鍵が要る。**単発ギフトにも非ゼロの値が入りうる**
+  // (saveGift() も resolveGroupId() の値をそのまま保存する)ので、この列だけでcombo判定は
+  // できない。再生側は anchor+送信者+giftId+groupId で束ね、"0" は単発として扱う。
+  // この列より前に確定した行と、元Giftが90日保持を過ぎて消えた行はnull。
+  senderGroupId String?
+
   sourceGiftId String // 複製元Gift.idの記録用。FK/リレーションは張らない(切り離す)
 
   participant BattleHistoryParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)

@@ -20,6 +20,7 @@
     "db:push:local": "dotenv -e .env.local.test -- prisma db push",
     "seed:local": "dotenv -e .env.local.test -- tsx prisma/seed-local.ts",
     "seed:event:local": "dotenv -e .env.local.test -- tsx prisma/seed-event-local.ts",
+    "seed:battle-replay:local": "dotenv -e .env.local.test -- tsx scripts/seed-local-battle-replay.ts",
     "seed:battle:local": "dotenv -e .env.local.test -- tsx scripts/seed-local-battle.ts",
     "seed:battle-live:local": "dotenv -e .env.local.test -- tsx scripts/seed-local-live-battle.ts",
     "seed:battle-teams:local": "dotenv -e .env.local.test -- tsx scripts/seed-local-battle-with-teams.ts",
