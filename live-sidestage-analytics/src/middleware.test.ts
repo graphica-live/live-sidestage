@@ -59,6 +59,26 @@ describe("middleware の matcher", () => {
     }
   });
 
+  it("バトル再生のシェアページと公開APIは認証なしで通る", () => {
+    for (const path of [
+      "/b/abc123",
+      "/b/abc123/",
+      "/api/public/battles/abc123/replay",
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("シェアページと似た文字列のパスは保護されたままになる", () => {
+    for (const path of [
+      "/billing", // `b` に食われてはいけない(境界が無いと課金ページが公開される)
+      "/battle",
+      "/bx",
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
+
   it("既存の公開パスをイベント追加で巻き込んでいない", () => {
     for (const path of [
       "/login",

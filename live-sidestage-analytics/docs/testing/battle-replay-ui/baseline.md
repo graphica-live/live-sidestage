@@ -96,7 +96,7 @@ last_reviewers: [deepseek-v4-flash]
 
 ## Out of Scope
 
-- シェアボタン・公開ページ（P6。この差分に実装が無い）
+- シェアボタン・公開ページ `/b/[token]`（`docs/testing/battle-replay-share/baseline.md` が対象）
 - `useReplayClock` の hook 単体テスト。このリポジトリに React コンポーネント/hook のテスト基盤
   （jsdom・testing-library）が無く、この差分で依存を足す判断はしていない。時計の挙動は TC-BRU-005 /
   TC-BRU-006 の実ブラウザ操作で担保する

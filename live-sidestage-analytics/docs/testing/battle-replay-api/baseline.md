@@ -76,8 +76,9 @@ last_reviewers: [deepseek-v4-flash, fable]
 
 ## Out of Scope
 
-- 再生UI(P5)とシェアページ `/b/[token]`(P6)。**`/b` は `src/middleware.ts` の除外 matcher にまだ無い**ので、
-  今 `POST .../share` が返す URL はログインへリダイレクトされる。除外の追加と `middleware.test.ts` のケースは P6
+- 再生UI(`docs/testing/battle-replay-ui/baseline.md`)とシェアページ `/b/[token]`
+  (`docs/testing/battle-replay-share/baseline.md`)。`src/middleware.ts` の除外 matcher と
+  `middleware.test.ts` のケースはそちらが対象
 - `getServerSession` / `getAdminSession` 自体の挙動(既存の共通実装。ルートテストではモックする)
 - シェアトークンの失効。初版に入れない判断(列と `shareTokenIssuedAt` だけ持つ)
 - `scorePoints` の件数上限。ギフトイベントと違い上限を設けていない。armies の頻度 × 参加者 × 30分が上限で、

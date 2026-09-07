@@ -25,6 +25,7 @@ import {
   scoresAt,
   segmentAt,
   selfAnchorIndexes,
+  teamTotalsOf,
   bigGiftsByAnchor,
   BIG_GIFT_DURATION_MS,
   BIG_GIFT_MIN_DIAMONDS,
@@ -644,5 +645,45 @@ describe("quietRangesOf / isQuietAt", () => {
     });
     const ranges = quietRangesOf(p, buildCards(p), p.durationMs);
     expect(isQuietAt(ranges, 1_000 + REPLAY_BAR_LIFETIME_MS + 100)).toBe(false);
+  });
+});
+
+describe("teamTotalsOf", () => {
+  it("陣営ごとにギフトを合算し、金額降順で並べる", () => {
+    const p = payload({
+      giftEvents: [
+        { t: 1_000, a: 0, s: 0, g: 0, c: 1, d: 100, k: null, m: null },
+        { t: 2_000, a: 0, s: 1, g: 0, c: 3, d: 900, k: null, m: null },
+        { t: 3_000, a: 1, s: 0, g: 0, c: 1, d: 400, k: null, m: null },
+      ],
+    });
+    const totals = teamTotalsOf(p);
+
+    expect(totals.map((t) => t.teamIndex)).toEqual([0, 1]);
+    expect(totals[0]!.observedCoins).toBe(1000);
+    expect(totals[0]!.contributors).toEqual([
+      { senderIndex: 1, coins: 900, giftCount: 3 },
+      { senderIndex: 0, coins: 100, giftCount: 1 },
+    ]);
+    // **自陣営に限定しない。** シェアページは第三者が対戦を俯瞰する画面のため。
+    expect(totals[1]!.contributors).toEqual([{ senderIndex: 0, coins: 400, giftCount: 1 }]);
+  });
+
+  it("ギフト明細が無い陣営も行として残す(注記を出す判断に使う)", () => {
+    const totals = teamTotalsOf(payload({ giftEvents: [] }));
+    expect(totals).toHaveLength(2);
+    expect(totals.every((t) => t.contributors.length === 0 && t.observedCoins === 0)).toBe(true);
+  });
+
+  it("複数人コラボの陣営名は参加者を連結する", () => {
+    const p = payload();
+    p.teams[1]!.participants.push({
+      anchorId: "rival2",
+      isSelf: false,
+      displayName: "相手2",
+      uniqueId: null,
+      avatarUrl: null,
+    });
+    expect(teamTotalsOf(p)[1]!.displayName).toBe("相手 / 相手2");
   });
 });

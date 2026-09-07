@@ -65,6 +65,9 @@ export function BattleDetailModal({
   const [replayDurationMs, setReplayDurationMs] = useState<number | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const base = apiBase ?? "/api/analytics";
+  // シェアリンクの発行は配信者本人のセッション経路にしか無い(admin 画面には
+  // POST /api/admin/.../share が無いので、ボタンを出しても 404 になる)。
+  const canShare = base === "/api/analytics";
 
   // 別のバトルを開いたら必ず一覧モードから始める。**依存は battleId** —
   // 親が同じバトルを別オブジェクトで渡し直す(一覧のポーリング更新)たびに
@@ -185,13 +188,16 @@ export function BattleDetailModal({
                   {replayDurationMs === null ? "" : ` ・ ${formatClock(replayDurationMs)}`}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setMode("list")}
-                className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong"
-              >
-                貢献者一覧へ戻る
-              </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {canShare && <ShareButton battleId={battle.battleId} view="replay" />}
+                <button
+                  type="button"
+                  onClick={() => setMode("list")}
+                  className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong"
+                >
+                  貢献者一覧へ戻る
+                </button>
+              </div>
             </div>
             {/* ステージはモーダルの内側余白を無視して端まで使う(comp と同じ画面比のため) */}
             <div className="-mx-5 overflow-hidden sm:-mx-6">
@@ -239,6 +245,7 @@ export function BattleDetailModal({
                 {REPLAY_UNAVAILABLE_LABEL[battle.replay.reason ?? "not_finalized"]}
               </p>
             )}
+            {canShare && <ShareButton battleId={battle.battleId} view="list" />}
           </div>
 
           <div className="mt-5 pt-4">
@@ -281,6 +288,65 @@ export function BattleDetailModal({
         </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 共有リンクを発行してクリップボードへ入れる。**URLはサーバーが組む**
+ * (`canonicalOrigin("analytics")`。`window.location.origin` だと別ホストから発行したときずれる)。
+ * `?v=` には押した時点のモードを入れ、共有された側が同じ表示で開くようにする。
+ *
+ * トークンは遅延発行で、2回目以降は同じトークンが返る(再発行しない)。
+ */
+function ShareButton({ battleId, view }: { battleId: string; view: "list" | "replay" }) {
+  const [state, setState] = useState<"idle" | "working" | "copied" | "manual" | "error">("idle");
+  const [url, setUrl] = useState<string | null>(null);
+
+  const share = async () => {
+    setState("working");
+    try {
+      const res = await fetch(`/api/analytics/battles/${encodeURIComponent(battleId)}/share`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { url: string };
+      const shareUrl = `${data.url}?v=${view}`;
+      setUrl(shareUrl);
+      // 非 secure context では clipboard API が無い。その場合は URL を
+      // 選択可能なテキストで出して手でコピーしてもらう(黙って失敗させない)。
+      if (!navigator.clipboard) {
+        setState("manual");
+        return;
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      setState("copied");
+      window.setTimeout(() => setState("idle"), 2000);
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={() => void share()}
+        disabled={state === "working"}
+        className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong disabled:opacity-60"
+      >
+        {state === "copied" ? "リンクをコピーした" : "🔗 共有リンク"}
+      </button>
+      {state === "error" && <span className="text-[10px] text-muted">共有リンクを発行できなかった。</span>}
+      {state === "manual" && url !== null && (
+        <input
+          readOnly
+          value={url}
+          aria-label="共有URL"
+          onFocus={(e) => e.currentTarget.select()}
+          className="w-[210px] rounded-field border border-border bg-surface px-2 py-1 font-mono text-[10px] text-muted"
+        />
+      )}
     </div>
   );
 }
