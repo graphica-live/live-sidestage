@@ -131,9 +131,9 @@ function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
     },
     [clockSetScrubbing]
   );
-  const scoreTransitionMs = scrubbing
-    ? 0
-    : Math.round(420 / (clock.speed * (quietSkipping ? QUIET_SKIP_BOOST : 1)));
+  // 実効再生速度の逆数。CSS アニメーション(大ギフト演出)の尺もこれで割る。
+  const motionScale = 1 / (clock.speed * (quietSkipping ? QUIET_SKIP_BOOST : 1));
+  const scoreTransitionMs = scrubbing ? 0 : Math.round(420 * motionScale);
 
   // 再生ボタンを押して入ってきた画面なので、開いた時点から動かす(もう一度押させない)
   const started = useRef(false);
@@ -191,6 +191,8 @@ function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
         colorByAnchor={colorByAnchor}
         elapsedMs={clock.elapsedMs}
         scoreTransitionMs={scoreTransitionMs}
+        motionScale={motionScale}
+        quietSkipping={quietSkipping}
       />
 
       <div className="grid grid-cols-1 gap-px border-t border-row-border bg-row-border">

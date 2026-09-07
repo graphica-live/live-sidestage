@@ -224,11 +224,14 @@ body {
 .replay-seg--right {
   justify-content: flex-end;
 }
+/* 時計はスコアバーの**下**へ出す。バーの中央に重ねるとスコアの数字と被って
+   どちらも読めない。陣営グリッドの上端に少し掛かるのは許容(配信者アイコンは中央) */
 .replay-clock {
   position: absolute;
   left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  top: 100%;
+  transform: translate(-50%, 6px);
+  z-index: 4;
   background: rgba(6, 8, 12, 0.82);
   color: #fff;
   font-family: var(--replay-mono);
@@ -236,6 +239,27 @@ body {
   padding: 2px 9px;
   border-radius: 999px;
   letter-spacing: 0.04em;
+}
+/* 自動早送り中。時計だけ速く進むので、点滅とアクセント色で「早送り中」だと判るようにする。
+   transform は中央寄せに使っているので、点滅は opacity だけで作る(上書きすると位置がずれる) */
+.replay-clock--boost {
+  color: var(--replay-gold);
+  box-shadow: 0 0 0 1px var(--replay-gold) inset;
+  animation: replay-clock-blink 900ms ease-in-out infinite;
+}
+@keyframes replay-clock-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-clock--boost {
+    animation: none;
+  }
 }
 
 /* ---------- 陣営グリッド。縦横比は実バトル画面の実測値で、計器のために縮めない ---------- */
@@ -367,6 +391,54 @@ body {
   font-weight: 700;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+/* 10000コイン以上のギフトは配信者枠いっぱいの画像で見せる。優しく揺らして最後にフェードアウト。
+   --bg-dur は演出の尺で、再生速度で割った値を React が inline で渡す */
+.replay-biggift {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* 出入り(opacity / scale)は React が elapsedMs から inline で与える。CSS アニメにすると
+     一時停止・シーク中に実時間で走り切って、消えた演出が枠に残る */
+}
+.replay-biggift img {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.6));
+  /* 揺れは演出尺の 1/4 周期。尺が変わっても揺れの回数は変わらない */
+  animation: replay-biggift-shake calc(var(--bg-dur, 3200ms) / 4) ease-in-out infinite;
+}
+/* 演出中は配信者アイコンを隠す(枠内で画像を最大に見せる) */
+.replay-cell--biggift .replay-host {
+  opacity: 0;
+}
+.replay-host {
+  transition: opacity 180ms ease;
+}
+@keyframes replay-biggift-shake {
+  0%,
+  100% {
+    transform: rotate(-2.4deg) translateY(0);
+  }
+  25% {
+    transform: rotate(0deg) translateY(-3px);
+  }
+  50% {
+    transform: rotate(2.4deg) translateY(0);
+  }
+  75% {
+    transform: rotate(0deg) translateY(3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-biggift img {
+    animation: none;
+  }
 }
 .replay-rank {
   position: absolute;
@@ -548,9 +620,13 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  background: linear-gradient(135deg, #ff9a3c, #ff4d6d);
   flex: none;
-  object-fit: cover;
+  object-fit: contain;
+}
+/* ギフト画像は透過PNG。背景を敷くと絵が潰れるので、**画像が無いときの
+   プレースホルダにだけ**面を出す(img には敷かない)。 */
+span.replay-thumb {
+  background: rgba(255, 255, 255, 0.14);
 }
 /* 上段(少額)は一回り小さく、下段(高額)は太いカード */
 .replay-card--sm {

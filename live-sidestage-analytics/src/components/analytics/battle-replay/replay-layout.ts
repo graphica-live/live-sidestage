@@ -64,7 +64,8 @@ export function buildStageLayout(payload: BattleReplayPayload): StageLayout {
         right: !f.isSelf,
         inline: false,
         opponentCard: false,
-        largeAvatar: f.isSelf,
+        // 1vs1 は左右等寸。枠の広さも同じなので、自分だけ大きくすると非対称に見える
+        largeAvatar: true,
       })),
     };
   }

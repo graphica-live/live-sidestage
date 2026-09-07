@@ -147,9 +147,14 @@ export type ReplayContributor = {
 /** ギフトカードが1枚も出ていない区間。自動早送りの対象。 */
 export type QuietRange = { startMs: number; endMs: number };
 
-/** これ以上ギフトが途切れたら無風とみなす。短い間はスキップしても体感が変わらないうえ、
- * 早送りの出入りが増えて再生が落ち着かない。 */
-export const QUIET_MIN_GAP_MS = 8_000;
+/**
+ * これ以上ギフトが途切れたら無風とみなす。**カードの寿命 4 秒 + 1 秒**が下限で、
+ * これ未満だと早送りの出入りが増えて再生が落ち着かない。
+ *
+ * 8 秒にしていたときはローカルシードの 5 分バトル(ギフト 167〜398 件)で無風が
+ * 0〜7% しか出ず、自動早送りが体感できなかった。5 秒にすると 9〜15% になる。
+ */
+export const QUIET_MIN_GAP_MS = 5_000;
 
 /** 次のギフトが出る手前でこれだけ早送りを解除して、等速へ戻ってからカードを迎える。 */
 export const QUIET_LEAD_MS = 1_000;
@@ -265,6 +270,34 @@ export function contributorsAt(
     .map((c) => ({ ...c, gifting: giftingSenders.has(c.senderIndex) }))
     .sort((a, b) => b.coins - a.coins || a.senderIndex - b.senderIndex)
     .slice(0, limit);
+}
+
+/** これ以上のギフトは、配信者枠いっぱいにギフト画像を出す大演出の対象。 */
+export const BIG_GIFT_MIN_DIAMONDS = 10_000;
+
+/** 大演出の尺(揺れ → フェードアウトまで)。カードの寿命より短くする。 */
+export const BIG_GIFT_DURATION_MS = 3_200;
+
+/**
+ * anchor ごとの「今 大演出を出すギフト」。同じ枠で重なったら**新しい方**を採る。
+ * カードの表示上限(`cardsByAnchor`)とは独立に、全カードから選ぶ
+ * (上限で押し出されたカードの演出だけ消えるのを防ぐ)。
+ */
+export function bigGiftsByAnchor(
+  cards: ReplayCard[],
+  elapsedMs: number,
+  anchorCount: number
+): (ReplayCard | null)[] {
+  const result: (ReplayCard | null)[] = new Array(anchorCount).fill(null);
+  for (const card of cards) {
+    if (card.diamonds < BIG_GIFT_MIN_DIAMONDS) continue;
+    if (card.startMs > elapsedMs) continue;
+    if (elapsedMs >= card.startMs + BIG_GIFT_DURATION_MS) continue;
+    const current = result[card.anchorIndex];
+    if (current === undefined) continue;
+    if (!current || card.startMs >= current.startMs) result[card.anchorIndex] = card;
+  }
+  return result;
 }
 
 /** カードの太さ。ダイヤ額で決まる(comp の上段=小額/下段=高額の作り分け)。 */

@@ -180,12 +180,47 @@ async function seedBattle(options: {
 }
 
 const GIFT_CATALOG = [
-  { giftId: 5655, giftName: "Rose", diamonds: 1 },
-  { giftId: 5827, giftName: "Heart Me", diamonds: 10 },
-  { giftId: 6427, giftName: "Lion", diamonds: 2999 },
-  { giftId: 5269, giftName: "Galaxy", diamonds: 1000 },
-  { giftId: 6093, giftName: "Universe", diamonds: 34999 },
+  { giftId: 5655, giftName: "Rose", diamonds: 1, labelJa: "バラ", color: "#ff4d6d" },
+  { giftId: 5827, giftName: "Heart Me", diamonds: 10, labelJa: "ハートミー", color: "#ff8fb1" },
+  { giftId: 6427, giftName: "Lion", diamonds: 2999, labelJa: "ライオン", color: "#ffb020" },
+  { giftId: 5269, giftName: "Galaxy", diamonds: 1000, labelJa: "ギャラクシー", color: "#7c6bff" },
+  { giftId: 6093, giftName: "Universe", diamonds: 34999, labelJa: "ユニバース", color: "#38d0ff" },
 ];
+
+/**
+ * ローカル検証用のギフト画像。本番の `imageUrl` は TikTok の `gift/list/` からしか取れず、
+ * ローカルDBには入らない。**画像を持つ経路（カード内サムネ・1万コイン以上の大演出）が
+ * ローカルで一度も描画されない**ことになるので、透過PNG相当の SVG を data URI で持たせる。
+ */
+function seedGiftImage(labelJa: string, color: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="${color}"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.4"/>` +
+    `</linearGradient></defs>` +
+    `<path d="M60 8 108 42 90 112H30L12 42Z" fill="url(#g)" stroke="#ffffff" stroke-opacity="0.75" stroke-width="4"/>` +
+    `<text x="60" y="74" font-family="sans-serif" font-size="15" font-weight="700" fill="#0d0f13" text-anchor="middle">${labelJa}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+async function seedGiftCatalog(): Promise<void> {
+  for (const gift of GIFT_CATALOG) {
+    const data = {
+      name: gift.giftName.trim().toLowerCase(),
+      label: gift.giftName,
+      labelJa: gift.labelJa,
+      diamondCount: gift.diamonds,
+      imageUrl: seedGiftImage(gift.labelJa, gift.color),
+      fetchedAt: new Date(),
+    };
+    await prisma.tiktokGiftCatalog.upsert({
+      where: { giftId: gift.giftId },
+      create: { giftId: gift.giftId, ...data },
+      update: data,
+    });
+  }
+}
 
 const FANS = [
   { uniqueId: "seed_fan_a", nickname: "たちら🌿" },
@@ -205,8 +240,13 @@ function makeRandom(seed: number): () => number {
   };
 }
 
-function buildGifts(anchorCount: number, count: number, seed: number): SeedGift[] {
+/**
+ * `startMs` を渡すと、その時刻までギフトを一切置かない（自動早送りの見本用に、
+ * 長い無風区間を確実に作るバトルを1本用意する）。
+ */
+function buildGifts(anchorCount: number, count: number, seed: number, startMs = 5_000): SeedGift[] {
   const random = makeRandom(seed);
+  const span = Math.max(1, DURATION_MS - 5_000 - startMs);
   const gifts: SeedGift[] = [];
   for (let i = 0; i < count; i++) {
     const catalog = GIFT_CATALOG[Math.floor(random() * GIFT_CATALOG.length)]!;
@@ -214,7 +254,7 @@ function buildGifts(anchorCount: number, count: number, seed: number): SeedGift[
     const repeat = random() < 0.3 ? 1 + Math.floor(random() * 12) : 1;
     gifts.push({
       anchor: Math.floor(random() * anchorCount),
-      atMs: Math.floor(random() * (DURATION_MS - 10_000)) + 5_000,
+      atMs: Math.floor(random() * span) + startMs,
       senderUniqueId: fan.uniqueId,
       senderNickname: fan.nickname,
       giftId: catalog.giftId,
@@ -224,10 +264,11 @@ function buildGifts(anchorCount: number, count: number, seed: number): SeedGift[
       multiplierValue: random() < 0.08 ? (random() < 0.5 ? 5 : 6) : undefined,
     });
   }
-  // 逆算のクリーン候補になるよう、先頭に「単独・高額・倍率刻印なし」を1件置く
+  // 逆算のクリーン候補になるよう、先頭に「単独・高額・倍率刻印なし」を1件置く。
+  // 無風バトルではここも無風の中に入れない
   gifts.push({
     anchor: 0,
-    atMs: 8_000,
+    atMs: Math.max(8_000, startMs + 3_000),
     senderUniqueId: FANS[0]!.uniqueId,
     senderNickname: FANS[0]!.nickname,
     giftId: 5269,
@@ -252,6 +293,8 @@ async function main() {
     ensureRoom("local_replay_rival_2", "seed_replay_rival_host_2"),
     ensureRoom("local_replay_rival_3", "seed_replay_rival_host_3"),
   ]);
+
+  await seedGiftCatalog();
 
   const now = Date.now();
   const at = (minutesAgo: number) => new Date(now - minutesAgo * 60_000);
@@ -284,6 +327,16 @@ async function main() {
     withBonusMission: false,
   });
 
+  // 自動早送りの見本。**開始3分はギフトが1件も無い**ので、無風の入り・抜けがはっきり出る
+  const quietDemo = await seedBattle({
+    label: "quiet",
+    anchors: [self, rivals[0]!],
+    gifts: buildGifts(2, 40, 90210, 180_000),
+    startedAt: at(60),
+    withScorePoints: true,
+    withBonusMission: false,
+  });
+
   // armies を書かない = スコア点0件。再生ボタンが無効になるバトル
   const notReplayable = await seedBattle({
     label: "noscore",
@@ -294,7 +347,7 @@ async function main() {
     withBonusMission: false,
   });
 
-  console.log(JSON.stringify({ quad, duo, oneSide, notReplayable }, null, 2));
+  console.log(JSON.stringify({ quad, duo, oneSide, quietDemo, notReplayable }, null, 2));
 }
 
 main()

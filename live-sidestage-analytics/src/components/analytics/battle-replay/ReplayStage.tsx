@@ -9,6 +9,7 @@ import { ReplayGiftCard } from "./ReplayGiftCard";
 import { ReplayScoreBar } from "./ReplayScoreBar";
 import type { StageLayout } from "./replay-layout";
 import {
+  bigGiftsByAnchor,
   cardSizeOf,
   cardsByAnchor,
   cardsAt,
@@ -45,6 +46,8 @@ export const ReplayStage = memo(function ReplayStage({
   colorByAnchor,
   elapsedMs,
   scoreTransitionMs,
+  motionScale,
+  quietSkipping,
 }: {
   payload: BattleReplayPayload;
   layout: StageLayout;
@@ -53,11 +56,16 @@ export const ReplayStage = memo(function ReplayStage({
   elapsedMs: number;
   /** スコアバーの幅補間時間(ms)。シーク中は 0。 */
   scoreTransitionMs: number;
+  /** アニメーション尺の倍率。実効再生速度の逆数。 */
+  motionScale: number;
+  /** 自動早送り中。上部の時計チップを点滅させる。 */
+  quietSkipping: boolean;
 }) {
   const scores = scoresAt(payload, elapsedMs);
   const ranks = ranksOf(scores);
   const visible = cardsAt(cards, elapsedMs);
   const buckets = cardsByAnchor(visible, payload.anchors.length);
+  const bigGifts = bigGiftsByAnchor(cards, elapsedMs, payload.anchors.length);
   const segment = segmentAt(payload, elapsedMs);
   const participants = payload.teams.flatMap((team) => team.participants);
   // **勝敗は陣営の officialScore で決める。** anchor 個人の最終スコアで決めると、チーム戦で
@@ -76,7 +84,9 @@ export const ReplayStage = memo(function ReplayStage({
         scores={scores}
         colors={colorByAnchor}
         elapsedMs={elapsedMs}
+        durationMs={payload.durationMs}
         transitionMs={scoreTransitionMs}
+        boosting={quietSkipping}
       />
 
       {/* レーンはグリッド全体に重ねるので、赤帯を巻き込まないようここで位置基準を作る */}
@@ -95,6 +105,8 @@ export const ReplayStage = memo(function ReplayStage({
               senders={payload.senders}
               gifts={payload.gifts}
               elapsedMs={elapsedMs}
+              bigGift={bigGifts[cell.anchorIndex] ?? null}
+              motionScale={motionScale}
               hideLanes={layout.fullWidthLanes}
             />
           ))}

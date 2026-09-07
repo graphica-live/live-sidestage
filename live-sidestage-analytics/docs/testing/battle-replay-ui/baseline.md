@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-07
-last_risk: HIGH
-last_reviewers: [deepseek-v4-flash, fable]
+last_risk: MEDIUM
+last_reviewers: [deepseek-v4-flash]
 ---
 
 # バトル再生UI
@@ -75,12 +75,20 @@ last_reviewers: [deepseek-v4-flash, fable]
 | TC-BRU-044 | `selfAnchorIndexes` は participant.isSelf を優先し、無いときは team.isSelf へフォールバックする | `selfAnchorIndexes` | 正常/回帰/データ欠損 | ①自陣営が `teams[1]` ②participant.isSelf が全件 false で team.isSelf のみ true | ①`anchors` の通し添字 `{1}` ②自陣営全員の添字を返し、ボードが空にならない | `[unit]` | PASS | 空集合を返すと貢献者ボードが無言で空になる |
 | TC-BRU-039 | 自分の枠が常に左上に来る | `battle-replay.ts` の `buildPayload` / `ReplayStage` | 回帰/境界 | チーム内で `position 0` が相手、`position 1` が自分の 2vs2 | 先頭セルが自分。`anchors` の添字と `scorePoints` / `giftEvents` の `a` の対応が崩れない | `[unit]` / `[pw]` | PASS | 並べ替えはサーバー側で行う（添字の正本が `anchors` のため） |
 | TC-BRU-040 | 再生開始時の既定は 4倍速 + 自動早送り ON | `useReplayClock` / `ReplayControls` | 正常 | 再生画面へ入った直後 | 速度チップが `4×`、無風トグルが ON 表示（`aria-pressed="true"`） | `[pw]` | PASS | 5分バトルを等倍で見るのは長い（ユーザー指示） |
-| TC-BRU-041 | 無風区間は自動で早送りされ、赤帯の区間は飛ばさない | `quietRangesOf` / `isQuietAt` | 正常/境界 | ギフトが 8 秒以上途切れる区間、および赤帯と重なる無風区間 | 8秒以上の切れ目だけが無風。次のカードの1秒前で解除。赤帯の区間は無風から除外される | `[unit]` | PASS | 帯を飛ばすと「初めてのギフト×N」を見逃す |
+| TC-BRU-041 | 無風区間は自動で早送りされ、赤帯の区間は飛ばさない | `quietRangesOf` / `isQuietAt` | 正常/境界 | ギフトが 5 秒以上途切れる区間、および赤帯と重なる無風区間 | 5秒以上の切れ目だけが無風。次のカードの1秒前で解除。赤帯の区間は無風から除外される。5分・ギフト167〜398件のバトルで無風が尺の 9〜15% を占める（8秒判定では 0〜7% しか出ず体感できなかった）。ローカルシードの `quiet` バトル（開始 3 分ギフト 0 件）では 1,000 / 60,000 / 120,000 / 175,000ms が無風、190,000ms は通常 | `[unit]` `[pw]` | PASS | 帯を飛ばすと「初めてのギフト×N」を見逃す |
 | TC-BRU-042 | 自動早送りを OFF にすると等速に戻り、位置は飛ばない | `useReplayClock` | 状態遷移/回帰 | 無風区間の再生中にトグルを OFF | トグル直前と直後に読んだ経過時間の差が 200ms 未満（基準点の張り直し誤差のみ）。以後の 1 秒あたりの進みが速度チップの倍率と一致する | `[pw]` | PASS | 倍率が変わる瞬間に基準点を張り直さないと位置が飛ぶ |
 | TC-BRU-043 | コントロール右のラベルは残り時間のカウントダウンで、自動早送り中は点滅する | `ReplayControls` | 正常/回帰 | 再生中 / 自動早送り中 | 右ラベルが `-mm:ss` で減っていく（尺の固定表示ではない）。自動早送り中だけ点滅し、`prefers-reduced-motion` では点滅しない | `[pw]` | PASS（`prefers-reduced-motion` は `motion-reduce:animate-none` のクラス指定で担保、実測は NOT RUN） | 尺を出し続けていたため「カウントアップに見える」不具合になっていた |
 | TC-BRU-045 | スコアバーのセグメント幅は即時切り替えではなくアニメーションで伸び縮みする | `ReplayScoreBar` / `.replay-seg` | 正常/境界/回帰 | ①4倍速で再生中 ②シークバーのつまみを掴んで移動 | ①スコアが動いた直後、セグメント幅が中間値を経て新しい比率へ到達する（補間時間は 420ms を実効速度で割った値） ②掴んでいる間は補間 0ms で即時追従し、つまみが幅の追従を待たない | `[pw]` | PASS（1倍速で 127.5→210→285→347→394→429→455→468px の7フレーム補間を実測。scrub 中 `0s` / 解放後 `0.42s`） | 補間時間を速度で割らないと 16 倍速で常に追いつかず、表示と実スコアがずれる |
+| TC-BRU-048 | 自動早送り中は速度チップが実効倍率を出す | `ReplayControls` | 正常/状態遷移 | 4倍速 + Auto ON で、無風区間 / 通常区間へシーク | 無風区間ではチップが `16×`（速度 × ブースト4）になり、点滅とアクセント色で強調される。通常区間では `4×` と既定色に戻る。`prefers-reduced-motion: reduce` では点滅が止まる（`animation-name: none`）が、倍率の表示自体は残る | `[pw]` | PASS（無風=`16×` / 通常=`4×` / reduced-motion で `animation-name: none`） | 無風区間は5〜10秒と短く、残り時間の点滅だけでは早送りが効いたか判らない |
+| TC-BRU-047 | ステージ中央の時計は残り時間のカウントダウン | `ReplayScoreBar` | 正常/境界 | 5分バトルの先頭 / 再生位置 30 秒 / 末尾 | 先頭で `05:00`、30 秒地点で `04:30`、末尾で `00:00`（`00:00` 開始のカウントアップではない） | `[pw]` | PASS | 実バトル画面と同じ向き。尺を超えても負値にしない |
 | TC-BRU-046 | `prefers-reduced-motion: reduce` ではスコアバーが補間せず即座に新しい幅になる | `.replay-seg` の `@media (prefers-reduced-motion: reduce)` | 異常系/回帰 | `reducedMotion: "reduce"` のブラウザコンテキストで再生 | セグメントの `transition-property` が `none`。幅の変化が中間値を経ず1フレームで到達する | `[pw]` | PASS（`transition-property=none`、幅の観測値が 400ms 間 1 種類のみ） | 補間時間は速度連動のインライン値なので、ここを止めるのは CSS の media query 側だけ |
-| TC-BRU-023 | 実装が凍結済みの視覚契約から外れていない | 再生画面全体 | 視覚契約 | `comp.png` と同条件(1280px / dark / reduced-motion) | 領域ごとに `spec.md` の数値と一致。要素・挙動インベントリに欠落なし。`MAJOR` ゼロ | `[vqa]` | FAIL→修正→PASS | MAJOR 2件(ヘッダの表題・副題が契約と別物 / 順位バッジと WIN バッジの振り分け違反)を修正して再撮影。MINOR 1件(1vs1 で長いギフト名のとき全幅レーンのカードが名前チップへわずかに掛かる。CSS は spec どおりでデータ依存)は残置。色トークンだけ反映され余白・タイポ・密度が既定へ丸まる乖離を明示的に疑う |
+| TC-BRU-049 | ギフトカードのギフト画像に背景色を敷かない | `.replay-thumb` | 正常/回帰 | 画像付きギフトのカードが出ている位置へシーク | `img.replay-thumb` の `background-image` が `none` / `background-color` が透明で、`object-fit: contain`。画像が取れないときのプレースホルダ（`span.replay-thumb`）にだけ面が出る | `[pw]` | PASS（`bgImage=none` / `bgColor=rgba(0,0,0,0)` / `object-fit=contain`） | 透過PNGの下にオレンジのグラデーションを敷いていて絵が読めなかった |
+| TC-BRU-050 | 10,000コイン以上のギフトは配信者枠いっぱいの画像で演出する | `bigGiftsByAnchor` / `.replay-biggift` | 正常/境界/異常系 | ①該当ギフトの発生位置へシーク ②`BIG_GIFT_DURATION_MS` を過ぎた位置 ③閾値未満のギフト ④カード表示上限を超えた枠 | ①枠の 88% までギフト画像が出て揺れ、配信者アイコンが `opacity: 0` で隠れる。演出の尺は再生速度で割られる ②演出が消えて配信者アイコンが戻る ③演出を出さない ④上限で押し出されても演出は出る | `[pw]` `[unit]` | PASS（実測: 演出 226×208px / セル 254×233px、`.replay-host` の `opacity=0`、尺+400ms で要素数 0。境界・上限は unit で固定） | ギフト画像が無いギフトでは演出を出さない（アイコンだけ消えるのを防ぐ） |
+| TC-BRU-052 | 大ギフト演出の出入りは一時停止・シークでも再生位置に従う | `bigGiftPhase` / `.replay-biggift` | 異常系/回帰 | 一時停止したまま演出の区間へシークし、実時間で 2.5 秒待つ。さらに区間の後半・区間外へシーク | 待っても演出は消えず、`opacity` が再生位置に応じた値のまま（立ち上がり 0.26 → 後半 0.12 と単調減少）。区間を出ると要素ごと消え、配信者アイコンが戻る | `[pw]` | PASS（一時停止2.5秒後 `opacity=0.257` / +3000ms `0.121` / +3600ms 要素数 0） | CSS アニメは実時間で走り切るため、一時停止中に `opacity: 0` の演出が残り配信者アイコンだけ消えていた |
+| TC-BRU-051 | 自動早送り中はステージ上部の時計チップも点滅する | `ReplayScoreBar` / `.replay-clock--boost` | 正常/状態遷移 | 無風区間 / 通常区間へシーク。`prefers-reduced-motion: reduce` でも確認 | 無風区間では時計が `--replay-gold`（`rgb(245,196,81)`）の文字色 + 同色 1px の内側リングになり `replay-clock-blink` で点滅する。通常区間では既定の白に戻り `animation-name: none`。reduced-motion では点滅しないが色は残る | `[pw]` | PASS（無風で `replay-clock--boost` / `rgb(245,196,81)` / 点滅、通常で `none`、reduced-motion で `animation-name: none`） | 時計だけ速く進むので、色が変わらないと早送り中か判らない |
+| TC-BRU-053 | 残り時間の時計はスコアバーと重ならない | `.replay-clock` / `.replay-scorebar` | 正常/回帰 | 再生を開始して一時停止し、時計・スコアバー・各セグメントの矩形を測る | 時計の上端がスコアバーの下端より下にあり、どのセグメントとも矩形が交差しない。時計自体は読める | `[pw]` | PASS（実測: バー下端 143 / 時計 149〜169.5、`overlapBar=false` / `overlapSeg=false`） | 以前はバー中央に重ねていてスコア数値と時計が互いに潰し合っていた |
+| TC-BRU-054 | 1vs1 の配信者アイコンは左右等寸 | `buildStageLayout` / `.replay-avatar--lg` | 正常/回帰 | 1vs1 のバトルと 4コラボのバトルをそれぞれ再生し、各セルのアイコンの実寸を測る | 1vs1 は左右とも 128px。4コラボは全枠 96px。3コラボ・1vs3 は自陣のみ 128px（相手枠は縦が狭いため） | `[pw]` `[unit]` | PASS（実測: 1vs1 = 128/128、4コラボ = 96×4。variant ごとの `largeAvatar` は unit で固定） | 以前は 1vs1 でも自分だけ 128px で、枠の広さが同じなのに非対称に見えていた |
+| TC-BRU-023 | 実装が凍結済みの視覚契約から外れていない | 再生画面全体 | 視覚契約 | `comp.png` と同条件(1280px / dark / reduced-motion) | 領域ごとに `spec.md` の数値と一致。要素・挙動インベントリに欠落なし。`MAJOR` ゼロ | `[vqa]` | PASS | ユーザー指示で契約側を更新した5点（カードのギフト画像の背景撤去 / 大ギフト演出 / 時計の点滅 / 時計をバー直下へ / 1vs1 のアイコン 128px）は `comp.png` より `spec.md` 本文が優先。初回は MAJOR 2件(ヘッダの表題・副題が契約と別物 / 順位バッジと WIN バッジの振り分け違反)を修正して再撮影。MINOR 1件(1vs1 で長いギフト名のとき全幅レーンのカードが名前チップへわずかに掛かる。CSS は spec どおりでデータ依存)は残置。色トークンだけ反映され余白・タイポ・密度が既定へ丸まる乖離を明示的に疑う |
 
 ## Quality Gate
 
