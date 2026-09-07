@@ -1,14 +1,15 @@
 ---
 last_updated: 2026-09-08
 last_risk: HIGH
-last_reviewers: [deepseek-v4-flash, gemini-3.7-flash-medium]
+last_reviewers: [deepseek-v4-flash, gemini-3.7-flash-medium, Codex(low+medium, mobile向けshare route追加時)] / [Code Mode]DeepSeek(high, MEDIUM判定, 2026-09-08 mobile teams対応時)
 ---
 
 # バトル再生の共有リンク
 
 対象: 公開ページ `src/app/(public)/b/[token]/`（`page.tsx` / `PublicBattleClient.tsx`）、
 `src/middleware.ts` の除外エントリ `b(?:/|$)`、`src/components/analytics/BattleDetailModal.tsx` の `ShareButton`、
-`src/components/analytics/battle-replay/replay-select.ts` の `teamTotalsOf`。
+`src/components/analytics/battle-replay/replay-select.ts` の `teamTotalsOf`、
+`src/app/api/mobile/analytics/battles/[battleId]/share/route.ts`(mobile向けshare token発行API)。
 
 **トークン発行・公開APIそのもの**（`ensureShareToken` / `GET /api/public/battles/[token]/replay` /
 `POST /api/analytics/battles/[battleId]/share`）は `docs/testing/battle-replay-api/baseline.md`（TC-BRA-028〜032・036）。
@@ -49,12 +50,15 @@ last_reviewers: [deepseek-v4-flash, gemini-3.7-flash-medium]
 | TC-BRS-012 | クリップボードが使えない環境ではURLを選択可能なテキストで出す | `ShareButton` | 異常/境界 | `navigator.clipboard` が無い状態でシェアを押す | 読み取り専用の入力欄に共有URLが出てフォーカスで全選択される。黙って失敗しない | `[pw]` | PASS（`readonly` の入力欄に `?v=list` 付きURL） | 非 secure context（`http://` の実機確認など）で起きる |
 | TC-BRS-013 | 管理者向けのバトル詳細にはシェアボタンを出さない | `BattleDetailModal` | 境界/認可 | `/admin/rooms/<roomId>` のバトル履歴からモーダルを開く | シェアボタンが1つも無い | `[admin]` | PASS（0件） | 発行APIは `/api/analytics` 配下にしか無く、admin 経路で押せると必ず失敗する |
 | TC-BRS-014 | 公開ページはスマホ幅でも横スクロールしない | `PublicBattleClient` | デバイス差/境界 | 390px 幅で `?v=list` を開く | `document.documentElement` の横スクロールが発生しない | `[anon]` | PASS（`SP_H_OVERFLOW false`） | 共有先はモバイルで開かれる前提 |
+| TC-BRS-015 | mobile向けshare routeは`ensureShareToken`の既存仕様(適格性未判定)をそのまま踏襲し、常にトークンを発行する | `POST /api/mobile/analytics/battles/[battleId]/share` | 正常 | 正しいroomのbattleId(再生可否を問わない) | 200で`{url: "<origin>/b/<48桁トークン>"}`を返す。再生不可バトルでもここでは404にしない(404は`/b/[token]`アクセス時) | `npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/share/route.integration.test.ts"` | PASS(2026-09-08) | Web版`POST /api/analytics/battles/[battleId]/share`と同じ設計 |
+| TC-BRS-016 | mobile向けshare routeは認証・所有者境界を守る | 同上route | 異常/認可/境界 | (a)トークン無し (b)room未接続JWT (c)別roomにのみ存在するbattleId (d)存在しないbattleId | (a)401でtoken発行なし (b)(c)(d)いずれも404 | 同上コマンド | PASS(2026-09-08) | (c)は所有者境界(Codex Design Review medium effortの指摘で追加) |
+| TC-BRS-017 | mobile向けshare routeは既発行tokenを再利用する | 同上route | 回帰 | 同じbattleIdへ2回POST | 2回目も同じURLを返す(新規token発行しない) | 同上コマンド | PASS(2026-09-08) | Web版と同じ`ensureShareToken`の冪等性 |
 
 ## Quality Gate
 
-- `npm run typecheck`（`tsc --noEmit`）
-- `npm run test:unit`
-- `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）
+- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-08)
+- `npm run test:unit` → 1471 tests PASS(2026-09-08)
+- `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ PASS(2026-09-08、Errors:0/Warnings:0)
 
 ## Out of Scope
 

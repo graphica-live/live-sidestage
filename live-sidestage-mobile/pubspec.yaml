@@ -69,6 +69,8 @@ dependencies:
   # Android 11 以降は AndroidManifest の <queries> に https の VIEW intent が無いと
   # 起動先を解決できないので、そちらもセットで必要。
   url_launcher: ^6.3.1
+  # バトル再生画面(公開共有ページ`/b/[token]`)を埋め込み表示するために使う。
+  webview_flutter: ^4.14.1
   # 起動時のバージョン取得(強制アップデート判定・X-App-Versionヘッダー)に使う。
   package_info_plus: ^8.1.2
   marionette_flutter: ^0.6.0

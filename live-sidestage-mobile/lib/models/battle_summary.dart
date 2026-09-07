@@ -76,6 +76,49 @@ class BattleParticipant {
   }
 }
 
+/// 再生不可の理由。サーバーの`isReplayable()`(`battle-replay.ts`)が返す4値+未知値。
+enum BattleReplayUnavailableReason {
+  notFinalized,
+  noScorePoints,
+  windowInvalid,
+  participantsInvalid,
+  unknown;
+
+  static BattleReplayUnavailableReason tryParse(Object? value) {
+    switch (value) {
+      case 'not_finalized':
+        return BattleReplayUnavailableReason.notFinalized;
+      case 'no_score_points':
+        return BattleReplayUnavailableReason.noScorePoints;
+      case 'window_invalid':
+        return BattleReplayUnavailableReason.windowInvalid;
+      case 'participants_invalid':
+        return BattleReplayUnavailableReason.participantsInvalid;
+      default:
+        return BattleReplayUnavailableReason.unknown;
+    }
+  }
+}
+
+/// 再生可否。サーバーが古く`replay`自体を返さない場合は[available]をfalseにフォールバックする。
+class BattleReplayAvailability {
+  final bool available;
+  final BattleReplayUnavailableReason? reason;
+
+  const BattleReplayAvailability({required this.available, this.reason});
+
+  static const BattleReplayAvailability unavailable = BattleReplayAvailability(available: false, reason: null);
+
+  static BattleReplayAvailability tryParse(Object? value) {
+    if (value is! Map) return unavailable;
+    final available = value['available'] == true;
+    if (!available) {
+      return BattleReplayAvailability(available: false, reason: BattleReplayUnavailableReason.tryParse(value['reason']));
+    }
+    return const BattleReplayAvailability(available: true, reason: null);
+  }
+}
+
 /// 陣営1つ分。サーバーの`BattleTeam`と対応する。**陣営数は2に限らない**
 /// (3陣営以上のマルチバトルはここでしか個別のスコアを取れない)。
 ///
@@ -145,6 +188,9 @@ class BattleSummary {
   final String? selfScore;
   final String? opponentScore;
 
+  /// 再生可否。サーバーが古ければ`available: false`にフォールバックする。
+  final BattleReplayAvailability replay;
+
   const BattleSummary({
     required this.battleId,
     this.startedAt,
@@ -155,6 +201,7 @@ class BattleSummary {
     this.teams,
     this.selfScore,
     this.opponentScore,
+    this.replay = BattleReplayAvailability.unavailable,
   });
 
   /// 自陣以外の陣営スコアの最大値。3陣営以上で[opponentScore]がnullのときの
@@ -187,6 +234,7 @@ class BattleSummary {
       teams: BattleTeam.tryParseList(value['teams']),
       selfScore: value['selfScore'] as String?,
       opponentScore: value['opponentScore'] as String?,
+      replay: BattleReplayAvailability.tryParse(value['replay']),
     );
   }
 }
