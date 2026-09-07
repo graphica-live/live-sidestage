@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   USER_NOT_FOUND_STATUS_CODE,
   classifyAccountExistence,
+  extractVerifiedAccountPreview,
   extractVerifiedNickname,
   isAllowedAvatarUrl,
   parseProfileResponse,
@@ -259,6 +260,65 @@ describe("classifyAccountExistence", () => {
   it("想定外の形はすべて判定不能にする", () => {
     for (const body of [null, undefined, "<html>", 123, {}, { statusCode: 0 }, { statusCode: 0, data: {} }, { statusCode: 0, data: { user: null } }]) {
       expect(classifyAccountExistence(body, "x")).toBe("UNVERIFIED");
+    }
+  });
+});
+
+describe("extractVerifiedAccountPreview", () => {
+  it("アバター・BIO・フォロー数・フォロワー数を取り出す(実測の形)", () => {
+    const body = {
+      statusCode: 0,
+      data: {
+        user: { uniqueId: "tiktok", avatarLarger: REAL_AVATAR, signature: "  公式アカウントです  " },
+        stats: { followingCount: 12, followerCount: 345678 },
+      },
+    };
+    expect(extractVerifiedAccountPreview(body, "tiktok")).toEqual({
+      avatarUrl: REAL_AVATAR,
+      signature: "公式アカウントです",
+      followingCount: 12,
+      followerCount: 345678,
+    });
+  });
+
+  it("BIOが空・空白のみなら signature を null にする(空要素として描画しない判定に使う)", () => {
+    for (const signature of ["", "   ", undefined, null]) {
+      const body = { statusCode: 0, data: { user: { uniqueId: "x", signature }, stats: {} } };
+      expect(extractVerifiedAccountPreview(body, "x").signature).toBeNull();
+    }
+  });
+
+  it("avatarLarger がallowlist外でも他解像度へ落ちる(parseProfileResponseと同じ規則)", () => {
+    const body = {
+      statusCode: 0,
+      data: {
+        user: { uniqueId: "x", avatarLarger: "https://evil.example.com/x.png", avatarMedium: REAL_AVATAR },
+        stats: {},
+      },
+    };
+    expect(extractVerifiedAccountPreview(body, "x").avatarUrl).toBe(REAL_AVATAR);
+  });
+
+  it("stats が欠損・非数値・負値なら null にする(不正値を表示に流さない)", () => {
+    for (const stats of [undefined, {}, { followingCount: "12", followerCount: -1 }, { followingCount: NaN, followerCount: Infinity }]) {
+      const body = { statusCode: 0, data: { user: { uniqueId: "x" }, stats } };
+      const preview = extractVerifiedAccountPreview(body, "x");
+      expect(preview.followingCount).toBeNull();
+      expect(preview.followerCount).toBeNull();
+    }
+  });
+
+  it("別人のレスポンス・statusCode不一致・想定外の形はすべて空のpreviewにする", () => {
+    const empty = { avatarUrl: null, signature: null, followingCount: null, followerCount: null };
+    expect(
+      extractVerifiedAccountPreview(
+        { statusCode: 0, data: { user: { uniqueId: "someone_else", avatarLarger: REAL_AVATAR }, stats: { followingCount: 1, followerCount: 2 } } },
+        "target_user"
+      )
+    ).toEqual(empty);
+    expect(extractVerifiedAccountPreview({ statusCode: 10221, data: {} }, "x")).toEqual(empty);
+    for (const body of [null, undefined, "<html>", 123, {}]) {
+      expect(extractVerifiedAccountPreview(body, "x")).toEqual(empty);
     }
   });
 });

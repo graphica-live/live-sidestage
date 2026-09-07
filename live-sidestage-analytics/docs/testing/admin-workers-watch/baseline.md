@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: admin-workers-watch
-last_updated: 2026-09-06
-last_risk: MEDIUM
-last_reviewers: Qwen(Code Mode)、Qwen(TestCase Mode)
+last_updated: 2026-09-07
+last_risk: HIGH
+last_reviewers: DeepSeek(Code Mode、tiktok-account-confirm-modal機能と同時実施)
 ---
 
 # テストベースライン: admin-workers-watch
@@ -26,8 +26,10 @@ admin/workers画面から監視対象TikTok IDを手動追加する機能。`add
 | TC-AWW-007d | 下限(2文字)ちょうどは形式として有効 | `addWatchedRoom` | 境界 | 2文字の入力、実在確認MISSING | invalidにはならず`not_found`まで進む(形式検証は通過) | 同上 | PASS | |
 | TC-AWW-007e | 上限(24文字)ちょうどは形式として有効 | `addWatchedRoom` | 境界 | 正規化後24文字ちょうどの入力、実在確認EXISTS | `{status: "ok"}` | 同上 | PASS | |
 | TC-AWW-008 | 未認証は401 | `POST /api/admin/workers/watch` | 異常 | admin session無し | 401、`addWatchedRoom`を呼ばない | 手動確認(コード読解: `getAdminSession()`チェックが最初) | PASS | 既存の`/api/admin/workers/reassign`と同じガード |
-| TC-AWW-009 | UI/正常: 画面から追加できる | `AddWatchForm`（/admin/workers） | UI | 実在するTikTok IDを入力して追加ボタン | 成功メッセージ表示、一覧が更新される(`onAdded`→再fetch) | Playwright（headless、実ブラウザ） | PASS | ログイン画面へリダイレクトされない管理者セッションが必要 — 未ログイン状態のリダイレクト確認で代替 |
+| TC-AWW-009 | UI/正常: 画面から追加できる(確認モーダル経由) | `AddWatchForm`（/admin/workers） | UI | 実在するTikTok IDを入力して追加ボタン→`POST /api/admin/workers/watch/preview`成功→確認モーダル表示→「登録する」押下 | モーダルにアバター/nickname/フォロー数/フォロワー数/BIO表示→確定操作で`POST /api/admin/workers/watch`実行、成功メッセージ表示、一覧が更新される(`onAdded`→再fetch) | Playwright（headless、実ブラウザ、dev-login） | PASS | 2026-09-07 tiktok-account-confirm-modal機能でpreview経由の2段階フローへ変更。モーダル自体の詳細ケースは`docs/testing/tiktok-account-confirm-modal/baseline.md`を正本とする |
 | TC-AWW-010 | UI/異常: 空欄では追加ボタンが無効 | `AddWatchForm` | 境界 | 入力欄が空 | 追加ボタンが`disabled` | Playwright | PASS | |
+| TC-AWW-011 | UI/異常: フォーマット不正・未登録IDはモーダルを出さずエラーコード付きで拒否 | `AddWatchForm` + `POST /api/admin/workers/watch/preview` | 異常 | フォーマット不正な入力／実在しないTikTok ID | モーダルを表示せず、フォーム側に日本語メッセージ+`(INVALID_FORMAT)`または`(USER_NOT_FOUND)`表示。`POST /api/admin/workers/watch`（DB書き込み側）は呼ばれない | Playwright | PASS | previewはDB非書き込み専用エンドポイント |
+| TC-AWW-012 | UI: モーダルのキャンセル/Escapeで登録しない | `AddWatchForm` | UI | 確認モーダル表示中に「キャンセル」またはEscキー | モーダルが閉じる。`POST /api/admin/workers/watch`は呼ばれず、入力欄の値は保持される | Playwright | PASS | |
 
 ## Quality Gate
 

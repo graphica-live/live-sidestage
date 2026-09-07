@@ -1,6 +1,20 @@
 import { describe, it, expect } from "vitest";
-import type { AccountExistence, AccountExistenceCheck } from "./tiktok-profile";
-import { createExistenceChecker, isExistenceCheckDisabled } from "./tiktok-existence";
+import type { AccountExistence, AccountExistenceCheck, TiktokAccountPreview } from "./tiktok-profile";
+import {
+  createExistenceChecker,
+  formatExistenceGateError,
+  isExistenceCheckDisabled,
+  previewTiktokAccount,
+} from "./tiktok-existence";
+import type { ExistenceChecker } from "./tiktok-existence";
+
+/** `preview` を持たない旧テストfixtureへ後付けする空の付随情報(全項目 null)。 */
+const emptyPreview: TiktokAccountPreview = {
+  avatarUrl: null,
+  signature: null,
+  followingCount: null,
+  followerCount: null,
+};
 
 /** 呼び出し回数を数えつつ、決め打ちの判定を返す fetch。nickname は常に null。 */
 function stubFetch(verdicts: AccountExistence[] | AccountExistence) {
@@ -13,7 +27,7 @@ function stubFetch(verdicts: AccountExistence[] | AccountExistence) {
     fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
       const verdict = fixed ?? queue!.shift() ?? "UNVERIFIED";
-      return { verdict, nickname: null, userId: null };
+      return { verdict, nickname: null, userId: null, preview: emptyPreview };
     },
   };
 }
@@ -27,7 +41,7 @@ function stubFetchWithChecks(checks: AccountExistenceCheck[]) {
     calls,
     fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
-      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null, userId: null };
+      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview };
     },
   };
 }
@@ -49,7 +63,7 @@ function deferredFetch() {
     fn: (tiktokId: string): Promise<AccountExistenceCheck> => {
       calls.push(tiktokId);
       return new Promise<AccountExistenceCheck>((resolve) => {
-        resolvers.push((verdict) => resolve({ verdict, nickname: null, userId: null }));
+        resolvers.push((verdict) => resolve({ verdict, nickname: null, userId: null, preview: emptyPreview }));
       });
     },
   };
@@ -104,21 +118,45 @@ describe("createExistenceChecker のキャッシュ", () => {
   });
 
   it("EXISTS のニックネームもキャッシュに残り、2回目のヒットでも同じ値が返る", async () => {
-    const fetcher = stubFetchWithChecks([{ verdict: "EXISTS", nickname: "テスト配信者", userId: null }]);
+    const fetcher = stubFetchWithChecks([
+      { verdict: "EXISTS", nickname: "テスト配信者", userId: null, preview: emptyPreview },
+    ]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者", userId: null });
+    expect(await checker.check("someone")).toEqual({
+      verdict: "EXISTS",
+      nickname: "テスト配信者",
+      userId: null,
+      preview: emptyPreview,
+    });
     // キャッシュヒット。fetch を引き直さずに同じ nickname が返る。
-    expect(await checker.check("someone")).toEqual({ verdict: "EXISTS", nickname: "テスト配信者", userId: null });
+    expect(await checker.check("someone")).toEqual({
+      verdict: "EXISTS",
+      nickname: "テスト配信者",
+      userId: null,
+      preview: emptyPreview,
+    });
     expect(fetcher.calls).toEqual(["someone"]);
   });
 
   it("MISSING の nickname は常に null で覚える", async () => {
-    const fetcher = stubFetchWithChecks([{ verdict: "MISSING", nickname: null, userId: null }]);
+    const fetcher = stubFetchWithChecks([
+      { verdict: "MISSING", nickname: null, userId: null, preview: emptyPreview },
+    ]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null, userId: null });
-    expect(await checker.check("nobody")).toEqual({ verdict: "MISSING", nickname: null, userId: null });
+    expect(await checker.check("nobody")).toEqual({
+      verdict: "MISSING",
+      nickname: null,
+      userId: null,
+      preview: emptyPreview,
+    });
+    expect(await checker.check("nobody")).toEqual({
+      verdict: "MISSING",
+      nickname: null,
+      userId: null,
+      preview: emptyPreview,
+    });
     expect(fetcher.calls).toEqual(["nobody"]);
   });
 
@@ -190,7 +228,7 @@ describe("createExistenceChecker の呼び出し制御", () => {
 
     const pending = [checker.check("a"), checker.check("b"), checker.check("c")];
 
-    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null });
+    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
     expect(fetcher.calls).toEqual(["a", "b"]);
 
     fetcher.resolvers[0]("EXISTS");
@@ -254,14 +292,14 @@ describe("createExistenceChecker の呼び出し制御", () => {
       },
     });
 
-    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null });
+    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
   });
 
   it("空のハンドルは外へ出さない", async () => {
     const fetcher = stubFetch("EXISTS");
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null });
+    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
     expect(fetcher.calls).toEqual([]);
   });
 });
@@ -282,5 +320,69 @@ describe("isExistenceCheckDisabled", () => {
       if (original === undefined) delete process.env.TIKTOK_EXISTENCE_CHECK_DISABLED;
       else process.env.TIKTOK_EXISTENCE_CHECK_DISABLED = original;
     }
+  });
+});
+
+/** previewTiktokAccount 用。判定・preview を決め打ちできる checker。 */
+function stubChecker(check: AccountExistenceCheck): ExistenceChecker {
+  return { check: async () => check, size: () => 0 };
+}
+
+const somePreview: TiktokAccountPreview = {
+  avatarUrl: "https://p16-common-sign.tiktokcdn.com/x.webp",
+  signature: "テストBIO",
+  followingCount: 12,
+  followerCount: 345,
+};
+
+describe("previewTiktokAccount", () => {
+  it("フォーマット不正は実在確認を呼ばず INVALID_FORMAT を返す", async () => {
+    let called = false;
+    const checker: ExistenceChecker = {
+      check: async () => {
+        called = true;
+        return { verdict: "EXISTS", nickname: null, userId: null, preview: somePreview };
+      },
+      size: () => 0,
+    };
+    const result = await previewTiktokAccount("bad id!!", checker);
+    expect(result).toEqual({ ok: false, code: "INVALID_FORMAT" });
+    expect(called).toBe(false);
+  });
+
+  it("MISSING は USER_NOT_FOUND を返す", async () => {
+    const checker = stubChecker({ verdict: "MISSING", nickname: null, userId: null, preview: emptyPreview });
+    expect(await previewTiktokAccount("nobody", checker)).toEqual({ ok: false, code: "USER_NOT_FOUND" });
+  });
+
+  it("UNVERIFIED は CHECK_UNVERIFIED を返す", async () => {
+    const checker = stubChecker({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
+    expect(await previewTiktokAccount("someone", checker)).toEqual({ ok: false, code: "CHECK_UNVERIFIED" });
+  });
+
+  it("EXISTS は正規化済み tiktokId・nickname・preview をそのまま返す", async () => {
+    const checker = stubChecker({ verdict: "EXISTS", nickname: "テスト太郎", userId: "123", preview: somePreview });
+    expect(await previewTiktokAccount("@Some_User", checker)).toEqual({
+      ok: true,
+      tiktokId: "some_user",
+      nickname: "テスト太郎",
+      preview: somePreview,
+    });
+  });
+});
+
+describe("formatExistenceGateError", () => {
+  it("各コードに日本語メッセージ+かっこ書きのコードを付与する", () => {
+    for (const code of ["INVALID_FORMAT", "USER_NOT_FOUND", "CHECK_UNVERIFIED"] as const) {
+      const { error, status } = formatExistenceGateError(code);
+      expect(error).toContain(`(${code})`);
+      expect(status).toBeGreaterThanOrEqual(400);
+    }
+  });
+
+  it("CHECK_UNVERIFIED だけ 503(再試行可能)を返す", () => {
+    expect(formatExistenceGateError("CHECK_UNVERIFIED").status).toBe(503);
+    expect(formatExistenceGateError("INVALID_FORMAT").status).toBe(400);
+    expect(formatExistenceGateError("USER_NOT_FOUND").status).toBe(400);
   });
 });

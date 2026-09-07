@@ -100,6 +100,7 @@ components:
 ### Primary
 - **TikTok Red** (`#fe2c55`): プライマリボタン、アクティブなタブ/セグメント、フォーカスされた入力欄のボーダー、外部リンクのホバー、認証コード等の強調テキストに使用。画面全体に対しては局所的にしか出現しない。
 - **TikTok Red Hover** (`#e91e50`): プライマリボタンのホバー状態。
+- **陳腐化メモ(2026-09-07)**: `globals.css`の`--accent`実測値は`rgb(79 70 229)`(indigo、ダークモードは`rgb(139 133 255)`)で、上記TikTok Redとは一致しない。`.btn-primary`(`bg-brand`)は実際にはこのindigoを使っている。TikTok ID登録確認モーダル(`tiktok-account-confirm-modal`)実装時に発覚。ブランド刷新の経緯未確認のため値はそのまま残すが、実装判断はコード実測(indigo)を正とする。
 
 ### Neutral
 - **Surface Black** (`#111111`): ページ全体の地の色(`body`背景)。

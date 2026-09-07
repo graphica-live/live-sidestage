@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
+import { isValidNormalizedTiktokId } from "@/lib/agency/params";
 import { upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
-import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
+import { requireExistingTiktokAccount, formatExistenceGateError } from "@/lib/tiktok-existence";
 
 // GET: return existing pending code for current user
 export async function GET() {
@@ -45,17 +46,19 @@ export async function POST(req: NextRequest) {
 
   // TikTok上に実在しないIDは登録させない(fail-closed)。テスト用の適当な文字列や
   // 打ち間違いが登録され、誰も配信しない room を無期限に監視し続ける実害を防ぐ。
-  const existence = await requireExistingTiktokAccount(clean);
+  // フォーマット検証も含め、確認モーダル用の /api/verify/preview と同じ判定に揃える。
+  const normalized = normalizeTiktokId(clean);
+  if (!isValidNormalizedTiktokId(normalized)) {
+    const { error, status } = formatExistenceGateError("INVALID_FORMAT");
+    return NextResponse.json({ error }, { status });
+  }
+
+  const existence = await requireExistingTiktokAccount(normalized);
   if (!existence.ok) {
-    return NextResponse.json(
-      {
-        error:
-          existence.reason === "MISSING"
-            ? "このTikTok IDのアカウントが見つかりません。IDを確認してください"
-            : "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください",
-      },
-      { status: existence.reason === "MISSING" ? 400 : 503 }
+    const { error, status } = formatExistenceGateError(
+      existence.reason === "MISSING" ? "USER_NOT_FOUND" : "CHECK_UNVERIFIED"
     );
+    return NextResponse.json({ error }, { status });
   }
 
   // 登録は無条件で許可する(他アカウントとの重複登録も可)。
