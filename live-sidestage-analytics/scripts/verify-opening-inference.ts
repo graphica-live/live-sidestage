@@ -54,6 +54,28 @@ async function main() {
       select: { startedAtEstimated: true },
     });
 
+    // src/lib/battle-tap-points.ts の loadTapPointsForBattle と同じ読み方。
+    // (あちらは `@/lib/prisma` のシングルトンを使うので、本番URL指定のこのクライアントからは呼べない)
+    const tapRows = await prisma.tiktokBattleTapPoint.findMany({
+      where: { battleId: battle.battleId },
+      select: { roomId: true, anchorId: true, occurredAt: true, points: true },
+      orderBy: [{ occurredAt: "asc" }, { anchorId: "asc" }],
+    });
+    const trackedRoomIds = new Set(
+      (
+        await prisma.tiktokBattle.findMany({
+          where: { battleId: battle.battleId },
+          select: { roomId: true, tapPointsTracked: true },
+        })
+      )
+        .filter((b) => b.tapPointsTracked)
+        .map((b) => b.roomId)
+    );
+    const tapInput = {
+      tapPoints: tapRows.map((r) => ({ anchorId: r.anchorId, occurredAt: r.occurredAt, points: r.points })),
+      tapTrackedAnchorIds: new Set(tapRows.filter((r) => trackedRoomIds.has(r.roomId)).map((r) => r.anchorId)),
+    };
+
     const result = inferOpeningMultiplier({
       windowStart: battle.windowStart,
       windowStartReliable: source !== null && !source.startedAtEstimated,
@@ -74,6 +96,7 @@ async function main() {
         startedAt: m.rewardStartedAt,
         endedAt: m.rewardEndedAt,
       })),
+      ...tapInput,
     });
 
     if (only) {

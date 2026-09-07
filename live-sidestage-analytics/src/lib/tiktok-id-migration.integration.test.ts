@@ -181,6 +181,42 @@ describe("absorbRooms — ABSORB正常系", () => {
     expect(battle?.endedAt).not.toBeNull();
   });
 
+  it("タップ点は survivor へ移り、衝突分だけ破棄される", async () => {
+    const survivor = await makeRoom("survivor5b", "hu5b");
+    const candidate = await makeRoom("candidate5b", "hu5b");
+
+    const occurredAt = new Date();
+    await prisma.tiktokBattleTapPoint.create({
+      data: {
+        roomId: survivor.id,
+        battleId: "b2",
+        anchorId: "111",
+        occurredAt,
+        uniqueId: "listener_dup",
+        points: 3,
+      },
+    });
+    await prisma.tiktokBattleTapPoint.createMany({
+      data: [
+        // survivor 側に同じリスナーの行があるので破棄される。
+        { roomId: candidate.id, battleId: "b2", anchorId: "111", occurredAt, uniqueId: "listener_dup", points: 3 },
+        { roomId: candidate.id, battleId: "b2", anchorId: "111", occurredAt, uniqueId: "listener_new", points: 3 },
+      ],
+    });
+
+    const result = await absorbRooms(survivor.id, candidate.id, "hu5b", survivor.tiktokId);
+    expect(result.kind).toBe("merged");
+    if (result.kind !== "merged") return;
+    expect(result.stats.tapPointsMoved).toBe(1);
+    expect(result.stats.tapPointsDiscarded).toBe(1);
+
+    // **候補room削除の cascade で消えていないこと**が本題。移送を忘れると 0 件になる。
+    const rows = await prisma.tiktokBattleTapPoint.findMany({ where: { battleId: "b2" } });
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.roomId === survivor.id)).toBe(true);
+    expect(rows.map((r) => r.uniqueId).sort()).toEqual(["listener_dup", "listener_new"]);
+  });
+
   it("AgencyWatchは同じ事務所の重複を破棄し、それ以外は roomId を付け替える", async () => {
     const survivor = await makeRoom("survivor6", "hu6");
     const candidate = await makeRoom("candidate6", "hu6");

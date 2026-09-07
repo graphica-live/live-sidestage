@@ -41,6 +41,7 @@ import {
 } from "@/lib/battle-history";
 import type { HostProfiles } from "@/lib/tiktok-battle";
 import { inferOpeningMultiplier, type OpeningMultiplierResult } from "@/lib/battle-opening-multiplier";
+import { loadTapPointsForBattle } from "@/lib/battle-tap-points";
 
 /** BattleHistoryGiftEvent等の子行createManyを分割する単位。Postgresのbind数上限対策
  * (1バトルのギフト送信回数は数百〜数千になりうる)。Prismaの自動分割に依存しない。 */
@@ -497,6 +498,10 @@ export async function computeBattleSnapshot(
   const completeAnchorIds = new Set(
     [...captureByAnchorId.entries()].filter(([, c]) => c.status === "complete").map(([anchorId]) => anchorId)
   );
+  // 公式スコアはギフトだけでは増えない(ギフト点 x 倍率 + タップ点)。差し引かないと比が
+  // 一方向に上振れして正しい倍率が棄却される。**attachReplayData 側と同じヘルパを使う**
+  // (片方だけ差し引くと同じバトルの確定値と後付け値が食い違う)。
+  const tapInput = await loadTapPointsForBattle(battleId);
   const opening = inferOpeningMultiplier({
     windowStart,
     // 配信途中から接続した場合 windowStart は「気づいた時刻」でしかない(startedAtEstimated)。
@@ -513,6 +518,8 @@ export async function computeBattleSnapshot(
         multiplierType: g.multiplierType,
       })),
     bonusIntervals: bonusMissions.map((m) => ({ startedAt: m.rewardStartedAt, endedAt: m.rewardEndedAt })),
+    tapPoints: tapInput.tapPoints,
+    tapTrackedAnchorIds: tapInput.tapTrackedAnchorIds,
   });
 
   // BattleTeamはfactions順(=teamIndex順)で1件ずつ作る。externalTeamIdはteamArmies由来の
@@ -877,6 +884,9 @@ export async function attachReplayData(battleHistoryId: string): Promise<AttachR
     select: { startedAtEstimated: true },
   });
 
+  // タップ点の差し引き。確定時(computeBattleSnapshot)と同じヘルパを使う。
+  const tapInput = await loadTapPointsForBattle(history.battleId);
+
   const opening = inferOpeningMultiplier({
     windowStart: history.windowStart,
     windowStartReliable: sourceBattle !== null && !sourceBattle.startedAtEstimated,
@@ -893,6 +903,8 @@ export async function attachReplayData(battleHistoryId: string): Promise<AttachR
         multiplierType: g.multiplierType,
       })),
     bonusIntervals: bonusRows.map((m) => ({ startedAt: m.rewardStartedAt, endedAt: m.rewardEndedAt })),
+    tapPoints: tapInput.tapPoints,
+    tapTrackedAnchorIds: tapInput.tapTrackedAnchorIds,
   });
 
   const committed = await prisma.$transaction(async (tx) => {

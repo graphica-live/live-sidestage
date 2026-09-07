@@ -355,6 +355,7 @@ model TiktokRoom {
   battleItemUses     TiktokBattleItemUse[]
   battleBonusMissions TiktokBattleBonusMission[]
   battleArmiesSnapshots TiktokBattleArmiesSnapshot[]
+  battleTapPoints    TiktokBattleTapPoint[]
   battleHistories    BattleHistory[]
   watches            AgencyWatch[]
   monitorLeases      RoomMonitorLease[]
@@ -1001,6 +1002,18 @@ model TiktokBattle {
   // どの経路(コラボ承諾/バトル開始補助/元々監視中/失敗)で始まったかの記録。表示には使わず、
   // コラボ承諾トリガー(recordCollabGroupChange)の取りこぼし率を事後検証するためだけの記録。
   opponentWatch  Json      @default("{}")
+
+  // このroomでこのバトルのタップ点(TiktokBattleTapPoint)を**バトル開始から取りこぼしなく**
+  // 観測できたか。true のときだけ初ギフトx倍の逆算がタップ点を差し引く。
+  //
+  // **「タップ点0件」と「未計測」を混同しないための列。** false のバトルは差し引きを行わず、
+  // タップ計測導入前と完全に同じ判定になる(既定値がfalseなので過去分は自動的にそうなる)。
+  //
+  // 書き込みはバトル終了時の最終化タスク1本だけ(tiktok-listener.ts)。途中の失敗はメモリ上の
+  // フラグを落とすだけでDBは触らない。二経路で書くと、FINISH後にreject したinsertのfalseを
+  // 後から走るtrueが上書きしうる。
+  tapPointsTracked Boolean @default(false)
+
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1098,6 +1111,46 @@ model TiktokBattleArmiesSnapshot {
 
   @@index([roomId, battleId, occurredAt])
   @@map("tiktok_battle_armies_snapshots")
+  @@schema("public")
+}
+
+// バトル中のタップ点(いいね由来のスコア)。**1リスナーが10タップに到達した瞬間に1行**立つ。
+// 上限は1リスナー1バトル1回で、次のバトルでは全員が再び権利を得る。毎秒書く方式ではない。
+//
+// 公式スコアはギフトだけでは増えず「ギフト点 x 倍率 + タップ点」なので、これを差し引かないと
+// 初ギフトx倍の逆算(battle-opening-multiplier.ts)の ratio が一方向に上振れし、正しい倍率が
+// 「判定不能」として棄却される(本番実例: 406/200 = 2.03 が RATIO_TOLERANCE 0.02 を超えて棄却)。
+//
+// **battleIdへFK制約は張らない**(TiktokBattleItemUse / TiktokBattleBonusMission と同じ理由。
+// イベント先着で TiktokBattle 行が未作成のことがある)。
+model TiktokBattleTapPoint {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String
+
+  // このroomの配信者のanchorId(= TikTokの数値userId文字列。DBのUUIDではない)。
+  // **読み出し時に room -> anchor を解決しないための列。** BattleHistoryParticipant.roomId は
+  // absorbRooms(TikTok ID改名の合流)の移送対象に入っていないので、participant 由来の旧 roomId で
+  // 引くと合流後に一致しなくなる。
+  anchorId String
+
+  // 10タップ目のlikeを受信した時刻。**@default(now()) にしない** — insertはfire-and-forgetなので
+  // now()は挿入時刻になり、write queueの詰まりの分だけ後ろへずれる。区間割当の精度が
+  // そのまま逆算の正しさになる。
+  occurredAt DateTime
+
+  uniqueId String // 10タップに到達したリスナー
+  points   Int // 現行仕様では常に3。仕様が違っていたと後で判るよう定数で埋めずに保存する
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // **「1リスナー1バトル1回」の仕様そのもの。** 再接続でメモリ上の重複防止(reached Set)が
+  // 消えても二重計上できない。書き込みは createMany({ skipDuplicates: true })。
+  @@unique([roomId, battleId, uniqueId])
+  // 先頭はroomIdではなくbattleId。loadTapPointsForBattleは1つのbattleIdに対して
+  // 自room・相手roomを横断して引く(armies snapshotが自roomだけを引くのと条件が違う)。
+  @@index([battleId, roomId, occurredAt])
+  @@map("tiktok_battle_tap_points")
   @@schema("public")
 }
 

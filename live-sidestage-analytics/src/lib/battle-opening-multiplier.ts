@@ -9,10 +9,12 @@
 // **多くのバトルで unknown になる前提で使うこと。** 同時多発・combo連打・小粒ギフトでは
 // 切り分けられない(BATTLE-EVENTS.md 4節が明記)。逆算できないことは再生可否に影響させない。
 
-/** 候補として見る区間の長さ。**未確定の仮定値。**
- * BATTLE-EVENTS.md 4節の実測は48秒だが、バトル形式ごとの差が未検証なので余裕を持たせている。
+/** 候補として見る区間の長さ。BATTLE-EVENTS.md 4節の実測値 48秒。
+ *
+ * **広げる方が危険側。** 窓を伸ばすほど窓外の通常ギフトが候補に混ざり、その ratio=1 が
+ * 「倍率なしと確定(measured)」に化ける経路が増える。取りこぼしは安全側なので実測値のまま使う。
  * この値から「残り何秒」を計算して画面に出してはいけない(仮定を事実として見せることになる)。 */
-export const OPENING_WINDOW_MS = 60_000;
+export const OPENING_WINDOW_MS = 48_000;
 
 /** スコア点の直前どこまでのギフトをその増分の原因とみなすか。
  * **armies の occurredAt はサーバー受信時刻、Gift.receivedAt は TikTok の createTime 由来**で
@@ -32,6 +34,24 @@ export const GIFT_TO_SCORE_LAG_MS = 3_000;
  * (実際それで本番 976 バトル中 774 件が unknown になっていた)。実測の下位5%が 349ms
  * なので、それより内側だけを「速すぎて原因を特定できない」として外す。 */
 export const SCORE_ASSIGNMENT_AMBIGUITY_MS = 250;
+
+/** タップ点(いいね由来のスコア)がスコア点へ反映されるまでの遅延の補正値。
+ *
+ * **0 から動かすのは実測してから。** `GIFT_TO_SCORE_LAG_MS = 3_000` が要るのは
+ * `Gift.receivedAt` が TikTok の createTime 由来で armies のサーバー受信時刻と基準が違うからで、
+ * like は armies と同じくサーバー受信時刻なのでその基準差が無い。
+ *
+ * **未実測のまま正の値を当てると害が大きい。** タップ点はダイヤ数と相関しない一定の3点なので、
+ * 隣の区間へ飛ぶと元の区間が +3(比が上振れ)・飛び先が -3(比が下振れ)と両方壊れる。
+ * 0 + 境界近傍除外で保守的に倒し、稼働後に「like 到達時刻 -> 対応する3点増分」の分布を測って調整する。 */
+export const TAP_TO_SCORE_LAG_MS = 0;
+
+/** 1区間の delta のうち、タップ点による差し引きが占めてよい上限(totalDiamonds 比)。
+ *
+ * **バトル開始直後はタップが集中する時間帯そのもの。** 10タップ到達が同じ区間へまとまって
+ * 落ちると補正量が跳ねる(30人到達 = 90点。totalDiamonds=100 なら比が 0.9 動き隣の整数へ届く)。
+ * この場合の誤りは取りこぼしではなく**誤った赤帯**なので、疑わしい区間は候補にしない。 */
+export const TAP_CORRECTION_MAX_RATIO = 0.1;
 
 /** これ未満のギフトは候補にしない。小粒ギフトは1ダイヤの誤差が比を大きく動かすため。 */
 export const MIN_CANDIDATE_DIAMONDS = 100;
@@ -61,6 +81,16 @@ export type OpeningGift = {
   /** **0(倍率なしと観測できた) と null(未観測) を同一視しないこと。**
    * P2 デプロイ前のギフトは全て null で、TOP_2/TOP_3 ブースター(x2)と区別できない。 */
   multiplierType: number | null;
+};
+
+/** タップ点。**リスナー1人がそのバトルで10タップに到達した瞬間**に1件立つ(上限は1人1回)。
+ * スコアはギフトだけで増えないので、差し引かないと ratio がタップ点のぶん一方向に上振れする。 */
+export type OpeningTapPoint = {
+  /** タップの宛先になった配信者。スコア点と同じく anchor ごとに独立している。 */
+  anchorId: string;
+  /** 10タップ目の like を受信した時刻。 */
+  occurredAt: Date;
+  points: number;
 };
 
 /** ボーナスミッションの報酬区間。ここと重なるギフトは倍率が混ざるので候補から外す。 */
@@ -123,6 +153,13 @@ export function inferOpeningMultiplier(input: {
   scorePoints: OpeningScorePoint[];
   gifts: OpeningGift[];
   bonusIntervals: OpeningBonusInterval[];
+  /** 記録できているタップ点。**anchor が tapTrackedAnchorIds に居るときだけ意味を持つ。** */
+  tapPoints: OpeningTapPoint[];
+  /** **バトル開始から取りこぼしなくタップを観測できた anchor** だけを入れる。
+   * ここに居ない anchor は差し引かず、タップ計測導入前と完全に同じ判定になる(安全側)。
+   * 「タップ点0件」と「未計測」を混同すると、未計測のバトルで差し引き0のまま
+   * 「正しく補正した」ことになってしまう。 */
+  tapTrackedAnchorIds: Set<string>;
 }): OpeningMultiplierResult {
   if (!input.windowStartReliable) return UNKNOWN;
   const windowStartMs = input.windowStart.getTime();
@@ -145,6 +182,14 @@ export function inferOpeningMultiplier(input: {
     })
     .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
   if (gifts.length === 0) return UNKNOWN;
+
+  // タップ点は0件が正常(誰も10タップに到達しなかったバトル)なので、空でも打ち切らない。
+  const tapPoints = input.tapPoints
+    .filter((t) => {
+      const at = t.occurredAt.getTime();
+      return at >= windowStartMs - TAP_TO_SCORE_LAG_MS && at <= windowEndMs;
+    })
+    .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
 
   const candidates: Candidate[] = [];
 
@@ -177,6 +222,34 @@ export function inferOpeningMultiplier(input: {
       else assigned.set(index, [gift]);
     }
 
+    // **タップ点もギフトと同じ規則で一意の区間へ割り当てる。** 3点は totalDiamonds=100 なら
+    // 比を 0.03、200 なら 0.015 動かし、RATIO_TOLERANCE(0.02) を跨ぐ。誤配賦1件で判定が変わるので、
+    // 境界に貼り付いたタップがある区間はギフトと同様に候補から外す。
+    const tapTracked = input.tapTrackedAnchorIds.has(anchorId);
+    const tapByInterval = new Map<number, number>();
+    if (tapTracked) {
+      for (const tap of tapPoints) {
+        if (tap.anchorId !== anchorId) continue;
+        const tapAt = tap.occurredAt.getTime();
+        const index = sorted.findIndex((p, i) => i > 0 && p.occurredAt.getTime() >= tapAt);
+        if (index <= 0) continue;
+        if (tapAt <= sorted[index - 1].occurredAt.getTime() - TAP_TO_SCORE_LAG_MS) continue;
+        if (sorted[index].occurredAt.getTime() - tapAt < SCORE_ASSIGNMENT_AMBIGUITY_MS) {
+          ambiguous.add(index);
+          ambiguous.add(index + 1);
+        }
+        // **区間の始端側も見る(ギフトと違ってタップは両端が曖昧になりうる)。** like と armies は
+        // 同じソケットから同じサーバー受信時刻で入るので、スコア点の直後に見えるタップが実は
+        // その点に既に反映されている、という並びが起こる。始端に貼り付いたタップは
+        // 手前の区間の増分だった可能性を消せないので、両区間を候補から外す。
+        if (tapAt - sorted[index - 1].occurredAt.getTime() < SCORE_ASSIGNMENT_AMBIGUITY_MS) {
+          ambiguous.add(index - 1);
+          ambiguous.add(index);
+        }
+        tapByInterval.set(index, (tapByInterval.get(index) ?? 0) + tap.points);
+      }
+    }
+
     for (const [index, giftsInInterval] of assigned) {
       if (ambiguous.has(index)) continue;
       if (giftsInInterval.length === 0) continue;
@@ -195,7 +268,14 @@ export function inferOpeningMultiplier(input: {
       const before = parseScore(sorted[index - 1].score);
       const after = parseScore(sorted[index].score);
       if (before === null || after === null) continue;
-      const delta = after - before;
+      const rawDelta = after - before;
+      if (rawDelta <= 0) continue;
+
+      // **タップ点を差し引くのは全区間観測できた anchor だけ。** 未計測の anchor で
+      // 差し引き0を適用すると、実際にはタップ点が混ざっている delta を「補正済み」として扱う。
+      const tapCorrection = tapByInterval.get(index) ?? 0;
+      if (tapCorrection > totalDiamonds * TAP_CORRECTION_MAX_RATIO) continue;
+      const delta = rawDelta - tapCorrection;
       if (delta <= 0) continue;
 
       const ratio = delta / totalDiamonds;
