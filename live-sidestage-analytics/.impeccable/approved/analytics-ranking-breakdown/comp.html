@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>貢献ランキング — ギフト内訳展開 comp</title>
+<style>
+:root{
+  --bg:255 255 255; --panel:248 249 251; --border:229 231 235;
+  --row-border:238 240 243; --row-hover:245 246 249;
+  --text:55 65 81; --text-strong:17 24 39; --muted:107 114 128;
+  --accent:79 70 229; --accent-hover:67 56 202; --on-accent:255 255 255; --ok:34 197 94;
+}
+.dark{
+  --bg:16 18 22; --panel:24 27 33; --border:42 46 55;
+  --row-border:34 37 44; --row-hover:30 33 41;
+  --text:199 203 212; --text-strong:243 244 247; --muted:136 144 160;
+  --accent:139 133 255; --accent-hover:122 115 224; --on-accent:13 12 26; --ok:52 211 153;
+}
+*{box-sizing:border-box}
+body{margin:0;font:400 14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+.scene{background:rgb(var(--bg));color:rgb(var(--text));padding:28px}
+.wrap{max-width:900px;margin:0 auto}
+h2.cap{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgb(var(--muted));font-weight:600;margin:0 0 10px}
+.tbl-box{overflow:hidden;border-radius:12px;border:1px solid rgb(var(--border));box-shadow:0 1px 2px rgba(16,24,40,.05)}
+table{width:100%;border-collapse:collapse;font-size:.84rem}
+thead tr{border-bottom:1px solid rgb(var(--border));background:rgb(var(--panel));font-size:.68rem;letter-spacing:.02em;color:rgb(var(--muted))}
+th{padding:9px 12px;font-weight:600}
+th.r{text-align:right}th.l{text-align:left}
+tbody tr.rank{border-bottom:1px solid rgb(var(--row-border))}
+tbody tr.rank.open{background:rgb(var(--row-hover))}
+tbody tr.rank.first{background:rgba(234,179,8,.05)}
+td{padding:9px 12px;vertical-align:middle}
+td.num{text-align:right;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.rk{color:rgb(var(--muted));font-size:12px}
+.dia{font-weight:700;color:rgb(var(--text-strong))}
+.mut{color:rgb(var(--muted))}
+.u{display:flex;align-items:center;gap:8px;min-width:0}
+.av{width:28px;height:28px;border-radius:9999px;flex:none;background:rgb(var(--border))}
+.nm{font-weight:600;color:rgb(var(--text-strong));line-height:1.25}
+.hd{font-size:12px;color:rgb(var(--muted))}
+.chev{width:26px;height:26px;border-radius:8px;border:0;background:transparent;color:rgb(var(--muted));display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.chev.open{color:rgb(var(--accent));transform:rotate(180deg)}
+.chev svg{width:14px;height:14px}
+
+/* ---- expanded panel ---- */
+td.panel{padding:0;background:rgb(var(--panel));border-bottom:1px solid rgb(var(--row-border))}
+.pin{padding:10px 12px 12px 52px}
+.phead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ptitle{font-size:.68rem;letter-spacing:.06em;font-weight:600;color:rgb(var(--muted))}
+.pnote{font-size:.68rem;color:rgb(var(--muted));margin-left:auto}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 20px}
+.gline{display:flex;align-items:center;gap:8px;padding:7px 0;min-width:0;border-bottom:1px solid rgb(var(--row-border))}
+.gimg{width:24px;height:24px;flex:none;object-fit:contain;border-radius:6px;background:rgba(127,127,127,.12)}
+.gname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgb(var(--text-strong));font-size:.8rem}
+.gcnt{flex:none;font-family:ui-monospace,Menlo,monospace;font-size:.72rem;color:rgb(var(--muted))}
+.gval{flex:none;font-family:ui-monospace,Menlo,monospace;font-size:.8rem;font-weight:700;color:rgb(var(--text-strong));min-width:56px;text-align:right}
+.bar{position:absolute;left:0;right:0;bottom:2px;height:3px;background:rgba(127,127,127,.10);border-radius:9999px;overflow:hidden}
+.bar i{display:block;height:100%;background:rgb(var(--accent));opacity:.45;border-radius:9999px}
+.sk{height:12px;border-radius:4px;background:rgba(127,127,127,.16);margin:9px 0}
+.msg{font-size:.78rem;color:rgb(var(--muted));padding:6px 0 2px}
+.msg b{display:block;color:rgb(var(--text-strong));font-weight:600;font-size:.8rem;margin-bottom:2px}
+.retry{margin-top:8px;font-size:.75rem;padding:4px 10px;border-radius:8px;border:1px solid rgb(var(--border));background:rgba(127,127,127,.07);color:rgb(var(--text-strong));cursor:pointer}
+.states{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:22px}
+.state{border:1px solid rgb(var(--border));border-radius:12px;overflow:hidden}
+.state .lbl{font-size:.66rem;letter-spacing:.06em;color:rgb(var(--muted));padding:7px 12px;background:rgb(var(--panel));border-bottom:1px solid rgb(var(--border));font-weight:600}
+.state .body{background:rgb(var(--panel))}
+.state .pin{padding-left:12px}
+</style>
+</head>
+<body>
+
+<div class="scene" id="light">
+ <div class="wrap">
+  <h2 class="cap">貢献ランキング — 行展開でギフト内訳（Light）</h2>
+  <div class="tbl-box">
+   <table>
+    <thead><tr><th class="r" style="width:40px">#</th><th class="l">ユーザー</th><th class="r">💎</th><th class="r">🎁</th><th class="r">最終</th><th style="width:34px"></th></tr></thead>
+    <tbody>
+      <tr class="rank first"><td class="num rk">1</td>
+        <td><div class="u"><div class="av"></div><div><div class="nm">みかん🍊</div><div class="hd">@mikan_live</div></div></div></td>
+        <td class="num dia">48,210</td><td class="num mut">312</td><td class="num mut" style="font-size:12px">3分前</td>
+        <td style="text-align:center"><button class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></td></tr>
+
+      <tr class="rank open"><td class="num rk">2</td>
+        <td><div class="u"><div class="av"></div><div><div class="nm">そらまめ</div><div class="hd">@soramame22</div></div></div></td>
+        <td class="num dia">31,540</td><td class="num mut">198</td><td class="num mut" style="font-size:12px">11分前</td>
+        <td style="text-align:center"><button class="chev open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></td></tr>
+      <tr><td class="panel" colspan="6"><div class="pin">
+        <div class="phead"><span class="ptitle">ギフト内訳</span><span class="mut" style="font-size:.7rem">7種類 · 198回 · 31,540</span></div>
+        <div class="grid">
+          <div class="gline"><div class="gimg"></div><span class="gname">Galaxy</span><span class="gcnt">×3</span><span class="gval">3,000</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">Universe</span><span class="gcnt">×1</span><span class="gval">2,999</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">ライオン</span><span class="gcnt">×5</span><span class="gval">2,450</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">Interstellar</span><span class="gcnt">×2</span><span class="gval">2,000</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">ドラマチックな流星群</span><span class="gcnt">×12</span><span class="gval">1,188</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">バラ</span><span class="gcnt">×140</span><span class="gval">140</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">TikTok</span><span class="gcnt">×35</span><span class="gval">35</span></div>
+        </div>
+      </div></td></tr>
+
+      <tr class="rank"><td class="num rk">3</td>
+        <td><div class="u"><div class="av"></div><div><div class="nm">くろねこ</div><div class="hd">@kuroneko_0101</div></div></div></td>
+        <td class="num dia">9,880</td><td class="num mut">77</td><td class="num mut" style="font-size:12px">1時間前</td>
+        <td style="text-align:center"><button class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></td></tr>
+    </tbody>
+   </table>
+  </div>
+
+  <div class="states">
+    <div class="state"><div class="lbl">読み込み中</div><div class="body"><div class="pin">
+      <div class="phead"><span class="ptitle">ギフト内訳</span></div>
+      <div class="sk" style="width:78%"></div><div class="sk" style="width:60%"></div><div class="sk" style="width:69%"></div>
+    </div></div></div>
+    <div class="state"><div class="lbl">内訳なし（90日超）</div><div class="body"><div class="pin">
+      <div class="msg"><b>この期間の内訳は残っていません</b>ギフト明細は90日で削除されます。合計コイン数は集計から表示しています。</div>
+    </div></div></div>
+    <div class="state"><div class="lbl">取得エラー</div><div class="body"><div class="pin">
+      <div class="msg"><b>内訳を取得できませんでした</b>通信に失敗しました。</div><button class="retry">再試行</button>
+    </div></div></div>
+  </div>
+ </div>
+</div>
+
+<div class="scene dark">
+ <div class="wrap">
+  <h2 class="cap">同じ構成（Dark / prefers-color-scheme: dark）</h2>
+  <div class="tbl-box">
+   <table>
+    <thead><tr><th class="r" style="width:40px">#</th><th class="l">ユーザー</th><th class="r">💎</th><th class="r">🎁</th><th class="r">最終</th><th style="width:34px"></th></tr></thead>
+    <tbody>
+      <tr class="rank open"><td class="num rk">2</td>
+        <td><div class="u"><div class="av"></div><div><div class="nm">そらまめ</div><div class="hd">@soramame22</div></div></div></td>
+        <td class="num dia">31,540</td><td class="num mut">198</td><td class="num mut" style="font-size:12px">11分前</td>
+        <td style="text-align:center"><button class="chev open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button></td></tr>
+      <tr><td class="panel" colspan="6"><div class="pin">
+        <div class="phead"><span class="ptitle">ギフト内訳</span><span class="mut" style="font-size:.7rem">7種類 · 198回 · 31,540</span><span class="pnote">2026-06-19 以降のみ</span></div>
+        <div class="grid">
+          <div class="gline"><div class="gimg"></div><span class="gname">Galaxy</span><span class="gcnt">×3</span><span class="gval">3,000</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">Universe</span><span class="gcnt">×1</span><span class="gval">2,999</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">ライオン</span><span class="gcnt">×5</span><span class="gval">2,450</span></div>
+          <div class="gline"><div class="gimg"></div><span class="gname">Interstellar</span><span class="gcnt">×2</span><span class="gval">2,000</span></div>
+        </div>
+      </div></td></tr>
+    </tbody>
+   </table>
+  </div>
+ </div>
+</div>
+
+</body>
+</html>

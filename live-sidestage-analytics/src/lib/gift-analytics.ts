@@ -85,7 +85,7 @@ function dayKeyLowerBound(where: GiftAggregateWhere): string | null {
   return null;
 }
 
-function dayKeyUpperBound(where: GiftAggregateWhere): string | null {
+export function dayKeyUpperBound(where: GiftAggregateWhere): string | null {
   if (where.dayKey) return where.dayKey.lte;
   if (where.receivedAt) return dayKeyOf(where.receivedAt.lte);
   return null;
@@ -97,11 +97,11 @@ function dayKeyUpperBound(where: GiftAggregateWhere): string | null {
  * `raw` は現行実装と1文字も変わらないクエリを投げる経路。**通常運用のリクエストは
  * ここで抜ける**(下限が80日前より新しければ AppSetting すら読まない)。
  */
-type SplitPlan =
+export type SplitPlan =
   | { kind: "raw" }
   | { kind: "split"; cutoffDayKey: string; rollupLower: string | null; rollupUpper: string | null };
 
-async function planSplit(where: GiftAggregateWhere, now: Date): Promise<SplitPlan> {
+export async function planSplit(where: GiftAggregateWhere, now: Date): Promise<SplitPlan> {
   const lower = dayKeyLowerBound(where);
   if (isWithinRawGiftWindow(lower, now)) return { kind: "raw" };
 
@@ -117,7 +117,7 @@ async function planSplit(where: GiftAggregateWhere, now: Date): Promise<SplitPla
 }
 
 /** 分割時に Gift 側へ渡す where(カットオフ以降だけを読ませる)。範囲が空なら null。 */
-function narrowToRawWindow(
+export function narrowToRawWindow(
   where: GiftAggregateWhere,
   cutoffDayKey: string
 ): GiftAggregateWhere | null {
