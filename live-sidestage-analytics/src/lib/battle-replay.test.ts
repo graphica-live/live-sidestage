@@ -576,7 +576,7 @@ describe("buildPayload の区間(segments)", () => {
     expect(payload.segments).toEqual([]);
   });
 
-  it("ボーナス区間は報酬の開始・終了が揃ったものだけ帯にし、カウントダウンは出さない", () => {
+  it("ボーナス区間は報酬の開始・終了が揃ったものだけ帯にし、実測の終了時刻なのでカウントダウンを許可する", () => {
     const payload = buildPayload(
       row({
         bonusMissions: [
@@ -601,7 +601,7 @@ describe("buildPayload の区間(segments)", () => {
         endMs: 180_000,
         multiplier: 3,
         label: "ボーナス×3倍",
-        showCountdown: false,
+        showCountdown: true,
       },
     ]);
   });

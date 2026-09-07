@@ -52,7 +52,7 @@ last_reviewers: [deepseek-v4-flash, fable]
 | TC-BRA-021 | 両陣営のギフトを時刻順に併合し、相手側は添字1を指す | `buildPayload` | 回帰 | 両陣営に交互の時刻でイベント | `giftEvents` の `[t, a]` が `[10000,0] [20000,1] [30000,0] [40000,1]` | `[unit]` | PASS | 自陣営(添字0)だけの検証では添字の正しさを保証できない |
 | TC-BRA-022 | 初ギフトx倍の帯は区間が実測できたときだけ出す | `buildPayload` | 境界/negative | `openingWindow*` が null / 実測値あり / `confidence: "unknown"` / `measured` だが倍率 null | null・unknown・倍率nullは区間なし。実測値ありのみ帯を作り `showCountdown: true` | `[unit]` | PASS | 60秒は仮定値。仮定から残り秒数を見せない |
 | TC-BRA-023 | `inferred` でも区間が実測できていれば帯を作り confidence をそのまま載せる | `buildPayload` | 境界 | `confidence: "inferred"` + 実測区間 | `kind: "opening"` / `confidence: "inferred"` | `[unit]` | PASS | クライアントが赤帯とチップを出し分ける根拠 |
-| TC-BRA-024 | ボーナス区間は報酬の開始・終了が揃ったものだけ帯にする | `buildPayload` | 境界/データ欠損 | `rewardStartedAt` / `rewardEndedAt` が欠けた行と揃った行 | 揃った行だけ帯になり `showCountdown: false` | `[unit]` | PASS | 画面下部で opening と競合する |
+| TC-BRA-024 | ボーナス区間は報酬の開始・終了が揃ったものだけ帯にする | `buildPayload` | 境界/データ欠損 | `rewardStartedAt` / `rewardEndedAt` が欠けた行と揃った行 | 揃った行だけ帯になり `showCountdown: true` | `[unit]` | PASS | `rewardEndedAt` は TikTok が配信する実測値。opening と重なった区間は `segmentAt` が opening を優先する |
 | TC-BRA-025 | opening とボーナスが両方あれば開始時刻の昇順で並ぶ | `buildPayload` | 回帰 | opening(0-48s) + bonus(150-180s) | `segments` の kind が `opening` → `bonus_reward` | `[unit]` | PASS | クライアントの「重なったら opening 優先」が並び順に依存する |
 | TC-BRA-026 | 確定済みバトルは再生ペイロードを返し、未確定・スコア点なしは理由コードを返す | `queryBattleReplay` | 正常/異常 | 確定済み / armies 無しで確定 / 未確定の battleId | 順に ok、`no_score_points`、`not_finalized` | `[itg]` | PASS | roomId で絞るので他人のバトルは引けない |
 | TC-BRA-027 | 実際に読めたスコア点が足りなければ再生不可にする | `queryBattleReplay` | 回帰/競合 | 確定後にスコア点だけ削除し件数列は残す | `no_score_points`(件数列だけを信用しない) | `[itg]` | PASS | ネストした select は1トランザクションにまとまらない |

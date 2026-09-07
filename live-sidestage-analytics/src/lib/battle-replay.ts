@@ -256,9 +256,9 @@ function buildSegments(row: ReplayRow): ReplaySegment[] {
       endMs: clamp(mission.rewardEndedAt),
       multiplier: mission.rewardMultiple,
       label: `ボーナス×${mission.rewardMultiple}倍`,
-      // ボーナス区間はTikTokが終了時刻を配信してくるが、帯の性質上カウントダウンは出さない
-      // (画面下部でopeningと競合するため。重なったらクライアントがopeningを優先する)。
-      showCountdown: false,
+      // `rewardEndedAt` は TikTok が配信してくる実測値なので残り秒数を出してよい。
+      // opening と重なった区間は `segmentAt` が opening を優先するので帯は競合しない。
+      showCountdown: true,
     });
   }
 
