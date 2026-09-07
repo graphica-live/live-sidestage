@@ -1264,6 +1264,56 @@ async function saveGift(
   }
 }
 
+// 同時実行中のlistener comment createの上限。chatはgiftよりはるかに高頻度なので、
+// 無制限にfire-and-forgetすると、DBが一時的に遅延した瞬間にPrismaコネクションプールを
+// コメント書き込みが埋め尽くし、同じプールを使うsaveGift/saveComboGift(金銭データ)が
+// pool timeoutで落ちる経路になりうる(外部レビュー指摘)。超過分は保存を諦めてログのみ
+// (この用途では取りこぼし許容、schema.prismaのListenerCommentコメント参照)。
+const LISTENER_COMMENT_SAVE_CONCURRENCY_LIMIT = 12;
+let listenerCommentSaveInFlight = 0;
+
+// リスナーコメント保存(AI傾向分析用の生ログ、30日retention)。GiftのfindFirst事前
+// 重複チェックは行わない — chat流量はgiftよりはるかに多く、インメモリdedup
+// (rememberMsgId, CHAT_DEDUP_CACHE_SIZE)が正常系の重複をほぼ弾いているため。
+// 例外は伝播させずログのみに倒す(fire-and-forgetで呼ばれるため、unhandled
+// promise rejectionでworkerプロセスが落ちるのを防ぐ)。
+// 保存に失敗してもmsgIdのFIFO(rememberMsgId)からは戻さない — chatのFIFOは
+// socket配信の二重送信防止が目的で、配信は保存より先に完了しているため、
+// giftのforgetMsgIdと同じ「失敗時に外して再送で拾い直す」動きを真似ると
+// 逆に二重配信を招く。
+async function saveListenerComment(
+  roomId: string,
+  data: Record<string, unknown>,
+  receivedAt: Date,
+  timeSource: "tiktok" | "fallback"
+): Promise<void> {
+  if (listenerCommentSaveInFlight >= LISTENER_COMMENT_SAVE_CONCURRENCY_LIMIT) {
+    console.warn(
+      `[listener] listener comment save skipped: concurrency limit(${LISTENER_COMMENT_SAVE_CONCURRENCY_LIMIT}) reached (room=${roomId})`
+    );
+    return;
+  }
+  listenerCommentSaveInFlight += 1;
+  try {
+    await prisma.listenerComment.create({
+      data: {
+        roomId,
+        uniqueId: String(data.uniqueId || ""),
+        nickname: String(data.nickname || ""),
+        comment: String(data.comment || ""),
+        receivedAt,
+        timeSource,
+        dayKey: jstDateKey(receivedAt),
+        msgId: resolveMsgId(data),
+      },
+    });
+  } catch (err: unknown) {
+    console.error("[listener] listener comment save error:", err);
+  } finally {
+    listenerCommentSaveInFlight -= 1;
+  }
+}
+
 // getBattleItemCardSender()が返すのは生のprotobuf User(simplifyObjectはネスト内のsenderを
 // 平坦化しない)なので、Gift保存で使うgetPreferredPictureFormat相当の選択を自前で行う。
 // data-converter.ts の getPreferredPictureFormat と同じ優先順位(100x100 webp > jpeg > shrink無し > 先頭)。
@@ -2300,7 +2350,7 @@ async function connectAndAttach(
       return;
     }
 
-    const { time: eventTime } = resolveEventTime(data);
+    const { time: eventTime, source: timeSource } = resolveEventTime(data);
     // エモートだけのコメントは comment が空で届く。**空のまま配信すると、モバイルは
     // 画面に何も出せず、読み上げも空文字をVOICEVOXへ渡して例外になる。**
     // comment 自体は生テキストのまま変えず、別フィールドで足す(理由は
@@ -2317,6 +2367,8 @@ async function connectAndAttach(
     };
     // 同じ部屋を複数のStreamerが購読している場合、全員分のchatルームへ配信する。
     notifyChatComment(Array.from(inst.subscriberIds), payload);
+    // DB保存はsocket配信をブロックしないfire-and-forget(AI傾向分析用の生ログ、30日retention)。
+    saveListenerComment(roomId, data, eventTime, timeSource);
   });
 
   // フォローはモバイルの効果音トリガー専用(集計・保存はしない)。

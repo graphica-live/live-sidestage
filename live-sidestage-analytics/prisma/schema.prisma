@@ -350,6 +350,7 @@ model TiktokRoom {
 
   streamers          Streamer[]
   gifts              Gift[]
+  listenerComments   ListenerComment[]
   battles            TiktokBattle[]
   battleItemUses     TiktokBattleItemUse[]
   battleBonusMissions TiktokBattleBonusMission[]
@@ -832,6 +833,45 @@ model Gift {
   // すべて roomId 先頭なので、これが無いと日次の削除が gifts のフルスキャンになる。
   @@index([dayKey])
   @@map("gifts")
+  @@schema("public")
+}
+
+// リスナーコメント(chat)の生ログ。将来のAIによるコメント傾向分析用途で保存する。
+// **受信から30日で自動削除される**(listener-comment-retention.ts)。Giftと違い
+// 金銭的価値を持たず流量もはるかに多いため、削除前のロールアップ集計は行わない
+// (分析要件が未確定な段階で集計テーブルを固定すると、要件変更のたびに壊れるため)。
+//
+// unique制約は張らない。Gift同様の理由: roomIdは配信セッションではなく永続的な
+// TiktokRoom.idで、将来msgIdが再利用されると正当なコメントを恒久的に弾みうる。
+// 加えて prisma db push はコンテナ起動時に走るため、既存の重複行があると
+// unique index作成に失敗してWebが起動しなくなる。
+//
+// profileImageUrlは持たない。TikTokのプロフィール画像URLは署名付きで数十時間で
+// 失効し(avatar-storage.tsの再保存を経ないと恒久表示できない)、この用途は
+// テキスト分析が主眼で画像表示を要さないため。
+model ListenerComment {
+  id         String   @id @default(cuid())
+  roomId     String
+  uniqueId   String
+  nickname   String
+  comment    String
+  receivedAt DateTime @default(now())
+  timeSource String   @default("tiktok") // "tiktok" | "fallback"。Gift同様、TikTok createTime欠落/不正時はサーバー受信時刻を使う
+  dayKey     String
+  // TikTok common.msgId。resolveMsgId()がprotobufの既定値等をnullにする。
+  // インメモリdedup(rememberMsgId, tiktok-listener.ts)が正常系の重複をほぼ弾いており、
+  // DB側の事前重複チェックは行わない(chat流量はgiftよりはるかに多く、都度のfindFirstは
+  // 書き込み負荷に見合わない。多少の重複が残ってもAI傾向分析用途では実害が軽微)。
+  msgId      String?
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, dayKey])
+  @@index([roomId, receivedAt])
+  // 30日retentionの削除バッチは dayKey 単体で絞る(listener-comment-retention.ts)。
+  // 他のindexは全部roomId先頭なので、これが無いと削除がフルスキャンになる。
+  @@index([dayKey])
+  @@map("listener_comments")
   @@schema("public")
 }
 
