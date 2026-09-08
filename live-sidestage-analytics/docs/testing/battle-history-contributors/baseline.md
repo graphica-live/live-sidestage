@@ -30,6 +30,8 @@ last_reviewers: [Codex(low), DeepSeek(high), Codex(medium, user-requested), Gemi
 | 14 | `TeamContributorColumn`の貢献者一覧(`ExpandableContributorRow`)の頭出し表示 | 同上シードに貢献者12名以上を追加(`totalDiamonds`降順)→ Playwrightで貢献者欄を確認 | 各行の先頭が旧アイコン(展開用の三角矢印)ではなく降順の順位番号(1,2,3…)で表示される |
 | 15 | 14のケースで順位が2桁(10以上)になったとき | 同上、貢献者欄を最下部までスクロールして確認 | 2桁の順位でもアバターアイコンの左端位置が1桁の行と揃ったまま(`w-4 text-right tabular-nums`の固定幅右寄せで桁数によるズレが無い) |
 | 17 | mobile向けcontributors routeが確定済みバトルの陣営別内訳(`teams`)を返す(2陣営) | `npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/contributors/route.integration.test.ts"`(手動シード`BattleHistory`+`BattleHistoryParticipant`2件、side:self/opponent) | `body.teams`が2件、`teams[0].isSelf===true`・`teams[1].isSelf===false`・`selectorMode==="aggregate"` |
+| 18 | `teams===null` かつ貢献者1名以上のフォールバック表示で、自陣営リストが2列gridの左半分に収まる | `TiktokBattle`(action=OPEN, endedAt=null, startedAt=直近60秒前)+自room宛`Gift`2件をシード(`npm run seed:battle-live:local`)→ Playwrightで詳細モーダルを撮影 | 貢献者セクションが`grid-cols-2`で描画され、左列(自陣営・🪙額を含む)が中央仕切りを越えて右へはみ出さない |
+| 19 | 同じフォールバック表示で相手側に「集計中…」が点滅表示される | 18と同一シード、`OpponentPendingPlaceholder`(`BattleDetailModal.tsx`)を実ブラウザで確認 | 右列に`集計中…`が`animate-pulse`付きで表示される |
 
 ## 境界
 
@@ -38,6 +40,7 @@ last_reviewers: [Codex(low), DeepSeek(high), Codex(medium, user-requested), Gemi
 | 4 | `Gift.nickname` が空文字(TikTok側nickname未提供)のギフト送信者 | 手動シード(`local_test_streamer`ルームへnickname:""のGiftを作成)→ `/analytics` バトル履歴タブでモーダルを開く | `aggregateGiftUsers` の表示名が `uniqueId` にフォールバックする(空文字のまま表示されない) |
 | 5 | 4のケースで `FallbackContributorList`(狭い1カラム) | 同上、実ブラウザで確認 | アバター+名前(flex-1 truncate)+💎コイン数のみを1行で表示し、`@uniqueId` の重複表示や折り返しによるレイアウト崩れが起きない |
 | 11 | 絵文字混在・長い配信者名(例:「Nana☺️🐾ファンダム最強伝説」「けん玉最弱王2nd配信中〜今日も練習配信するよ〜」)の`TeamCard`ラベルおよび`TeamContributorColumn`セレクタボタン群(「合算」+参加者ごとのボタン) | 手動シード+Playwright(390px/900px両方の幅で確認) | `TeamCard`ラベルは改行されず`truncate`で1行省略表示される。`TeamContributorColumn`のセレクタボタン群は名前の長さ・ボタン数に関わらず常に1段で表示され(折り返さない)、親幅に収まらない場合は各ボタンが均等に縮小し`truncate`で省略される(ボタンが枠外にはみ出さない)。左右の貢献者パネルの高さ・対称性が崩れない |
+| 20 | 貢献者0件(境界)のフォールバック表示は2列gridにしない | 貢献者0件・`teams===null`のバトルで詳細モーダルを開く | 「バトル区間を確定できないため集計できません」/「このバトルへの貢献者なし」のいずれかが表示され、grid化・「集計中…」の表示は起きない |
 
 ## 異常
 
