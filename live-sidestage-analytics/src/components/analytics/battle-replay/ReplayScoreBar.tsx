@@ -55,7 +55,15 @@ export function ReplayScoreBar({
           {value.toLocaleString("ja-JP")}
         </div>
       ))}
-      <div className={boosting ? "replay-clock replay-clock--boost" : "replay-clock"}>
+      <div
+        className={
+          durationMs - elapsedMs <= 0
+            ? "replay-clock replay-clock--ended"
+            : boosting
+              ? "replay-clock replay-clock--boost"
+              : "replay-clock"
+        }
+      >
         {formatClock(Math.max(0, durationMs - elapsedMs))}
       </div>
     </div>

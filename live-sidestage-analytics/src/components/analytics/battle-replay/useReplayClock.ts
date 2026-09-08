@@ -38,6 +38,16 @@ const FRAME_INTERVAL_MS = 1000 / 30;
 export const DEFAULT_REPLAY_SPEED = 4;
 
 /**
+ * バトル終了(durationMs到達)後も、この猶予だけ内部時計を進めてから止める。
+ * カード表示(`REPLAY_BAR_LIFETIME_MS` = 4000ms)・大ギフト演出(`BIG_GIFT_DURATION_MS` = 3200ms)
+ * が elapsedMs の純関数として自然にフェードアウトできるようにするため
+ * (即座に止めると、終了間際に出た演出が最後の見た目のまま残り続ける)。
+ * 猶予中も `elapsedMs` は durationMs を超えて増え続けるので、表示に使う側は
+ * 必要に応じて durationMs へクランプすること。
+ */
+export const END_FADE_MS = 4200;
+
+/**
  * 既定の時刻源は**モジュールスコープに置く**。引数の既定値としてその場で関数を作ると
  * レンダーのたびに別の関数になり、`now` に依存する rAF の effect が毎レンダー貼り直されて
  * 基準点が 0 に戻る(再生位置が進まなくなる)。
@@ -145,8 +155,8 @@ export function useReplayClock(durationMs: number, options: ReplayClockOptions =
         appliedBoostRef.current = wanted;
       }
 
-      if (next >= durationMs) {
-        setElapsedMs(durationMs);
+      if (next >= durationMs + END_FADE_MS) {
+        setElapsedMs(durationMs + END_FADE_MS);
         setPlaying(false);
         return;
       }
