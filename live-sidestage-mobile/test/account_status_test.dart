@@ -5,7 +5,7 @@ void main() {
   group('AccountStatus.fromJson', () {
     test('サーバー応答をそのままパースする', () {
       final status = AccountStatus.fromJson({
-        'userId': 'u1',
+        'principalId': 'u1',
         'plan': 'ULTRA',
         'mobileBetaActive': true,
         'planLabel': 'βULTRA',
@@ -15,7 +15,7 @@ void main() {
         'maintenanceMode': false,
       });
 
-      expect(status.userId, 'u1');
+      expect(status.principalId, 'u1');
       expect(status.plan, 'ULTRA');
       expect(status.mobileBetaActive, isTrue);
       expect(status.planLabel, 'βULTRA');

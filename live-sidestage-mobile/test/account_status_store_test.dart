@@ -29,12 +29,12 @@ class _FakeApi extends LiveAnalyticsApi {
 }
 
 AccountStatus _status({
-  String userId = 'u1',
+  String principalId = 'u1',
   String plan = 'PRO',
   bool mobileBetaActive = false,
 }) =>
     AccountStatus(
-      userId: userId,
+      principalId: principalId,
       plan: plan,
       mobileBetaActive: mobileBetaActive,
       planLabel: mobileBetaActive ? 'β$plan' : plan,
@@ -91,8 +91,8 @@ void main() {
   test('取得中に別ユーザーへ切り替わったら古い結果を捨てる', () async {
     final gate = Completer<void>();
     final api = _FakeApi()
-      ..byToken['tok-old'] = _status(userId: 'old', plan: 'ULTRA')
-      ..byToken['tok-new'] = _status(userId: 'new', plan: 'FREE')
+      ..byToken['tok-old'] = _status(principalId: 'old', plan: 'ULTRA')
+      ..byToken['tok-new'] = _status(principalId: 'new', plan: 'FREE')
       ..gateByToken['tok-old'] = gate;
     final store = AccountStatusStore(api: api);
 
@@ -105,7 +105,7 @@ void main() {
     gate.complete();
     await oldRefresh;
     expect(store.status.plan, 'FREE');
-    expect(store.status.userId, 'new');
+    expect(store.status.principalId, 'new');
   });
 
   test('reset()はfallbackへ戻しloaded=falseにする', () async {

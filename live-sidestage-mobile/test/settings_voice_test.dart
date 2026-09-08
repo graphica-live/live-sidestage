@@ -21,7 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // このファイルのテストはプラン制限とは無関係な既存挙動(ボイス選択・音量)の確認が目的。
 // FREE(fallback)だとボイス選択がロックされてしまうので、ULTRA相当で固定して検証する。
 const _ultraStatus = AccountStatus(
-  userId: 'u1',
+  principalId: 'u1',
   plan: 'ULTRA',
   mobileBetaActive: false,
   planLabel: 'ULTRA',

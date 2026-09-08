@@ -8,7 +8,7 @@ AccountStatus _status({
   List<String> features = const [],
 }) =>
     AccountStatus(
-      userId: 'u1',
+      principalId: 'u1',
       plan: plan,
       mobileBetaActive: mobileBetaActive,
       planLabel: mobileBetaActive ? 'β$plan' : plan,

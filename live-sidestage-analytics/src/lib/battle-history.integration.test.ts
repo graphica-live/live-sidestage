@@ -13,6 +13,11 @@ import { queryBattles, queryBattleContributors } from "./battle-history";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 import { makeTiktokUid } from "./__fixtures__/gift";
 
+// このファイルが upsert する TikTokUser の uid。tiktok_users は room を持たない
+// グローバルテーブルで TiktokRoom の cascade では消えないため、afterAll で明示的に片付ける
+// (残すと同じハンドルを引く他ファイルの listenerQuery テストへ混ざる)。
+const createdTiktokUids = new Set<string>();
+
 const SELF_TIKTOK_ID = "itest_battle_self";
 const OPPONENT_B_TIKTOK_ID = "itest_battle_opponent_b";
 const OPPONENT_C_TIKTOK_ID = "itest_battle_opponent_c";
@@ -58,6 +63,7 @@ afterAll(async () => {
   await prisma.tiktokRoom.delete({ where: { id: selfRoomId } }).catch(() => {}); // cascades TiktokBattle
   await prisma.tiktokRoom.delete({ where: { id: opponentBRoomId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: opponentCRoomId } }).catch(() => {});
+  await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [...createdTiktokUids] } } }).catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -680,6 +686,7 @@ describe("queryBattles listenerQuery", () => {
   async function makeGift(overrides: GiftOverrides) {
     const { tiktokHandle = "listener_user", nickname = "リスナー", ...giftOverrides } = overrides;
     const tiktokUid = giftOverrides.tiktokUid ?? makeTiktokUid(tiktokHandle);
+    createdTiktokUids.add(tiktokUid);
     await prisma.tikTokUser.upsert({
       where: { tiktokUid },
       create: { tiktokUid, tiktokHandle, nickname },
@@ -785,6 +792,7 @@ describe("queryBattles listenerQuery", () => {
       await prisma.tiktokBattle.createMany({ data: battles });
       const tiktokHandle = `${prefix}_listener`;
       const tiktokUid = makeTiktokUid(tiktokHandle);
+      createdTiktokUids.add(tiktokUid);
       await prisma.tikTokUser.upsert({
         where: { tiktokUid },
         create: { tiktokUid, tiktokHandle, nickname: "境界人数リスナー" },
@@ -894,6 +902,7 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
   async function finalGift(overrides: FinalGiftOverrides = {}) {
     const { tiktokHandle = "final_listener", nickname = "ライブ側リスナー", ...giftOverrides } = overrides;
     const tiktokUid = giftOverrides.tiktokUid ?? makeTiktokUid(tiktokHandle);
+    createdTiktokUids.add(tiktokUid);
     await prisma.tikTokUser.upsert({
       where: { tiktokUid },
       create: { tiktokUid, tiktokHandle, nickname },

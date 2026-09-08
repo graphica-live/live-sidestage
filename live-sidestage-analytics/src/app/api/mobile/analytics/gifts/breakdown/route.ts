@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const query = parseRangeQuery(searchParams, jstDateKey());
   if (!query.ok) return query.response;
 
-  const planDenied = await requireHistoryPlan(ctx.streamer.userId, { range: query.value, listenerQuery: null });
+  const planDenied = await requireHistoryPlan(ctx.streamer.principalId, { range: query.value, listenerQuery: null });
   if (planDenied) return planDenied;
 
   let where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } };
