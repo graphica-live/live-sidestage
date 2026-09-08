@@ -423,9 +423,7 @@ describe("buildPayload", () => {
     expect(present.opponentGiftsMissing).toBe(false);
   });
 
-  it("公開バリアントはリスナーのアバターURLを載せない(URLがハンドルを含むため)", () => {
-    // 署名付きURLのオブジェクトキーは `avatars/gift-sender/<uniqueId>.webp`。
-    // URLをそのまま載せると uniqueId を落とした意味が無くなる。
+  it("公開バリアントもリスナーのアバターURLを載せる(2026-09-08、配信者の明示判断で解禁。uniqueIdは引き続き落とす)", () => {
     const senderAvatars = new Map([
       ["fan_a", "https://bucket.test/avatars/gift-sender/fan_a.webp?X-Amz-Signature=deadbeef"],
     ]);
@@ -440,8 +438,8 @@ describe("buildPayload", () => {
     });
 
     const pub = buildPayload(input, "public", anchorAvatars, senderAvatars, NO_CATALOG);
-    expect(pub.senders[0].a).toBeNull();
-    expect(JSON.stringify(pub)).not.toContain("fan_a");
+    expect(pub.senders[0].a).toBe(senderAvatars.get("fan_a"));
+    expect(pub.senders[0].u).toBeNull();
     // 配信者側は anchorId(TikTokの数値userId)で、ペイロードの anchors に載せている値そのもの。
     expect(pub.teams[0].participants[0].avatarUrl).toBe(anchorAvatars.get("anchor_self"));
 
