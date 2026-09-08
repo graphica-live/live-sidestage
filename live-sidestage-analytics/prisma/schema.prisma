@@ -44,7 +44,38 @@ model User {
   subscriptions          Subscription[]
   stripeCustomerLink     StripeCustomerLink?
   pendingPurchaseIntents PendingPurchaseIntent[]
+  ambassador             Ambassador?
+  ambassadorInvitesUsed  AmbassadorInvite[]
 
+  @@schema("public")
+}
+
+// アンバサダー資格そのもの。Ambassador行がある = PROプラン無料(getUserPlan()参照)。
+// 管理者画面(/admin/ambassadors)から招待URL経由の先着1名指定、または既存ユーザーへの
+// 直接指定のいずれかで作られる。
+model Ambassador {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+// アンバサダー招待URLの発行記録。token経由で新規登録した先着1名だけが
+// usedAt/usedByUserIdを埋めてAmbassadorへ確定する(claim-ambassador-invite.ts)。
+// 期限切れ(expiresAt超過)の行は ambassador-invite-retention.ts が定期削除する
+// (使用済み・未使用を問わない。Ambassador本体は別テーブルに残るため削除して問題ない)。
+model AmbassadorInvite {
+  id           String    @id @default(cuid())
+  token        String    @unique
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  usedAt       DateTime?
+  usedByUserId String?
+  usedByUser   User?     @relation(fields: [usedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
   @@schema("public")
 }
 

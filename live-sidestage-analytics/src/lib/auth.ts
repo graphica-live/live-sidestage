@@ -1,11 +1,14 @@
 import type { NextAuthOptions } from "next-auth";
 import type { Adapter } from "next-auth/adapters";
 import type { JWT } from "next-auth/jwt";
+import { cookies } from "next/headers";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "./prisma";
 import { markLastActive } from "./mark-last-active";
+import { AMBASSADOR_INVITE_COOKIE } from "./ambassador/invite-cookie";
+import { claimAmbassadorInviteForNewUser } from "./ambassador/ambassador";
 
 /// `allowDangerousEmailAccountLinking` のメール一致リンクを
 /// **Account を1件も持たない User だけ**に絞るためのラッパ。
@@ -113,6 +116,30 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) session.user.id = token.id as string;
       return session;
+    },
+  },
+  events: {
+    // 実際に新規Userが作られたときだけ発火する(既存ユーザーの通常ログインでは呼ばれない)。
+    // これにより「招待URL経由で新規作成された」ことをcreatedAtの近似ではなく確実に判定できる。
+    async createUser({ user }) {
+      let token: string | undefined;
+      try {
+        token = cookies().get(AMBASSADOR_INVITE_COOKIE)?.value;
+      } catch {
+        // Route Handler以外の呼び出し経路(将来的な変更等)でcookies()が使えない場合は
+        // アンバサダー付与をスキップするだけで、サインアップ自体は失敗させない。
+        return;
+      }
+      if (!token || !user.id) return;
+
+      try {
+        await claimAmbassadorInviteForNewUser(token, user.id);
+      } catch (err) {
+        // アンバサダー付与の失敗でサインアップ自体を失敗させない。
+        // ここで失敗すると自動リトライは無い(このフックはUser作成時に一度だけ発火する)。
+        // token/userIdをログに残すのは、管理者が addAmbassadorByEmail で手動救済するため。
+        console.error("[auth] claimAmbassadorInviteForNewUser failed:", { token, userId: user.id, err });
+      }
     },
   },
 };
