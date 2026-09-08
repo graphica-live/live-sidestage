@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function MatchesPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
-    where: { id: params.id, ownerUserId: session!.user.id },
+    where: { id: params.id, ownerPrincipalId: session!.user.id },
     select: {
       id: true,
       title: true,
@@ -83,7 +83,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
               select: {
                 // 組み合わせ変更の楽観的排他に要る(クライアントが見ていた枠の中身)。
                 participantId: true,
-                participant: { select: { displayName: true, tiktokId: true, roomId: true } },
+                participant: { select: { displayName: true, tiktokHandle: true, roomId: true } },
               },
             },
           },
@@ -92,7 +92,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
     }),
     prisma.eventParticipant.findMany({
       where: { eventId: event.id, status: "ACTIVE" },
-      select: { id: true, displayName: true, tiktokId: true },
+      select: { id: true, displayName: true, tiktokHandle: true },
     }),
     prisma.eventTeam.findMany({
       where: { eventId: event.id },
@@ -104,7 +104,7 @@ export default async function MatchesPage({ params }: { params: { id: string } }
         participants: {
           where: { status: "ACTIVE" },
           orderBy: { joinedAt: "asc" },
-          select: { id: true, displayName: true, tiktokId: true },
+          select: { id: true, displayName: true, tiktokHandle: true },
         },
       },
     }),
@@ -117,8 +117,8 @@ export default async function MatchesPage({ params }: { params: { id: string } }
       : Promise.resolve([]),
   ]);
 
-  const label = (p: { displayName: string; tiktokId: string }) =>
-    `${p.displayName} (@${p.tiktokId})`;
+  const label = (p: { displayName: string; tiktokHandle: string }) =>
+    `${p.displayName} (@${p.tiktokHandle})`;
 
   const optionsById = new Map<string, EntrantOption>(
     event.entryMode === "TEAM"

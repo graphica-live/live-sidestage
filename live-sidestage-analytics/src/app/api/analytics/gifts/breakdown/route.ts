@@ -11,17 +11,17 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const uniqueId = searchParams.get("uniqueId");
-  if (!uniqueId) return NextResponse.json({ error: "uniqueId is required" }, { status: 400 });
+  const tiktokUid = searchParams.get("tiktokUid");
+  if (!tiktokUid) return NextResponse.json({ error: "tiktokUid is required" }, { status: 400 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
     select: { roomId: true },
   });
 
   if (!streamer || !streamer.roomId) {
     return NextResponse.json({
-      uniqueId,
+      tiktokUid,
       gifts: [],
       total: { repeatCount: 0, totalDiamonds: 0 },
       coverage: { detailAvailable: false, rawFrom: null, partial: false },
@@ -32,6 +32,6 @@ export async function GET(req: NextRequest) {
   const range = parseBreakdownRange(searchParams);
   if (!range.ok) return NextResponse.json({ error: range.error }, { status: 400 });
 
-  const result = await queryGiftBreakdown(streamer.roomId, uniqueId, range.where);
+  const result = await queryGiftBreakdown(streamer.roomId, tiktokUid, range.where);
   return NextResponse.json({ ...result, dateRange: range.dateRange });
 }

@@ -19,11 +19,18 @@ const SAMPLE_GIFTS = [
   { giftName: "Universe", giftId: 6478, diamondCount: 34999 },
 ];
 
+// tiktokUid は TikTok の不変な数値ID。表示名は TikTokUser 側にだけ持たせる。
 const SAMPLE_USERS = [
-  { uniqueId: "test_user_1", nickname: "テストユーザー1" },
-  { uniqueId: "test_user_2", nickname: "テストユーザー2" },
-  { uniqueId: "test_user_3", nickname: "テストユーザー3" },
+  { tiktokUid: "7000000000000000101", tiktokHandle: "test_user_1", nickname: "テストユーザー1" },
+  { tiktokUid: "7000000000000000102", tiktokHandle: "test_user_2", nickname: "テストユーザー2" },
+  { tiktokUid: "7000000000000000103", tiktokHandle: "test_user_3", nickname: "テストユーザー3" },
 ];
+
+const SELF_HOST = {
+  tiktokUid: "7000000000000000001",
+  tiktokHandle: "local_test_streamer",
+  nickname: "ローカル配信者",
+};
 
 async function main() {
   const user = await prisma.user.upsert({
@@ -32,18 +39,28 @@ async function main() {
     create: { email: DEV_EMAIL, name: "Dev Local" },
   });
 
+  // TikTokUser 行が無いと表示名がすべて null になり、ローカルでの目視確認が機能しない。
+  for (const u of [SELF_HOST, ...SAMPLE_USERS]) {
+    await prisma.tikTokUser.upsert({
+      where: { tiktokUid: u.tiktokUid },
+      update: { tiktokHandle: u.tiktokHandle, nickname: u.nickname },
+      create: u,
+    });
+  }
+
   const room = await prisma.tiktokRoom.upsert({
-    where: { tiktokId: "local_test_streamer" },
+    where: { hostTiktokUid: SELF_HOST.tiktokUid },
     update: {},
-    create: { tiktokId: "local_test_streamer" },
+    create: { hostTiktokUid: SELF_HOST.tiktokUid, tiktokHandle: SELF_HOST.tiktokHandle },
   });
 
   const streamer = await prisma.streamer.upsert({
-    where: { userId: user.id },
+    where: { principalId: user.id },
     update: { verified: true, roomId: room.id },
     create: {
-      userId: user.id,
-      tiktokId: "local_test_streamer",
+      principalId: user.id,
+      tiktokUid: SELF_HOST.tiktokUid,
+      tiktokHandle: SELF_HOST.tiktokHandle,
       verificationCode: "seeded",
       verified: true,
       verifiedAt: new Date(),
@@ -62,9 +79,7 @@ async function main() {
     const receivedAt = new Date(now - i * 6 * 60_000); // 6分おきに過去へ
     rows.push({
       roomId: room.id,
-      uniqueId: sender.uniqueId,
-      nickname: sender.nickname,
-      profileImageUrl: null,
+      tiktokUid: sender.tiktokUid,
       giftId: gift.giftId,
       giftName: gift.giftName,
       giftPictureUrl: null,

@@ -355,12 +355,12 @@ class LiveAnalyticsApi {
 
   Future<(String token, StreamerInfo streamer)> registerStreamer({
     required String token,
-    required String tiktokId,
+    required String tiktokHandle,
   }) async {
     final data = await _send(
       'POST',
       '/api/mobile/streamer',
-      {'tiktokId': tiktokId},
+      {'tiktokHandle': tiktokHandle},
       token: token,
     );
     return (
@@ -369,14 +369,14 @@ class LiveAnalyticsApi {
     );
   }
 
-  Future<StreamerInfo> updateTiktokId({
+  Future<StreamerInfo> updateTiktokHandle({
     required String token,
-    required String tiktokId,
+    required String tiktokHandle,
   }) async {
     final data = await _send(
       'PATCH',
       '/api/mobile/streamer',
-      {'tiktokId': tiktokId},
+      {'tiktokHandle': tiktokHandle},
       token: token,
     );
     return StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>);
@@ -464,7 +464,7 @@ class LiveAnalyticsApi {
   /// 貢献タブの行を展開したときの、送信者1人ぶんのギフト名別内訳。
   Future<GiftBreakdownResult> fetchGiftBreakdown({
     required String token,
-    required String uniqueId,
+    required String tiktokUid,
     required String period,
     required String date,
     DateTime? startDatetime,
@@ -478,7 +478,7 @@ class LiveAnalyticsApi {
           startDatetime: startDatetime,
           endDatetime: endDatetime,
         ),
-        'uniqueId': uniqueId,
+        'tiktokUid': tiktokUid,
       },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/gifts/breakdown?$query', null, token: token);

@@ -4,7 +4,7 @@
 // ここで作る TiktokRoom は monitoringSuspended: true にする。Streamer 0人の部屋も
 // watchedRoomFilter() の監視対象になったため、そのままだと並行して走る listener 系テストの
 // getMyRooms() がこの部屋をグローバルに claim して workerId / listenerStatus を書きに来る。
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
@@ -17,11 +17,15 @@ import {
   snapshotsEqual,
   type BattleSnapshot,
 } from "./battle-history-finalize";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const SELF_TIKTOK_ID = "itest_finalize_self";
 const NO_HOST_TIKTOK_ID = "itest_finalize_nohost";
-const OPPONENT_ANCHOR_ID = "finalize_host_opp";
-const SELF_ANCHOR_ID = "finalize_host_self";
+const OPPONENT_ANCHOR_ID = makeTiktokUid("finalize_host_opp");
+const SELF_ANCHOR_ID = makeTiktokUid("finalize_host_self");
+// このバトルの hostTiktokUids に含まれない配信者。自分側を特定できない room の再現に使う
+// (hostTiktokUid は NOT NULL になったので「未解決の room」はもう作れない)。
+const UNRELATED_ANCHOR_ID = makeTiktokUid("finalize_host_unrelated");
 
 const STARTED_AT = new Date("2026-08-10T10:00:00Z");
 const ENDED_AT = new Date("2026-08-10T10:05:00Z");
@@ -34,12 +38,12 @@ let noHostRoomId: string;
 
 beforeAll(async () => {
   const selfRoom = await prisma.tiktokRoom.create({
-    data: { monitoringSuspended: true, tiktokId: SELF_TIKTOK_ID, hostUserId: SELF_ANCHOR_ID },
+    data: { monitoringSuspended: true, tiktokHandle: SELF_TIKTOK_ID, hostTiktokUid: SELF_ANCHOR_ID },
   });
   selfRoomId = selfRoom.id;
-  // hostUserId が未解決(fill-onceのバックフィル待ち)の部屋。
+  // このバトルの参加者ではない配信者の部屋(自分側を特定できないケースの再現)。
   const noHostRoom = await prisma.tiktokRoom.create({
-    data: { monitoringSuspended: true, tiktokId: NO_HOST_TIKTOK_ID, hostUserId: null },
+    data: { monitoringSuspended: true, tiktokHandle: NO_HOST_TIKTOK_ID, hostTiktokUid: UNRELATED_ANCHOR_ID },
   });
   noHostRoomId = noHostRoom.id;
 });
@@ -60,12 +64,12 @@ beforeEach(async () => {
 });
 
 /** windowStartからのオフセット(秒)でarmies snapshotを作る。 */
-async function makeArmies(roomId: string, battleId: string, anchorId: string, offsetSec: number, score: string) {
+async function makeArmies(roomId: string, battleId: string, tiktokUid: string, offsetSec: number, score: string) {
   return prisma.tiktokBattleArmiesSnapshot.create({
     data: {
       roomId,
       battleId,
-      anchorId,
+      tiktokUid,
       score,
       occurredAt: new Date(STARTED_AT.getTime() + offsetSec * 1000),
     },
@@ -85,7 +89,7 @@ function battleData(
     startedAtEstimated: false,
     endedAt: ENDED_AT,
     durationSec: 300,
-    hostUserIds: [SELF_ANCHOR_ID, OPPONENT_ANCHOR_ID],
+    hostTiktokUids: [SELF_ANCHOR_ID, OPPONENT_ANCHOR_ID],
     hostScores: { [SELF_ANCHOR_ID]: "1200", [OPPONENT_ANCHOR_ID]: "900" },
     hostProfiles: {
       [SELF_ANCHOR_ID]: { displayId: "self_handle", nickName: "じぶん", avatarUrl: "https://example.invalid/a.jpg" },
@@ -95,12 +99,29 @@ function battleData(
   };
 }
 
-async function makeGift(roomId: string, overrides: Partial<Prisma.GiftUncheckedCreateInput> = {}) {
+/**
+ * Gift 1行 + その送信者の TikTokUser 行。
+ *
+ * **表示名(tiktokHandle / nickname)は Gift には無い。** 確定処理が TikTokUser から解決して
+ * *Snapshot へ凍結するので、テストでも同じ経路を通す。tiktokUid はハンドルから決定的に導く。
+ */
+type GiftOverrides = Omit<Partial<Prisma.GiftUncheckedCreateInput>, "roomId"> & {
+  tiktokHandle?: string;
+  nickname?: string;
+};
+
+async function makeGift(roomId: string, overrides: GiftOverrides = {}) {
+  const { tiktokHandle = "fin_user", nickname = "ふぁん", ...giftOverrides } = overrides;
+  const tiktokUid = giftOverrides.tiktokUid ?? makeTiktokUid(tiktokHandle);
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid },
+    create: { tiktokUid, tiktokHandle, nickname },
+    update: { tiktokHandle, nickname },
+  });
   return prisma.gift.create({
     data: {
       roomId,
-      uniqueId: "fin_user",
-      nickname: "ふぁん",
+      tiktokUid,
       giftId: 1,
       giftName: "Rose",
       repeatCount: 1,
@@ -108,7 +129,7 @@ async function makeGift(roomId: string, overrides: Partial<Prisma.GiftUncheckedC
       totalDiamonds: 5,
       dayKey: "2026-08-10",
       receivedAt: new Date(STARTED_AT.getTime() + 60 * 1000),
-      ...overrides,
+      ...giftOverrides,
     },
   });
 }
@@ -116,10 +137,10 @@ async function makeGift(roomId: string, overrides: Partial<Prisma.GiftUncheckedC
 describe("computeBattleSnapshot", () => {
   it("終了済み1vs1のスコア・参加者・貢献者を窓の中だけで集計する", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "snap_ok") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30, repeatCount: 3 });
-    await makeGift(selfRoomId, { uniqueId: "fan_b", nickname: "ビー", totalDiamonds: 10, repeatCount: 1 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30, repeatCount: 3 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_b", nickname: "ビー", totalDiamonds: 10, repeatCount: 1 });
     // 窓の外のギフトは混ぜない
-    await makeGift(selfRoomId, { uniqueId: "fan_c", nickname: "シー", totalDiamonds: 999, receivedAt: AFTER_WINDOW });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_c", nickname: "シー", totalDiamonds: 999, receivedAt: AFTER_WINDOW });
 
     const snapshot = await computeBattleSnapshot(selfRoomId, "snap_ok", NOW);
 
@@ -135,13 +156,12 @@ describe("computeBattleSnapshot", () => {
         side: "self",
         teamIndex: 0,
         position: 0,
-        anchorId: SELF_ANCHOR_ID,
-        tiktokId: SELF_TIKTOK_ID,
-        displayId: "self_handle",
-        nickName: "じぶん",
+        tiktokUid: SELF_ANCHOR_ID,
         score: "1200",
         roomId: selfRoomId,
-        uniqueIdSnapshot: "self_handle",
+        // 自分のハンドルは自room由来(`TiktokRoom.tiktokHandle`)を優先する。
+        // hostProfiles の displayId へ落ちるのは room から引けない相手側だけ。
+        tiktokHandleSnapshot: SELF_TIKTOK_ID,
         nicknameSnapshot: "じぶん",
         officialScore: "1200",
         isSelf: true,
@@ -154,13 +174,10 @@ describe("computeBattleSnapshot", () => {
         side: "opponent",
         teamIndex: 1,
         position: 0,
-        anchorId: OPPONENT_ANCHOR_ID,
-        tiktokId: null,
-        displayId: "opp_handle",
-        nickName: "あいて",
+        tiktokUid: OPPONENT_ANCHOR_ID,
         score: "900",
         roomId: null,
-        uniqueIdSnapshot: "opp_handle",
+        tiktokHandleSnapshot: "opp_handle",
         nicknameSnapshot: "あいて",
         officialScore: "900",
         isSelf: false,
@@ -171,7 +188,7 @@ describe("computeBattleSnapshot", () => {
       },
     ]);
     // roomId解決できた自分側だけgiftEventsが複製される(相手roomは未監視なのでnull)
-    expect(snapshot!.giftEvents.map((g) => [g.senderUniqueIdSnapshot, g.totalDiamonds]).sort()).toEqual([
+    expect(snapshot!.giftEvents.map((g) => [g.senderTiktokHandleSnapshot, g.totalDiamonds]).sort()).toEqual([
       ["fan_a", 30],
       ["fan_b", 10],
     ]);
@@ -179,36 +196,36 @@ describe("computeBattleSnapshot", () => {
 
   it("接続区間ログ(RoomConnectionInterval)が窓を覆っていればcaptureStatus: completeになる", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "snap_capture") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     await prisma.roomConnectionInterval.create({
       data: { roomId: selfRoomId, startedAt: STARTED_AT, endedAt: ENDED_AT },
     });
 
     const snapshot = await computeBattleSnapshot(selfRoomId, "snap_capture", NOW);
     expect(snapshot).not.toBeNull();
-    const self = snapshot!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    const self = snapshot!.participants.find((p) => p.tiktokUid === SELF_ANCHOR_ID);
     expect(self?.captureStatus).toBe("complete");
     expect(self?.captureCoverage).toBe(1);
   });
 
-  it("armiesを再生用スコア点へ複製する(窓外・participant外のanchorIdは捨てる)", async () => {
+  it("armiesを再生用スコア点へ複製する(窓外・participant外のtiktokUidは捨てる)", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "snap_points") });
     await makeArmies(selfRoomId, "snap_points", SELF_ANCHOR_ID, 0, "0");
     await makeArmies(selfRoomId, "snap_points", SELF_ANCHOR_ID, 60, "1200");
     await makeArmies(selfRoomId, "snap_points", OPPONENT_ANCHOR_ID, 61, "900");
-    // participantとして確定しないanchorId(観測の揺れ)は捨てる。
-    await makeArmies(selfRoomId, "snap_points", "finalize_host_ghost", 62, "5");
+    // participantとして確定しないtiktokUid(観測の揺れ)は捨てる。
+    await makeArmies(selfRoomId, "snap_points", makeTiktokUid("finalize_host_ghost"), 62, "5");
     // 窓の終了ちょうど(境界)は含める。
     await makeArmies(selfRoomId, "snap_points", SELF_ANCHOR_ID, 300, "1500");
     // 窓の外(バトル終了後)は複製しない。
     await prisma.tiktokBattleArmiesSnapshot.create({
-      data: { roomId: selfRoomId, battleId: "snap_points", anchorId: SELF_ANCHOR_ID, score: "9999", occurredAt: AFTER_WINDOW },
+      data: { roomId: selfRoomId, battleId: "snap_points", tiktokUid: SELF_ANCHOR_ID, score: "9999", occurredAt: AFTER_WINDOW },
     });
 
     const snapshot = await computeBattleSnapshot(selfRoomId, "snap_points", NOW);
 
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.scorePoints.map((p) => [p.anchorId, p.offsetMs, p.score])).toEqual([
+    expect(snapshot!.scorePoints.map((p) => [p.tiktokUid, p.offsetMs, p.score])).toEqual([
       // 窓の開始ちょうど = offsetMs 0、終了ちょうど = 窓長(境界は両端とも含む)。
       [SELF_ANCHOR_ID, 0, "0"],
       [SELF_ANCHOR_ID, 60_000, "1200"],
@@ -228,14 +245,14 @@ describe("computeBattleSnapshot", () => {
         {
           roomId: selfRoomId,
           battleId: "snap_refine_up",
-          anchorId: SELF_ANCHOR_ID,
+          tiktokUid: SELF_ANCHOR_ID,
           occurredAt: new Date(STARTED_AT.getTime() + 30_000),
           score: "3",
         },
         {
           roomId: selfRoomId,
           battleId: "snap_refine_up",
-          anchorId: SELF_ANCHOR_ID,
+          tiktokUid: SELF_ANCHOR_ID,
           occurredAt: new Date(STARTED_AT.getTime() + 200_000),
           score: "1200",
         },
@@ -243,7 +260,7 @@ describe("computeBattleSnapshot", () => {
     });
 
     const snapshot = await computeBattleSnapshot(selfRoomId, "snap_refine_up", NOW);
-    const self = snapshot!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    const self = snapshot!.participants.find((p) => p.tiktokUid === SELF_ANCHOR_ID);
     expect(self?.captureStatus).toBe("complete");
     // 格上げしてもcoverageは実測値のまま残す(監査用)。
     expect(self?.captureCoverage).toBeCloseTo(0.9, 5);
@@ -259,14 +276,14 @@ describe("computeBattleSnapshot", () => {
         {
           roomId: selfRoomId,
           battleId: "snap_refine_keep",
-          anchorId: SELF_ANCHOR_ID,
+          tiktokUid: SELF_ANCHOR_ID,
           occurredAt: new Date(STARTED_AT.getTime() + 30_000),
           score: "400",
         },
         {
           roomId: selfRoomId,
           battleId: "snap_refine_keep",
-          anchorId: SELF_ANCHOR_ID,
+          tiktokUid: SELF_ANCHOR_ID,
           occurredAt: new Date(STARTED_AT.getTime() + 200_000),
           score: "1200",
         },
@@ -274,17 +291,17 @@ describe("computeBattleSnapshot", () => {
     });
 
     const snapshot = await computeBattleSnapshot(selfRoomId, "snap_refine_keep", NOW);
-    const self = snapshot!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    const self = snapshot!.participants.find((p) => p.tiktokUid === SELF_ANCHOR_ID);
     expect(self?.captureStatus).toBe("partial");
     expect(self?.captureCoverage).toBeCloseTo(0.9, 5);
   });
 
   // 実データで3陣営以上のバトルを観測できていないため、TikTokのteamArmies由来の
-  // hostTeams(anchorId -> teamId)を3チーム分そろえたフィクスチャで検証する。
+  // hostTeams(tiktokUid -> teamId)を3チーム分そろえたフィクスチャで検証する。
   it("3陣営(1vs1vs1)を「自分1人vs残り全員」へ丸めず、陣営ごとにteamIndex・スコアを保存する", async () => {
     await prisma.tiktokBattle.create({
       data: battleData(selfRoomId, "snap_tri", {
-        hostUserIds: [SELF_ANCHOR_ID, "finalize_host_x", "finalize_host_y"],
+        hostTiktokUids: [SELF_ANCHOR_ID, "finalize_host_x", "finalize_host_y"],
         hostScores: { [SELF_ANCHOR_ID]: "1200", finalize_host_x: "900", finalize_host_y: "700" },
         hostTeams: { [SELF_ANCHOR_ID]: "1", finalize_host_x: "2", finalize_host_y: "3" },
         hostProfiles: {
@@ -303,15 +320,15 @@ describe("computeBattleSnapshot", () => {
     expect(snapshot!.opponentScore).toBeNull();
     expect(
       snapshot!.participants.map((p) => ({
-        anchorId: p.anchorId,
+        tiktokUid: p.tiktokUid,
         side: p.side,
         teamIndex: p.teamIndex,
         score: p.score,
       }))
     ).toEqual([
-      { anchorId: SELF_ANCHOR_ID, side: "self", teamIndex: 0, score: "1200" },
-      { anchorId: "finalize_host_x", side: "opponent", teamIndex: 1, score: "900" },
-      { anchorId: "finalize_host_y", side: "opponent", teamIndex: 2, score: "700" },
+      { tiktokUid: SELF_ANCHOR_ID, side: "self", teamIndex: 0, score: "1200" },
+      { tiktokUid: "finalize_host_x", side: "opponent", teamIndex: 1, score: "900" },
+      { tiktokUid: "finalize_host_y", side: "opponent", teamIndex: 2, score: "700" },
     ]);
 
     // 保存まで通ること(teamIndex/scoreがDB列として往復すること)を確認する。
@@ -320,12 +337,12 @@ describe("computeBattleSnapshot", () => {
     const stored = await prisma.battleHistoryParticipant.findMany({
       where: { battleHistory: { roomId: selfRoomId, battleId: "snap_tri" } },
       orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
-      select: { anchorId: true, teamIndex: true, score: true, battleTeamId: true },
+      select: { tiktokUid: true, teamIndex: true, score: true, battleTeamId: true },
     });
-    expect(stored.map((p) => ({ anchorId: p.anchorId, teamIndex: p.teamIndex, score: p.score }))).toEqual([
-      { anchorId: SELF_ANCHOR_ID, teamIndex: 0, score: "1200" },
-      { anchorId: "finalize_host_x", teamIndex: 1, score: "900" },
-      { anchorId: "finalize_host_y", teamIndex: 2, score: "700" },
+    expect(stored.map((p) => ({ tiktokUid: p.tiktokUid, teamIndex: p.teamIndex, score: p.score }))).toEqual([
+      { tiktokUid: SELF_ANCHOR_ID, teamIndex: 0, score: "1200" },
+      { tiktokUid: "finalize_host_x", teamIndex: 1, score: "900" },
+      { tiktokUid: "finalize_host_y", teamIndex: 2, score: "700" },
     ]);
     // dual-write先(新構造)のBattleTeamが3陣営分作られ、各participantが別々の自陣営BattleTeamへ紐づくこと
     // (BattleTeamはteamIndex列を持たないので、1:1対応は「3人とも非null・3件とも別id」で確認する)。
@@ -337,7 +354,7 @@ describe("computeBattleSnapshot", () => {
     expect(teams).toHaveLength(3);
   });
 
-  it("自分側のhostUserIdが未解決なら確定しない(nullを返す)", async () => {
+  it("自分側のhostTiktokUidが未解決なら確定しない(nullを返す)", async () => {
     await prisma.tiktokBattle.create({ data: battleData(noHostRoomId, "snap_nohost") });
     await makeGift(noHostRoomId);
 
@@ -364,7 +381,7 @@ describe("computeBattleSnapshot", () => {
   it("相手が1人も特定できない(solo)なら確定しない", async () => {
     await prisma.tiktokBattle.create({
       data: battleData(selfRoomId, "snap_solo", {
-        hostUserIds: [SELF_ANCHOR_ID],
+        hostTiktokUids: [SELF_ANCHOR_ID],
         hostScores: { [SELF_ANCHOR_ID]: "500" },
       }),
     });
@@ -376,7 +393,7 @@ describe("computeBattleSnapshot", () => {
 describe("materializeBattleHistory", () => {
   it("値が安定していれば親子行を一括で作る", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "mat_ok") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30, repeatCount: 3 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30, repeatCount: 3 });
     await prisma.roomConnectionInterval.create({
       data: { roomId: selfRoomId, startedAt: STARTED_AT, endedAt: ENDED_AT },
     });
@@ -395,11 +412,11 @@ describe("materializeBattleHistory", () => {
     expect(row!.status).toBe("finished");
     expect(row!.participants).toHaveLength(2);
     // 貢献者データは新構造(BattleHistoryGiftEvent)に書かれる。
-    const self = row!.participants.find((p) => p.anchorId === SELF_ANCHOR_ID);
+    const self = row!.participants.find((p) => p.tiktokUid === SELF_ANCHOR_ID);
     const giftEvents = await prisma.battleHistoryGiftEvent.findMany({
       where: { participantId: self!.id },
     });
-    expect(giftEvents.map((g) => g.senderUniqueIdSnapshot)).toEqual(["fan_a"]);
+    expect(giftEvents.map((g) => g.senderTiktokHandleSnapshot)).toEqual(["fan_a"]);
     // captureStatus/captureCoverageがDB列として往復すること
     // (computeBattleSnapshotのcaptureStatus/captureCoverageがcommitBattleSnapshotの
     // `...p`spreadで実際に書き込まれることの固定)。
@@ -409,7 +426,7 @@ describe("materializeBattleHistory", () => {
 
   it("安定性チェックの間に値が変わったら確定しない", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "mat_unstable") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
 
     // 1回目と2回目の計算の間に遅延Gift INSERTが届く状況を再現する。
     // Phase2a以降computeBattleSnapshotはparticipant毎のgift/item-use/bonus-mission問い合わせを
@@ -417,7 +434,7 @@ describe("materializeBattleHistory", () => {
     // 2回目計算(stabilityDelayMs=300後)の直前で確実に間に合う150msに余裕を持たせる。
     const inserted = new Promise<void>((resolve) => {
       setTimeout(() => {
-        void makeGift(selfRoomId, { uniqueId: "fan_late", nickname: "レイト", totalDiamonds: 7 }).then(() =>
+        void makeGift(selfRoomId, { tiktokHandle: "fan_late", nickname: "レイト", totalDiamonds: 7 }).then(() =>
           resolve()
         );
       }, 150);
@@ -444,7 +461,7 @@ describe("materializeBattleHistory", () => {
 
   it("再実行しても冪等(子行が重複しない)", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "mat_idempotent") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
 
     const first = await materializeBattleHistory(selfRoomId, "mat_idempotent", NOW, { stabilityDelayMs: 0 });
     const second = await materializeBattleHistory(selfRoomId, "mat_idempotent", NOW, { stabilityDelayMs: 0 });
@@ -464,14 +481,14 @@ describe("materializeBattleHistory", () => {
       where: { participant: { battleHistoryId: rows[0].id } },
     });
     expect(giftEvents).toHaveLength(1);
-    expect(giftEvents[0].senderUniqueIdSnapshot).toBe("fan_a");
+    expect(giftEvents[0].senderTiktokHandleSnapshot).toBe("fan_a");
   });
 });
 
 describe("commitBattleSnapshot", () => {
   async function buildSnapshot(battleId: string): Promise<BattleSnapshot> {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, battleId) });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     const snapshot = await computeBattleSnapshot(selfRoomId, battleId, NOW);
     if (snapshot === null) throw new Error("snapshotが作れていない");
     return snapshot;
@@ -512,7 +529,7 @@ describe("commitBattleSnapshot", () => {
 
   it("子行の作成に失敗したら親行もロールバックされる(部分確定を残さない)", async () => {
     const snapshot = await buildSnapshot("tx_battle");
-    // @@unique([battleHistoryId, anchorId]) に違反する参加者を混ぜて、子行の作成を失敗させる
+    // @@unique([battleHistoryId, tiktokUid]) に違反する参加者を混ぜて、子行の作成を失敗させる
     const broken: BattleSnapshot = {
       ...snapshot,
       participants: [...snapshot.participants, { ...snapshot.participants[0], position: 1 }],
@@ -532,7 +549,7 @@ describe("commitBattleSnapshot", () => {
 describe("再生用データ(scorePoints / opening / replay*Count)", () => {
   it("確定時にスコア点と件数・opening列を保存し、再実行しても重複しない", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_mat") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     await makeArmies(selfRoomId, "replay_mat", SELF_ANCHOR_ID, 0, "0");
     await makeArmies(selfRoomId, "replay_mat", SELF_ANCHOR_ID, 60, "1200");
 
@@ -572,7 +589,7 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
 
   it("attachReplayDataは既存のparticipants/giftEventsに触れずスコア点だけを後付けする", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_attach") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     await materializeBattleHistory(selfRoomId, "replay_attach", NOW, { stabilityDelayMs: 0 });
 
     const before = await prisma.battleHistory.findUnique({
@@ -582,8 +599,8 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
     expect(before!.replayScorePointCount).toBe(0);
     const participantsBefore = await prisma.battleHistoryParticipant.findMany({
       where: { battleHistoryId: before!.id },
-      select: { id: true, anchorId: true },
-      orderBy: { anchorId: "asc" },
+      select: { id: true, tiktokUid: true },
+      orderBy: { tiktokUid: "asc" },
     });
     const giftEventIdsBefore = (
       await prisma.battleHistoryGiftEvent.findMany({
@@ -611,8 +628,8 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
     expect(
       await prisma.battleHistoryParticipant.findMany({
         where: { battleHistoryId: before!.id },
-        select: { id: true, anchorId: true },
-        orderBy: { anchorId: "asc" },
+        select: { id: true, tiktokUid: true },
+        orderBy: { tiktokUid: "asc" },
       })
     ).toEqual(participantsBefore);
     expect(
@@ -632,7 +649,7 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
 
   it("同一時刻のスコア点の並びが入れ替わっても安定性判定は一致とみなす", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_stable") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     // armiesは1イベントで全anchor分を同一occurredAtで書くため、同着が常態。
     await makeArmies(selfRoomId, "replay_stable", SELF_ANCHOR_ID, 60, "1200");
     await makeArmies(selfRoomId, "replay_stable", OPPONENT_ANCHOR_ID, 60, "900");
@@ -647,7 +664,7 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
 
   it("attachReplayDataはTiktokBattle行が消えていても付加でき、倍率は判定しない", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_nosource") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     await materializeBattleHistory(selfRoomId, "replay_nosource", NOW, { stabilityDelayMs: 0 });
     await makeArmies(selfRoomId, "replay_nosource", SELF_ANCHOR_ID, 0, "0");
     await makeArmies(selfRoomId, "replay_nosource", SELF_ANCHOR_ID, 60, "1200");
@@ -679,9 +696,9 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
     expect(await attachReplayData("battle_history_missing")).toEqual({ attached: false, reason: "not-found" });
   });
 
-  it("自roomのhostUserIdが未解決ならattachReplayDataは付加を見送る", async () => {
+  it("自roomのhostTiktokUidを特定できないならattachReplayDataは付加を見送る", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_nohost") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     await materializeBattleHistory(selfRoomId, "replay_nohost", NOW, { stabilityDelayMs: 0 });
     await makeArmies(selfRoomId, "replay_nohost", SELF_ANCHOR_ID, 0, "0");
     const history = await prisma.battleHistory.findUnique({
@@ -689,20 +706,22 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
       select: { id: true },
     });
 
-    // hostUserId は fill-once で現行コードパスでは null へ戻らないが、防御的分岐が生きていることを固定する。
-    await prisma.tiktokRoom.update({ where: { id: selfRoomId }, data: { hostUserId: null } });
+    // hostTiktokUid は NOT NULL になったので、DBの値としては未解決状態を作れない。
+    // 残っている到達経路は「room 行そのものが引けない」ケースなので、そこを再現して
+    // 防御的分岐(付加を見送る)が生きていることを固定する。
+    const spy = vi.spyOn(prisma.tiktokRoom, "findUnique").mockResolvedValueOnce(null);
     try {
       expect(await attachReplayData(history!.id)).toEqual({ attached: false, reason: "self-host-unresolved" });
       expect(await prisma.battleHistoryScorePoint.count({ where: { battleHistoryId: history!.id } })).toBe(0);
     } finally {
-      await prisma.tiktokRoom.update({ where: { id: selfRoomId }, data: { hostUserId: SELF_ANCHOR_ID } });
+      spy.mockRestore();
     }
   });
 
   it("同一anchor・同一時刻のarmiesは後勝ちで1点へ畳む", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_dupe") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
-    // 同じ (anchorId, occurredAt) が二重に届いた状態。DBの返却順は不定なのでスコア値は問わない。
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    // 同じ (tiktokUid, occurredAt) が二重に届いた状態。DBの返却順は不定なのでスコア値は問わない。
     await makeArmies(selfRoomId, "replay_dupe", SELF_ANCHOR_ID, 60, "1200");
     await makeArmies(selfRoomId, "replay_dupe", SELF_ANCHOR_ID, 60, "1300");
 
@@ -725,13 +744,13 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
 
   it("スコア点が分割単位(1000)を超えても全件保存される", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "replay_chunk") });
-    await makeGift(selfRoomId, { uniqueId: "fan_a", nickname: "エー", totalDiamonds: 30 });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_a", nickname: "エー", totalDiamonds: 30 });
     // 窓(300秒)内に 1001 点。4コラボ×250イベントで現実に到達しうる件数。
     await prisma.tiktokBattleArmiesSnapshot.createMany({
       data: Array.from({ length: 1001 }, (_, i) => ({
         roomId: selfRoomId,
         battleId: "replay_chunk",
-        anchorId: SELF_ANCHOR_ID,
+        tiktokUid: SELF_ANCHOR_ID,
         score: String(i),
         occurredAt: new Date(STARTED_AT.getTime() + i * 250),
       })),
@@ -764,14 +783,14 @@ describe("初ギフトx倍の逆算(DB経路)", () => {
       data: { roomId: selfRoomId, startedAt: STARTED_AT, endedAt: ENDED_AT },
     });
     const first = await makeGift(selfRoomId, {
-      uniqueId: "fan_a",
+      tiktokHandle: "fan_a",
       nickname: "エー",
       totalDiamonds: 1000,
       multiplierType: 0,
       receivedAt: new Date(STARTED_AT.getTime() + 3_000),
     });
     await makeGift(selfRoomId, {
-      uniqueId: "fan_b",
+      tiktokHandle: "fan_b",
       nickname: "ビー",
       totalDiamonds: 1000,
       multiplierType: 0,
@@ -843,14 +862,14 @@ describe("初ギフトx倍の逆算(DB経路)", () => {
       data: { roomId: selfRoomId, startedAt: new Date(STARTED_AT.getTime() + 30_000), endedAt: ENDED_AT },
     });
     await makeGift(selfRoomId, {
-      uniqueId: "fan_a",
+      tiktokHandle: "fan_a",
       nickname: "エー",
       totalDiamonds: 1000,
       multiplierType: 0,
       receivedAt: new Date(STARTED_AT.getTime() + 33_000),
     });
     await makeGift(selfRoomId, {
-      uniqueId: "fan_b",
+      tiktokHandle: "fan_b",
       nickname: "ビー",
       totalDiamonds: 1000,
       multiplierType: 0,
@@ -875,7 +894,7 @@ describe("senderGroupId(コンボの束ね鍵)", () => {
   it("確定時に元Giftの groupId / multiplierValue を giftEvent へ写す", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "grp_commit") });
     await makeGift(selfRoomId, {
-      uniqueId: "fan_a",
+      tiktokHandle: "fan_a",
       nickname: "エー",
       totalDiamonds: 30,
       groupId: "combo_group_1",
@@ -898,12 +917,12 @@ describe("senderGroupId(コンボの束ね鍵)", () => {
   it("後追いの backfill は null 行だけ埋め、元Giftが消えた行は null のまま残す", async () => {
     await prisma.tiktokBattle.create({ data: battleData(selfRoomId, "grp_backfill") });
     const kept = await makeGift(selfRoomId, {
-      uniqueId: "fan_a",
+      tiktokHandle: "fan_a",
       nickname: "エー",
       totalDiamonds: 30,
       groupId: "combo_group_2",
     });
-    await makeGift(selfRoomId, { uniqueId: "fan_b", nickname: "ビー", totalDiamonds: 40, groupId: "combo_group_3" });
+    await makeGift(selfRoomId, { tiktokHandle: "fan_b", nickname: "ビー", totalDiamonds: 40, groupId: "combo_group_3" });
 
     await materializeBattleHistory(selfRoomId, "grp_backfill", NOW, { stabilityDelayMs: 0 });
     const history = await prisma.battleHistory.findUnique({
@@ -917,18 +936,18 @@ describe("senderGroupId(コンボの束ね鍵)", () => {
       data: { senderGroupId: null },
     });
     // 90日保持を過ぎて元 Gift が消えた行(fan_b)は諦めて null のまま残す。
-    await prisma.gift.deleteMany({ where: { roomId: selfRoomId, uniqueId: "fan_b" } });
+    await prisma.gift.deleteMany({ where: { roomId: selfRoomId, tiktokUid: makeTiktokUid("fan_b") } });
 
     await backfillSenderGroupIds(history!.id);
 
     const events = await prisma.battleHistoryGiftEvent.findMany({
       where: { participant: { battleHistoryId: history!.id } },
-      select: { senderUniqueIdSnapshot: true, senderGroupId: true },
-      orderBy: { senderUniqueIdSnapshot: "asc" },
+      select: { senderTiktokHandleSnapshot: true, senderGroupId: true },
+      orderBy: { senderTiktokHandleSnapshot: "asc" },
     });
     expect(events).toEqual([
-      { senderUniqueIdSnapshot: "fan_a", senderGroupId: "combo_group_2" },
-      { senderUniqueIdSnapshot: "fan_b", senderGroupId: null },
+      { senderTiktokHandleSnapshot: "fan_a", senderGroupId: "combo_group_2" },
+      { senderTiktokHandleSnapshot: "fan_b", senderGroupId: null },
     ]);
     expect(kept.groupId).toBe("combo_group_2");
   });

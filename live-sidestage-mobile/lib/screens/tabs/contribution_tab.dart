@@ -167,13 +167,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
 
   /// 行展開時のギフト内訳取得。[RankingListTile]の`key`に期間を含めているため、
   /// 期間が変わった行は再マウントされ、ここは常にそのマウント時点の期間で呼ばれる。
-  Future<GiftBreakdownResult> _fetchBreakdown(String uniqueId) {
+  Future<GiftBreakdownResult> _fetchBreakdown(String tiktokUid) {
     final token = context.read<SessionController>().session?.token;
     if (token == null) return Future.error(ApiException('ログインが必要です'));
     final customRange = _customRange;
     return _api.fetchGiftBreakdown(
       token: token,
-      uniqueId: uniqueId,
+      tiktokUid: tiktokUid,
       period: _selection.period.apiValue,
       date: _selection.date,
       startDatetime: customRange?.start,
@@ -318,7 +318,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                   RankingListTile(
                     // 期間をkeyへ含め、期間切替で行が再マウントされるようにする
                     // (前の期間で展開・取得済みのギフト内訳を残さないため)。
-                    key: ValueKey('${users[i].uniqueId}_${_rangeSignature()}'),
+                    key: ValueKey('${users[i].tiktokUid}_${_rangeSignature()}'),
                     rank: i + 1,
                     entry: users[i],
                     fetchBreakdown: _fetchBreakdown,

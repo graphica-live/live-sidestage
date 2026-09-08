@@ -15,8 +15,9 @@ export type TopGiftSnapshot = {
   senderDisplayMode: "latest" | "all";
   glowEnabled: boolean;
   topGift: {
-    uniqueId: string;
-    nickname: string;
+    tiktokUid: string;
+    tiktokHandle: string | null;
+    nickname: string | null;
     profileImageUrl: string | null;
     giftId: number;
     giftName: string;
@@ -49,19 +50,23 @@ export async function buildTopGiftSnapshot(streamerId: string): Promise<TopGiftS
   let topGift: TopGiftSnapshot["topGift"] = null;
   if (top) {
     // 最高額と同額(diamondCount一致、giftId一致優先)を送った全員を時系列で集める。
-    // 重複uniqueIdは最新のみ残す(desktopのsplice挙動を踏襲)。
-    const senders: string[] = [];
+    // **dedupeキーは不変のtiktokUid**。表示ラベル(nickname / tiktokHandle)はどちらも可変で、
+    // 改名すると同一人物が2行に割れる(desktopのsplice挙動は順序だけ踏襲する)。
+    const senderUids: string[] = [];
+    const labelByUid = new Map<string, string>();
     for (const g of gifts) {
       if (g.diamondCount !== top.diamondCount) continue;
       if (top.giftId && g.giftId !== top.giftId) continue;
-      const label = g.nickname || g.uniqueId;
-      const idx = senders.indexOf(label);
-      if (idx >= 0) senders.splice(idx, 1);
-      senders.push(label);
+      labelByUid.set(g.tiktokUid, g.nickname || g.tiktokHandle || g.tiktokUid);
+      const idx = senderUids.indexOf(g.tiktokUid);
+      if (idx >= 0) senderUids.splice(idx, 1);
+      senderUids.push(g.tiktokUid);
     }
+    const senders = senderUids.map((uid) => labelByUid.get(uid) ?? uid);
 
     topGift = {
-      uniqueId: top.uniqueId,
+      tiktokUid: top.tiktokUid,
+      tiktokHandle: top.tiktokHandle,
       nickname: top.nickname,
       profileImageUrl: top.profileImageUrl,
       giftId: top.giftId,
@@ -70,7 +75,7 @@ export async function buildTopGiftSnapshot(streamerId: string): Promise<TopGiftS
       giftValue: top.diamondCount,
       receivedAt: top.receivedAt.toISOString(),
       senders,
-      latestSender: senders[senders.length - 1] ?? (top.nickname || top.uniqueId),
+      latestSender: senders[senders.length - 1] ?? (top.nickname || top.tiktokHandle || top.tiktokUid),
     };
   }
 

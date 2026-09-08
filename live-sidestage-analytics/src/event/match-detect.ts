@@ -4,7 +4,7 @@ import { isReadyForDetection } from "./match-status";
 //
 // **照合は roomId の集合で行う。** バトルの payload から相手の TikTok ハンドルを取る方法が
 // 事実上ないため(tiktok-live-connector の anchorInfo は uniqueId を持たず、userId と
-// displayId しか出ない)。イベント参加者は全員 monitorUntil で監視しているので、
+// displayId しか出ない ── いずれも TLC 側のフィールド名)。イベント参加者は全員 monitorUntil で監視しているので、
 // 1つのバトルについて両サイドの room から同じ battleId のイベントが届く。
 // それを集めれば「そのバトルに誰が参加したか」が payload の解釈精度に依存せず分かる。
 //
@@ -397,8 +397,8 @@ export function findMissedMatches(input: {
  * 勝敗は必ず当サービスの集計で決める(集計の出所を1つに揃えるため)が、
  * 大きく食い違っていたらギフトの取りこぼしを疑う材料になるので主催者に警告を出す。
  *
- * **サイド単位では比較できない。** `hostScores` のキーは anchorIdStr(TikTok の数値 userId)で、
- * event 側は参加者の数値 userId を持っていないため、どちらのサイドのスコアか分からない。
+ * **サイド単位では比較できない。** `hostScores` のキーは anchorIdStr(TikTok の数値ID)で、
+ * event 側は参加者の数値ID を持っていないため、どちらのサイドのスコアか分からない。
  * バトル全体の合計どうしで比べること。
  */
 export function scoreDivergence(

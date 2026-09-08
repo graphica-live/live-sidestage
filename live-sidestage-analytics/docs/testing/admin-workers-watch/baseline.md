@@ -8,6 +8,11 @@ last_reviewers: DeepSeek(Code Mode、tiktok-account-confirm-modal機能と同時
 
 # テストベースライン: admin-workers-watch
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 admin/workers画面から監視対象TikTok IDを手動追加する機能。`addWatchedRoom()`（src/lib/worker-status.ts）、`POST /api/admin/workers/watch`、画面上の `AddWatchForm` を対象とする。Streamer登録・AgencyWatch追加と同じfail-closedな実在確認を通し、「情報プール方針」(`TiktokRoom.monitoringSuspended: false`)に乗せるだけの設計。
 
 ## テストケース

@@ -7,7 +7,7 @@ import { signOut } from "next-auth/react";
 interface ListenerState {
   status: "idle" | "connecting" | "connected" | "retrying" | "error";
   message: string;
-  tiktokId: string;
+  tiktokHandle: string;
 }
 
 const statusColor: Record<string, string> = {
@@ -50,7 +50,7 @@ export default function DashboardHeader({ email }: { email?: string | null }) {
                 }`}
               />
               <span className="hidden sm:inline truncate">
-                @{listener.tiktokId} · {listener.message}
+                @{listener.tiktokHandle} · {listener.message}
               </span>
             </span>
           )}

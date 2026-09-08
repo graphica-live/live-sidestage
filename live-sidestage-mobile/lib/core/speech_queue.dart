@@ -196,7 +196,7 @@ class SpeechQueueController extends ChangeNotifier {
     while (_queue.isNotEmpty) {
       final comment = _queue.removeFirst();
       final pool = _voicePool!;
-      final styleId = pool.effectiveStyleId(comment.uniqueId);
+      final styleId = pool.effectiveStyleId(comment.tiktokUid);
 
       Uint8List wav;
       try {
@@ -223,7 +223,7 @@ class SpeechQueueController extends ChangeNotifier {
       // 次のコメントの合成を先読みしておく(再生中の待ち時間を短縮)。
       if (_queue.isNotEmpty) {
         final next = _queue.first;
-        final nextStyleId = pool.effectiveStyleId(next.uniqueId);
+        final nextStyleId = pool.effectiveStyleId(next.tiktokUid);
         prefetchedFor = next;
         prefetched = _engine.synthesize(next.speechText, nextStyleId, speedScale: speed / 100.0);
       } else {

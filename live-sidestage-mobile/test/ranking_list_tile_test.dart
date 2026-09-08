@@ -18,10 +18,21 @@ Widget wrap(Widget child) {
 }
 
 const _entry = GiftRankingEntry(
-  uniqueId: 'u1',
+  tiktokUid: '7000000000000000001',
+  tiktokHandle: 'u1',
   nickname: 'テストユーザー',
   giftCount: 3,
   totalDiamonds: 1000,
+);
+
+/// TikTokUser 行が無い送信者。サーバーは tiktokHandle を null で返す。
+/// uid だけでは `https://www.tiktok.com/@...` を組み立てられないので、
+/// プロフィール導線(タップ)は出さない。
+const _entryWithoutHandle = GiftRankingEntry(
+  tiktokUid: '7000000000000000002',
+  nickname: 'ハンドル不明ユーザー',
+  giftCount: 1,
+  totalDiamonds: 500,
 );
 
 void main() {
@@ -99,6 +110,41 @@ void main() {
     expect(medalInkWell, findsOneWidget);
   });
 
+  testWidgets('tiktokHandleがnullの行は、fetchBreakdown未指定時にプロフィール遷移のタップを受け付けない', (tester) async {
+    await tester.pumpWidget(wrap(const RankingListTile(rank: 1, entry: _entryWithoutHandle)));
+    final inkWells = tester.widgetList<InkWell>(find.byType(InkWell));
+    expect(inkWells, isNotEmpty);
+    expect(inkWells.every((w) => w.onTap == null), isTrue);
+    final avatarTap = tester.widget<GestureDetector>(
+      find.ancestor(of: find.byType(UserAvatar), matching: find.byType(GestureDetector)).first,
+    );
+    expect(avatarTap.onTap, isNull);
+  });
+
+  testWidgets('tiktokHandleがnullでも、fetchBreakdown指定時は名前タップでギフト内訳が展開する', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entryWithoutHandle,
+          fetchBreakdown: (tiktokUid) async {
+            calls++;
+            expect(tiktokUid, '7000000000000000002');
+            return const GiftBreakdownResult(
+              gifts: [GiftBreakdownEntry(giftId: 1, giftName: 'Rose', repeatCount: 2, totalDiamonds: 500)],
+              coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('ハンドル不明ユーザー'));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.text('Rose'), findsOneWidget);
+  });
+
   testWidgets('fetchBreakdown指定時、名前部分のタップでギフト内訳が展開する(アバターは展開しない)', (tester) async {
     var calls = 0;
     await tester.pumpWidget(
@@ -106,7 +152,7 @@ void main() {
         RankingListTile(
           rank: 1,
           entry: _entry,
-          fetchBreakdown: (uniqueId) async {
+          fetchBreakdown: (tiktokUid) async {
             calls++;
             return const GiftBreakdownResult(
               gifts: [
@@ -153,7 +199,7 @@ void main() {
         RankingListTile(
           rank: 4, // メダル無し(数字表示)のrankで、GradientMedalに依存しないタップ領域を確認する。
           entry: _entry,
-          fetchBreakdown: (uniqueId) async {
+          fetchBreakdown: (tiktokUid) async {
             calls++;
             return const GiftBreakdownResult(gifts: [], coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false));
           },
@@ -175,7 +221,7 @@ void main() {
         RankingListTile(
           rank: 1,
           entry: _entry,
-          fetchBreakdown: (uniqueId) async {
+          fetchBreakdown: (tiktokUid) async {
             calls++;
             return const GiftBreakdownResult(gifts: [], coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false));
           },
@@ -196,7 +242,7 @@ void main() {
         RankingListTile(
           rank: 1,
           entry: _entry,
-          fetchBreakdown: (uniqueId) async => const GiftBreakdownResult(
+          fetchBreakdown: (tiktokUid) async => const GiftBreakdownResult(
             gifts: [
               GiftBreakdownEntry(giftId: 2, giftName: 'モナリザ', repeatCount: 1, totalDiamonds: 500),
               GiftBreakdownEntry(giftId: 1, giftName: 'ローズ', repeatCount: 3, totalDiamonds: 300),
@@ -227,7 +273,7 @@ void main() {
         RankingListTile(
           rank: 1,
           entry: _entry,
-          fetchBreakdown: (uniqueId) async {
+          fetchBreakdown: (tiktokUid) async {
             calls++;
             // 通常のHTTPリクエストと同様、非同期境界を挟んでから例外を投げる
             // (即時throwだとFutureBuilder購読前にunhandledとして検出されテストが不安定になる)。
@@ -261,7 +307,7 @@ void main() {
         RankingListTile(
           rank: 1,
           entry: _entry,
-          fetchBreakdown: (uniqueId) async => const GiftBreakdownResult(
+          fetchBreakdown: (tiktokUid) async => const GiftBreakdownResult(
             gifts: [],
             coverage: GiftBreakdownCoverage(detailAvailable: false, partial: false),
           ),

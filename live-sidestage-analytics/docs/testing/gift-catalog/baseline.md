@@ -8,6 +8,11 @@ last_reviewers: DeepSeek(Design Mode 1ラウンド + Code Mode 1ラウンド、T
 
 # テストベースライン: gift-catalog
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `src/lib/tiktok-gift-catalog.ts`(+`src/lib/tiktok-listener.ts`の`resolveGiftCatalogSources`)が担う、TikTokギフトカタログ(`tiktok_gift_catalog`)の定期取得・正規化・英日突合・カタログ取得専用プロキシ(`GIFT_CATALOG_PROXY_URL`)・取得成否の監査ログ(`/admin/proxy`)。
 
 **2026-09-07: room_id付き複数部屋取得(配信者固有コミュニティギフトの事前収集)を撤去した。** community_giftはLIVE受信時点で既に日本語名確定、`GET /api/mobile/gifts`は受信履歴からも名前・画像を拾う和集合設計のため、事前収集の価値が薄いと判断(詳細は`changes/`参照)。カタログ取得は`GIFT_CATALOG_SOURCE_COUNT=1`件・room_id無しに単純化した。

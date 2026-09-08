@@ -1,7 +1,8 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { findPublicEvent, findPublicParticipantTiktokId, loadBracket } from "./public-event";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
+import { findPublicEvent, findPublicParticipantTiktokUid, loadBracket } from "./public-event";
 
 const PREFIX = "itest_pubevt";
 let seq = 0;
@@ -11,14 +12,14 @@ const createdEventIds: string[] = [];
 
 async function createEvent(
   visibility: "PUBLIC" | "PRIVATE",
-  ownerUserId: string,
+  ownerPrincipalId: string,
   format: "DIAMOND_RACE" | "TOURNAMENT" = "DIAMOND_RACE"
 ) {
   const event = await prisma.event.create({
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 公開範囲テスト`,
-      ownerUserId,
+      ownerPrincipalId,
       format,
       entryMode: "SOLO",
       visibility,
@@ -77,35 +78,38 @@ describe("findPublicEvent", () => {
   });
 });
 
-describe("findPublicParticipantTiktokId", () => {
+describe("findPublicParticipantTiktokUid", () => {
   it("PRIVATE イベントの参加者IDは、オーナー以外には引き当てられない", async () => {
     const owner = `${PREFIX}_owner_${uniqueSuffix()}`;
     const event = await createEvent("PRIVATE", owner);
+    const roomHandle = `${PREFIX}_room_${uniqueSuffix()}`;
     const roomId = (
       // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
       // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
       // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
       await prisma.$queryRaw<{ id: string }[]>`
-        INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-        VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, NOW(), true)
+        INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+        VALUES (gen_random_uuid()::text, ${roomHandle}, ${makeTiktokUid(roomHandle)}, NOW(), true)
         RETURNING id
       `
     )[0].id;
     const participant = await prisma.eventParticipant.create({
       data: {
         eventId: event.id,
-        tiktokId: `${PREFIX}_tiktok_${uniqueSuffix()}`,
+        tiktokUid: makeTiktokUid(roomHandle),
+        tiktokHandle: `${PREFIX}_tiktok_${uniqueSuffix()}`,
         roomId,
         displayName: "テスト参加者",
       },
       select: { id: true },
     });
 
-    expect(await findPublicParticipantTiktokId(participant.id)).toBeNull();
-    expect(await findPublicParticipantTiktokId(participant.id, `${PREFIX}_other`)).toBeNull();
+    expect(await findPublicParticipantTiktokUid(participant.id)).toBeNull();
+    expect(await findPublicParticipantTiktokUid(participant.id, `${PREFIX}_other`)).toBeNull();
 
-    const found = await findPublicParticipantTiktokId(participant.id, owner);
+    const found = await findPublicParticipantTiktokUid(participant.id, owner);
     expect(found).not.toBeNull();
+    expect(found?.tiktokUid).toBe(makeTiktokUid(roomHandle));
     expect(found?.visibility).toBe("PRIVATE");
 
     await prisma.eventParticipant.delete({ where: { id: participant.id } });
@@ -127,20 +131,22 @@ describe("loadBracket", () => {
     });
 
     async function makeParticipant(activity: string) {
+      const roomHandle = `${PREFIX}_room_${uniqueSuffix()}`;
       const room = (
         // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
         // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
         // グローバルに claim して listenerActivity を上書きしうる（ここで固定した live/offline が壊れる）。
         await prisma.$queryRaw<{ id: string }[]>`
-          INSERT INTO public."TiktokRoom" (id, "tiktokId", "listenerActivity", "createdAt", "monitoringSuspended")
-          VALUES (gen_random_uuid()::text, ${`${PREFIX}_room_${uniqueSuffix()}`}, ${activity}, NOW(), true)
+          INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "listenerActivity", "createdAt", "monitoringSuspended")
+          VALUES (gen_random_uuid()::text, ${roomHandle}, ${makeTiktokUid(roomHandle)}, ${activity}, NOW(), true)
           RETURNING id
         `
       )[0].id;
       const participant = await prisma.eventParticipant.create({
         data: {
           eventId: event.id,
-          tiktokId: `${PREFIX}_tiktok_${uniqueSuffix()}`,
+          tiktokUid: makeTiktokUid(roomHandle),
+          tiktokHandle: `${PREFIX}_tiktok_${uniqueSuffix()}`,
           roomId: room,
           displayName: "テスト配信者",
         },

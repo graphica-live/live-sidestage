@@ -9,10 +9,10 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
     select: {
       id: true,
-      tiktokId: true,
+      tiktokHandle: true,
       roomId: true,
       room: { select: { listenerStatus: true, listenerMessage: true, listenerUpdatedAt: true } },
     },
@@ -29,18 +29,18 @@ export async function GET() {
   // In-memory state (same process) takes priority.
   // Fall back to DB-persisted state (handles multi-worker / cross-process scenarios).
   const listener = live
-    ? { streamerId: streamer.id, tiktokId: streamer.tiktokId, status: live.status, message: live.message, updatedAt: live.updatedAt }
+    ? { streamerId: streamer.id, tiktokHandle: streamer.tiktokHandle, status: live.status, message: live.message, updatedAt: live.updatedAt }
     : streamer.room?.listenerStatus
     ? {
         streamerId: streamer.id,
-        tiktokId: streamer.tiktokId,
+        tiktokHandle: streamer.tiktokHandle,
         status: streamer.room.listenerStatus,
         message: streamer.room.listenerMessage ?? "停止中",
         updatedAt: streamer.room.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),
       }
     : {
         streamerId: streamer.id,
-        tiktokId: streamer.tiktokId,
+        tiktokHandle: streamer.tiktokHandle,
         status: "idle",
         message: "停止中",
         updatedAt: new Date().toISOString(),

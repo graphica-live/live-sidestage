@@ -3,7 +3,15 @@ import '../core/url_validation.dart';
 /// ギフト履歴タブの1行。
 class GiftHistoryEvent {
   final String id;
-  final String uniqueId;
+
+  /// TikTokの不変な数値ID。同一性・リストkey用。
+  final String tiktokUid;
+
+  /// 本人が変更できる @ハンドル。**TikTokUser 行が無ければサーバーは null を返す**ので
+  /// nullable。プロフィール導線はこれが null/空のときに出さない。
+  final String? tiktokHandle;
+
+  /// 表示名。サーバーの nickname が無ければ tiktokHandle → tiktokUid の順で埋める。
   final String nickname;
   final String? profileImageUrl;
   final int giftId;
@@ -17,7 +25,8 @@ class GiftHistoryEvent {
 
   const GiftHistoryEvent({
     required this.id,
-    required this.uniqueId,
+    required this.tiktokUid,
+    this.tiktokHandle,
     required this.nickname,
     this.profileImageUrl,
     required this.giftId,
@@ -31,12 +40,14 @@ class GiftHistoryEvent {
   static GiftHistoryEvent? tryParse(Object? value) {
     if (value is! Map) return null;
     final id = value['id'];
-    final uniqueId = value['uniqueId'];
+    final tiktokUid = value['tiktokUid'];
     final giftName = value['giftName'];
     if (id is! String || id.isEmpty) return null;
-    if (uniqueId is! String || uniqueId.isEmpty) return null;
+    if (tiktokUid is! String || tiktokUid.isEmpty) return null;
     if (giftName is! String || giftName.isEmpty) return null;
 
+    final rawHandle = value['tiktokHandle'];
+    final tiktokHandle = rawHandle is String && rawHandle.isNotEmpty ? rawHandle : null;
     final nickname = value['nickname'];
     final giftId = value['giftId'];
     final repeatCount = value['repeatCount'];
@@ -44,8 +55,9 @@ class GiftHistoryEvent {
 
     return GiftHistoryEvent(
       id: id,
-      uniqueId: uniqueId,
-      nickname: nickname is String && nickname.isNotEmpty ? nickname : uniqueId,
+      tiktokUid: tiktokUid,
+      tiktokHandle: tiktokHandle,
+      nickname: nickname is String && nickname.isNotEmpty ? nickname : (tiktokHandle ?? tiktokUid),
       profileImageUrl: parseImageUrl(value['profileImageUrl']),
       giftId: giftId is int ? giftId : 0,
       giftName: giftName,

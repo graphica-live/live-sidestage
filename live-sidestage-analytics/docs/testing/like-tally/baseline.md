@@ -8,6 +8,11 @@ last_reviewers: Qwen+fable-expert(Codex/Gemini quota切れのためユーザー�
 
 # テストベースライン: like-tally
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 いいね(Like)の日次累計。OBS「Like貢献通知」「Like数一覧(タップリスト)」オーバーレイの集計元。
 `src/lib/overlay/like-tally-store.ts`(プロセス内インメモリ、roomId軸で複数Streamer共有)が実体で、
 `like.server.ts`(recordLike/crossedMilestones)・`tap-list.server.ts`(buildTapListSnapshot)・

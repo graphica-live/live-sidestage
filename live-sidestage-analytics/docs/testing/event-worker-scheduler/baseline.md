@@ -8,6 +8,11 @@ last_reviewers: Qwen(Code Mode。DB統計tick追加のreview-auto流用、TestCa
 
 # テストベースライン: event-worker-scheduler
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `event-worker.ts` が担うイベント集計プロセスの実行制御。tick の起動・多重起動防止・周期・シャットダウンを対象とする。**集計ロジック自体（`aggregateDueEvents`・advisory lock・`finalizedAt`判定）は `src/event/aggregate.ts` が担い、この機能の対象外**（下記 Out of Scope）。
 
 ## テストケース

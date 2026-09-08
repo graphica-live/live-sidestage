@@ -2,7 +2,7 @@
 //
 // 参加者の部分更新(表示名・所属チーム・TikTok ID)。守りたいのは3つ。
 //   1. 検証に失敗したときに**片方だけ書き込まれない**こと(部分適用の禁止)
-//   2. 改名が `tiktokId` / `roomId` / lease に一切触れないこと
+//   2. 改名が `tiktokHandle` / `roomId` / lease に一切触れないこと
 //      (触ると TikTok 接続の同一性と集計の紐付けが壊れる)
 //   3. TikTok ID の訂正が `EventParticipant.id` を維持したまま行われ、
 //      ブラケットの枠(`EventMatchSideParticipant`)を壊さないこと
@@ -10,6 +10,7 @@ import { describe, it, expect, afterAll, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { ExistenceChecker } from "@/lib/tiktok-existence";
 import type { AccountExistence } from "@/lib/tiktok-profile";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { ParticipantError, updateParticipant } from "./participants";
 
 const PREFIX = "itest_prtupd";
@@ -21,19 +22,26 @@ let seq = 0;
 const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
-// tiktokId 訂正テストが ensureRoomForEvent 経由で実際に立てた監視要求(未来の
+// tiktokHandle 訂正テストが ensureRoomForEvent 経由で実際に立てた監視要求(未来の
 // monitorUntil)を記録し、他の並行 listener 系テストへ漏らさないよう後片付けする
 // (participants.integration.test.ts と同じ理由・同じパターン)。
-const createdTiktokIds: string[] = [];
+const createdTiktokHandles: string[] = [];
+
+/**
+ * ハンドルから決定的に導く tiktokUid。同じハンドルへの訂正は同じ uid になるので、
+ * `@@unique([eventId, tiktokUid])` の衝突テストがそのまま成立する。
+ */
+const uidOf = (tiktokHandle: string) => makeTiktokUid(tiktokHandle);
 
 /** 判定を決め打ちする checker。nickname は null。呼び出し回数を数える。 */
 function stubChecker(verdict: AccountExistence): ExistenceChecker & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
-    async check(tiktokId: string) {
-      calls.push(tiktokId);
-      return { verdict, nickname: null, userId: null };
+    async check(tiktokHandle: string) {
+      calls.push(tiktokHandle);
+      // uid が取れない応答は登録ゲートが 503 で止めるので、EXISTS のときは必ず返す。
+      return { verdict, nickname: null, tiktokUid: uidOf(tiktokHandle) };
     },
     size: () => 0,
   };
@@ -44,7 +52,7 @@ async function newEvent() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} イベント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "DIAMOND_RACE",
       entryMode: "TEAM",
       status: "RUNNING",
@@ -69,23 +77,24 @@ async function newEvent() {
  * `workerId` を書きに来る。改名の検証には要らないので、共有プールへ足さない。
  */
 async function newParticipant(eventId: string, displayName: string, handle?: string) {
-  const tiktokId = handle ?? `${PREFIX}_${uniqueSuffix()}`;
+  const tiktokHandle = handle ?? `${PREFIX}_${uniqueSuffix()}`;
+  const tiktokUid = uidOf(tiktokHandle);
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${tiktokUid}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
 
   const participant = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId, roomId: rows[0].id, displayName },
+    data: { eventId, tiktokUid, tiktokHandle, roomId: rows[0].id, displayName },
     select: { id: true },
   });
   await prisma.eventRoomLease.create({
-    data: { eventId, roomId: rows[0].id, tiktokId, monitorUntil: END },
+    data: { eventId, roomId: rows[0].id, tiktokUid, tiktokHandle, monitorUntil: END },
   });
 
-  return { id: participant.id, tiktokId, roomId: rows[0].id };
+  return { id: participant.id, tiktokUid, tiktokHandle, roomId: rows[0].id };
 }
 
 async function newTeam(eventId: string, name: string) {
@@ -97,17 +106,17 @@ async function newTeam(eventId: string, name: string) {
 }
 
 /** TikTok ID 訂正の訂正先として使う一意なハンドル(未使用のIDである必要がある)。 */
-function newTiktokId() {
+function newTiktokHandle() {
   const id = `${PREFIX}_${uniqueSuffix()}`.toLowerCase();
-  createdTiktokIds.push(id);
+  createdTiktokHandles.push(id);
   return id;
 }
 
 afterEach(async () => {
   // ensureRoomForEvent が立てた監視要求を残さない(並行 listener 系テストとの干渉回避)。
-  if (createdTiktokIds.length > 0) {
+  if (createdTiktokHandles.length > 0) {
     await prisma.tiktokRoom
-      .updateMany({ where: { tiktokId: { in: createdTiktokIds } }, data: { monitorUntil: null } })
+      .updateMany({ where: { tiktokHandle: { in: createdTiktokHandles } }, data: { monitorUntil: null } })
       .catch(() => {});
   }
 });
@@ -119,8 +128,8 @@ afterAll(async () => {
   for (const id of createdRoomIds) {
     await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE id = ${id}`.catch(() => {});
   }
-  if (createdTiktokIds.length > 0) {
-    await prisma.tiktokRoom.deleteMany({ where: { tiktokId: { in: createdTiktokIds } } }).catch(() => {});
+  if (createdTiktokHandles.length > 0) {
+    await prisma.tiktokRoom.deleteMany({ where: { tiktokHandle: { in: createdTiktokHandles } } }).catch(() => {});
   }
   await prisma.$disconnect();
 });
@@ -148,7 +157,7 @@ describe("updateParticipant", () => {
     await updateParticipant({ eventId, participantId: p.id, patch: { displayName: "" } });
 
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.displayName).toBe(p.tiktokId);
+    expect(after.displayName).toBe(p.tiktokHandle);
   });
 
   it("表示名の上限(60)を超える TikTok ID でも空文字で戻せる", async () => {
@@ -177,7 +186,7 @@ describe("updateParticipant", () => {
     expect(after.displayName).toBe("旧ライバー");
   });
 
-  it("改名しても tiktokId / roomId / teamId / lease は動かない", async () => {
+  it("改名しても tiktokHandle / roomId / teamId / lease は動かない", async () => {
     const eventId = await newEvent();
     const teamId = await newTeam(eventId, "赤組");
     const p = await newParticipant(eventId, "旧ライバー");
@@ -190,7 +199,7 @@ describe("updateParticipant", () => {
     await updateParticipant({ eventId, participantId: p.id, patch: { displayName: "新ライバー" } });
 
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.tiktokId).toBe(p.tiktokId);
+    expect(after.tiktokHandle).toBe(p.tiktokHandle);
     expect(after.roomId).toBe(p.roomId);
     expect(after.teamId).toBe(teamId);
 
@@ -275,19 +284,19 @@ describe("updateParticipant の TikTok ID 訂正", () => {
   it("訂正できて正規化される(existence は VERIFIED)", async () => {
     const eventId = await newEvent();
     const p = await newParticipant(eventId, "旧ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     const result = await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: `@${newId.toUpperCase()}` } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: `@${newId.toUpperCase()}` } },
       { checker: stubChecker("EXISTS") }
     );
 
-    expect(result.tiktokIdChanged).toBe(true);
-    expect(result.tiktokId).toBe(newId);
+    expect(result.tiktokHandleChanged).toBe(true);
+    expect(result.tiktokHandle).toBe(newId);
     expect(result.existence).toBe("VERIFIED");
 
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.tiktokId).toBe(newId);
+    expect(after.tiktokHandle).toBe(newId);
     expect(after.roomId).not.toBe(p.roomId);
   });
 
@@ -297,11 +306,11 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     const checker = stubChecker("EXISTS");
 
     const result = await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: `@${p.tiktokId.toUpperCase()}` } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: `@${p.tiktokHandle.toUpperCase()}` } },
       { checker }
     );
 
-    expect(result.tiktokIdChanged).toBe(false);
+    expect(result.tiktokHandleChanged).toBe(false);
     expect(checker.calls).toEqual([]);
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
     expect(after.roomId).toBe(p.roomId);
@@ -335,15 +344,15 @@ describe("updateParticipant の TikTok ID 訂正", () => {
       data: { sideId: side1.id, participantId: p2.id },
     });
 
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
     await updateParticipant(
-      { eventId, participantId: p1.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p1.id, patch: { tiktokHandle: newId } },
       { checker: stubChecker("EXISTS") }
     );
 
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p1.id } });
     expect(after.id).toBe(p1.id);
-    expect(after.tiktokId).toBe(newId);
+    expect(after.tiktokHandle).toBe(newId);
 
     const sideParticipant = await prisma.eventMatchSideParticipant.findFirstOrThrow({
       where: { sideId: side0.id },
@@ -354,15 +363,15 @@ describe("updateParticipant の TikTok ID 訂正", () => {
   it("訂正すると新roomのleaseが作られ、旧roomのleaseは解放マークされる", async () => {
     const eventId = await newEvent();
     const p = await newParticipant(eventId, "ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: newId } },
       { checker: stubChecker("EXISTS") }
     );
 
     const newLease = await prisma.eventRoomLease.findFirstOrThrow({
-      where: { eventId, tiktokId: newId },
+      where: { eventId, tiktokHandle: newId },
     });
     expect(newLease.releasedAt).toBeNull();
     expect(newLease.monitorUntil.getTime()).toBeGreaterThan(Date.now());
@@ -379,15 +388,27 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     const p = await newParticipant(eventId, "ライバー");
     await prisma.tiktokRoom.update({ where: { id: p.roomId }, data: { monitorUntil: END } });
     await prisma.eventParticipant.create({
-      data: { eventId: otherEventId, tiktokId: p.tiktokId, roomId: p.roomId, displayName: "他イベント" },
+      data: {
+        eventId: otherEventId,
+        tiktokUid: p.tiktokUid,
+        tiktokHandle: p.tiktokHandle,
+        roomId: p.roomId,
+        displayName: "他イベント",
+      },
     });
     await prisma.eventRoomLease.create({
-      data: { eventId: otherEventId, roomId: p.roomId, tiktokId: p.tiktokId, monitorUntil: END },
+      data: {
+        eventId: otherEventId,
+        roomId: p.roomId,
+        tiktokUid: p.tiktokUid,
+        tiktokHandle: p.tiktokHandle,
+        monitorUntil: END,
+      },
     });
 
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
     await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: newId } },
       { checker: stubChecker("EXISTS") }
     );
 
@@ -399,35 +420,35 @@ describe("updateParticipant の TikTok ID 訂正", () => {
       .catch(() => {});
   });
 
-  it("tiktokId・displayName・teamId を同時に変更できる", async () => {
+  it("tiktokHandle・displayName・teamId を同時に変更できる", async () => {
     const eventId = await newEvent();
     const teamId = await newTeam(eventId, "青組");
     const p = await newParticipant(eventId, "旧ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     const result = await updateParticipant(
       {
         eventId,
         participantId: p.id,
-        patch: { tiktokId: newId, displayName: "新ライバー", teamId },
+        patch: { tiktokHandle: newId, displayName: "新ライバー", teamId },
       },
       { checker: stubChecker("EXISTS") }
     );
 
-    expect(result.tiktokIdChanged).toBe(true);
+    expect(result.tiktokHandleChanged).toBe(true);
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.tiktokId).toBe(newId);
+    expect(after.tiktokHandle).toBe(newId);
     expect(after.displayName).toBe("新ライバー");
     expect(after.teamId).toBe(teamId);
   });
 
-  it("displayName を指定せずに tiktokId だけ訂正すると、表示名は変わらない(自動追従しない)", async () => {
+  it("displayName を指定せずに tiktokHandle だけ訂正すると、表示名は変わらない(自動追従しない)", async () => {
     const eventId = await newEvent();
     const p = await newParticipant(eventId, "旧ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: newId } },
       { checker: stubChecker("EXISTS") }
     );
 
@@ -435,7 +456,10 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     expect(after.displayName).toBe("旧ライバー");
   });
 
-  it("同一イベント内の他参加者が使っている TikTok ID への訂正は409で、TikTokを叩かない", async () => {
+  // 重複判定のキーがハンドルから不変の uid へ移ったので、重複を知るには先に実在確認が要る
+  // (以前は「409 が先に落とすので TikTok を叩かない」だった)。形式不正・変更なしで落ちる
+  // 訂正が TikTok を叩かないことは変わらない。
+  it("同一イベント内の他参加者が使っている TikTok ID への訂正は409。uid で判定するので実在確認は1回だけ走る", async () => {
     const eventId = await newEvent();
     const p1 = await newParticipant(eventId, "ライバーA");
     const p2 = await newParticipant(eventId, "ライバーB");
@@ -443,14 +467,14 @@ describe("updateParticipant の TikTok ID 訂正", () => {
 
     await expect(
       updateParticipant(
-        { eventId, participantId: p2.id, patch: { tiktokId: p1.tiktokId } },
+        { eventId, participantId: p2.id, patch: { tiktokHandle: p1.tiktokHandle } },
         { checker }
       )
     ).rejects.toMatchObject({ status: 409 });
 
-    expect(checker.calls).toEqual([]);
+    expect(checker.calls).toEqual([p1.tiktokHandle]);
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p2.id } });
-    expect(after.tiktokId).toBe(p2.tiktokId);
+    expect(after.tiktokHandle).toBe(p2.tiktokHandle);
   });
 
   it("不正な形式の TikTok ID への訂正は400で、TikTokを叩かない", async () => {
@@ -459,7 +483,7 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     const checker = stubChecker("EXISTS");
 
     await expect(
-      updateParticipant({ eventId, participantId: p.id, patch: { tiktokId: "@@bad id!" } }, { checker })
+      updateParticipant({ eventId, participantId: p.id, patch: { tiktokHandle: "@@bad id!" } }, { checker })
     ).rejects.toMatchObject({ status: 400 });
 
     expect(checker.calls).toEqual([]);
@@ -468,26 +492,26 @@ describe("updateParticipant の TikTok ID 訂正", () => {
   it("TikTok上に実在しない ID への訂正は400で、room確保も起きない", async () => {
     const eventId = await newEvent();
     const p = await newParticipant(eventId, "ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     await expect(
       updateParticipant(
-        { eventId, participantId: p.id, patch: { tiktokId: newId } },
+        { eventId, participantId: p.id, patch: { tiktokHandle: newId } },
         { checker: stubChecker("MISSING") }
       )
     ).rejects.toMatchObject({ status: 400 });
 
-    expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId: newId } })).toBeNull();
+    expect(await prisma.tiktokRoom.findUnique({ where: { hostTiktokUid: uidOf(newId) } })).toBeNull();
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.tiktokId).toBe(p.tiktokId);
+    expect(after.tiktokHandle).toBe(p.tiktokHandle);
   });
 
-  it("チームの検証に落ちたら tiktokId も displayName も書き込まない(部分適用しない)", async () => {
+  it("チームの検証に落ちたら tiktokHandle も displayName も書き込まない(部分適用しない)", async () => {
     const eventId = await newEvent();
     const other = await newEvent();
     const foreignTeam = await newTeam(other, "他イベントの組");
     const p = await newParticipant(eventId, "旧ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
     const checker = stubChecker("EXISTS");
 
     await expect(
@@ -495,7 +519,7 @@ describe("updateParticipant の TikTok ID 訂正", () => {
         {
           eventId,
           participantId: p.id,
-          patch: { tiktokId: newId, displayName: "新ライバー", teamId: foreignTeam },
+          patch: { tiktokHandle: newId, displayName: "新ライバー", teamId: foreignTeam },
         },
         { checker }
       )
@@ -503,7 +527,7 @@ describe("updateParticipant の TikTok ID 訂正", () => {
 
     expect(checker.calls).toEqual([]);
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.tiktokId).toBe(p.tiktokId);
+    expect(after.tiktokHandle).toBe(p.tiktokHandle);
     expect(after.displayName).toBe("旧ライバー");
   });
 
@@ -511,27 +535,27 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     const eventId = await newEvent();
     const other = await newEvent();
     const victim = await newParticipant(other, "他イベントのライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     await expect(
       updateParticipant(
-        { eventId, participantId: victim.id, patch: { tiktokId: newId } },
+        { eventId, participantId: victim.id, patch: { tiktokHandle: newId } },
         { checker: stubChecker("EXISTS") }
       )
     ).rejects.toBeInstanceOf(ParticipantError);
 
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: victim.id } });
-    expect(after.tiktokId).toBe(victim.tiktokId);
+    expect(after.tiktokHandle).toBe(victim.tiktokHandle);
   });
 
   it("finalizedAt が立っているイベントで訂正すると finalizedAt が null に戻る(再集計の固定)", async () => {
     const eventId = await newEvent();
     await prisma.event.update({ where: { id: eventId }, data: { finalizedAt: new Date() } });
     const p = await newParticipant(eventId, "ライバー");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: newId } },
       { checker: stubChecker("EXISTS") }
     );
 
@@ -543,7 +567,7 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     const eventId = await newEvent();
     const p1 = await newParticipant(eventId, "ライバーA");
     const p2 = await newParticipant(eventId, "ライバーB");
-    const newId = newTiktokId();
+    const newId = newTiktokHandle();
 
     let reached!: () => void;
     const reachedCheck = new Promise<void>((resolve) => {
@@ -554,34 +578,34 @@ describe("updateParticipant の TikTok ID 訂正", () => {
       release = resolve;
     });
     const blockingChecker: ExistenceChecker = {
-      async check() {
+      async check(tiktokHandle: string) {
         reached();
         await barrier;
-        return { verdict: "EXISTS", nickname: null, userId: null };
+        return { verdict: "EXISTS", nickname: null, tiktokUid: uidOf(tiktokHandle) };
       },
       size: () => 0,
     };
 
     // p1→newId: 重複チェック(まだ誰も newId を持たない)を通過後、実在確認でブロック。
     const loser = updateParticipant(
-      { eventId, participantId: p1.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p1.id, patch: { tiktokHandle: newId } },
       { checker: blockingChecker }
     );
     await reachedCheck;
 
     // p2→newId: 先に完了させる(勝者)。
     const winner = await updateParticipant(
-      { eventId, participantId: p2.id, patch: { tiktokId: newId } },
+      { eventId, participantId: p2.id, patch: { tiktokHandle: newId } },
       { checker: stubChecker("EXISTS") }
     );
-    expect(winner.tiktokIdChanged).toBe(true);
+    expect(winner.tiktokHandleChanged).toBe(true);
 
     release();
-    // p1 側は DB 書き込み時点で @@unique([eventId, tiktokId]) に当たり P2002 → 409。
+    // p1 側は DB 書き込み時点で @@unique([eventId, tiktokUid]) に当たり P2002 → 409。
     await expect(loser).rejects.toMatchObject({ status: 409 });
 
     // 勝者(p2)の room の監視要求が、負けた側の補償で消されていないこと。
-    const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { tiktokId: newId } });
+    const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { hostTiktokUid: uidOf(newId) } });
     expect(room.monitorUntil).not.toBeNull();
     expect(room.monitorUntil!.getTime()).toBeGreaterThan(Date.now());
   });
@@ -589,8 +613,8 @@ describe("updateParticipant の TikTok ID 訂正", () => {
   it("同一参加者への並行訂正(異なる新ID)は、後勝ち側が404になり先勝ち側のleaseを孤児化させない", async () => {
     const eventId = await newEvent();
     const p = await newParticipant(eventId, "ライバー");
-    const idY = newTiktokId();
-    const idZ = newTiktokId();
+    const idY = newTiktokHandle();
+    const idZ = newTiktokHandle();
 
     let reached!: () => void;
     const reachedCheck = new Promise<void>((resolve) => {
@@ -601,27 +625,27 @@ describe("updateParticipant の TikTok ID 訂正", () => {
       release = resolve;
     });
     const blockingChecker: ExistenceChecker = {
-      async check() {
+      async check(tiktokHandle: string) {
         reached();
         await barrier;
-        return { verdict: "EXISTS", nickname: null, userId: null };
+        return { verdict: "EXISTS", nickname: null, tiktokUid: uidOf(tiktokHandle) };
       },
       size: () => 0,
     };
 
     // p→idY: 実在確認でブロック(この時点の roomId をトランザクションの where で使う)。
     const toY = updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: idY } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: idY } },
       { checker: blockingChecker }
     );
     await reachedCheck;
 
     // p→idZ: 先に完了させ、p.roomId を新しい room へ進めてしまう(勝者)。
     const toZ = await updateParticipant(
-      { eventId, participantId: p.id, patch: { tiktokId: idZ } },
+      { eventId, participantId: p.id, patch: { tiktokHandle: idZ } },
       { checker: stubChecker("EXISTS") }
     );
-    expect(toZ.tiktokIdChanged).toBe(true);
+    expect(toZ.tiktokHandleChanged).toBe(true);
 
     release();
     // toY の updateMany は where に読み取り時点の旧 roomId を含むが、
@@ -629,11 +653,11 @@ describe("updateParticipant の TikTok ID 訂正", () => {
     await expect(toY).rejects.toMatchObject({ status: 404 });
 
     // idZ(先勝ち)側の room の監視要求が孤児化せず生きていること。
-    const roomZ = await prisma.tiktokRoom.findUniqueOrThrow({ where: { tiktokId: idZ } });
+    const roomZ = await prisma.tiktokRoom.findUniqueOrThrow({ where: { hostTiktokUid: uidOf(idZ) } });
     expect(roomZ.monitorUntil).not.toBeNull();
     expect(roomZ.monitorUntil!.getTime()).toBeGreaterThan(Date.now());
 
     const after = await prisma.eventParticipant.findUniqueOrThrow({ where: { id: p.id } });
-    expect(after.tiktokId).toBe(idZ);
+    expect(after.tiktokHandle).toBe(idZ);
   });
 });

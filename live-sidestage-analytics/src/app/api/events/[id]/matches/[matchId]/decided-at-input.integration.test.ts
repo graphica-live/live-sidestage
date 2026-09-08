@@ -13,10 +13,10 @@ import { describe, it, expect, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 // next-auth をモックしてから読む(authz.ts が import 時に束縛するため)。
@@ -37,7 +37,7 @@ async function newDeathmatchWithMatch() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} デスマッチ`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "DEATHMATCH",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -83,7 +83,7 @@ afterAll(async () => {
 
 describe("手動確定時の決着時刻(decidedAt)指定", () => {
   it("confirm で decidedAt を指定すると、JST解釈した時刻がそのまま保存される", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId, sides } = await newDeathmatchWithMatch();
 
     const res = await patch(eventId, matchId, {
@@ -99,7 +99,7 @@ describe("手動確定時の決着時刻(decidedAt)指定", () => {
   });
 
   it("decidedAt を省略すると、従来どおり現在時刻が使われる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newDeathmatchWithMatch();
     const before = Date.now();
 
@@ -112,7 +112,7 @@ describe("手動確定時の決着時刻(decidedAt)指定", () => {
   });
 
   it("decidedAt の形式が不正なら400を返し、対戦は更新されない", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId, sides } = await newDeathmatchWithMatch();
 
     const res = await patch(eventId, matchId, {
@@ -128,7 +128,7 @@ describe("手動確定時の決着時刻(decidedAt)指定", () => {
   });
 
   it("未来の時刻でも拒否しない(イベント進行の押し・延びは予測できないため主催者の裁量を優先する設計)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId, sides } = await newDeathmatchWithMatch();
 
     const res = await patch(eventId, matchId, {
@@ -144,7 +144,7 @@ describe("手動確定時の決着時刻(decidedAt)指定", () => {
   });
 
   it("既存の decidedAt があれば、主催者の入力値より優先される(再送でライフ順序を変えない)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId, sides } = await newDeathmatchWithMatch();
     const original = new Date(NOW - 86_400_000);
     await prisma.eventMatch.update({ where: { id: matchId }, data: { decidedAt: original } });

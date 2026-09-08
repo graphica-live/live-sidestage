@@ -45,7 +45,7 @@ async function main() {
           { monitorUntil: { gt: now } },
         ],
       },
-      select: { id: true, tiktokId: true, workerId: true },
+      select: { id: true, tiktokHandle: true, workerId: true },
     });
 
     const changes = rooms
@@ -54,7 +54,7 @@ async function main() {
 
     console.log(`WORKER_COUNT=${workerCount} — ${rooms.length}部屋中${changes.length}部屋の担当が変わります`);
     for (const c of changes) {
-      console.log(`  @${c.tiktokId}: worker ${c.workerId ?? "(未割当)"} -> ${c.newWorkerId}`);
+      console.log(`  @${c.tiktokHandle}: worker ${c.workerId ?? "(未割当)"} -> ${c.newWorkerId}`);
     }
 
     if (!apply) {

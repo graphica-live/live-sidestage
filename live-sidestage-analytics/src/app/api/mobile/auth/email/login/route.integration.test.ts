@@ -94,6 +94,7 @@ describe("POST /api/mobile/auth/email/login", () => {
     const email = `${PREFIX}google@local.test`;
     const user = await prisma.user.create({ data: { email, name: `${PREFIX}google-user` } });
     await prisma.account.create({
+      // Account.userId は NextAuth の PrismaAdapter が固定する列名なので principalId へ改名しない。
       data: { userId: user.id, type: "oauth", provider: "google", providerAccountId: `${PREFIX}google-sub` },
     });
 

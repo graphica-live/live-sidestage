@@ -8,6 +8,11 @@ last_reviewers: Qwen(独立、2回目でdiff込みcontextにより有効化) + G
 
 # テストベースライン: gift-history-range
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 ギフト履歴(明細)ダッシュボード(`/components/analytics/AnalyticsView.tsx`)の期間選択を、
 明細(`Gift`)の保持期間90日(`gift-retention-window.ts`のGIFT_RETENTION_DAYS、
 `range-limits.ts`のGIFT_HISTORY_MAX_RANGE_DAYS)に合わせて制限する。ランキング/バトル履歴タブ

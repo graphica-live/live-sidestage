@@ -100,7 +100,7 @@ export default function ContributorList({
     return (
       <div className="flex flex-col" style={{ gap: ROW_GAP_PX }}>
         {contributors.map((c) => (
-          <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
+          <ContributorRow key={c.tiktokHandle} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
         ))}
       </div>
     );
@@ -144,7 +144,7 @@ export default function ContributorList({
           }}
         >
           {contributors.map((c) => (
-            <ContributorRow key={c.uniqueId} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
+            <ContributorRow key={c.tiktokHandle} contributor={c} nameMaxWidth={nameMaxWidth} align={align} />
           ))}
         </div>
         <div className="overlay-fade-top" style={fadeSideStyle} />
@@ -182,7 +182,7 @@ function ContributorRow({
       className={`overlay-row flex items-center gap-2 px-1 shrink-0${align === "right" ? " overlay-row-right" : ""}`}
       style={{ height: ROW_HEIGHT_PX, flexDirection: align === "right" ? "row-reverse" : "row" }}
     >
-      <OverlayAvatar src={contributor.profileImageUrl} alt={contributor.nickname} />
+      <OverlayAvatar src={contributor.profileImageUrl} alt={contributor.nickname ?? ""} />
       <span
         className="text-white font-bold text-base overflow-hidden text-ellipsis whitespace-nowrap"
         style={{

@@ -155,7 +155,7 @@ export function coverageFromIntervals(
  * 接続の欠落区間で実際に失われた公式スコアを見積もり、無視できる量なら"complete"へ格上げする。
  *
  * `scorePoints`は`TiktokBattleArmiesSnapshot`(TikTokが配信する公式スコアの時系列)のうち、
- * そのバトル・その参加者(anchorId)ぶんを`occurredAt`昇順で渡す。**このスナップショットは
+ * そのバトル・その参加者(tiktokUid)ぶんを`occurredAt`昇順で渡す。**このスナップショットは
  * 全陣営分が自roomの受信だけで届く**ので、相手roomへ接続していない区間のスコアも分かる。
  *
  * 窓頭のgapは「gap以前の既知スコアが無い」状態になるが、バトル開始時のスコアは0なので0起点で

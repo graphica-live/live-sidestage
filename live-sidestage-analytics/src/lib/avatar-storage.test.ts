@@ -42,6 +42,16 @@ import { ensureAvatarCached, resolveAvatarUrls } from "./avatar-storage";
 
 const ALLOWED_URL = "https://p16-common-sign.tiktokcdn.com/a.webp";
 
+// 主体は tiktokUid(不変の数値ID)1種類。テストごとにスロットリングの状態を分けるため
+// (throttleマップはモジュール内で共有される)、呼び出しごとに別のuidを使う。
+const UID_FRESH = "7000000000000000101";
+const UID_UPLOAD = "7000000000000000102";
+const UID_DISALLOWED_URL = "7000000000000000103";
+const UID_NULL_URL = "7000000000000000104";
+const UID_THROTTLE = "7000000000000000105";
+const UID_BAD_CONTENT_TYPE = "7000000000000000106";
+const UID_NO_BUCKET = "7000000000000000107";
+
 function mockFetchOnce(init: { ok: boolean; contentType?: string; bodyBytes?: number }) {
   vi.stubGlobal(
     "fetch",
@@ -63,7 +73,7 @@ describe("ensureAvatarCached", () => {
     findUnique.mockResolvedValue({ fetchedAt: new Date() });
     mockFetchOnce({ ok: true });
 
-    await ensureAvatarCached("battle_host", "anchor1", ALLOWED_URL);
+    await ensureAvatarCached(UID_FRESH, ALLOWED_URL);
 
     expect(fetch).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
@@ -74,14 +84,14 @@ describe("ensureAvatarCached", () => {
     mockFetchOnce({ ok: true });
     send.mockResolvedValue({});
 
-    await ensureAvatarCached("battle_host", "anchor1", ALLOWED_URL);
+    await ensureAvatarCached(UID_UPLOAD, ALLOWED_URL);
 
     expect(fetch).toHaveBeenCalledWith(ALLOWED_URL, expect.objectContaining({ redirect: "error" }));
     expect(send).toHaveBeenCalledTimes(1);
     expect(upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { kind_subjectId: { kind: "battle_host", subjectId: "anchor1" } },
-        create: expect.objectContaining({ kind: "battle_host", subjectId: "anchor1" }),
+        where: { tiktokUid: UID_UPLOAD },
+        create: expect.objectContaining({ tiktokUid: UID_UPLOAD }),
       })
     );
   });
@@ -90,33 +100,33 @@ describe("ensureAvatarCached", () => {
     findUnique.mockResolvedValue(null);
     mockFetchOnce({ ok: true });
 
-    await ensureAvatarCached("gift_sender", "user1", "https://evil.example/a.png");
+    await ensureAvatarCached(UID_DISALLOWED_URL, "https://evil.example/a.png");
 
     expect(fetch).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
 
   it("sourceUrlがnullなら何もしない", async () => {
-    await ensureAvatarCached("gift_sender", "user1", null);
+    await ensureAvatarCached(UID_NULL_URL, null);
 
     expect(findUnique).not.toHaveBeenCalled();
   });
 
-  it("subjectIdが不正な形式(キー生成に使えない文字)ならスキップする", async () => {
-    await ensureAvatarCached("gift_sender", "../etc/passwd", ALLOWED_URL);
+  it("tiktokUidが不正な形式(キー生成に使えない文字)ならスキップする", async () => {
+    await ensureAvatarCached("../etc/passwd", ALLOWED_URL);
 
     expect(findUnique).not.toHaveBeenCalled();
   });
 
-  it("同じsubjectIdへの2回目の呼び出しはスロットリングされfetchしない", async () => {
+  it("同じtiktokUidへの2回目の呼び出しはスロットリングされfetchしない", async () => {
     findUnique.mockResolvedValue(null);
     mockFetchOnce({ ok: true });
     send.mockResolvedValue({});
 
-    await ensureAvatarCached("battle_host", "anchor-throttle", ALLOWED_URL);
+    await ensureAvatarCached(UID_THROTTLE, ALLOWED_URL);
     expect(fetch).toHaveBeenCalledTimes(1);
 
-    await ensureAvatarCached("battle_host", "anchor-throttle", ALLOWED_URL);
+    await ensureAvatarCached(UID_THROTTLE, ALLOWED_URL);
     expect(fetch).toHaveBeenCalledTimes(1); // 増えない
   });
 
@@ -124,7 +134,7 @@ describe("ensureAvatarCached", () => {
     findUnique.mockResolvedValue(null);
     mockFetchOnce({ ok: true, contentType: "text/html" });
 
-    await ensureAvatarCached("battle_host", "anchor-bad-ct", ALLOWED_URL);
+    await ensureAvatarCached(UID_BAD_CONTENT_TYPE, ALLOWED_URL);
 
     expect(send).not.toHaveBeenCalled();
     expect(upsert).not.toHaveBeenCalled();
@@ -138,7 +148,7 @@ describe("ensureAvatarCached", () => {
     findUnique.mockResolvedValue(null);
     mockFetchOnce({ ok: true });
 
-    await ensureWithNoBucket("battle_host", "anchor-no-bucket", ALLOWED_URL);
+    await ensureWithNoBucket(UID_NO_BUCKET, ALLOWED_URL);
 
     expect(send).not.toHaveBeenCalled();
   });
@@ -146,18 +156,20 @@ describe("ensureAvatarCached", () => {
 
 describe("resolveAvatarUrls", () => {
   it("空配列ならDBを引かない", async () => {
-    const result = await resolveAvatarUrls("battle_host", []);
+    const result = await resolveAvatarUrls([]);
 
     expect(result.size).toBe(0);
     expect(findMany).not.toHaveBeenCalled();
   });
 
   it("ヒットした分だけpresigned URLを返す", async () => {
-    findMany.mockResolvedValue([{ subjectId: "anchor1", storageKey: "avatars/battle-host/anchor1.webp" }]);
+    findMany.mockResolvedValue([
+      { tiktokUid: UID_UPLOAD, storageKey: `avatars/tiktok-user/${UID_UPLOAD}.webp` },
+    ]);
 
-    const result = await resolveAvatarUrls("battle_host", ["anchor1", "anchor2"]);
+    const result = await resolveAvatarUrls([UID_UPLOAD, UID_FRESH]);
 
-    expect(result.get("anchor1")).toBe("https://signed.example/avatars/battle-host/anchor1.webp");
-    expect(result.has("anchor2")).toBe(false);
+    expect(result.get(UID_UPLOAD)).toBe(`https://signed.example/avatars/tiktok-user/${UID_UPLOAD}.webp`);
+    expect(result.has(UID_FRESH)).toBe(false);
   });
 });

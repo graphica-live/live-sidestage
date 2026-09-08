@@ -137,8 +137,8 @@ export const authOptions: NextAuthOptions = {
       } catch (err) {
         // アンバサダー付与の失敗でサインアップ自体を失敗させない。
         // ここで失敗すると自動リトライは無い(このフックはUser作成時に一度だけ発火する)。
-        // token/userIdをログに残すのは、管理者が addAmbassadorByEmail で手動救済するため。
-        console.error("[auth] claimAmbassadorInviteForNewUser failed:", { token, userId: user.id, err });
+        // token/principalIdをログに残すのは、管理者が addAmbassadorByEmail で手動救済するため。
+        console.error("[auth] claimAmbassadorInviteForNewUser failed:", { token, principalId: user.id, err });
       }
     },
   },

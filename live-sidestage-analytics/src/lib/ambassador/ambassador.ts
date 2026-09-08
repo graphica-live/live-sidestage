@@ -13,7 +13,7 @@ export type AmbassadorInviteRecord = {
 
 export type AmbassadorRecord = {
   id: string;
-  userId: string;
+  principalId: string;
   createdAt: string;
   userEmail: string | null;
   userName: string | null;
@@ -69,14 +69,14 @@ export async function listAmbassadors(): Promise<AmbassadorRecord[]> {
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
-      userId: true,
+      principalId: true,
       createdAt: true,
       user: { select: { email: true, name: true } },
     },
   });
   return ambassadors.map((a) => ({
     id: a.id,
-    userId: a.userId,
+    principalId: a.principalId,
     createdAt: a.createdAt.toISOString(),
     userEmail: a.user.email,
     userName: a.user.name,
@@ -99,10 +99,10 @@ export async function addAmbassadorByEmail(rawEmail: string): Promise<AddAmbassa
 
   try {
     const ambassador = await prisma.ambassador.create({
-      data: { userId: user.id },
+      data: { principalId: user.id },
       select: {
         id: true,
-        userId: true,
+        principalId: true,
         createdAt: true,
         user: { select: { email: true, name: true } },
       },
@@ -111,7 +111,7 @@ export async function addAmbassadorByEmail(rawEmail: string): Promise<AddAmbassa
       ok: true,
       ambassador: {
         id: ambassador.id,
-        userId: ambassador.userId,
+        principalId: ambassador.principalId,
         createdAt: ambassador.createdAt.toISOString(),
         userEmail: ambassador.user.email,
         userName: ambassador.user.name,
@@ -134,12 +134,12 @@ export type RemoveAmbassadorResult = {
 // アンバサダー資格を外す。Stripe側の既存購読(差額ULTRA等)は自動キャンセルしない
 // (要件外。解除前にStripe管理画面側で契約を確認するようUI側で案内する)。
 export async function removeAmbassador(id: string): Promise<RemoveAmbassadorResult> {
-  const ambassador = await prisma.ambassador.findUnique({ where: { id }, select: { userId: true } });
+  const ambassador = await prisma.ambassador.findUnique({ where: { id }, select: { principalId: true } });
   if (!ambassador) return { removed: false, hadActiveAmbassadorUltraSubscription: false };
 
   const activeUltra = await prisma.subscription.findFirst({
     where: {
-      userId: ambassador.userId,
+      principalId: ambassador.principalId,
       plan: "ULTRA",
       entitlementActive: true,
       OR: [{ provider: null }, { provider: "STRIPE" }],
@@ -160,18 +160,18 @@ export type ClaimInviteResult = { ok: true } | { ok: false; reason: "invalid_or_
 // ままにする(招待だけ失われて誰もアンバサダーになれない状態を防ぐ)。
 export async function claimAmbassadorInviteForNewUser(
   token: string,
-  userId: string
+  principalId: string
 ): Promise<ClaimInviteResult> {
   const now = new Date();
   try {
     return await prisma.$transaction(async (tx) => {
       const consumed = await tx.ambassadorInvite.updateMany({
         where: { token, usedAt: null, expiresAt: { gt: now } },
-        data: { usedAt: now, usedByUserId: userId },
+        data: { usedAt: now, usedByPrincipalId: principalId },
       });
       if (consumed.count !== 1) return { ok: false, reason: "invalid_or_used" as const };
 
-      await tx.ambassador.create({ data: { userId } });
+      await tx.ambassador.create({ data: { principalId } });
       return { ok: true as const };
     });
   } catch (err) {

@@ -10,7 +10,7 @@
 // 既存2ファイルの統合は別課題として残す。
 
 /** ペイロードの形。互換性を壊す変更を入れたら上げる。クライアントは不一致なら再生を拒否する。 */
-export const BATTLE_REPLAY_VERSION = 1;
+export const BATTLE_REPLAY_VERSION = 2;
 
 /** 1回のレスポンスに載せるギフトイベントの上限。超えたら時系列の先頭から残す。 */
 export const MAX_REPLAY_EVENTS = 3000;
@@ -66,14 +66,14 @@ export type ReplaySegment = {
 };
 
 export type ReplayParticipant = {
-  anchorId: string;
+  tiktokUid: string;
   /** **この再生を見ている配信者本人か。** 陣営(`ReplayTeam.isSelf`)ではなく個人の判定で、
    * 多人数コラボの自陣にも本人でないメンバーがいる。ステージの並び順と、
    * 下段の貢献者ボードを誰への貢献に絞るかがこの値で決まる。 */
   isSelf: boolean;
   displayName: string;
   /** TikTokハンドル。**公開バリアントでは常に null。** */
-  uniqueId: string | null;
+  tiktokHandle: string | null;
   avatarUrl: string | null;
 };
 
@@ -87,6 +87,8 @@ export type ReplayTeam = {
 
 /** ギフト送信者の辞書。`giftEvents[].s` がこの配列の添字を指す。 */
 export type ReplaySender = {
+  /** 同一性キー。TikTok の不変な数値ID。 */
+  uid: string;
   /** TikTokハンドル。**公開バリアントでは常に null**(リスナー個人のプロフィールへ直リンクできるため)。 */
   u: string | null;
   /** ニックネーム。 */
@@ -150,7 +152,7 @@ export type BattleReplayPayload = {
   durationMs: number;
   status: string;
   teams: ReplayTeam[];
-  /** `teams[].participants` を陣営順・位置順に平坦化した anchorId 配列。添字の正本。 */
+  /** `teams[].participants` を陣営順・位置順に平坦化した tiktokUid 配列。添字の正本。 */
   anchors: string[];
   senders: ReplaySender[];
   gifts: ReplayGift[];

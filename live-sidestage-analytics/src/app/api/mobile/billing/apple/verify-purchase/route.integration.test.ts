@@ -62,18 +62,18 @@ beforeAll(async () => {
   // (実装後レビュー指摘。単体実行では再現せず、pre-commitのnpm test全体実行でのみ再現した)。
   const userA = await prisma.user.create({ data: { email: `itest-applebilling-verify-a-${Date.now()}@local.test` } });
   userAId = userA.id;
-  tokenA = signMobileToken({ userId: userAId });
+  tokenA = signMobileToken({ principalId: userAId });
 
   const userB = await prisma.user.create({ data: { email: `itest-applebilling-verify-b-${Date.now()}@local.test` } });
   userBId = userB.id;
-  tokenB = signMobileToken({ userId: userBId });
+  tokenB = signMobileToken({ principalId: userBId });
 });
 
 afterEach(async () => {
   mockedGetAllSubscriptionStatuses.mockReset();
   mockedVerifyAndDecodeTransaction.mockReset();
-  await prisma.subscription.deleteMany({ where: { userId: { in: [userAId, userBId] } } }).catch(() => {});
-  await prisma.pendingPurchaseIntent.deleteMany({ where: { userId: { in: [userAId, userBId] } } }).catch(() => {});
+  await prisma.subscription.deleteMany({ where: { principalId: { in: [userAId, userBId] } } }).catch(() => {});
+  await prisma.pendingPurchaseIntent.deleteMany({ where: { principalId: { in: [userAId, userBId] } } }).catch(() => {});
 });
 
 afterAll(async () => {
@@ -120,7 +120,7 @@ describe("POST /api/mobile/billing/apple/verify-purchase", () => {
       data: {
         provider: "APPLE",
         token: appAccountToken,
-        userId: userAId,
+        principalId: userAId,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
@@ -137,7 +137,7 @@ describe("POST /api/mobile/billing/apple/verify-purchase", () => {
     const sub = await prisma.subscription.findUnique({
       where: { provider_providerSubscriptionId: { provider: "APPLE", providerSubscriptionId: transactionId } },
     });
-    expect(sub?.userId).toBe(userAId);
+    expect(sub?.principalId).toBe(userAId);
   });
 
   it("新規購入: 対応するPendingPurchaseIntentが無ければ403(別アカウントでの横流し防止)", async () => {
@@ -160,7 +160,7 @@ describe("POST /api/mobile/billing/apple/verify-purchase", () => {
     const renewedTransactionId = "itest-apple-renewed-self"; // originalとは別id(更新後)
     await prisma.subscription.create({
       data: {
-        userId: userAId,
+        principalId: userAId,
         provider: "APPLE",
         providerSubscriptionId: originalTransactionId,
         plan: "PRO",
@@ -183,7 +183,7 @@ describe("POST /api/mobile/billing/apple/verify-purchase", () => {
     const originalTransactionId = "itest-apple-original-other";
     await prisma.subscription.create({
       data: {
-        userId: userBId,
+        principalId: userBId,
         provider: "APPLE",
         providerSubscriptionId: originalTransactionId,
         plan: "PRO",

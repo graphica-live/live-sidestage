@@ -3,14 +3,14 @@ import { fetchTiktokProfile, type TiktokProfileResult } from "@/lib/tiktok-profi
 import { ensureAvatarCached } from "@/lib/avatar-storage";
 
 // イベントのトーナメント表・参加者アイコンを、Event.startAt 到来時点で1回だけ
-// 自前ストレージ(TiktokAvatarAsset, kind: "event_participant")へスナップショットする。
+// 自前ストレージ(TiktokAvatarAsset。キーは tiktokUid)へスナップショットする。
 //
 // **これは src/event/CLAUDE.md の「配信者アイコンの URL を永続化しない」の例外ではない。**
 // あの節が禁止しているのは「署名付き URL の文字列を DB 列へ保存すること」で、ここでやるのは
 // 既にバトル履歴・貢献タブが使っている恒久保存方式(画像バイトを Bucket へダウンロードし、
 // DB にはオブジェクトキーだけを持つ)の再利用。URL 自体は一切 DB へ書かない。
 //
-// **fill-once ではなく try-once。** hostUserId 補完(tiktok-host-id.ts)と違い、個々の参加者の
+// **fill-once ではなく try-once。** hostTiktokUid 補完(tiktok-host-id.ts)と違い、個々の参加者の
 // 取得に失敗しても re-fetch を試み続けない — Event.avatarsSnapshottedAt は成否に関わらず
 // このジョブの1回の実行で立てる。失敗した参加者は `/api/public/avatar/[participantId]` の
 // ライブ取得(avatarCache 経由の 302)へ永続的にフォールバックし続ける(仕様)。
@@ -21,7 +21,12 @@ export const MAX_EVENTS_PER_RUN = Number(process.env.EVENT_AVATAR_SNAPSHOT_MAX_E
 export const CONCURRENCY = Number(process.env.EVENT_AVATAR_SNAPSHOT_CONCURRENCY ?? 2);
 export const BATCH_DELAY_MS = Number(process.env.EVENT_AVATAR_SNAPSHOT_BATCH_DELAY_MS ?? 1000);
 
-export type DueEvent = { id: string; tiktokIds: string[] };
+/**
+ * 参加者は `tiktokUid`(保存先のキー)と `tiktokHandle`(TikTok への問い合わせキー)の両方を持つ。
+ * TikTok プロフィール API はハンドルでしか引けず、TiktokAvatarAsset は uid でしか引けない。
+ */
+export type DueEventParticipant = { tiktokUid: string; tiktokHandle: string };
+export type DueEvent = { id: string; participants: DueEventParticipant[] };
 
 export type AvatarSnapshotResult = {
   /** スナップショットを試みたイベント数(成否問わず avatarsSnapshottedAt を立てた数)。 */
@@ -33,8 +38,8 @@ export type AvatarSnapshotResult = {
 };
 
 export type AvatarSnapshotDeps = {
-  fetchProfile?: (tiktokId: string) => Promise<TiktokProfileResult>;
-  cacheAvatar?: (kind: "event_participant", subjectId: string, sourceUrl: string | null) => Promise<void>;
+  fetchProfile?: (tiktokHandle: string) => Promise<TiktokProfileResult>;
+  cacheAvatar?: (tiktokUid: string, sourceUrl: string | null) => Promise<void>;
   listDueEvents?: (now: Date, limit: number) => Promise<DueEvent[]>;
   markSnapshotted?: (eventId: string, at: Date) => Promise<void>;
   now?: () => Date;
@@ -47,14 +52,15 @@ export type AvatarSnapshotDeps = {
 async function defaultListDueEvents(now: Date, limit: number): Promise<DueEvent[]> {
   const events = await prisma.event.findMany({
     where: { startAt: { lte: now }, avatarsSnapshottedAt: null },
-    select: { id: true, participants: { select: { tiktokId: true } } },
+    select: { id: true, participants: { select: { tiktokUid: true, tiktokHandle: true } } },
     take: limit,
     orderBy: { startAt: "asc" },
   });
-  return events.map((e) => ({
-    id: e.id,
-    tiktokIds: [...new Set(e.participants.map((p) => p.tiktokId))],
-  }));
+  return events.map((e) => {
+    const byUid = new Map<string, DueEventParticipant>();
+    for (const p of e.participants) byUid.set(p.tiktokUid, p);
+    return { id: e.id, participants: [...byUid.values()] };
+  });
 }
 
 async function defaultMarkSnapshotted(eventId: string, at: Date): Promise<void> {
@@ -68,7 +74,7 @@ const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 
 /**
  * startAt を迎えた未スナップショットのイベントを見つけ、参加者アイコンを
- * TiktokAvatarAsset(kind: "event_participant") へ保存する。**失敗しても例外を投げない**
+ * TiktokAvatarAsset(tiktokUid キー) へ保存する。**失敗しても例外を投げない**
  * (event-worker の集計ループを止めてよい理由がない)。
  */
 export async function snapshotDueEventAvatars(
@@ -90,19 +96,19 @@ export async function snapshotDueEventAvatars(
   const dueEvents = await listDueEvents(now(), maxEvents);
 
   for (const event of dueEvents) {
-    for (let i = 0; i < event.tiktokIds.length; i += concurrency) {
+    for (let i = 0; i < event.participants.length; i += concurrency) {
       if (i > 0) await sleep(batchDelayMs);
 
-      const batch = event.tiktokIds.slice(i, i + concurrency);
+      const batch = event.participants.slice(i, i + concurrency);
       const outcomes = await Promise.all(
-        batch.map(async (tiktokId) => {
+        batch.map(async ({ tiktokUid, tiktokHandle }) => {
           try {
-            const fetched = await fetchProfile(tiktokId);
+            const fetched = await fetchProfile(tiktokHandle);
             if (!fetched.ok) return false;
-            await cacheAvatar("event_participant", tiktokId, fetched.profile.avatarUrl);
+            await cacheAvatar(tiktokUid, fetched.profile.avatarUrl);
             return true;
           } catch (err) {
-            console.error(`[avatar-snapshot] @${tiktokId} のアイコン保存に失敗:`, err);
+            console.error(`[avatar-snapshot] @${tiktokHandle} のアイコン保存に失敗:`, err);
             return false;
           }
         })

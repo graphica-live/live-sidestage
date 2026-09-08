@@ -19,10 +19,10 @@ const THROTTLE_MS = 24 * 60 * 60 * 1000;
 // 等でreviveだけ失敗すると最大24時間、監視停止状態から復活できなくなる。
 // reviveはスロットル対象外にして毎回試行する(streamer 1件取得+条件付きupdateManyで、
 // 監視停止中でなければ実質no-opなので毎回呼んでもコストは軽い)。
-export async function markLastActive(userId: string): Promise<void> {
+export async function markLastActive(principalId: string): Promise<void> {
   try {
     const streamer = await prisma.streamer.findUnique({
-      where: { userId },
+      where: { principalId },
       select: { roomId: true },
     });
     if (streamer?.roomId) await reviveSuspendedMonitoring(streamer.roomId);
@@ -31,13 +31,13 @@ export async function markLastActive(userId: string): Promise<void> {
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { id: userId }, select: { lastActiveAt: true } });
+    const existing = await prisma.user.findUnique({ where: { id: principalId }, select: { lastActiveAt: true } });
     if (!existing) return;
 
     const isStale = !existing.lastActiveAt || Date.now() - existing.lastActiveAt.getTime() > THROTTLE_MS;
     if (!isStale) return;
 
-    await prisma.user.updateMany({ where: { id: userId }, data: { lastActiveAt: new Date() } });
+    await prisma.user.updateMany({ where: { id: principalId }, data: { lastActiveAt: new Date() } });
   } catch (err) {
     console.error("[mark-last-active] 更新に失敗:", err);
   }

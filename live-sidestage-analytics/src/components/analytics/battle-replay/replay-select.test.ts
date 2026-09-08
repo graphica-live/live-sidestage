@@ -34,6 +34,7 @@ import {
   QUIET_LEAD_MS,
   QUIET_MIN_GAP_MS,
 } from "./replay-select";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 
 function payload(overrides: Partial<BattleReplayPayload> = {}): BattleReplayPayload {
   return {
@@ -48,7 +49,7 @@ function payload(overrides: Partial<BattleReplayPayload> = {}): BattleReplayPayl
         isSelf: true,
         officialScore: "100",
         participants: [
-          { anchorId: "self", isSelf: true, displayName: "自分", uniqueId: "self", avatarUrl: null },
+          { tiktokUid: "self", isSelf: true, displayName: "自分", tiktokHandle: "self", avatarUrl: null },
         ],
       },
       {
@@ -56,14 +57,14 @@ function payload(overrides: Partial<BattleReplayPayload> = {}): BattleReplayPayl
         isSelf: false,
         officialScore: "80",
         participants: [
-          { anchorId: "rival", isSelf: false, displayName: "相手", uniqueId: "rival", avatarUrl: null },
+          { tiktokUid: "rival", isSelf: false, displayName: "相手", tiktokHandle: "rival", avatarUrl: null },
         ],
       },
     ],
     anchors: ["self", "rival"],
     senders: [
-      { u: "fan_a", n: "ファンA", a: null },
-      { u: "fan_b", n: "ファンB", a: null },
+      { uid: makeTiktokUid("fan_a"), u: "fan_a", n: "ファンA", a: null },
+      { uid: makeTiktokUid("fan_b"), u: "fan_b", n: "ファンB", a: null },
     ],
     gifts: [{ id: 5655, n: "バラ", img: null }],
     scorePoints: [
@@ -337,7 +338,7 @@ describe("selfAnchorIndexes", () => {
           isSelf: false,
           officialScore: "80",
           participants: [
-            { anchorId: "rival", isSelf: false, displayName: "相手", uniqueId: "rival", avatarUrl: null },
+            { tiktokUid: "rival", isSelf: false, displayName: "相手", tiktokHandle: "rival", avatarUrl: null },
           ],
         },
         {
@@ -345,7 +346,7 @@ describe("selfAnchorIndexes", () => {
           isSelf: true,
           officialScore: "100",
           participants: [
-            { anchorId: "self", isSelf: true, displayName: "自分", uniqueId: "self", avatarUrl: null },
+            { tiktokUid: "self", isSelf: true, displayName: "自分", tiktokHandle: "self", avatarUrl: null },
           ],
         },
       ],
@@ -358,7 +359,12 @@ describe("selfAnchorIndexes", () => {
 describe("contributorsAt の人数上限", () => {
   it("7人が投げても上位6人までしか並べない", () => {
     const p = payload({
-      senders: [0, 1, 2, 3, 4, 5, 6].map((i) => ({ u: `fan_${i}`, n: `ファン${i}`, a: null })),
+      senders: [0, 1, 2, 3, 4, 5, 6].map((i) => ({
+        uid: makeTiktokUid(`fan_${i}`),
+        u: `fan_${i}`,
+        n: `ファン${i}`,
+        a: null,
+      })),
       giftEvents: [0, 1, 2, 3, 4, 5, 6].map((i) => ({
         t: i * 10,
         a: 0,
@@ -495,10 +501,10 @@ describe("buildStageLayout", () => {
         officialScore: "10",
         participants: [
           {
-            anchorId: `a${index}`,
+            tiktokUid: `a${index}`,
             isSelf: index === 0,
             displayName: `a${index}`,
-            uniqueId: null,
+            tiktokHandle: null,
             avatarUrl: null,
           },
         ],
@@ -517,7 +523,7 @@ describe("buildStageLayout", () => {
       isSelf,
       officialScore: "10",
       participants: [
-        { anchorId: `a${index}`, isSelf, displayName: `a${index}`, uniqueId: null, avatarUrl: null },
+        { tiktokUid: `a${index}`, isSelf, displayName: `a${index}`, tiktokHandle: null, avatarUrl: null },
       ],
     });
     const pair = (index: number, isSelf: boolean) => ({
@@ -525,10 +531,10 @@ describe("buildStageLayout", () => {
       isSelf,
       officialScore: "10",
       participants: [0, 1].map((n) => ({
-        anchorId: `t${index}_${n}`,
+        tiktokUid: `t${index}_${n}`,
         isSelf: isSelf && n === 0,
         displayName: `t${index}_${n}`,
-        uniqueId: null,
+        tiktokHandle: null,
         avatarUrl: null,
       })),
     });
@@ -562,10 +568,10 @@ describe("buildStageLayout", () => {
             isSelf: false,
             officialScore: "10",
             participants: [0, 1, 2].map((n) => ({
-              anchorId: `o${n}`,
+              tiktokUid: `o${n}`,
               isSelf: false,
               displayName: `o${n}`,
-              uniqueId: null,
+              tiktokHandle: null,
               avatarUrl: null,
             })),
           },
@@ -588,7 +594,7 @@ describe("buildStageLayout", () => {
             isSelf: false,
             officialScore: "80",
             participants: [
-              { anchorId: "rival", isSelf: false, displayName: "相手", uniqueId: null, avatarUrl: null },
+              { tiktokUid: "rival", isSelf: false, displayName: "相手", tiktokHandle: null, avatarUrl: null },
             ],
           },
           {
@@ -596,7 +602,7 @@ describe("buildStageLayout", () => {
             isSelf: true,
             officialScore: "100",
             participants: [
-              { anchorId: "self", isSelf: true, displayName: "自分", uniqueId: null, avatarUrl: null },
+              { tiktokUid: "self", isSelf: true, displayName: "自分", tiktokHandle: null, avatarUrl: null },
             ],
           },
         ],
@@ -711,10 +717,10 @@ describe("teamTotalsOf", () => {
   it("複数人コラボの陣営名は参加者を連結する", () => {
     const p = payload();
     p.teams[1]!.participants.push({
-      anchorId: "rival2",
+      tiktokUid: "rival2",
       isSelf: false,
       displayName: "相手2",
-      uniqueId: null,
+      tiktokHandle: null,
       avatarUrl: null,
     });
     expect(teamTotalsOf(p)[1]!.displayName).toBe("相手 / 相手2");

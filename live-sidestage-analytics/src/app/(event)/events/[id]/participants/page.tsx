@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function ParticipantsPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
-    where: { id: params.id, ownerUserId: session!.user.id },
+    where: { id: params.id, ownerPrincipalId: session!.user.id },
     select: { id: true, title: true, format: true, entryMode: true, teamPreset: true, status: true },
   });
 
@@ -26,7 +26,7 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
       orderBy: { joinedAt: "asc" },
       select: {
         id: true,
-        tiktokId: true,
+        tiktokHandle: true,
         roomId: true,
         displayName: true,
         status: true,
@@ -59,7 +59,7 @@ export default async function ParticipantsPage({ params }: { params: { id: strin
 
   const rows: ParticipantRow[] = participants.map((p) => ({
     id: p.id,
-    tiktokId: p.tiktokId,
+    tiktokHandle: p.tiktokHandle,
     displayName: p.displayName,
     status: p.status,
     teamId: p.teamId,

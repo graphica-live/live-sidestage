@@ -42,7 +42,7 @@ function queryRawOnly(roomIds: string[], range: { from: string; to: string }) {
       "roomId"                          AS "roomId",
       SUM("repeatCount")                AS "giftCount",
       SUM("totalDiamonds")              AS "totalDiamonds",
-      COUNT(DISTINCT "uniqueId")        AS "supporterCount",
+      COUNT(DISTINCT "tiktokUid")       AS "supporterCount",
       MAX("receivedAt")                 AS "lastGiftAt"
     FROM "gifts"
     WHERE "roomId" IN (${Prisma.join(roomIds)})
@@ -67,13 +67,13 @@ function queryWithRollup(
   const rollupTo = shiftDayKey(cutoffDayKey, -1);
   return prisma.$queryRaw<SummaryRow[]>`
     WITH src AS (
-      SELECT "roomId", "repeatCount" AS gc, "totalDiamonds"::bigint AS td, "uniqueId", "receivedAt" AS ts
+      SELECT "roomId", "repeatCount" AS gc, "totalDiamonds"::bigint AS td, "tiktokUid", "receivedAt" AS ts
         FROM "gifts"
        WHERE "roomId" IN (${Prisma.join(roomIds)})
          AND "dayKey" >= ${rawFrom}
          AND "dayKey" <= ${range.to}
       UNION ALL
-      SELECT "roomId", "giftCount" AS gc, "totalDiamonds"::bigint AS td, "uniqueId", "lastReceivedAt" AS ts
+      SELECT "roomId", "giftCount" AS gc, "totalDiamonds"::bigint AS td, "tiktokUid", "lastReceivedAt" AS ts
         FROM "gift_daily_listener_stats"
        WHERE "roomId" IN (${Prisma.join(roomIds)})
          AND "dayKey" >= ${range.from}
@@ -83,7 +83,7 @@ function queryWithRollup(
       "roomId"                   AS "roomId",
       SUM(gc)                    AS "giftCount",
       SUM(td)                    AS "totalDiamonds",
-      COUNT(DISTINCT "uniqueId") AS "supporterCount",
+      COUNT(DISTINCT "tiktokUid") AS "supporterCount",
       MAX(ts)                    AS "lastGiftAt"
     FROM src
     GROUP BY "roomId"
@@ -105,8 +105,8 @@ async function queryRows(
 // 複数のTiktokRoomをまたいだ期間集計を、部屋ごとに1行で返す。
 // 期間は dayKey で絞ることで @@index([roomId, dayKey]) に乗せる。
 //
-// COUNT(DISTINCT "uniqueId") はSQLで完結させる。PrismaのgroupByには distinct count が無く、
-// (roomId, uniqueId) でgroupByすると支援者の全組み合わせをNodeへ転送して数えることになり、
+// COUNT(DISTINCT "tiktokUid") はSQLで完結させる。PrismaのgroupByには distinct count が無く、
+// (roomId, tiktokUid) でgroupByすると支援者の全組み合わせをNodeへ転送して数えることになり、
 // 長期間×多room指定で転送量が跳ねるため。
 export async function queryRoomSummariesRaw(
   roomIds: string[],

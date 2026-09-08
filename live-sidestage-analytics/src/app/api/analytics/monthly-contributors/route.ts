@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveStreamerByApiKey } from "@/lib/api-auth";
 import { getDateRange, queryGifts, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 
-type Contributor = Pick<GiftAnalyticsUser, "uniqueId" | "nickname" | "profileImageUrl" | "totalDiamonds">;
+type Contributor = Pick<GiftAnalyticsUser, "tiktokHandle" | "nickname" | "profileImageUrl" | "totalDiamonds">;
 
 function toContributor(u: GiftAnalyticsUser): Contributor {
-  return { uniqueId: u.uniqueId, nickname: u.nickname, profileImageUrl: u.profileImageUrl, totalDiamonds: u.totalDiamonds };
+  return { tiktokHandle: u.tiktokHandle, nickname: u.nickname, profileImageUrl: u.profileImageUrl, totalDiamonds: u.totalDiamonds };
 }
 
 // 降順ソート済みユーザーからMVP(最大値、同率含む)とTOP5(全体の上位5番目までの値以上、同率含む、MVPとは非重複)を算出する。

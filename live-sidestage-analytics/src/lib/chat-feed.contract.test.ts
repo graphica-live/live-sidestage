@@ -56,7 +56,8 @@ describe("chat:* ペイロード契約", () => {
     const fixture = fixtures.gift;
     const ok = await emitChatGift({
       streamerId: fixture.streamerId,
-      uniqueId: fixture.uniqueId,
+      tiktokUid: fixture.tiktokUid,
+      tiktokHandle: fixture.tiktokHandle,
       nickname: fixture.nickname,
       profilePictureUrl: fixture.profilePictureUrl,
       giftName: fixture.giftName,
@@ -83,7 +84,8 @@ describe("chat:* ペイロード契約", () => {
     const fixture = fixtures.giftWithoutCombo;
     await emitChatGift({
       streamerId: fixture.streamerId,
-      uniqueId: fixture.uniqueId,
+      tiktokUid: fixture.tiktokUid,
+      tiktokHandle: fixture.tiktokHandle,
       nickname: fixture.nickname,
       profilePictureUrl: fixture.profilePictureUrl,
       giftName: fixture.giftName,
@@ -110,7 +112,8 @@ describe("chat:* ペイロード契約", () => {
     const fixture = fixtures.follow;
     await emitChatFollow({
       streamerId: fixture.streamerId,
-      uniqueId: fixture.uniqueId,
+      tiktokUid: fixture.tiktokUid,
+      tiktokHandle: fixture.tiktokHandle,
       nickname: fixture.nickname,
       profilePictureUrl: fixture.profilePictureUrl,
       occurredAt: fixture.occurredAt,

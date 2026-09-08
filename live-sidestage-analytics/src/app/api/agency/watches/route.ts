@@ -35,16 +35,16 @@ export async function POST(req: NextRequest) {
   if (!agency) return NextResponse.json({ error: "事務所情報が見つかりません。" }, { status: 404 });
 
   const body = (await req.json().catch(() => null)) as
-    | { tiktokId?: unknown; label?: unknown }
+    | { tiktokHandle?: unknown; label?: unknown }
     | null;
-  const tiktokId = typeof body?.tiktokId === "string" ? body.tiktokId : "";
+  const tiktokHandle = typeof body?.tiktokHandle === "string" ? body.tiktokHandle : "";
   const label = typeof body?.label === "string" ? body.label : null;
 
   if (label && label.trim().length > 100) {
     return NextResponse.json({ error: "管理名は100文字以内で入力してください。" }, { status: 400 });
   }
 
-  const result = await addWatch(agency.id, tiktokId, label);
+  const result = await addWatch(agency.id, tiktokHandle, label);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: STATUS_BY_CODE[result.code] });
   }

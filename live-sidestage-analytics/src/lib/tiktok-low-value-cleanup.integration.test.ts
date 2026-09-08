@@ -12,16 +12,24 @@ import {
   ACTIVE_PROTECT_MS,
 } from "./tiktok-low-value-cleanup";
 import { reviveSuspendedMonitoring } from "./mark-last-active";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
 const roomIds: string[] = [];
-const userIds: string[] = [];
+const principalIds: string[] = [];
 const giftIds: string[] = [];
 const agencyIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestlv${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+}
+
+// TiktokRoom.hostTiktokUid は @unique。同一ファイル内で複数部屋を作るので必ず別値を配る。
+let uidSeq = 0;
+function nextTiktokUid() {
+  uidSeq += 1;
+  return `7${String(Date.now() % 1_000_000).padStart(6, "0")}${String(uidSeq).padStart(11, "0")}`;
 }
 
 async function makeRoom(data: {
@@ -32,12 +40,13 @@ async function makeRoom(data: {
 }) {
   const room = await prisma.tiktokRoom.create({
     data: {
-      tiktokId: tiktokId(data.tag),
+      hostTiktokUid: nextTiktokUid(),
+      tiktokHandle: tiktokHandle(data.tag),
       monitorUntil: data.monitorUntil ?? null,
       monitoringSuspended: data.monitoringSuspended ?? false,
       lastLowValueCheckAt: data.lastLowValueCheckAt ?? null,
     },
-    select: { id: true, tiktokId: true },
+    select: { id: true, tiktokHandle: true },
   });
   roomIds.push(room.id);
   return room;
@@ -48,15 +57,16 @@ async function makeUser(lastActiveAt: Date | null) {
     data: { email: `itest-lv-${suffix()}@local.test`, name: "itest", lastActiveAt },
     select: { id: true },
   });
-  userIds.push(user.id);
+  principalIds.push(user.id);
   return user;
 }
 
-async function attachStreamer(roomId: string, userId: string) {
+async function attachStreamer(roomId: string, principalId: string) {
   await prisma.streamer.create({
     data: {
-      userId,
-      tiktokId: tiktokId("s"),
+      principalId,
+      tiktokUid: nextTiktokUid(),
+      tiktokHandle: tiktokHandle("s"),
       roomId,
       verificationCode: `itest-${suffix()}`,
       apiKey: `itest-key-${suffix()}`,
@@ -65,9 +75,9 @@ async function attachStreamer(roomId: string, userId: string) {
   });
 }
 
-async function attachSubscription(userId: string) {
+async function attachSubscription(principalId: string) {
   await prisma.subscription.create({
-    data: { userId, plan: "PRO", entitlementActive: true },
+    data: { principalId, plan: "PRO", entitlementActive: true },
   });
 }
 
@@ -75,8 +85,7 @@ async function attachGift(roomId: string, totalDiamonds: number, receivedAt: Dat
   const gift = await prisma.gift.create({
     data: {
       roomId,
-      uniqueId: "itest-sender",
-      nickname: "itest sender",
+      tiktokUid: makeTiktokUid("itest-sender"),
       giftId: 1,
       giftName: "Rose",
       dayKey: "2026-08-23",
@@ -96,7 +105,12 @@ async function makeAgencyWatch(roomId: string) {
   });
   agencyIds.push(agency.id);
   await prisma.agencyWatch.create({
-    data: { agencyId: agency.id, roomId, tiktokId: "itest-watch-target" },
+    data: {
+      agencyId: agency.id,
+      roomId,
+      tiktokUid: nextTiktokUid(),
+      tiktokHandle: "itest-watch-target",
+    },
   });
 }
 
@@ -107,18 +121,18 @@ afterAll(async () => {
   await prisma.agency.deleteMany({ where: { id: { in: agencyIds } } });
   await prisma.gift.deleteMany({ where: { id: { in: giftIds } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
-  await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.subscription.deleteMany({ where: { principalId: { in: principalIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 
 describe("selectLowValueCandidates", () => {
-  let eligible: { id: string; tiktokId: string };
-  let noStreamerRoom: { id: string; tiktokId: string };
-  let agencyWatchedRoom: { id: string; tiktokId: string };
-  let monitorUntilFutureRoom: { id: string; tiktokId: string };
-  let alreadySuspendedRoom: { id: string; tiktokId: string };
-  let cooldownNotElapsedRoom: { id: string; tiktokId: string };
+  let eligible: { id: string; tiktokHandle: string };
+  let noStreamerRoom: { id: string; tiktokHandle: string };
+  let agencyWatchedRoom: { id: string; tiktokHandle: string };
+  let monitorUntilFutureRoom: { id: string; tiktokHandle: string };
+  let alreadySuspendedRoom: { id: string; tiktokHandle: string };
+  let cooldownNotElapsedRoom: { id: string; tiktokHandle: string };
 
   beforeAll(async () => {
     const withinCooldown = new Date(NOW.getTime() - 60_000);

@@ -31,7 +31,7 @@ async function loadGiftTotals(): Promise<{ contributorCount: number; giftCount: 
   }
 
   const [rows, giftCount] = await Promise.all([
-    prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(DISTINCT "uniqueId") AS count FROM "gifts"`,
+    prisma.$queryRaw<{ count: bigint }[]>`SELECT COUNT(DISTINCT "tiktokUid") AS count FROM "gifts"`,
     prisma.gift.count(),
   ]);
   return { contributorCount: Number(rows[0]?.count ?? 0), giftCount };

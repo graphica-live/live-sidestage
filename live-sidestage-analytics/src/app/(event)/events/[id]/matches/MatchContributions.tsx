@@ -201,7 +201,7 @@ function SlotColumn({
 }) {
   return (
     <div className="min-w-[13rem] flex-1 rounded-lg bg-black/5 dark:bg-white/5 p-2">
-      <div className="truncate text-sm font-medium" title={`@${slot.tiktokId}`}>
+      <div className="truncate text-sm font-medium" title={`@${slot.tiktokHandle}`}>
         {slot.displayName}
       </div>
       <div className="mt-0.5 text-xs text-muted">
@@ -226,7 +226,7 @@ function SlotColumn({
       ) : (
         <ol className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1">
           {slot.listeners.map((listener, index) => (
-            <li key={listener.uniqueId} className="flex items-center gap-1.5 text-xs">
+            <li key={listener.tiktokHandle} className="flex items-center gap-1.5 text-xs">
               <span className="w-4 shrink-0 text-right text-muted">{index + 1}</span>
               {listener.profileImageUrl ? (
                 // 外部(TikTok CDN)の画像なので next/image の最適化は通さない。
@@ -240,7 +240,7 @@ function SlotColumn({
               ) : (
                 <span className="h-5 w-5 shrink-0 rounded-full bg-black/10 dark:bg-white/10" aria-hidden />
               )}
-              <span className="min-w-0 flex-1 truncate" title={`@${listener.uniqueId}`}>
+              <span className="min-w-0 flex-1 truncate" title={`@${listener.tiktokHandle}`}>
                 {listener.nickname}
               </span>
               <span className="shrink-0 tabular-nums text-muted">

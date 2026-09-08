@@ -8,6 +8,11 @@ last_reviewers: DeepSeek
 
 # テストベースライン: 管理画面からのTikTokRoom監視操作
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `/admin/workers` 管理画面から `PATCH /api/admin/tiktok-rooms` を通じて行う `TiktokRoom` の監視一時停止(`suspend`)・特別監視トグル(`toggle_special_watch`)。実装は [src/lib/tiktok-room.ts](../../../src/lib/tiktok-room.ts) の `suspendRoomMonitoring` / `toggleSpecialWatch`。一時停止(`monitoringSuspended`)は恒久停止ではなく、ログイン等のトリガーで自動的に復帰する既存仕様。特別監視(`specialWatch`)をONにする操作は、対象roomが一時停止中であれば同時に一時停止も解除する(一時停止のままだと`watchedRoomFilter`を満たさず特別監視が実際には機能しないため)。さらに`watchedRoomFilter`([src/lib/watched-room-filter.ts](../../../src/lib/watched-room-filter.ts))は`specialWatch:true`かつ`monitoringSuspended:false`のroomを匿名room自動停止のstale判定と無関係に監視対象とする(一時停止は特別監視より優先)。
 
 ## テストケース

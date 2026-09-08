@@ -15,6 +15,7 @@ import {
   shiftDayKey,
 } from "./gift-retention-window";
 import { aggregateGiftUsers } from "./gift-analytics";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const PREFIX = "itest_retention";
 let seq = 0;
@@ -32,31 +33,33 @@ const eventIds: string[] = [];
 
 async function createRoom(): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離(aggregate.integration.test.ts と同じ理由)。
+  const suffix = uniqueSuffix();
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${`${PREFIX}${uniqueSuffix()}`.toLowerCase()}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${`${PREFIX}${suffix}`.toLowerCase()},
+            ${makeTiktokUid(`${PREFIX}_host_${suffix}`)}, NOW(), true)
     RETURNING id
   `;
   roomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// Gift は表示用の列(tiktokHandle / nickname / profileImageUrl)を持たない。集計キーは tiktokUid。
 async function insertGift(params: {
   roomId: string;
-  uniqueId: string;
+  tiktokUid: string;
   dayKey: string;
   diamonds: number;
   repeatCount?: number;
-  nickname?: string;
 }) {
   const receivedAt = new Date(`${params.dayKey}T12:00:00+09:00`);
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, ${params.uniqueId},
-       ${params.nickname ?? params.uniqueId}, 5, 'Rose', ${params.repeatCount ?? 1},
+      (gen_random_uuid()::text, ${params.roomId}, ${params.tiktokUid},
+       5, 'Rose', ${params.repeatCount ?? 1},
        ${params.diamonds}, ${params.diamonds}, ${receivedAt}, ${params.dayKey},
        ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -67,7 +70,7 @@ async function createUnfinalizedEventFor(roomId: string) {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 進行中`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "DIAMOND_RACE",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -76,7 +79,8 @@ async function createUnfinalizedEventFor(roomId: string) {
       finalizedAt: null,
       participants: {
         create: {
-          tiktokId: `${PREFIX}${uniqueSuffix()}`.toLowerCase(),
+          tiktokUid: makeTiktokUid(`${PREFIX}_participant_${uniqueSuffix()}`),
+          tiktokHandle: `${PREFIX}${uniqueSuffix()}`.toLowerCase(),
           displayName: "進行中の参加者",
           roomId,
         },
@@ -90,8 +94,10 @@ async function createUnfinalizedEventFor(roomId: string) {
 
 let plainRoomId = "";
 let protectedRoomId = "";
-const listener = `${PREFIX}_u1_${uniqueSuffix()}`;
-const otherListener = `${PREFIX}_u2_${uniqueSuffix()}`;
+// ロールアップの GROUP BY / ON CONFLICT が tiktokUid で張られていることの検証点。
+// このファイルのプロセス起動ごとに一意な uid を使い、他 integration テストと混ざらないようにする。
+const listener = makeTiktokUid(`${PREFIX}_u1_${uniqueSuffix()}`);
+const otherListener = makeTiktokUid(`${PREFIX}_u2_${uniqueSuffix()}`);
 
 beforeAll(async () => {
   plainRoomId = await createRoom();
@@ -99,13 +105,13 @@ beforeAll(async () => {
   await createUnfinalizedEventFor(protectedRoomId);
 
   // 削除対象の日(120日前)。listener が2行(repeat 2+3、10+20ダイヤ)、otherListener が1行。
-  await insertGift({ roomId: plainRoomId, uniqueId: listener, dayKey: OLD_DAY, diamonds: 10, repeatCount: 2 });
-  await insertGift({ roomId: plainRoomId, uniqueId: listener, dayKey: OLD_DAY, diamonds: 20, repeatCount: 3 });
-  await insertGift({ roomId: plainRoomId, uniqueId: otherListener, dayKey: OLD_DAY, diamonds: 5 });
+  await insertGift({ roomId: plainRoomId, tiktokUid: listener, dayKey: OLD_DAY, diamonds: 10, repeatCount: 2 });
+  await insertGift({ roomId: plainRoomId, tiktokUid: listener, dayKey: OLD_DAY, diamonds: 20, repeatCount: 3 });
+  await insertGift({ roomId: plainRoomId, tiktokUid: otherListener, dayKey: OLD_DAY, diamonds: 5 });
   // 保持対象の日(30日前)。
-  await insertGift({ roomId: plainRoomId, uniqueId: listener, dayKey: MID_DAY, diamonds: 7, repeatCount: 1 });
+  await insertGift({ roomId: plainRoomId, tiktokUid: listener, dayKey: MID_DAY, diamonds: 7, repeatCount: 1 });
   // 未確定イベントの参加room。削除されてはいけない。
-  await insertGift({ roomId: protectedRoomId, uniqueId: listener, dayKey: OLD_DAY, diamonds: 100 });
+  await insertGift({ roomId: protectedRoomId, tiktokUid: listener, dayKey: OLD_DAY, diamonds: 100 });
 });
 
 afterAll(async () => {
@@ -115,7 +121,7 @@ afterAll(async () => {
     await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
   }
   await prisma.giftLifetimeStat.deleteMany({
-    where: { uniqueId: { in: [listener, otherListener] } },
+    where: { tiktokUid: { in: [listener, otherListener] } },
   });
   await prisma.appSetting.deleteMany({
     where: { key: { in: [ROLLUP_WATERMARK_KEY, RETENTION_DELETED_THROUGH_KEY] } },
@@ -135,7 +141,7 @@ describe("runGiftRetentionCycle", () => {
 
     // 日次ロールアップの値が削除前の Gift 集計と一致する。
     const oldStat = await prisma.giftDailyListenerStat.findUnique({
-      where: { roomId_dayKey_uniqueId: { roomId: plainRoomId, dayKey: OLD_DAY, uniqueId: listener } },
+      where: { roomId_dayKey_tiktokUid: { roomId: plainRoomId, dayKey: OLD_DAY, tiktokUid: listener } },
     });
     expect(oldStat).not.toBeNull();
     expect(oldStat!.rowCount).toBe(2);
@@ -143,7 +149,7 @@ describe("runGiftRetentionCycle", () => {
     expect(oldStat!.totalDiamonds).toBe(30);
 
     // 全期間累計(room横断)。保護roomの100ダイヤも含む。
-    const lifetime = await prisma.giftLifetimeStat.findUnique({ where: { uniqueId: listener } });
+    const lifetime = await prisma.giftLifetimeStat.findUnique({ where: { tiktokUid: listener } });
     expect(lifetime).not.toBeNull();
     expect(lifetime!.rowCount).toBe(4); // OLD_DAY 2件 + MID_DAY 1件 + 保護room 1件
     expect(Number(lifetime!.totalDiamonds)).toBe(137);
@@ -174,13 +180,13 @@ describe("runGiftRetentionCycle", () => {
       { resolveAvatars: false, now: NOW }
     );
 
-    const target = users.find((u) => u.uniqueId === listener);
+    const target = users.find((u) => u.tiktokUid === listener);
     expect(target).toBeDefined();
     // 120日前(ロールアップ) 5回/30ダイヤ + 30日前(生Gift) 1回/7ダイヤ
     expect(target!.giftCount).toBe(6);
     expect(target!.totalDiamonds).toBe(37);
 
-    const other = users.find((u) => u.uniqueId === otherListener);
+    const other = users.find((u) => u.tiktokUid === otherListener);
     expect(other?.giftCount).toBe(1);
     expect(other?.totalDiamonds).toBe(5);
   });
@@ -195,7 +201,7 @@ describe("runGiftRetentionCycle", () => {
     // 削除済みの日(OLD_DAY)を再upsertすると Gift が0件なので rowCount が消える。
     // upsert 下限が deletedThrough+1 に切り上がっているので、値は保持されたまま。
     const oldStat = await prisma.giftDailyListenerStat.findUnique({
-      where: { roomId_dayKey_uniqueId: { roomId: plainRoomId, dayKey: OLD_DAY, uniqueId: listener } },
+      where: { roomId_dayKey_tiktokUid: { roomId: plainRoomId, dayKey: OLD_DAY, tiktokUid: listener } },
     });
     expect(oldStat!.rowCount).toBe(2);
     expect(oldStat!.giftCount).toBe(5);

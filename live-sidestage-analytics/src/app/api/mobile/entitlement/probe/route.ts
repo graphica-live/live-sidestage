@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   }
 
-  const denied = await requireFeature(auth.userId, "mobile.entitlementProbe");
+  const denied = await requireFeature(auth.principalId, "mobile.entitlementProbe");
   if (denied) return denied;
 
   return NextResponse.json({ ok: true });

@@ -13,8 +13,9 @@ import { jstDateKey, resolveOverlayDayKey } from "./day-key";
 import { fetchDayGifts } from "./gift-day";
 
 type ContributorTally = {
-  uniqueId: string;
-  nickname: string;
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   total: number;
   qualifiedAt: Date | null;
@@ -49,17 +50,20 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
   const tallies = new Map<string, ContributorTally>();
 
   for (const gift of gifts) {
-    let tally = tallies.get(gift.uniqueId);
+    // 合算キーは不変のtiktokUid(ハンドル改名で閾値到達判定が割れないため)。
+    let tally = tallies.get(gift.tiktokUid);
     if (!tally) {
       tally = {
-        uniqueId: gift.uniqueId,
+        tiktokUid: gift.tiktokUid,
+        tiktokHandle: gift.tiktokHandle,
         nickname: gift.nickname,
         profileImageUrl: gift.profileImageUrl,
         total: 0,
         qualifiedAt: null,
       };
-      tallies.set(gift.uniqueId, tally);
+      tallies.set(gift.tiktokUid, tally);
     }
+    tally.tiktokHandle = gift.tiktokHandle;
     tally.nickname = gift.nickname;
     tally.profileImageUrl = gift.profileImageUrl;
     tally.total += gift.totalDiamonds;
@@ -72,7 +76,8 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     .filter((t): t is ContributorTally & { qualifiedAt: Date } => t.qualifiedAt !== null)
     .sort((a, b) => a.qualifiedAt.getTime() - b.qualifiedAt.getTime())
     .map((t) => ({
-      uniqueId: t.uniqueId,
+      tiktokUid: t.tiktokUid,
+      tiktokHandle: t.tiktokHandle,
       nickname: t.nickname,
       profileImageUrl: t.profileImageUrl,
       totalDiamonds: t.total,

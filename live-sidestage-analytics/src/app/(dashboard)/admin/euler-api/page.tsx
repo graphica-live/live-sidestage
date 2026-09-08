@@ -12,7 +12,7 @@ interface EulerUsageRow {
   createdAt: string;
   requestedAt: string;
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   outcome: string;
   errorMessage: string | null;
   trigger: string;
@@ -23,7 +23,7 @@ interface EulerUsageRow {
   assignedWorkerId: number | null;
   credentialMode: string;
   roomMonitorUntil: string | null;
-  streamers: { userId: string; email: string | null }[];
+  streamers: { principalId: string; email: string | null }[];
   agencies: { agencyId: string; name: string | null }[];
   events: { eventId: string; title: string | null }[];
 }
@@ -40,7 +40,7 @@ export default function EulerApiAdminPage() {
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageCursor, setUsageCursor] = useState<string | null>(null);
   const [roomIdFilter, setRoomIdFilter] = useState("");
-  const [tiktokIdFilter, setTiktokIdFilter] = useState("");
+  const [tiktokHandleFilter, setTiktokHandleFilter] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/euler-api")
@@ -55,7 +55,7 @@ export default function EulerApiAdminPage() {
     try {
       const params = new URLSearchParams();
       if (roomIdFilter.trim()) params.set("roomId", roomIdFilter.trim());
-      if (tiktokIdFilter.trim()) params.set("tiktokId", tiktokIdFilter.trim());
+      if (tiktokHandleFilter.trim()) params.set("tiktokHandle", tiktokHandleFilter.trim());
       if (!reset && usageCursor) params.set("cursor", usageCursor);
       const res = await fetch(`/api/admin/euler-usage?${params.toString()}`);
       if (!res.ok) {
@@ -197,9 +197,9 @@ export default function EulerApiAdminPage() {
           />
           <input
             type="text"
-            placeholder="tiktokIdで絞り込み"
-            value={tiktokIdFilter}
-            onChange={(e) => setTiktokIdFilter(e.target.value)}
+            placeholder="tiktokHandleで絞り込み"
+            value={tiktokHandleFilter}
+            onChange={(e) => setTiktokHandleFilter(e.target.value)}
             className="input-field flex-1 min-w-[160px]"
           />
           <button onClick={() => loadUsage(true)} disabled={usageLoading} className="btn-primary">
@@ -214,7 +214,7 @@ export default function EulerApiAdminPage() {
             <thead>
               <tr className="text-left text-muted border-b border-border">
                 <th className="p-2">requestedAt</th>
-                <th className="p-2">tiktokId</th>
+                <th className="p-2">tiktokHandle</th>
                 <th className="p-2">outcome</th>
                 <th className="p-2">trigger / reason</th>
                 <th className="p-2">role</th>
@@ -228,7 +228,7 @@ export default function EulerApiAdminPage() {
               {usageRows.map((r) => (
                 <tr key={r.id} className="border-b border-border">
                   <td className="p-2 whitespace-nowrap">{new Date(r.requestedAt).toLocaleString("ja-JP")}</td>
-                  <td className="p-2">@{r.tiktokId}</td>
+                  <td className="p-2">@{r.tiktokHandle}</td>
                   <td className={`p-2 ${r.outcome === "error" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                     {r.outcome}
                     {r.errorMessage && <div className="text-muted">{r.errorMessage}</div>}
@@ -246,7 +246,7 @@ export default function EulerApiAdminPage() {
                   </td>
                   <td className="p-2">{r.credentialMode}</td>
                   <td className="p-2">
-                    {r.streamers.length === 0 ? "-" : r.streamers.map((s) => s.email ?? s.userId).join(", ")}
+                    {r.streamers.length === 0 ? "-" : r.streamers.map((s) => s.email ?? s.principalId).join(", ")}
                   </td>
                   <td className="p-2">
                     {r.agencies.length === 0 ? "-" : r.agencies.map((a) => a.name ?? a.agencyId).join(", ")}

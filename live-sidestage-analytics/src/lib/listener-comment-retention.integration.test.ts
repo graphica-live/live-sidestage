@@ -22,34 +22,38 @@ const RECENT_DAY = shiftDayKey(TODAY, -5);
 
 const roomIds: string[] = [];
 
+let uidSeq = 0;
+const nextUid = () => `73${String(Date.now()).slice(-9)}${String(uidSeq++).padStart(4, "0")}`;
+
 async function createRoom(): Promise<string> {
+  const hostTiktokUid = nextUid();
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${`${PREFIX}${uniqueSuffix()}`.toLowerCase()}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${`${PREFIX}${uniqueSuffix()}`.toLowerCase()}, ${hostTiktokUid}, NOW(), true)
     RETURNING id
   `;
   roomIds.push(rows[0].id);
   return rows[0].id;
 }
 
-async function insertComment(params: { roomId: string; uniqueId: string; dayKey: string }) {
+async function insertComment(params: { roomId: string; tiktokUid: string; dayKey: string }) {
   const receivedAt = new Date(`${params.dayKey}T12:00:00+09:00`);
   await prisma.$executeRaw`
     INSERT INTO public.listener_comments
-      (id, "roomId", "uniqueId", nickname, comment, "receivedAt", "dayKey")
+      (id, "roomId", "tiktokUid", comment, "receivedAt", "dayKey")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, ${params.uniqueId},
-       ${params.uniqueId}, 'retentionテスト', ${receivedAt}, ${params.dayKey})
+      (gen_random_uuid()::text, ${params.roomId}, ${params.tiktokUid},
+       'retentionテスト', ${receivedAt}, ${params.dayKey})
   `;
 }
 
 let roomId = "";
-const listener = `${PREFIX}_u1_${uniqueSuffix()}`;
+const listenerUid = nextUid();
 
 beforeAll(async () => {
   roomId = await createRoom();
-  await insertComment({ roomId, uniqueId: listener, dayKey: OLD_DAY });
-  await insertComment({ roomId, uniqueId: listener, dayKey: RECENT_DAY });
+  await insertComment({ roomId, tiktokUid: listenerUid, dayKey: OLD_DAY });
+  await insertComment({ roomId, tiktokUid: listenerUid, dayKey: RECENT_DAY });
 });
 
 afterAll(async () => {

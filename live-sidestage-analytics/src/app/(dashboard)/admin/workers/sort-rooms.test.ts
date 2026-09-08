@@ -7,7 +7,7 @@ import type { AssignedRoom } from "@/lib/worker-status";
 function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
   return {
     roomId: "room-1",
-    tiktokId: "b",
+    tiktokHandle: "b",
     nickname: null,
     workerId: 0,
     listenerStatus: "connected",
@@ -25,16 +25,16 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
 }
 
 describe("sortAssignedRooms", () => {
-  it("tiktokIdの昇順に並べる", () => {
-    const rooms = [room({ roomId: "1", tiktokId: "charlie" }), room({ roomId: "2", tiktokId: "alpha" }), room({ roomId: "3", tiktokId: "bravo" })];
-    const sorted = sortAssignedRooms(rooms, "tiktokId", "asc");
-    expect(sorted.map((r) => r.tiktokId)).toEqual(["alpha", "bravo", "charlie"]);
+  it("tiktokHandleの昇順に並べる", () => {
+    const rooms = [room({ roomId: "1", tiktokHandle: "charlie" }), room({ roomId: "2", tiktokHandle: "alpha" }), room({ roomId: "3", tiktokHandle: "bravo" })];
+    const sorted = sortAssignedRooms(rooms, "tiktokHandle", "asc");
+    expect(sorted.map((r) => r.tiktokHandle)).toEqual(["alpha", "bravo", "charlie"]);
   });
 
-  it("tiktokIdの降順に並べる", () => {
-    const rooms = [room({ roomId: "1", tiktokId: "charlie" }), room({ roomId: "2", tiktokId: "alpha" }), room({ roomId: "3", tiktokId: "bravo" })];
-    const sorted = sortAssignedRooms(rooms, "tiktokId", "desc");
-    expect(sorted.map((r) => r.tiktokId)).toEqual(["charlie", "bravo", "alpha"]);
+  it("tiktokHandleの降順に並べる", () => {
+    const rooms = [room({ roomId: "1", tiktokHandle: "charlie" }), room({ roomId: "2", tiktokHandle: "alpha" }), room({ roomId: "3", tiktokHandle: "bravo" })];
+    const sorted = sortAssignedRooms(rooms, "tiktokHandle", "desc");
+    expect(sorted.map((r) => r.tiktokHandle)).toEqual(["charlie", "bravo", "alpha"]);
   });
 
   it("listenerUpdatedAtのnullは昇順・降順どちらでも末尾に固定される", () => {
@@ -70,9 +70,9 @@ describe("sortAssignedRooms", () => {
   });
 
   it("元の配列を破壊しない", () => {
-    const rooms = [room({ roomId: "1", tiktokId: "b" }), room({ roomId: "2", tiktokId: "a" })];
+    const rooms = [room({ roomId: "1", tiktokHandle: "b" }), room({ roomId: "2", tiktokHandle: "a" })];
     const original = [...rooms];
-    sortAssignedRooms(rooms, "tiktokId", "asc");
+    sortAssignedRooms(rooms, "tiktokHandle", "asc");
     expect(rooms).toEqual(original);
   });
 });

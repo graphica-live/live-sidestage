@@ -4,7 +4,12 @@
 /// フィールドを増やすときは両方を同時に変えること。
 class GiftEvent {
   final String streamerId;
-  final String uniqueId;
+
+  /// TikTokの不変な数値ID。同一性の判定はこれで行う。
+  final String tiktokUid;
+
+  /// 本人が変更できる @ハンドル。表示とプロフィール導線専用。
+  final String tiktokHandle;
   final String nickname;
   final String? profilePictureUrl;
 
@@ -39,7 +44,8 @@ class GiftEvent {
 
   GiftEvent({
     required this.streamerId,
-    required this.uniqueId,
+    required this.tiktokUid,
+    required this.tiktokHandle,
     required this.nickname,
     required this.profilePictureUrl,
     required this.giftName,
@@ -61,13 +67,15 @@ class GiftEvent {
   /// 不正な1件だけ捨てて配信を継続できるよう、例外ではなく null で返す。
   static GiftEvent? tryParse(Map<String, dynamic> json) {
     final streamerId = json['streamerId'];
-    final uniqueId = json['uniqueId'];
-    if (streamerId is! String || uniqueId is! String) return null;
+    final tiktokUid = json['tiktokUid'];
+    if (streamerId is! String || tiktokUid is! String || tiktokUid.isEmpty) return null;
+    final tiktokHandle = json['tiktokHandle'] as String? ?? '';
 
     return GiftEvent(
       streamerId: streamerId,
-      uniqueId: uniqueId,
-      nickname: json['nickname'] as String? ?? uniqueId,
+      tiktokUid: tiktokUid,
+      tiktokHandle: tiktokHandle,
+      nickname: json['nickname'] as String? ?? (tiktokHandle.isNotEmpty ? tiktokHandle : tiktokUid),
       profilePictureUrl: json['profilePictureUrl'] as String?,
       giftName: json['giftName'] as String? ?? '',
       giftId: json['giftId'] as String?,

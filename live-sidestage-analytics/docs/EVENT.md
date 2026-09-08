@@ -110,7 +110,7 @@ start command と環境変数だけを変える。**
 | event-worker | `npm run event-worker` | イベント集計。10秒ごとに再集計 |
 
 **スキーマ反映は build ではなく、web の起動時に走る。** [Dockerfile](../Dockerfile) の CMD が
-`migrate-shared-tiktok-room.ts` → `prisma db push --accept-data-loss` → `node server.js` の順で実行する。
+`scripts/migrate-*.ts` → `prisma db push --accept-data-loss` → `node server.js` の順で実行する。
 build（`npx prisma generate && npx next build`）は DB に触らない。
 
 worker と event-worker は start command を上書きするので CMD を通らず、**`db push` を実行しない**。

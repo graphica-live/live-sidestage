@@ -1,6 +1,6 @@
 import type { AssignedRoom } from "@/lib/worker-status";
 
-export type RoomSortKey = "tiktokId" | "listenerUpdatedAt" | "weeklyEulerSignUsageCount";
+export type RoomSortKey = "tiktokHandle" | "listenerUpdatedAt" | "weeklyEulerSignUsageCount";
 export type RoomSortDir = "asc" | "desc";
 
 // buildWorkerReport() と同じく副作用・時刻依存を持たない純粋関数として切り出す。
@@ -12,7 +12,7 @@ export function sortAssignedRooms(
 ): AssignedRoom[] {
   const sign = dir === "asc" ? 1 : -1;
   return [...rooms].sort((a, b) => {
-    if (key === "tiktokId") return sign * a.tiktokId.localeCompare(b.tiktokId);
+    if (key === "tiktokHandle") return sign * a.tiktokHandle.localeCompare(b.tiktokHandle);
     if (key === "listenerUpdatedAt") {
       if (a.listenerUpdatedAt == null && b.listenerUpdatedAt == null) return 0;
       if (a.listenerUpdatedAt == null) return 1;

@@ -102,10 +102,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   }
 
-  // JWTのstreamerIdは信用せず、userIdから現在のStreamerを引く。
+  // JWTのstreamerIdは信用せず、principalIdから現在のStreamerを引く。
   // リクエストからroomIdを受け取らないので、他人の部屋は参照できない。
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: auth.userId },
+    where: { principalId: auth.principalId },
     select: { roomId: true },
   });
   if (!streamer) {

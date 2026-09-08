@@ -49,7 +49,14 @@ final RegExp _whitespace = RegExp(r'\s+');
 
 class Comment {
   final String streamerId;
-  final String uniqueId;
+
+  /// TikTokの不変な数値ID。**同一性の判定はこれだけで行う**
+  /// (ボイス割当・重複判定のキー)。可変な [tiktokHandle] を使ってはいけない。
+  final String tiktokUid;
+
+  /// 本人が変更できる @ハンドル。**表示とプロフィール導線専用**。
+  /// サーバーが空文字を送ることは無いが、空なら導線を出さない側でガードする。
+  final String tiktokHandle;
   final String nickname;
   final String? profilePictureUrl;
 
@@ -63,7 +70,8 @@ class Comment {
 
   Comment({
     required this.streamerId,
-    required this.uniqueId,
+    required this.tiktokUid,
+    required this.tiktokHandle,
     required this.nickname,
     required this.profilePictureUrl,
     required this.comment,
@@ -110,10 +118,13 @@ class Comment {
   ///
   /// **emotes の解析失敗でコメントごと捨てないこと。** エモートは付加情報で、
   /// 本文が読めているなら表示・読み上げは成立する。
+  /// **[tiktokUid] は必須。空文字も受けない。** 空文字を通すと [VoicePool] の
+  /// 割当キーが全投稿者で衝突し、全員が同じボイスに畳まれる。
   static Comment? tryParse(Map<String, dynamic> json) {
     final streamerId = json['streamerId'];
-    final uniqueId = json['uniqueId'];
-    if (streamerId is! String || uniqueId is! String) return null;
+    final tiktokUid = json['tiktokUid'];
+    if (streamerId is! String || tiktokUid is! String || tiktokUid.isEmpty) return null;
+    final tiktokHandle = json['tiktokHandle'] as String? ?? '';
 
     final rawEmotes = json['emotes'];
     final emotes = rawEmotes is List
@@ -122,8 +133,9 @@ class Comment {
 
     return Comment(
       streamerId: streamerId,
-      uniqueId: uniqueId,
-      nickname: json['nickname'] as String? ?? uniqueId,
+      tiktokUid: tiktokUid,
+      tiktokHandle: tiktokHandle,
+      nickname: json['nickname'] as String? ?? (tiktokHandle.isNotEmpty ? tiktokHandle : tiktokUid),
       profilePictureUrl: json['profilePictureUrl'] as String?,
       comment: json['comment'] as String? ?? '',
       receivedAt: DateTime.tryParse(json['receivedAt'] as String? ?? '') ?? DateTime.now(),
@@ -144,5 +156,5 @@ class Comment {
   /// UI(メインisolate)の[Comment]とバックグラウンドisolateの[Comment]は、
   /// 同じイベントでも `Comment.tryParse` で別々に再構築された別インスタンスなので
   /// `identical()` は使えない。このキーで代わりに同一性を判定する。
-  String get identityKey => '$streamerId|$uniqueId|${receivedAt.toIso8601String()}|$comment';
+  String get identityKey => '$streamerId|$tiktokUid|${receivedAt.toIso8601String()}|$comment';
 }

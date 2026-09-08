@@ -6,7 +6,7 @@ import type { ReplayAvailability } from "@/lib/battle-replay-contract";
 export type BattleStatus = "live" | "finished" | "cut_short" | "unknown";
 
 export interface BattleOpponent {
-  tiktokId: string | null;
+  tiktokHandle: string | null;
   displayId: string | null;
   nickName: string | null;
   avatarUrl: string | null;
@@ -15,8 +15,8 @@ export interface BattleOpponent {
 
 /** 左右split表示(vs)1メンバー分。1vs1・チーム戦の両方で使う共通の形。 */
 export interface BattleParticipant {
-  anchorId: string;
-  tiktokId: string | null;
+  tiktokUid: string;
+  tiktokHandle: string | null;
   displayId: string | null;
   nickName: string | null;
   avatarUrl: string | null;
@@ -60,7 +60,7 @@ export interface BattleContributorGiftEvent {
 }
 
 export interface BattleContributor {
-  uniqueId: string;
+  tiktokHandle: string;
   nickname: string;
   profileImageUrl: string | null;
   giftCount: number;
@@ -72,7 +72,7 @@ export interface BattleContributor {
 
 /** 陣営内1参加者(room)分の貢献者内訳。参加者セレクタで個別に絞り込むときに使う。 */
 export interface BattleTeamParticipantContributors {
-  anchorId: string;
+  tiktokUid: string;
   displayName: string;
   captureStatus: BattleTeamCaptureStatus | null;
   partialNote: string | null;
@@ -119,8 +119,8 @@ export const BATTLE_STATUS_LABELS: Record<BattleStatus, string> = {
   unknown: "判定不可",
 };
 
-export function tiktokProfileUrl(uniqueId: string): string {
-  return `https://www.tiktok.com/@${encodeURIComponent(uniqueId)}`;
+export function tiktokProfileUrl(tiktokHandle: string): string {
+  return `https://www.tiktok.com/@${encodeURIComponent(tiktokHandle)}`;
 }
 
 export function Avatar({
@@ -235,14 +235,14 @@ function BattleTeamColumn({ team, size }: { team: BattleParticipant[]; size: "sm
   return (
     <div className="flex flex-col items-center justify-center gap-1 min-w-0">
       {team.map((p) => {
-        const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
+        const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokHandle ?? "?";
         return (
-          <div key={p.anchorId} className="flex items-center gap-1.5 min-w-0">
+          <div key={p.tiktokUid} className="flex items-center gap-1.5 min-w-0">
             <Avatar src={p.avatarUrl} alt={label} size={size} />
             <div className={`min-w-0 ${nameMaxWidth}`}>
               <div className={`font-medium truncate ${nameTextClass}`}>{label}</div>
-              {team.length === 1 && (p.displayId || p.tiktokId) && (
-                <div className="text-[10px] text-muted truncate">@{p.displayId ?? p.tiktokId}</div>
+              {team.length === 1 && (p.displayId || p.tiktokHandle) && (
+                <div className="text-[10px] text-muted truncate">@{p.displayId ?? p.tiktokHandle}</div>
               )}
             </div>
           </div>

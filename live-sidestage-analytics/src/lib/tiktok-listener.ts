@@ -29,6 +29,7 @@ import {
   factsForReconnect,
   FACTS_CONNECTED,
   FACTS_CONNECTING,
+  FACTS_HANDLE_MISMATCH,
   FACTS_IDLE,
   type ListenerActivity,
   type ListenerFacts,
@@ -53,14 +54,16 @@ import {
   type ParsedBattle,
 } from "./tiktok-battle";
 import { ensureAvatarCached } from "./avatar-storage";
+import { normalizeTikTokUserId, normalizeDisplayValue, recordTikTokUser, type TikTokUserObservation } from "./tiktok-user";
 import { materializeBattleHistory } from "./battle-history-finalize";
-import { fillHostUserIdFromBattle } from "./tiktok-id-migration";
 import { parseCollabGroupChange, shouldWatchCollabSnapshot } from "./tiktok-collab";
 import {
   ensureRoomWatchedForCollab,
+  markRoomHandleStale,
   normalizeTiktokId,
   type CollabWatchResult,
   type CollabWatchSource,
+  type TiktokRoomSubject,
 } from "./tiktok-room";
 import { resolveWatchedRoomFilter } from "./watched-room-filter";
 import { existenceChecker } from "./tiktok-existence";
@@ -74,7 +77,7 @@ export type ListenerStatus =
 
 interface ListenerState {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   status: ListenerStatus;
   message: string;
   updatedAt: string;
@@ -143,6 +146,10 @@ export function __resetListenerEpochForTest(epoch: bigint | null = null): void {
 
 interface ListenerInstance {
   state: ListenerState;
+  // この部屋の配信者の tiktokUid(`TiktokRoom.hostTiktokUid`)。**同一性の正本はこれで、
+  // ハンドルから引き直さない**(改名で空いたハンドルは第三者が取得しうる)。
+  // startListener() で1回だけ読み、tap point の帰属先に使う。
+  hostTiktokUid: string | null;
   connection: WebcastPushConnection | null;
   connectPromise: Promise<void> | null;
   reconnectTimer: NodeJS.Timeout | null;
@@ -151,7 +158,7 @@ interface ListenerInstance {
   // 生成はopen呼び出し側(updateState)がclient側で行う(DBのデフォルト生成完了を待つと、
   // その間に接続が切れた場合にidをどの行に書き戻すべきか決められなくなるため)。
   connectionIntervalId: string | null;
-  // **groupIdが欠落したcombo専用のフォールバック。** キーは `uniqueId:giftId`。
+  // **groupIdが欠落したcombo専用のフォールバック。** キーは `tiktokHandle:giftId`。
   // 有効なgroupIdを持つcomboはここを通らず、saveComboGift()がDBの確定値から
   // deltaを計算する(プロセスごとに前回値がズレて二重計上するのを防ぐため)。
   pendingCombos: Map<string, { repeatCount: number; [key: string]: unknown }>;
@@ -199,11 +206,14 @@ interface ListenerInstance {
   // like版のdedup FIFO。desktop 5ウィジェット移植で追加。
   recentLikeMsgIds: Set<string>;
   recentLikeMsgIdOrder: string[];
-  // uniqueIdごとの1秒コアレッシングバッファ。likeは視聴者全員が連打するため、
+  // tiktokHandleごとの1秒コアレッシングバッファ。likeは視聴者全員が連打するため、
   // イベントごとに転送するとforwardToWebの共有キュー(同時4/待ち行列256)を占有し、
   // 優先度の高いgiftイベントが落ちるリスクがある。likeCountは加算的な増分なので
   // 合算しても無損失。
-  pendingLikes: Map<string, { uniqueId: string; nickname: string; profilePictureUrl: string | null; likeCount: number }>;
+  pendingLikes: Map<
+    string,
+    { tiktokUid: string; tiktokHandle: string; nickname: string; profilePictureUrl: string | null; likeCount: number }
+  >;
   likeFlushTimer: NodeJS.Timeout | null;
   // 進行中バトルのタップ点集計。バトル外は null。詳細は TapTally の定義コメント。
   tapTally: TapTally | null;
@@ -223,7 +233,7 @@ const BATTLE_ITEM_DEDUP_CACHE_SIZE = 500;
 // likeはchat並み以上に流量が多いので、CHAT_DEDUP_CACHE_SIZEと同水準にする。
 const LIKE_DEDUP_CACHE_SIZE = 3000;
 
-// likeイベントをuniqueIdごとに合算してから転送するまでの待機時間。
+// likeイベントをtiktokHandleごとに合算してから転送するまでの待機時間。
 const LIKE_COALESCE_WINDOW_MS = 1000;
 
 // msgIdのFIFOキャッシュ。未登録なら記録してtrueを返し、既に入っていれば(=再送)falseを返す。
@@ -295,7 +305,7 @@ export interface GiftLogEntry {
   reason?: string;
   giftType: unknown;
   giftName: unknown;
-  uniqueId: unknown;
+  tiktokHandle: unknown;
   giftId: unknown;
   groupId: unknown;
   orderId: unknown;
@@ -392,10 +402,10 @@ function getWorkerConfig(): { index: number; count: number } {
 
 // deviceId(src/lib/device-id.ts)と同じ「初回決定→永続化→再利用」パターン。
 // WORKER_COUNTが変わらない限り、再起動やWorker再編を挟んでも同じ部屋(TiktokRoom)は
-// 同じworkerIdになる。同じtiktokIdを複数人が登録しても部屋は1つなので、必ず同じWorkerが担当する。
+// 同じworkerIdになる。同じtiktokHandleを複数人が登録しても部屋は1つなので、必ず同じWorkerが担当する。
 //
 // 部屋が消えていた場合は null を返す。**投げてはいけない** — findUniqueとupdateのあいだに
-// tiktokId変更やStreamer削除で部屋が消えることがあり、投げると getMyRooms() が丸ごと失敗して
+// tiktokHandle変更やStreamer削除で部屋が消えることがあり、投げると getMyRooms() が丸ごと失敗して
 // 無関係な部屋まで巻き添えで再接続されなくなる。
 export async function resolveWorkerForRoom(
   roomId: string,
@@ -602,7 +612,7 @@ async function notifyChatGift(streamerIds: string[], gift: Omit<ChatGiftInput, "
 async function notifyLikeEvent(
   streamerIds: string[],
   roomId: string,
-  like: { uniqueId: string; nickname: string; profilePictureUrl: string | null; likeCount: number }
+  like: { tiktokUid: string; tiktokHandle: string; nickname: string; profilePictureUrl: string | null; likeCount: number }
 ) {
   if (streamerIds.length === 0) return;
 
@@ -765,18 +775,41 @@ function isUserOfflineError(error: unknown): boolean {
 // 事前チェックし、確実にオフラインと分かる場合だけ`user_offline`と同じ経路へ倒す。
 // 判定不能(API失敗・フィールド欠落)ならfalseを返し、既存の`fetchRoomInfoOnConnect`任せの
 // 挙動へフォールバックする(誤検知でオンラインroomを弾かないため)。
-async function isReportedOfflineByApiLive(conn: WebcastPushConnection, tiktokId: string): Promise<boolean> {
+//
+// **同じ応答で room の同一性(tiktokUid)も照合する。** 接続先を決めているのは可変ハンドルなので、
+// 改名で空いたハンドルを第三者が取得すると、照合が無ければ別人の配信データがこの room へ入る。
+// `data.user.id` は `TiktokRoom.hostTiktokUid` の出所と同じ値(schema.prisma 参照)。
+// **判定不能(API失敗・uid欠落)を「一致」に倒さない** — fail-open にすると api-live の障害中だけ
+// 照合が素通りする。オフライン判定と違い、同一性は分からないなら接続しない。
+type ApiLivePreCheck =
+  | { kind: "offline" }
+  | { kind: "verified"; tiktokUid: string }
+  | { kind: "mismatch"; actual: string }
+  | { kind: "unverifiable"; reason: string };
+
+async function precheckApiLive(
+  conn: WebcastPushConnection,
+  tiktokHandle: string,
+  expectedTiktokUid: string | null
+): Promise<ApiLivePreCheck> {
+  let roomData: Awaited<ReturnType<typeof conn.webClient.fetchRoomInfoFromApiLive>>;
   try {
-    const roomData = await conn.webClient.fetchRoomInfoFromApiLive({ uniqueId: tiktokId });
-    return roomData?.data?.liveRoom?.status === 4;
+    roomData = await conn.webClient.fetchRoomInfoFromApiLive({ uniqueId: tiktokHandle });
   } catch (err) {
-    console.warn(
-      `[listener] @${tiktokId}: api-live/user/room/ pre-check failed (falling back to fetchRoomInfoOnConnect) — ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
-    return false;
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[listener] @${tiktokHandle}: api-live/user/room/ pre-check failed — ${reason}`);
+    return { kind: "unverifiable", reason };
   }
+
+  if (roomData?.data?.liveRoom?.status === 4) return { kind: "offline" };
+
+  const actual = normalizeTikTokUserId(
+    (roomData as { data?: { user?: { id?: unknown } } })?.data?.user?.id
+  );
+  if (!actual) return { kind: "unverifiable", reason: "api-live response has no usable data.user.id" };
+  if (!expectedTiktokUid) return { kind: "unverifiable", reason: "room has no hostTiktokUid" };
+  if (actual !== expectedTiktokUid) return { kind: "mismatch", actual };
+  return { kind: "verified", tiktokUid: actual };
 }
 
 function isAlreadyConnectedError(error: unknown): boolean {
@@ -963,13 +996,17 @@ function updateState(
     // 上限2を持つ既存の共有レート制限層(tiktok-existence.ts)にそのまま乗る。例外を投げない契約
     // (ExistenceChecker.check参照)だが、DB更新側の失敗は念のためcatchしておく。
     void existenceChecker
-      .check(inst.state.tiktokId)
-      .then((result) => {
+      .check(inst.state.tiktokHandle)
+      .then(async (result) => {
         if (result.verdict !== "EXISTS" || !result.nickname) return;
-        return prisma.tiktokRoom.update({
-          where: { id: roomId },
-          data: { nickname: result.nickname },
+        const tiktokUid = normalizeTikTokUserId(result.tiktokUid);
+        if (!tiktokUid) return;
+        const commit = await recordTikTokUser(prisma, {
+          tiktokUid,
+          tiktokHandle: normalizeDisplayValue(inst.state.tiktokHandle),
+          nickname: normalizeDisplayValue(result.nickname),
         });
+        commit();
       })
       .catch(() => {});
   } else if (status !== "connected" && previousStatus === "connected") {
@@ -1161,8 +1198,11 @@ function toFiniteInt(value: unknown): number | null {
 
 // GiftのINSERT行を組み立てる。saveGift()とsaveComboGift()で共有する。
 // dedupキー(orderId/groupId/msgId)だけは経路ごとに扱いが違うので呼び出し側から渡す。
+// tiktokUid は呼び出し側の入口で normalizeTikTokUserId() 済みの非 null 値を渡す
+// (builder 内で normalize すると string | null になり戻り型と合わない)。
 function buildGiftRow(
   roomId: string,
+  tiktokUid: string,
   data: Record<string, unknown>,
   count: number,
   receivedAt: Date,
@@ -1173,9 +1213,7 @@ function buildGiftRow(
   const { multiplierType, multiplierValue } = resolveGiftMultiplier(data);
   return {
     roomId,
-    uniqueId: String(data.uniqueId || ""),
-    nickname: String(data.nickname || ""),
-    profileImageUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+    tiktokUid,
     giftId: Number(data.giftId) || 0,
     giftName: String(data.giftName || ""),
     giftPictureUrl: data.giftPictureUrl ? String(data.giftPictureUrl) : null,
@@ -1222,6 +1260,18 @@ async function saveGift(
   const groupId = resolveGroupId(data);
   const msgId = resolveMsgId(data);
 
+  // getUserAttributes() は全イベントに userId を載せるので、欠落は protobuf レベルの異常。
+  // "" / "0" を保存すると tiktokUid 不明の全員が1人へ畳まれるため書き込まない。
+  const tiktokUid = normalizeTikTokUserId(data.userId);
+  if (!tiktokUid) {
+    console.error("[gift] data.userId が解決できないため保存をスキップした", {
+      roomId,
+      msgId,
+      giftName: String(data.giftName || ""),
+    });
+    return "error";
+  }
+
   try {
     const dayKey = jstDateKey(receivedAt);
     const diamondCount = Number(data.diamondCount) || 0;
@@ -1246,9 +1296,21 @@ async function saveGift(
       }
     }
 
-    await prisma.gift.create({
-      data: buildGiftRow(roomId, data, count, receivedAt, timeSource, { orderId, groupId, msgId }),
+    const commit = await prisma.$transaction(async (tx) => {
+      await tx.gift.create({
+        data: buildGiftRow(roomId, tiktokUid, data, count, receivedAt, timeSource, {
+          orderId,
+          groupId,
+          msgId,
+        }),
+      });
+      return recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle: normalizeDisplayValue(data.uniqueId),
+        nickname: normalizeDisplayValue(data.nickname),
+      });
     });
+    commit();
     return "saved";
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
@@ -1295,20 +1357,32 @@ async function saveListenerComment(
     );
     return;
   }
+  const tiktokUid = normalizeTikTokUserId(data.userId);
+  if (!tiktokUid) {
+    console.error("[listener] data.userId が解決できないためコメント保存をスキップした", { roomId });
+    return;
+  }
   listenerCommentSaveInFlight += 1;
   try {
-    await prisma.listenerComment.create({
-      data: {
-        roomId,
-        uniqueId: String(data.uniqueId || ""),
-        nickname: String(data.nickname || ""),
-        comment: String(data.comment || ""),
-        receivedAt,
-        timeSource,
-        dayKey: jstDateKey(receivedAt),
-        msgId: resolveMsgId(data),
-      },
+    const commit = await prisma.$transaction(async (tx) => {
+      await tx.listenerComment.create({
+        data: {
+          roomId,
+          tiktokUid,
+          comment: String(data.comment || ""),
+          receivedAt,
+          timeSource,
+          dayKey: jstDateKey(receivedAt),
+          msgId: resolveMsgId(data),
+        },
+      });
+      return recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle: normalizeDisplayValue(data.uniqueId),
+        nickname: normalizeDisplayValue(data.nickname),
+      });
     });
+    commit();
   } catch (err: unknown) {
     console.error("[listener] listener comment save error:", err);
   } finally {
@@ -1443,6 +1517,20 @@ async function saveBattleItemUse(
   const sender = getBattleItemCardSender(card);
   if (!sender) return "duplicate"; // POWER_UP_SUMMARY等、sender自体を持たない周期通知
 
+  // TikTok の不変IDが取れない送信者は保存しない。protobuf 既定値("0")・空文字を許すと
+  // 送信者不明の複数人が同一人物として畳まれる(normalizeTikTokUserId のコメント参照)。
+  const senderTiktokUid = normalizeTikTokUserId(sender.userId);
+  if (!senderTiktokUid) {
+    console.error("[battle-item] sender.userId が解決できないため保存をスキップした", {
+      roomId,
+      battleId: message.battleId,
+      cardType: message.cardType,
+    });
+    return "duplicate";
+  }
+  const senderTiktokHandle = normalizeDisplayValue(sender.uniqueId);
+  const senderNickname = normalizeDisplayValue(sender.nickname);
+
   const msgId = resolveMsgId(message as unknown as Record<string, unknown>);
 
   try {
@@ -1463,20 +1551,28 @@ async function saveBattleItemUse(
       }
     }
 
-    await prisma.tiktokBattleItemUse.create({
-      data: {
-        roomId,
-        battleId: message.battleId,
-        cardType: message.cardType,
-        senderUserId: sender.userId ?? "",
-        senderUniqueId: sender.uniqueId ?? "",
-        senderNickname: sender.nickname ?? "",
-        senderProfilePictureUrl: pickProfilePictureUrl(sender.profilePicture?.url),
-        targetHostUserId: card.targetHostUserId,
-        msgId,
-        receivedAt,
-      },
+    // 表示名の正本は TikTokUser。アイテムカードしか使っていない送信者はここでしか
+    // 記録されないので、item-use の INSERT と同一トランザクションで upsert する。
+    const commit = await prisma.$transaction(async (tx) => {
+      await tx.tiktokBattleItemUse.create({
+        data: {
+          roomId,
+          battleId: message.battleId,
+          cardType: message.cardType,
+          senderTiktokUid,
+          senderProfilePictureUrl: pickProfilePictureUrl(sender.profilePicture?.url),
+          targetHostTiktokUid: card.targetHostUserId,
+          msgId,
+          receivedAt,
+        },
+      });
+      return recordTikTokUser(tx, {
+        tiktokUid: senderTiktokUid,
+        tiktokHandle: senderTiktokHandle,
+        nickname: senderNickname,
+      });
     });
+    commit();
     return "saved";
   } catch (err: unknown) {
     console.error("[listener] battle item use save error:", { roomId, msgId, cardType: message.cardType, err });
@@ -1514,8 +1610,21 @@ export async function saveComboGift(
   timeSource: "tiktok" | "fallback"
 ): Promise<GiftSaveResult> {
   const msgId = resolveMsgId(data);
+  // 送信者のtiktokUidが解決できない = protobufレベルの異常。空文字/"0"を主キー相当へ入れると
+  // uid不明の全ユーザーが1人へ畳まれるので、保存自体をスキップする(saveGift()と同じ契約)。
+  const tiktokUid = normalizeTikTokUserId(data.userId);
+  if (!tiktokUid) {
+    console.error("[gift/combo] data.userIdが解決できないため保存をスキップした", {
+      roomId,
+      groupId,
+      msgId,
+    });
+    return "error";
+  }
+  // クロージャ内での代入をTSが追跡できないので、ホルダー越しに受け渡す。
+  const comboCommit: { fn: (() => void) | null } = { fn: null };
   try {
-    return await prisma.$transaction<GiftSaveResult>(
+    const result = await prisma.$transaction<GiftSaveResult>(
       async (tx) => {
         // 同じグループへの同時書き込みを直列化する。プロセス内は comboWriteChains が
         // 先に絞っているので、ここで待つのは別プロセス(並走中の新旧Worker)だけ。
@@ -1534,7 +1643,7 @@ export async function saveComboGift(
         }
 
         await tx.gift.create({
-          data: buildGiftRow(roomId, data, delta, receivedAt, timeSource, {
+          data: buildGiftRow(roomId, tiktokUid, data, delta, receivedAt, timeSource, {
             // comboの各段に同じorderIdが付くとunique(roomId, orderId)で2段目以降がP2002になる。
             // comboのdedupはgroupId単位の単調増加判定でできているのでorderIdは要らない。
             orderId: null,
@@ -1542,12 +1651,21 @@ export async function saveComboGift(
             msgId,
           }),
         });
+        // Gift行と同一トランザクションで記録する(生観測系から表示名列を落としたので、
+        // 取りこぼすとランキングに名無しが並ぶ)。markerはcommit後に立てる。
+        comboCommit.fn = await recordTikTokUser(tx, {
+          tiktokUid,
+          tiktokHandle: normalizeDisplayValue(data.uniqueId),
+          nickname: normalizeDisplayValue(data.nickname),
+        });
         console.log("[gift/combo] save", { roomId, groupId, currentRepeat, saved, delta });
         return "saved";
       },
       // Prismaの既定(maxWait=2s / timeout=5s)はadvisory lockの待ち行列には短すぎる。
       { maxWait: COMBO_TX_MAX_WAIT_MS, timeout: COMBO_TX_TIMEOUT_MS }
     );
+    comboCommit.fn?.();
+    return result;
   } catch (err: unknown) {
     // saveGift()と同じ契約: 例外を外へ出さずGiftSaveResultを返す。呼び出し側は
     // 保存をawaitせず.then()で流すので、ここで捕まえないと未処理rejectionになる。
@@ -1577,7 +1695,7 @@ interface SignUsageContext {
 // このラッパーが呼ばれる=実際に署名を消費する試行が発生した、という対応が保たれる。
 function createSignedWebSocketProvider(
   getConn: () => WebcastPushConnection,
-  tiktokId: string,
+  tiktokHandle: string,
   eulerSignApiKey: string | null,
   signCtx: SignUsageContext
 ) {
@@ -1592,7 +1710,7 @@ function createSignedWebSocketProvider(
     const record = (outcome: "success" | "error", errorMessage?: string) =>
       void recordEulerSignUsage({
         roomId: signCtx.roomId,
-        tiktokId,
+        tiktokHandle,
         requestedAt,
         outcome,
         errorMessage,
@@ -1618,14 +1736,14 @@ function createSignedWebSocketProvider(
 }
 
 function createConnection(
-  tiktokId: string,
+  tiktokHandle: string,
   deviceId: string,
   proxyUrl: string | null,
   eulerSignApiKey: string | null,
   signCtx: SignUsageContext
 ): WebcastPushConnection {
   let connRef: WebcastPushConnection;
-  const conn = new WebcastPushConnection(`@${tiktokId}`, {
+  const conn = new WebcastPushConnection(`@${tiktokHandle}`, {
     processInitialData: false,
     fetchRoomInfoOnConnect: true,
     enableExtendedGiftInfo: false,
@@ -1638,7 +1756,7 @@ function createConnection(
     ...(eulerSignApiKey ? { signApiKey: eulerSignApiKey } : {}),
     signedWebSocketProvider: createSignedWebSocketProvider(
       () => connRef,
-      tiktokId,
+      tiktokHandle,
       eulerSignApiKey,
       signCtx
     ),
@@ -1771,9 +1889,9 @@ export const MAX_TAP_TALLY_ENTRIES = 20_000;
  */
 type TapTally = {
   battleId: string;
-  /** このroomの配信者のanchorId。行に持たせて読み出し時のroom->anchor解決を不要にする。 */
-  anchorId: string;
-  /** uniqueId -> 累積タップ数(10未満のリスナーのみ)。 */
+  /** このroomの配信者のtiktokUid。行に持たせて読み出し時のroom->host解決を不要にする。 */
+  hostTiktokUid: string;
+  /** リスナーの tiktokUid -> 累積タップ数(10未満のリスナーのみ)。 */
   counts: Map<string, number>;
   /** 10到達済み。メモリ上の二重書き込み抑制で、正は DB の unique 制約。 */
   reached: Set<string>;
@@ -1783,23 +1901,6 @@ type TapTally = {
   /** バトル開始から取りこぼしなく観測できているか。**単調に false へ落ちるだけ。** */
   complete: boolean;
 };
-
-/**
- * 自room の配信者の anchorId を解決する。
- *
- * `TiktokRoom.hostUserId` は fill-once の遅延バックフィルでしか埋まらず null がありうるので、
- * payload 内の `hostProfiles`(anchorId -> {displayId,...})と接続中のハンドルの一致で引く。
- * 解決できなければタリーを作らない(= tapPointsTracked は false のまま)。
- */
-function resolveSelfAnchorId(parsed: ParsedBattle, tiktokId: string): string | null {
-  const target = tiktokId.trim().toLowerCase();
-  if (!target) return null;
-  for (const [anchorId, profile] of Object.entries(parsed.hostProfiles)) {
-    const displayId = profile?.displayId;
-    if (typeof displayId === "string" && displayId.trim().toLowerCase() === target) return anchorId;
-  }
-  return null;
-}
 
 /**
  * バトルイベントを受けてタリーを生成・切替・最終化する。**ハンドラ内で同期的に呼ぶこと。**
@@ -1824,12 +1925,14 @@ function syncTapTally(inst: ListenerInstance, roomId: string, parsed: ParsedBatt
     finalizeTapTally(roomId, current);
   }
 
-  const anchorId = resolveSelfAnchorId(parsed, inst.state.tiktokId);
-  if (anchorId === null) return;
+  // 自room の配信者は `TiktokRoom.hostTiktokUid` が正本。payload の displayId(可変ハンドル)と
+  // 突き合わせて引き直すと、改名直後・ハンドル再利用で別人へ帰属する。
+  const tiktokUid = inst.hostTiktokUid;
+  if (tiktokUid === null) return;
 
   inst.tapTally = {
     battleId: parsed.battleId,
-    anchorId,
+    hostTiktokUid: tiktokUid,
     counts: new Map(),
     reached: new Set(),
     pendingWrites: [],
@@ -1875,45 +1978,54 @@ function finalizeTapTally(roomId: string, tally: TapTally): void {
 function recordTapProgress(
   roomId: string,
   tally: TapTally,
-  uniqueId: string,
+  listener: TikTokUserObservation,
   likeCount: number,
   occurredAt: Date
 ): void {
-  if (tally.reached.has(uniqueId)) return;
+  const tiktokUid = listener.tiktokUid;
+  if (tally.reached.has(tiktokUid)) return;
 
-  if (!tally.counts.has(uniqueId) && tally.counts.size + tally.reached.size >= MAX_TAP_TALLY_ENTRIES) {
+  if (!tally.counts.has(tiktokUid) && tally.counts.size + tally.reached.size >= MAX_TAP_TALLY_ENTRIES) {
     tally.complete = false;
     return;
   }
 
-  const next = (tally.counts.get(uniqueId) ?? 0) + likeCount;
+  const next = (tally.counts.get(tiktokUid) ?? 0) + likeCount;
   if (next < TAP_THRESHOLD_COUNT) {
-    tally.counts.set(uniqueId, next);
+    tally.counts.set(tiktokUid, next);
     return;
   }
 
-  tally.counts.delete(uniqueId);
-  tally.reached.add(uniqueId);
+  tally.counts.delete(tiktokUid);
+  tally.reached.add(tiktokUid);
 
   // reject させない(最終化タスクが待つまでの間に unhandled rejection になるため)。
   // 成否を boolean で持ち帰り、1件でも失敗していたら tracked=true を書かない。
-  const write = prisma.tiktokBattleTapPoint
-    .createMany({
-      data: [
-        {
-          roomId,
-          battleId: tally.battleId,
-          anchorId: tally.anchorId,
-          occurredAt,
-          uniqueId,
-          points: TAP_POINTS_PER_LISTENER,
-        },
-      ],
-      // 再接続でメモリ上の reached が消えても二重計上しない(正は unique 制約)。
-      skipDuplicates: true,
+  // ギフトもコメントも出していないリスナーの TikTokUser 行はここでしか作られないので、
+  // tap point の insert と同一トランザクションで upsert する。
+  const write = prisma
+    .$transaction(async (tx) => {
+      await tx.tiktokBattleTapPoint.createMany({
+        data: [
+          {
+            roomId,
+            battleId: tally.battleId,
+            hostTiktokUid: tally.hostTiktokUid,
+            occurredAt,
+            tiktokUid,
+            points: TAP_POINTS_PER_LISTENER,
+          },
+        ],
+        // 再接続でメモリ上の reached が消えても二重計上しない(正は unique 制約)。
+        skipDuplicates: true,
+      });
+      return recordTikTokUser(tx, listener);
     })
     .then(
-      () => true,
+      (commit) => {
+        commit();
+        return true;
+      },
       (err) => {
         console.error("[tiktok-listener] tap point write failed", { roomId, battleId: tally.battleId, err });
         return false;
@@ -1924,7 +2036,7 @@ function recordTapProgress(
 
 async function persistBattle(
   roomId: string,
-  tiktokId: string,
+  tiktokHandle: string,
   streamerIds: string[],
   parsed: ParsedBattle,
   receivedAt: Date
@@ -1940,7 +2052,7 @@ async function persistBattle(
         startedAtEstimated: existing.startedAtEstimated,
         endedAt: existing.endedAt,
         durationSec: existing.durationSec,
-        hostUserIds: existing.hostUserIds,
+        hostTiktokUids: existing.hostTiktokUids,
         hostDisplayIds: existing.hostDisplayIds,
         hostScores: (existing.hostScores as Record<string, string> | null) ?? {},
         hostProfiles: (existing.hostProfiles as HostProfiles | null) ?? {},
@@ -1956,7 +2068,7 @@ async function persistBattle(
     startedAtEstimated: state.startedAtEstimated,
     endedAt: state.endedAt,
     durationSec: state.durationSec,
-    hostUserIds: state.hostUserIds,
+    hostTiktokUids: state.hostTiktokUids,
     hostDisplayIds: state.hostDisplayIds,
     hostScores: state.hostScores,
     hostProfiles: state.hostProfiles,
@@ -1972,19 +2084,19 @@ async function persistBattle(
   }
 
   // スコア推移の時系列収集。linkMicBattle/linkMicArmiesどちらもcollectHosts()経由で
-  // parsed.hostScoresを持つが、変化があったanchorId分だけ書く(無変化イベントまで
+  // parsed.hostScoresを持つが、変化があったtiktokUid分だけ書く(無変化イベントまで
   // 書くと行数が際限なく膨らむ上、時系列再現には変化点だけで足りるため)。
   const changedScoreEntries = Object.entries(parsed.hostScores).filter(
-    ([anchorId, score]) => previous?.hostScores[anchorId] !== score
+    ([tiktokUid, score]) => previous?.hostScores[tiktokUid] !== score
   );
   if (changedScoreEntries.length > 0) {
     try {
       await prisma.tiktokBattleArmiesSnapshot.createMany({
-        data: changedScoreEntries.map(([anchorId, score]) => ({
+        data: changedScoreEntries.map(([tiktokUid, score]) => ({
           roomId,
           battleId: parsed.battleId,
           occurredAt: receivedAt,
-          anchorId,
+          tiktokUid,
           score,
         })),
       });
@@ -2003,15 +2115,10 @@ async function persistBattle(
 
   // アイコンの恒久化はfire-and-forget。DB書き込みが終わった後に呼ぶことで
   // write queueの直列化(同じbattleIdの後続イベント処理)をブロックしない。
-  for (const [anchorId, profile] of Object.entries(state.hostProfiles)) {
-    ensureAvatarCached("battle_host", anchorId, profile.avatarUrl).catch(() => {});
+  for (const [tiktokUid, profile] of Object.entries(state.hostProfiles)) {
+    ensureAvatarCached(tiktokUid, profile.avatarUrl).catch(() => {});
   }
 
-  // hostProfilesには**両サイド分**のdisplayIdが入っているので、自分のハンドルに一致する
-  // anchorIdを引けばTikTokへ問い合わせずにhostUserIdが埋まる。改名の検知(合流)は
-  // ハンドルが生きているうちにしかhostUserIdを集められないため、拾える機会は全部拾う。
-  // アイコン同様fire-and-forgetで、失敗してもバトル保存には影響させない。
-  fillHostUserIdFromBattle(roomId, tiktokId, state.hostProfiles).catch(() => {});
 
   const notifyKind = battleNotifyDecision(previous, state);
 
@@ -2044,7 +2151,7 @@ async function persistBattle(
 
 function recordBattleEvent(
   roomId: string,
-  tiktokId: string,
+  tiktokHandle: string,
   streamerIds: string[],
   parsed: ParsedBattle | null
 ): void {
@@ -2052,7 +2159,7 @@ function recordBattleEvent(
   if (!parsed) return;
   const receivedAt = new Date();
   queueBattleWrite(`${roomId}:${parsed.battleId}`, () =>
-    persistBattle(roomId, tiktokId, streamerIds, parsed, receivedAt)
+    persistBattle(roomId, tiktokHandle, streamerIds, parsed, receivedAt)
   );
 }
 
@@ -2077,7 +2184,7 @@ function tryGetOwnWorkerIndex(logPrefix: string): number | undefined {
  * 即接続キックする。
  *
  * `created===true`のときだけ即キックする。この分岐は「その部屋のTiktokRoom行を
- * このプロセスが初めて作った」場合にのみ通り、以後同じtiktokIdへ何度呼ばれても
+ * このプロセスが初めて作った」場合にのみ通り、以後同じtiktokHandleへ何度呼ばれても
  * ensureRoomWatchedForCollab()は既存行(existing)分岐に落ちてcreated:falseを返す
  * (DBのunique制約が二重作成自体を防ぐため)。したがって二重キック・再接続ループは
  * 起こらない — startListener()を「新規作成の瞬間に1回だけ」しか呼ばない設計そのものが
@@ -2088,34 +2195,44 @@ function tryGetOwnWorkerIndex(logPrefix: string): number | undefined {
  * 二重接続(最大1周回ぶんのgift二重受信)を招く。そのケースは即キックせず従来どおり
  * reconcileに委ねる。
  *
- * 戻り値は正規化済みtiktokId -> CollabWatchResult(失敗/スキップ時はnull)。呼び出し元
+ * 戻り値はtiktokUid -> CollabWatchResult(失敗/スキップ時はnull)。呼び出し元
  * (linkLayerハンドラ)がfire-and-forgetで済ませる場合はPromiseを待たなくてよい。
  */
 async function watchDiscoveredRooms(
-  displayIds: string[],
-  ownTiktokId: string,
+  subjects: TiktokRoomSubject[],
+  ownTiktokHandle: string,
   source: CollabWatchSource,
   ownWorkerIndex: number | undefined
 ): Promise<Map<string, CollabWatchResult | null>> {
-  const targets = [...new Set(displayIds.map(normalizeTiktokId))].filter((id) => id !== ownTiktokId);
+  const targets = new Map<string, TiktokRoomSubject>();
+  for (const subject of subjects) {
+    const tiktokUid = normalizeTikTokUserId(subject.tiktokUid);
+    if (!tiktokUid) continue;
+    const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
+    if (tiktokHandle === ownTiktokHandle) continue;
+    if (targets.has(tiktokUid)) continue;
+    targets.set(tiktokUid, { tiktokUid, tiktokHandle, nickname: subject.nickname });
+  }
 
   const entries = await Promise.all(
-    targets.map(async (tiktokId): Promise<[string, CollabWatchResult | null]> => {
+    [...targets.values()].map(async (subject): Promise<[string, CollabWatchResult | null]> => {
+      const tiktokUid = subject.tiktokUid;
+      const tiktokHandle = subject.tiktokHandle;
       try {
-        const result = await ensureRoomWatchedForCollab(tiktokId, ownWorkerIndex, source);
+        const result = await ensureRoomWatchedForCollab(subject, ownWorkerIndex, source);
         if (result?.created && ownWorkerIndex !== undefined) {
-          await startListener(result.roomId, result.tiktokId, []).catch((err) => {
+          await startListener(result.roomId, result.tiktokHandle, []).catch((err) => {
             console.error(`[${source}] 新規roomの即時接続に失敗。次のreconcileで拾われる`, {
               roomId: result.roomId,
-              tiktokId: result.tiktokId,
+              tiktokHandle: result.tiktokHandle,
               err,
             });
           });
         }
-        return [tiktokId, result];
+        return [tiktokUid, result];
       } catch (err) {
-        console.error(`[${source}] 相手roomの監視対象追加に失敗`, { tiktokId, err });
-        return [tiktokId, null];
+        console.error(`[${source}] 相手roomの監視対象追加に失敗`, { tiktokUid, tiktokHandle, err });
+        return [tiktokUid, null];
       }
     })
   );
@@ -2129,7 +2246,7 @@ async function watchDiscoveredRooms(
  * `linkLayer`(`WebcastLinkLayerMessage`)の`messageType:18`(groupChangeContent)のうち、
  * `source`が参加確定(招待への承諾)を示すものだけを処理する。userInfosは受信時点の
  * コラボメンバー全員(own含む)のスナップショットで、差分ではない — 詳細は
- * tiktok-collab.ts / tiktok-probe/KNOWLEDGE.md 参照。自分自身のtiktokIdは除外する。
+ * tiktok-collab.ts / tiktok-probe/KNOWLEDGE.md 参照。自分自身のtiktokHandleは除外する。
  *
  * 監視対象への追加はfire-and-forget。失敗してもlinkLayerイベント自体の処理(watchdog等)は
  * 継続させる — 監視対象追加はベストエフォートの付随処理であって、取りこぼしても
@@ -2142,7 +2259,7 @@ async function watchDiscoveredRooms(
  * 保証するにはlinkMicBattle/linkMicArmies受信時の再スタンプが必要だが、今回のスコープ
  * (Sidestageユーザーでない匿名roomの放置停止)を超えるため見送った)。
  */
-function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unknown): void {
+function recordCollabGroupChange(roomId: string, ownTiktokHandle: string, data: unknown): void {
   const parsed = parseCollabGroupChange(data);
   if (!parsed) return;
 
@@ -2155,14 +2272,14 @@ function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unkn
     linked: parsed.linkedCount,
     waiting: parsed.waitingCount,
     other: parsed.otherCount,
-    ids: parsed.displayIds.length,
+    ids: parsed.subjects.length,
   });
 
-  if (parsed.displayIds.length === 0) {
+  if (parsed.subjects.length === 0) {
     // userListには人が居るのにuserInfosが空 = payload構造が想定と変わった疑い。
     // 判定自体は通っているため例外にはならず、気づかないまま機能停止しうる(実装後レビューで指摘)。
     if (parsed.linkedCount + parsed.waitingCount + parsed.otherCount > 0) {
-      console.warn("[collab] userListに人が居るのにdisplayIdsが空。payload構造の変化を疑う", {
+      console.warn("[collab] userListに人が居るのにsubjectsが空。payload構造の変化を疑う", {
         roomId,
         source: parsed.source,
       });
@@ -2173,7 +2290,7 @@ function recordCollabGroupChange(roomId: string, ownTiktokId: string, data: unkn
   if (!shouldWatchCollabSnapshot(parsed)) return;
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("collab");
-  void watchDiscoveredRooms(parsed.displayIds, ownTiktokId, "collab", ownWorkerIndex);
+  void watchDiscoveredRooms(parsed.subjects, ownTiktokHandle, "collab", ownWorkerIndex);
 }
 
 /**
@@ -2214,19 +2331,26 @@ async function recordOpponentWatch(
  * どちらの経路で監視が始まった(始まらなかった)かはopponentWatchへ記録し、事後に
  * recordCollabGroupChangeの取りこぼし率を検証できるようにする。
  */
-function watchBattleOpponents(roomId: string, ownTiktokId: string, parsed: ParsedBattle): void {
+function watchBattleOpponents(roomId: string, ownTiktokHandle: string, parsed: ParsedBattle): void {
   if (parsed.phase !== "START") return;
 
-  // opponentWatchはanchorId(TiktokBattle.hostProfilesと同じキー)で引けるようにする。
-  // 同じdisplayIdへ複数のanchorIdが束ねられることは無い前提(hostProfilesの生成元と同一)。
-  const opponentsByAnchorId = new Map<string, string>(); // anchorId -> displayId
-  for (const [anchorId, profile] of Object.entries(parsed.hostProfiles)) {
+  // opponentWatchはtiktokUid(TiktokBattle.hostProfilesと同じキー)で引けるようにする。
+  // 同じdisplayIdへ複数のtiktokUidが束ねられることは無い前提(hostProfilesの生成元と同一)。
+  const opponentsByTiktokUid = new Map<string, TiktokRoomSubject>();
+  for (const [rawUid, profile] of Object.entries(parsed.hostProfiles)) {
+    const tiktokUid = normalizeTikTokUserId(rawUid);
+    if (!tiktokUid) continue;
     if (profile.displayId === null) continue;
-    if (normalizeTiktokId(profile.displayId) === ownTiktokId) continue;
-    opponentsByAnchorId.set(anchorId, profile.displayId);
+    const tiktokHandle = normalizeTiktokId(profile.displayId);
+    if (tiktokHandle === ownTiktokHandle) continue;
+    opponentsByTiktokUid.set(tiktokUid, {
+      tiktokUid,
+      tiktokHandle,
+      nickname: normalizeDisplayValue(profile.nickName),
+    });
   }
 
-  if (opponentsByAnchorId.size === 0) {
+  if (opponentsByTiktokUid.size === 0) {
     console.warn("[battle-watch] バトル開始だがhostProfilesに相手のdisplayIdが無い", {
       roomId,
       battleId: parsed.battleId,
@@ -2236,28 +2360,28 @@ function watchBattleOpponents(roomId: string, ownTiktokId: string, parsed: Parse
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("battle-watch");
 
-  watchDiscoveredRooms([...opponentsByAnchorId.values()], ownTiktokId, "battle_start", ownWorkerIndex)
+  watchDiscoveredRooms([...opponentsByTiktokUid.values()], ownTiktokHandle, "battle_start", ownWorkerIndex)
     .then((results) => {
       const entries: OpponentWatch = {};
-      for (const [anchorId, displayId] of opponentsByAnchorId) {
-        const tiktokId = normalizeTiktokId(displayId);
-        const result = results.get(tiktokId);
+      for (const [tiktokUid, subject] of opponentsByTiktokUid) {
+        const tiktokHandle = subject.tiktokHandle;
+        const result = results.get(tiktokUid);
         const watchedAt = new Date().toISOString();
         if (!result) {
-          entries[anchorId] = { tiktokId, roomId: null, source: "skipped", watchedAt: null };
+          entries[tiktokUid] = { tiktokHandle, roomId: null, source: "skipped", watchedAt: null };
         } else if (!result.created) {
           // 既存room。watchSourceが"collab"なら主トリガーで既に拾えていた(理想)。
           // nullならStreamer登録/AgencyWatch/イベント監視由来で元々監視中だった。
-          entries[anchorId] = {
-            tiktokId,
+          entries[tiktokUid] = {
+            tiktokHandle,
             roomId: result.roomId,
             source: result.watchSource ?? "registered",
             watchedAt,
           };
         } else if (ownWorkerIndex === undefined) {
-          entries[anchorId] = { tiktokId, roomId: result.roomId, source: "unassigned", watchedAt };
+          entries[tiktokUid] = { tiktokHandle, roomId: result.roomId, source: "unassigned", watchedAt };
         } else {
-          entries[anchorId] = { tiktokId, roomId: result.roomId, source: "battle_start", watchedAt };
+          entries[tiktokUid] = { tiktokHandle, roomId: result.roomId, source: "battle_start", watchedAt };
         }
       }
       // persistBattle(recordBattleEventがrecordBattleEvent内で同じkeyへenqueue済み)の
@@ -2354,7 +2478,7 @@ async function connectAndAttach(
   // "connecting"遷移でinst.state.reasonがnullに上書きされる前に退避する(updateState参照)。
   // 署名利用ログにはこの直前理由(初回接続ならnull)を残す。
   const signReason = inst.state.reason;
-  const conn = createConnection(inst.state.tiktokId, deviceId, proxyUrl, eulerSignApiKey, {
+  const conn = createConnection(inst.state.tiktokHandle, deviceId, proxyUrl, eulerSignApiKey, {
     roomId,
     trigger,
     reason: signReason,
@@ -2405,26 +2529,37 @@ async function connectAndAttach(
   conn.on("like", markAlive);
 
   // Like数一覧/Like貢献通知(desktop 5ウィジェット移植)向け。likeCountは「このtickでの増分」
-  // であって累計(totalLikeCount)ではない点に注意。uniqueIdごとに1秒コアレッシングしてから
+  // であって累計(totalLikeCount)ではない点に注意。tiktokHandleごとに1秒コアレッシングしてから
   // まとめて転送する(理由はLIKE_COALESCE_WINDOW_MSの定義コメント参照)。
   conn.on("like", (data: Record<string, unknown>) => {
     const msgId = resolveMsgId(data);
     if (msgId && !rememberMsgId(inst.recentLikeMsgIds, inst.recentLikeMsgIdOrder, msgId, LIKE_DEDUP_CACHE_SIZE)) {
       return; // プロセス内再送のみ弾く(非金銭的データのためgiftほど厳密にはしない)
     }
-    const uniqueId = String(data.uniqueId || "");
+    const tiktokUid = normalizeTikTokUserId(data.userId);
+    const tiktokHandle = String(data.uniqueId || "");
     const likeCount = Math.max(0, Number(data.likeCount) || 0);
-    if (!uniqueId || likeCount <= 0) return;
+    if (!tiktokUid || likeCount <= 0) return;
+
+    const nickname = String(data.nickname || "");
 
     // バトル中だけタップ点を集計する。like と armies はどちらもサーバー受信時刻なので、
     // ここで取る時刻がそのまま逆算側の区間割当の基準になる。
-    if (inst.tapTally) recordTapProgress(roomId, inst.tapTally, uniqueId, likeCount, new Date());
+    if (inst.tapTally) {
+      recordTapProgress(
+        roomId,
+        inst.tapTally,
+        { tiktokUid, tiktokHandle: normalizeDisplayValue(tiktokHandle), nickname: normalizeDisplayValue(nickname) },
+        likeCount,
+        new Date()
+      );
+    }
 
-    const existing = inst.pendingLikes.get(uniqueId);
-    const nickname = String(data.nickname || "");
+    const existing = inst.pendingLikes.get(tiktokUid);
     const profilePictureUrl = data.profilePictureUrl ? String(data.profilePictureUrl) : null;
-    inst.pendingLikes.set(uniqueId, {
-      uniqueId,
+    inst.pendingLikes.set(tiktokUid, {
+      tiktokUid,
+      tiktokHandle: tiktokHandle || existing?.tiktokHandle || "",
       nickname: nickname || existing?.nickname || "",
       profilePictureUrl: profilePictureUrl || existing?.profilePictureUrl || null,
       likeCount: (existing?.likeCount ?? 0) + likeCount,
@@ -2449,20 +2584,20 @@ async function connectAndAttach(
     // **recordBattleEvent より先に、ここで同期的に**タリーを作る。recordBattleEvent は
     // persistBattle を write queue へ積むだけなので、そこで作ると開始直後の like を取りこぼす。
     syncTapTally(inst, roomId, parsed);
-    recordBattleEvent(roomId, inst.state.tiktokId, Array.from(inst.subscriberIds), parsed);
+    recordBattleEvent(roomId, inst.state.tiktokHandle, Array.from(inst.subscriberIds), parsed);
     // 補助トリガー: コラボ承諾(linkLayer)の取りこぼし(worker再起動等で承諾より後に接続した場合)を
     // 埋める。主トリガーはlinkLayer側のrecordCollabGroupChange。詳細はwatchBattleOpponents参照。
     // コラボ相手発見のキックはStreamer購読中のroomか特別監視roomからのみ許可する
     // (2026-09-06、連鎖爆発によるEulerStream署名枯渇の再発防止)。
     if (parsed && (inst.subscriberIds.size > 0 || inst.specialWatch)) {
-      watchBattleOpponents(roomId, inst.state.tiktokId, parsed);
+      watchBattleOpponents(roomId, inst.state.tiktokHandle, parsed);
     }
   });
   conn.on("linkMicArmies", (data: unknown) => {
     markAlive();
     const parsed = parseArmiesEvent(data);
     syncTapTally(inst, roomId, parsed);
-    recordBattleEvent(roomId, inst.state.tiktokId, Array.from(inst.subscriberIds), parsed);
+    recordBattleEvent(roomId, inst.state.tiktokHandle, Array.from(inst.subscriberIds), parsed);
   });
 
   // コラボ(linkMic本体。バトルでない)の参加・離脱通知。fork独自追加のイベント
@@ -2478,7 +2613,7 @@ async function connectAndAttach(
   conn.on("linkLayer", (data: unknown) => {
     markAlive();
     if (inst.subscriberIds.size > 0 || inst.specialWatch) {
-      recordCollabGroupChange(roomId, inst.state.tiktokId, data);
+      recordCollabGroupChange(roomId, inst.state.tiktokHandle, data);
     }
   });
 
@@ -2540,8 +2675,17 @@ async function connectAndAttach(
     // comment 自体は生テキストのまま変えず、別フィールドで足す(理由は
     // chat-feed.ts の ChatCommentPayload.emotes のコメント)。
     const emotes = normalizeChatCommentEmotes(data);
+    // 端末側の同一性(ボイス割当・重複判定)は tiktokUid だけで決まる。空文字を配ると
+    // **全投稿者が1人に畳まれる**ので、uid が取れないイベントは socket 配信ごと捨てる。
+    // getUserAttributes() は全イベントに userId を載せるため、ここへ来るのは protobuf レベルの異常。
+    const commentTiktokUid = normalizeTikTokUserId(data.userId);
+    if (!commentTiktokUid) {
+      console.error("[chat] tiktokUid missing — skipping comment", { roomId, msgId });
+      return;
+    }
     const payload = {
-      uniqueId: String(data.uniqueId || ""),
+      tiktokUid: commentTiktokUid,
+      tiktokHandle: String(data.uniqueId || ""),
       nickname: String(data.nickname || ""),
       profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
       comment: String(data.comment || ""),
@@ -2561,8 +2705,14 @@ async function connectAndAttach(
   conn.on("follow", (data: Record<string, unknown>) => {
     markAlive();
     const { time: eventTime } = resolveEventTime(data);
+    const followerTiktokUid = normalizeTikTokUserId(data.userId);
+    if (!followerTiktokUid) {
+      console.error("[follow] tiktokUid missing — skipping", { roomId });
+      return;
+    }
     notifyChatFollow(Array.from(inst.subscriberIds), {
-      uniqueId: String(data.uniqueId || ""),
+      tiktokUid: followerTiktokUid,
+      tiktokHandle: String(data.uniqueId || ""),
       nickname: String(data.nickname || ""),
       profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
       occurredAt: eventTime.toISOString(),
@@ -2576,10 +2726,10 @@ async function connectAndAttach(
 
     // アイコンの恒久化はfire-and-forget。saveGift/saveComboGiftのadvisory lock保持時間に
     // 影響させないため、DB書き込みより前・完全に独立した経路で呼ぶ。
-    if (data.uniqueId) {
-      const uniqueId = String(data.uniqueId);
+    const giftSenderTiktokUid = normalizeTikTokUserId(data.userId);
+    if (giftSenderTiktokUid) {
       const profilePictureUrl = data.profilePictureUrl ? String(data.profilePictureUrl) : null;
-      ensureAvatarCached("gift_sender", uniqueId, profilePictureUrl).catch(() => {});
+      ensureAvatarCached(giftSenderTiktokUid, profilePictureUrl).catch(() => {});
     }
 
     const isCombo = data.giftType === 1;
@@ -2588,14 +2738,14 @@ async function connectAndAttach(
     const groupId = resolveGroupId(data);
     // groupIdが取れないcomboだけ、プロセス内の前回値で追う従来経路に落とす。
     // DBから合計を引く手が無いため(この形のキーはGift行に残らない)。
-    const fallbackComboKey = isCombo && !groupId ? `${data.uniqueId}:${data.giftId}` : null;
+    const fallbackComboKey = isCombo && !groupId ? `${giftSenderTiktokUid ?? ""}:${data.giftId}` : null;
     const currentRepeat = Math.max(1, Number(data.repeatCount) || 1);
     const { time: eventTime, source: timeSource } = resolveEventTime(data);
 
     if (timeSource === "fallback") {
       console.warn("[gift] createTime missing/invalid — falling back to server time", {
         roomId,
-        uniqueId: data.uniqueId,
+        tiktokHandle: data.uniqueId,
         giftId: data.giftId,
         orderId: data.orderId,
         rawCreateTime: data.createTime,
@@ -2607,7 +2757,7 @@ async function connectAndAttach(
       roomId,
       giftType: data.giftType,
       giftName: data.giftName,
-      uniqueId: data.uniqueId,
+      tiktokHandle: data.uniqueId,
       giftId: data.giftId,
       groupId: data.groupId,
       orderId: data.orderId,
@@ -2675,22 +2825,33 @@ async function connectAndAttach(
     // TikTok側の再送による二重発火はWebプロセス側(emitChatGift)が吸収する。
     // ここではdeltaを一切計算せず、累計値をそのまま送る(新旧Worker並走時に
     // 各プロセスが別のdeltaを出すのを防ぐため。詳細はchat-feed.tsのChatGiftInput参照)。
-    notifyChatGift(Array.from(inst.subscriberIds), {
-      uniqueId: String(data.uniqueId || ""),
-      nickname: String(data.nickname || ""),
-      profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
-      giftName: String(data.giftName || "").trim().toLowerCase(),
-      giftId: data.giftId ? String(data.giftId) : null,
-      diamondCount: Number(data.diamondCount) || 0,
-      repeatCount: currentRepeat,
-      isCombo,
-      repeatEnd: Boolean(data.repeatEnd),
-      groupId,
-      orderId: data.orderId ? String(data.orderId) : null,
-      msgId: eventMsgId,
-      occurredAt: eventTime.toISOString(),
-      receivedAt: new Date().toISOString(),
-    });
+    //
+    // uid が取れないイベントは配信しない。空文字を配ると端末側の同一性キーが潰れて
+    // **全送信者が1人に畳まれる**(chat / follow と同じ判断)。
+    if (giftSenderTiktokUid) {
+      notifyChatGift(Array.from(inst.subscriberIds), {
+        tiktokUid: giftSenderTiktokUid,
+        tiktokHandle: String(data.uniqueId || ""),
+        nickname: String(data.nickname || ""),
+        profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+        giftName: String(data.giftName || "").trim().toLowerCase(),
+        giftId: data.giftId ? String(data.giftId) : null,
+        diamondCount: Number(data.diamondCount) || 0,
+        repeatCount: currentRepeat,
+        isCombo,
+        repeatEnd: Boolean(data.repeatEnd),
+        groupId,
+        orderId: data.orderId ? String(data.orderId) : null,
+        msgId: eventMsgId,
+        occurredAt: eventTime.toISOString(),
+        receivedAt: new Date().toISOString(),
+      });
+    } else {
+      console.error("[gift] tiktokUid missing — skipping chat:gift emit", {
+        roomId,
+        giftId: data.giftId,
+      });
+    }
 
     // combo(有効なgroupIdあり): deltaはDBの確定値から引く。プロセスの記憶を持たない。
     // 同じグループの書き込みは1本ずつ流し、DB側のadvisory lockで待つ本数を抑える。
@@ -2735,7 +2896,7 @@ async function connectAndAttach(
     const dedupKey = (data.orderId ? String(data.orderId) : null) ?? groupId;
     if (!dedupKey) {
       console.warn("[gift/non-combo] missing orderId and groupId — saving without dedup key", {
-        uniqueId: data.uniqueId,
+        tiktokHandle: data.uniqueId,
         giftId: data.giftId,
         giftName: data.giftName,
       });
@@ -2743,7 +2904,7 @@ async function connectAndAttach(
       saveGift(roomId, data, currentRepeat, eventTime, timeSource).then(applySaveResult);
       return;
     }
-    console.log("[gift/non-combo]", { dedupKey, uniqueId: data.uniqueId });
+    console.log("[gift/non-combo]", { dedupKey, tiktokHandle: data.uniqueId });
     notifyGiftLog({ ...baseLog, action: "non-combo" });
     saveGift(roomId, data, currentRepeat, eventTime, timeSource).then(applySaveResult);
   });
@@ -2753,18 +2914,46 @@ async function connectAndAttach(
     (conn.clientParams as Record<string, string>).cursor = "";
   }
 
-  const reportedOffline = await isReportedOfflineByApiLive(conn, inst.state.tiktokId);
+  const preCheck = await precheckApiLive(conn, inst.state.tiktokHandle, inst.hostTiktokUid);
   if (!isCurrent() || inst.stopped) {
-    // isReportedOfflineByApiLiveのHTTP待機中にstopListener()や次のconnectInstance()で
+    // precheckApiLiveのHTTP待機中にstopListener()や次のconnectInstance()で
     // inst.connectionが差し替わった、または意図的に止められた
     // (stopListenerはinst.connectionをnullにしないためisCurrent()だけでは検知できない)。
     return;
   }
-  if (reportedOffline) {
+  if (preCheck.kind === "offline") {
     console.warn(
-      `[listener] @${inst.state.tiktokId}: api-live/user/room/ reports offline (status=4) — skipping connect to avoid consuming an Euler signature`
+      `[listener] @${inst.state.tiktokHandle}: api-live/user/room/ reports offline (status=4) — skipping connect to avoid consuming an Euler signature`
     );
     scheduleReconnect(roomId, "user_offline");
+    return;
+  }
+  if (preCheck.kind === "mismatch") {
+    // このハンドルの現在の持ち主が登録時と別人。接続すると別人のギフト・コメントが
+    // この room へ入るので、再接続もスケジュールせず handleStaleAt で止める。
+    console.error(
+      `[listener] @${inst.state.tiktokHandle}: hostTiktokUid mismatch (room=${inst.hostTiktokUid}, api-live=${preCheck.actual}) — refusing to connect`
+    );
+    try {
+      await markRoomHandleStale(roomId);
+    } catch (err) {
+      console.error("[listener] markRoomHandleStale error:", err);
+    }
+    updateState(
+      inst,
+      "error",
+      FACTS_HANDLE_MISMATCH.message,
+      FACTS_HANDLE_MISMATCH,
+      "handle_mismatch"
+    );
+    return;
+  }
+  if (preCheck.kind === "unverifiable") {
+    // 同一性を確認できない間は接続しない(fail-closed)。バックオフ付きで再試行する。
+    console.warn(
+      `[listener] @${inst.state.tiktokHandle}: could not verify hostTiktokUid — ${preCheck.reason}`
+    );
+    scheduleReconnect(roomId, "uid_unverifiable");
     return;
   }
 
@@ -2830,7 +3019,7 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
   // EulerStream署名消費の実測用。"user_offline"はfetchRoomInfoOnConnectのオフライン判定で
   // 署名取得前に終わるため実質消費なし、それ以外の理由は署名取得後の失敗として計上する。
   console.log(
-    `[listener] scheduleReconnect: @${inst.state.tiktokId} reason=${reason} delay=${delay}ms reconnectFailureCount=${inst.reconnectFailureCount}`
+    `[listener] scheduleReconnect: @${inst.state.tiktokHandle} reason=${reason} delay=${delay}ms reconnectFailureCount=${inst.reconnectFailureCount}`
   );
 
   // メッセージは**そのままユーザーへ出す**。以前の `再接続待機中... (connect_failed)` は
@@ -2848,7 +3037,7 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
 
 export async function startListener(
   roomId: string,
-  tiktokId: string,
+  tiktokHandle: string,
   subscriberIds: string[] = [],
   specialWatch = false
 ) {
@@ -2867,10 +3056,17 @@ export async function startListener(
     await stopListener(roomId, "restart");
   }
 
+  // 同一性の正本(hostTiktokUid)は接続開始時に1回だけ読む。以後ハンドルから引き直さない。
+  const room = await prisma.tiktokRoom.findUnique({
+    where: { id: roomId },
+    select: { hostTiktokUid: true },
+  });
+
   const inst: ListenerInstance = {
+    hostTiktokUid: room?.hostTiktokUid ?? null,
     state: {
       roomId,
-      tiktokId,
+      tiktokHandle,
       status: "idle",
       message: "起動中",
       updatedAt: new Date().toISOString(),
@@ -2886,7 +3082,7 @@ export async function startListener(
     connectionIntervalId: null,
     // 起動時にDBから復元しない。有効なgroupIdを持つcomboはsaveComboGift()が
     // 毎回DBの確定値を引くので前回値を持ち越す必要がなく、groupId欠落comboの
-    // キー(`uniqueId:giftId`)はGift行に残らないので元々復元できない。
+    // キー(`tiktokHandle:giftId`)はGift行に残らないので元々復元できない。
     pendingCombos: new Map(),
     subscriberIds: new Set(subscriberIds),
     specialWatch,
@@ -3015,7 +3211,7 @@ export function getListenerStatus(roomId: string): ListenerState | null {
 // Workerプロセスの GET /status (worker.ts) から呼ばれる。
 export type ListenerSnapshot = {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   status: ListenerStatus;
   message: string;
   updatedAt: string;
@@ -3030,7 +3226,7 @@ export type ListenerSnapshot = {
 export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot[] {
   return [...listeners.values()].map((inst) => ({
     roomId: inst.state.roomId,
-    tiktokId: inst.state.tiktokId,
+    tiktokHandle: inst.state.tiktokHandle,
     status: inst.state.status,
     message: inst.state.message,
     updatedAt: inst.state.updatedAt,
@@ -3041,7 +3237,7 @@ export function getListenerSnapshots(now: number = Date.now()): ListenerSnapshot
   }));
 }
 
-type MyRoom = { id: string; tiktokId: string; subscriberIds: string[]; specialWatch: boolean };
+type MyRoom = { id: string; tiktokHandle: string; subscriberIds: string[]; specialWatch: boolean };
 
 // 接続を維持すべき部屋の条件は watched-room-filter.ts の watchedRoomFilter()/
 // resolveWatchedRoomFilter() へ集約してある(tiktok-room.ts の上限カウント・
@@ -3061,13 +3257,15 @@ async function getMyRooms(): Promise<MyRoom[]> {
   // assignedとunassignedで基準時刻がずれないよう1回だけ評価する。
   const monitored = await resolveWatchedRoomFilter(new Date());
 
+  // handleStaleAt が立っている room は接続直前の uid 照合で別人と判定済み。監視対象では
+  // あり続ける(データは残す)が、接続はしない。解除は tiktokHandle を書き直す経路が行う。
   const assigned = await prisma.tiktokRoom.findMany({
-    where: { workerId: index, ...monitored },
+    where: { workerId: index, handleStaleAt: null, ...monitored },
     include: { streamers: { select: { id: true } } },
   });
 
   const unassigned = await prisma.tiktokRoom.findMany({
-    where: { workerId: null, ...monitored },
+    where: { workerId: null, handleStaleAt: null, ...monitored },
     include: { streamers: { select: { id: true } } },
   });
   const claimed: typeof unassigned = [];
@@ -3078,7 +3276,7 @@ async function getMyRooms(): Promise<MyRoom[]> {
 
   return [...assigned, ...claimed].map((r) => ({
     id: r.id,
-    tiktokId: r.tiktokId,
+    tiktokHandle: r.tiktokHandle,
     subscriberIds: r.streamers.map((s) => s.id),
     specialWatch: r.specialWatch,
   }));
@@ -3123,12 +3321,12 @@ export async function resumeAllListeners(): Promise<ReconcileResult> {
 
   let startFailures = 0;
   await runWithConcurrency(rooms, RESUME_CONCURRENCY, async (r) => {
-    console.log(`[listener] starting listener for @${r.tiktokId} (room ${r.id}, ${r.subscriberIds.length} subscriber(s))`);
-    await startListener(r.id, r.tiktokId, r.subscriberIds, r.specialWatch).catch((err) => {
+    console.log(`[listener] starting listener for @${r.tiktokHandle} (room ${r.id}, ${r.subscriberIds.length} subscriber(s))`);
+    await startListener(r.id, r.tiktokHandle, r.subscriberIds, r.specialWatch).catch((err) => {
       startFailures++;
-      console.error(`[listener] resume failed for ${r.tiktokId}:`, err);
+      console.error(`[listener] resume failed for ${r.tiktokHandle}:`, err);
     });
-    console.log(`[listener] listener state for @${r.tiktokId}:`, listeners.get(r.id)?.state.status);
+    console.log(`[listener] listener state for @${r.tiktokHandle}:`, listeners.get(r.id)?.state.status);
   });
 
   return { roomCount: rooms.length, startFailures };
@@ -3160,7 +3358,7 @@ export async function resolveGiftCatalogSources(): Promise<GiftCatalogSource[]> 
     // (日本プロキシ未設定時のフォールバックとしてのみ使われる。tiktok-gift-catalog.ts参照)。
     const deviceId = await getOrCreateDeviceId(room.id);
     const proxyUrl = await resolveProxyForRoom(room.id);
-    sources.push({ tiktokId: room.tiktokId, deviceId, proxyUrl });
+    sources.push({ tiktokHandle: room.tiktokHandle, deviceId, proxyUrl });
   }
   return sources;
 }
@@ -3179,7 +3377,7 @@ export async function stopAllListeners() {
 //  - まだ接続していない担当部屋の起動
 //  - 購読者(subscriberIds)が変わった部屋の更新(再接続はしない)
 //  - 購読者がゼロになった/担当替えで自分の担当でなくなった部屋の切断
-//    (tiktokId変更による旧部屋の切断・Streamer削除・Worker再編のすべてがこの1箇所を通る)
+//    (tiktokHandle変更による旧部屋の切断・Streamer削除・Worker再編のすべてがこの1箇所を通る)
 export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
   const reconcileStartedAt = Date.now();
   const rooms = await getMyRooms();
@@ -3192,10 +3390,10 @@ export async function ensureAllListenersAlive(): Promise<ReconcileResult> {
       applySubscribers(existing, r.subscriberIds, r.specialWatch);
       continue;
     }
-    console.log(`[listener] ensureAlive: restarting missing listener for @${r.tiktokId}`);
-    await startListener(r.id, r.tiktokId, r.subscriberIds, r.specialWatch).catch((err) => {
+    console.log(`[listener] ensureAlive: restarting missing listener for @${r.tiktokHandle}`);
+    await startListener(r.id, r.tiktokHandle, r.subscriberIds, r.specialWatch).catch((err) => {
       startFailures++;
-      console.error(`[listener] ensureAlive failed for ${r.tiktokId}:`, err);
+      console.error(`[listener] ensureAlive failed for ${r.tiktokHandle}:`, err);
     });
   }
 
@@ -3253,7 +3451,7 @@ export function checkWatchdogs() {
 
     if (now < inst.watchdogBackoffUntil) {
       console.warn(
-        `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms but skipping forced reconnect — backoff active (trigger #${inst.watchdogTriggerCount}, retry allowed in ${inst.watchdogBackoffUntil - now}ms)`
+        `[listener] watchdog: @${inst.state.tiktokHandle} silent for ${silentFor}ms but skipping forced reconnect — backoff active (trigger #${inst.watchdogTriggerCount}, retry allowed in ${inst.watchdogBackoffUntil - now}ms)`
       );
       return;
     }
@@ -3264,10 +3462,10 @@ export function checkWatchdogs() {
     inst.watchdogBackoffUntil = now + backoffMs;
 
     console.warn(
-      `[listener] watchdog: @${inst.state.tiktokId} silent for ${silentFor}ms, forcing reconnect (trigger #${inst.watchdogTriggerCount}, next forced reconnect allowed in ${backoffMs}ms if still silent)`
+      `[listener] watchdog: @${inst.state.tiktokHandle} silent for ${silentFor}ms, forcing reconnect (trigger #${inst.watchdogTriggerCount}, next forced reconnect allowed in ${backoffMs}ms if still silent)`
     );
     connectInstance(roomId, "watchdog").catch((err) =>
-      console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokId}:`, err)
+      console.error(`[listener] watchdog reconnect failed for ${inst.state.tiktokHandle}:`, err)
     );
   });
 }

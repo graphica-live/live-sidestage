@@ -3,37 +3,47 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_battle_contributors";
+const HOST_UID = makeTiktokUid("itest_mobile_battle_contributors_host");
+const LISTENER_UID = makeTiktokUid("itest_mobile_battle_contributors_user_a");
 
-let userId: string;
+let principalId: string;
 let roomId: string;
-let noRoomUserId: string;
+let noRoomPrincipalId: string;
 let token: string;
 let noRoomToken: string;
 
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-battle-contributors-secret";
 
 beforeAll(async () => {
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID, hostUserId: "itest_host_self" } });
+  const room = await prisma.tiktokRoom.create({ data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: HOST_UID } });
   roomId = room.id;
 
   const user = await prisma.user.create({
     data: { email: `itest-mobile-battle-contributors-${Date.now()}@local.test` },
   });
-  userId = user.id;
+  principalId = user.id;
   await prisma.streamer.create({
-    data: { userId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId,
+      tiktokUid: HOST_UID,
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
-  token = signMobileToken({ userId });
+  token = signMobileToken({ principalId });
 
   const noRoom = await prisma.user.create({
     data: { email: `itest-mobile-battle-contributors-noroom-${Date.now()}@local.test` },
   });
-  noRoomUserId = noRoom.id;
-  noRoomToken = signMobileToken({ userId: noRoomUserId });
+  noRoomPrincipalId = noRoom.id;
+  noRoomToken = signMobileToken({ principalId: noRoomPrincipalId });
 
   await prisma.tiktokBattle.create({
     data: {
@@ -44,16 +54,23 @@ beforeAll(async () => {
       startedAtEstimated: false,
       endedAt: new Date("2026-08-26T10:05:00Z"),
       durationSec: 300,
-      hostUserIds: ["itest_host_self"],
+      hostTiktokUids: [HOST_UID],
       hostScores: {},
     },
+  });
+
+  // 表示名の供給元は `Gift` の列ではなく `TikTokUser`(uid からの順引き)。
+  // `TikTokUser` は room スコープを持たず cascade で消えないので afterAll で明示的に消す。
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid: LISTENER_UID },
+    create: { tiktokUid: LISTENER_UID, tiktokHandle: "user_a", nickname: null },
+    update: { tiktokHandle: "user_a" },
   });
 
   await prisma.gift.create({
     data: {
       roomId,
-      uniqueId: "user_a",
-      nickname: "ユーザーA",
+      tiktokUid: LISTENER_UID,
       giftId: 1,
       giftName: "Rose",
       repeatCount: 1,
@@ -66,9 +83,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> TiktokBattle, Gift
+  // TikTokUser は room スコープを持たないので cascade されない。
+  await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [HOST_UID, LISTENER_UID] } } }).catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -100,7 +119,7 @@ describe("GET /api/mobile/analytics/battles/[battleId]/contributors", () => {
     expect(res.status).toBe(200);
     expect(body.status).toBe("finished");
     expect(body.contributors).toHaveLength(1);
-    expect(body.contributors[0].uniqueId).toBe("user_a");
+    expect(body.contributors[0].tiktokHandle).toBe("user_a");
     expect(body.contributors[0].totalDiamonds).toBe(10);
     expect(body.teams).toBeNull();
   });
@@ -119,14 +138,15 @@ describe("GET /api/mobile/analytics/battles/[battleId]/contributors", () => {
     });
     await prisma.battleHistoryParticipant.createMany({
       data: [
-        { battleHistoryId: battleHistory.id, side: "self", teamIndex: 0, position: 0, anchorId: "anchor_self" },
+        { battleHistoryId: battleHistory.id, side: "self", teamIndex: 0, position: 0, tiktokUid: "anchor_self" },
         {
           battleHistoryId: battleHistory.id,
           side: "opponent",
           teamIndex: 1,
           position: 0,
-          anchorId: "anchor_opp",
-          nickName: "相手",
+          tiktokUid: "anchor_opp",
+          // バトル時点で凍結する表示名スナップショット(nickName から改名)。
+          nicknameSnapshot: "相手",
         },
       ],
     });

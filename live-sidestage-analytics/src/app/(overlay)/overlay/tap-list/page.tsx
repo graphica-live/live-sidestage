@@ -20,7 +20,7 @@ export default function TapListOverlayPage() {
         <ul className="flex flex-col" style={{ gap: `${snapshot.rowGap}px` }}>
           {snapshot.entries.map((entry) => (
             <li
-              key={entry.uniqueId}
+              key={entry.tiktokHandle}
               className="flex items-center gap-3 px-3 py-1.5 rounded-xl"
               style={{ background: snapshot.bgStyle === "semi" ? "rgba(0,0,0,0.45)" : "transparent" }}
             >

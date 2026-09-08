@@ -7,8 +7,9 @@ import { normalizeOverlayAppearance, OVERLAY_APPEARANCE_DEFAULT, type OverlayApp
 
 export type CoinListEntry = {
   rank: number;
-  uniqueId: string;
-  nickname: string;
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   coinCount: number;
 };
@@ -40,22 +41,33 @@ export async function buildCoinListSnapshot(streamerId: string): Promise<CoinLis
   const dayKey = jstDateKey();
   const gifts = await fetchDayGifts(streamer.roomId, dayKey);
 
-  const totals = new Map<string, { nickname: string; image: string | null; total: number }>();
+  // 合算キーは不変のtiktokUid。ハンドル改名で当日の累計が割れないのが要点。
+  const totals = new Map<
+    string,
+    { tiktokHandle: string | null; nickname: string | null; image: string | null; total: number }
+  >();
   for (const g of gifts) {
-    const t = totals.get(g.uniqueId) ?? { nickname: g.nickname, image: g.profileImageUrl, total: 0 };
+    const t = totals.get(g.tiktokUid) ?? {
+      tiktokHandle: g.tiktokHandle,
+      nickname: g.nickname,
+      image: g.profileImageUrl,
+      total: 0,
+    };
+    t.tiktokHandle = g.tiktokHandle;
     t.nickname = g.nickname;
     t.image = g.profileImageUrl;
     t.total += g.totalDiamonds;
-    totals.set(g.uniqueId, t);
+    totals.set(g.tiktokUid, t);
   }
 
   const entries: CoinListEntry[] = Array.from(totals.entries())
     .filter(([, v]) => v.total > 0)
     .sort((a, b) => (sortOrder === "asc" ? a[1].total - b[1].total : b[1].total - a[1].total))
     .slice(0, maxEntries)
-    .map(([uniqueId, v], i) => ({
+    .map(([tiktokUid, v], i) => ({
       rank: i + 1,
-      uniqueId,
+      tiktokUid,
+      tiktokHandle: v.tiktokHandle,
       nickname: v.nickname,
       profileImageUrl: v.image,
       coinCount: v.total,

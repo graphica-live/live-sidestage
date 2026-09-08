@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { markLastActive } from "@/lib/mark-last-active";
 
 export interface MobileTokenPayload {
-  userId: string;
+  principalId: string;
   streamerId?: string;
 }
 
@@ -38,11 +38,11 @@ export function verifyMobileToken(token: string): MobileTokenPayload | null {
   try {
     const decoded = jwt.verify(token, getSecret());
     if (typeof decoded === "string") return null;
-    const { userId, streamerId, iat } = decoded as Partial<MobileTokenPayload> & { iat?: number };
-    if (!userId) return null;
+    const { principalId, streamerId, iat } = decoded as Partial<MobileTokenPayload> & { iat?: number };
+    if (!principalId) return null;
     // iat が無いトークンは jwt.sign が付ける前提から外れているので信用しない。
     if (typeof iat !== "number" || iat < LEGACY_TOKEN_CUTOFF_SEC) return null;
-    return { userId, streamerId: streamerId || undefined };
+    return { principalId, streamerId: streamerId || undefined };
   } catch {
     return null;
   }
@@ -57,23 +57,23 @@ function extractPayload(req: NextRequest): MobileTokenPayload | null {
   // 記録では日常利用を捕捉できないため、有効トークンでのリクエストのたびにここでも
   // アクティブを記録する(スロットルはmarkLastActive内部で行うのでシグネチャは
   // 変えずfire-and-forgetでよい)。
-  if (payload) void markLastActive(payload.userId);
+  if (payload) void markLastActive(payload.principalId);
 
   return payload;
 }
 
-export function resolveStreamerByMobileToken(req: NextRequest): { id: string; userId: string } | null {
+export function resolveStreamerByMobileToken(req: NextRequest): { id: string; principalId: string } | null {
   const payload = extractPayload(req);
   if (!payload?.streamerId) return null;
 
-  return { id: payload.streamerId, userId: payload.userId };
+  return { id: payload.streamerId, principalId: payload.principalId };
 }
 
-export function resolveUserByMobileToken(req: NextRequest): { userId: string } | null {
+export function resolveUserByMobileToken(req: NextRequest): { principalId: string } | null {
   const payload = extractPayload(req);
   if (!payload) return null;
 
-  return { userId: payload.userId };
+  return { principalId: payload.principalId };
 }
 
 /**
@@ -84,22 +84,22 @@ export function resolveUserByMobileToken(req: NextRequest): { userId: string } |
  * 失効機構が無いため)。entitlement判定(実効プラン・機能可否)の起点はこちらを使う。
  *
  * 既存のgifts/streamer等の各APIは resolveUserByMobileToken() のままでよい —
- * 削除済みUserのuserIdで問い合わせても、紐づくデータが無ければ自然に404/空応答になる。
+ * 削除済みUserのprincipalIdで問い合わせても、紐づくデータが無ければ自然に404/空応答になる。
  */
-export async function resolveActiveMobileUser(req: NextRequest): Promise<{ userId: string } | null> {
+export async function resolveActiveMobileUser(req: NextRequest): Promise<{ principalId: string } | null> {
   const auth = resolveUserByMobileToken(req);
   if (!auth) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: auth.userId }, select: { id: true } });
+  const user = await prisma.user.findUnique({ where: { id: auth.principalId }, select: { id: true } });
   if (!user) return null;
 
-  return { userId: auth.userId };
+  return { principalId: auth.principalId };
 }
 
-export type MobileAnalyticsStreamer = { id: string; roomId: string; verified: boolean; userId: string };
+export type MobileAnalyticsStreamer = { id: string; roomId: string; verified: boolean; principalId: string };
 
 // mobile/analytics/* の4エンドポイント共通の認可処理。JWTのstreamerIdは信用せず
-// userIdからStreamerを引き直す(resolveUserByMobileTokenの規約を踏襲)。
+// principalIdからStreamerを引き直す(resolveUserByMobileTokenの規約を踏襲)。
 //
 // streamer未登録・roomId未接続の場合のレスポンスはエンドポイントごとに形もステータスも
 // 違う(一覧系は既存Web版のgifts/history/route.tsに揃えて「空データ+verified:falseで200」、
@@ -118,8 +118,8 @@ export async function resolveMobileAnalyticsContext(
   }
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: auth.userId },
-    select: { id: true, roomId: true, verified: true, userId: true },
+    where: { principalId: auth.principalId },
+    select: { id: true, roomId: true, verified: true, principalId: true },
   });
 
   if (!streamer || !streamer.roomId) {
@@ -128,6 +128,6 @@ export async function resolveMobileAnalyticsContext(
 
   return {
     ok: true,
-    streamer: { id: streamer.id, roomId: streamer.roomId, verified: streamer.verified, userId: streamer.userId },
+    streamer: { id: streamer.id, roomId: streamer.roomId, verified: streamer.verified, principalId: streamer.principalId },
   };
 }

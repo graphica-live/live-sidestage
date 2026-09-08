@@ -10,15 +10,23 @@ import {
   CHECK_COOLDOWN_MS,
   NOT_FOUND_STREAK_REQUIRED,
 } from "./tiktok-room-cleanup";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
 const roomIds: string[] = [];
-const userIds: string[] = [];
+const principalIds: string[] = [];
 const giftIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestcln${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+}
+
+// TiktokRoom.hostTiktokUid は @unique。同一ファイル内で複数部屋を作るので必ず別値を配る。
+let uidSeq = 0;
+function nextTiktokUid() {
+  uidSeq += 1;
+  return `7${String(Date.now() % 1_000_000).padStart(6, "0")}${String(uidSeq).padStart(11, "0")}`;
 }
 
 async function makeRoom(data: {
@@ -32,7 +40,8 @@ async function makeRoom(data: {
 }) {
   const room = await prisma.tiktokRoom.create({
     data: {
-      tiktokId: tiktokId(data.tag),
+      hostTiktokUid: nextTiktokUid(),
+      tiktokHandle: tiktokHandle(data.tag),
       listenerStatus: data.listenerStatus ?? null,
       unhealthySince: data.unhealthySince ?? null,
       lastExistenceCheckAt: data.lastExistenceCheckAt ?? null,
@@ -40,26 +49,27 @@ async function makeRoom(data: {
       notFoundFirstAt: data.notFoundFirstAt ?? null,
       monitoringSuspended: data.monitoringSuspended ?? false,
     },
-    select: { id: true, tiktokId: true },
+    select: { id: true, tiktokHandle: true },
   });
   roomIds.push(room.id);
   return room;
 }
 
-async function attachStreamer(roomId: string, userId?: string) {
-  let uid = userId;
+async function attachStreamer(roomId: string, principalId?: string) {
+  let uid = principalId;
   if (!uid) {
     const user = await prisma.user.create({
       data: { email: `itest-cln-${suffix()}@local.test`, name: "itest" },
       select: { id: true },
     });
-    userIds.push(user.id);
+    principalIds.push(user.id);
     uid = user.id;
   }
   const streamer = await prisma.streamer.create({
     data: {
-      userId: uid,
-      tiktokId: tiktokId("s"),
+      principalId: uid,
+      tiktokUid: nextTiktokUid(),
+      tiktokHandle: tiktokHandle("s"),
       roomId,
       verificationCode: `itest-${suffix()}`,
       apiKey: `itest-key-${suffix()}`,
@@ -74,8 +84,7 @@ async function attachGift(roomId: string) {
   const gift = await prisma.gift.create({
     data: {
       roomId,
-      uniqueId: "itest-sender",
-      nickname: "itest sender",
+      tiktokUid: makeTiktokUid("itest-sender"),
       giftId: 1,
       giftName: "Rose",
       dayKey: "2026-08-23",
@@ -86,8 +95,8 @@ async function attachGift(roomId: string) {
   return gift;
 }
 
-async function attachSubscription(userId: string) {
-  await prisma.subscription.create({ data: { userId, plan: "PRO", entitlementActive: true } });
+async function attachSubscription(principalId: string) {
+  await prisma.subscription.create({ data: { principalId, plan: "PRO", entitlementActive: true } });
 }
 
 const NOW = new Date();
@@ -95,19 +104,19 @@ const NOW = new Date();
 afterAll(async () => {
   await prisma.gift.deleteMany({ where: { id: { in: giftIds } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
-  await prisma.subscription.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.subscription.deleteMany({ where: { principalId: { in: principalIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 
 describe("selectCleanupCandidates", () => {
-  let eligibleUnchecked: { id: string; tiktokId: string };
-  let eligibleCheckedLongAgo: { id: string; tiktokId: string };
-  let tooFreshUnhealthy: { id: string; tiktokId: string };
-  let cooldownNotElapsed: { id: string; tiktokId: string };
-  let connectedRoom: { id: string; tiktokId: string };
-  let noStreamerRoom: { id: string; tiktokId: string };
-  let alreadySuspendedRoom: { id: string; tiktokId: string };
+  let eligibleUnchecked: { id: string; tiktokHandle: string };
+  let eligibleCheckedLongAgo: { id: string; tiktokHandle: string };
+  let tooFreshUnhealthy: { id: string; tiktokHandle: string };
+  let cooldownNotElapsed: { id: string; tiktokHandle: string };
+  let connectedRoom: { id: string; tiktokHandle: string };
+  let noStreamerRoom: { id: string; tiktokHandle: string };
+  let alreadySuspendedRoom: { id: string; tiktokHandle: string };
 
   beforeAll(async () => {
     const wellPastUnhealthy = new Date(NOW.getTime() - UNHEALTHY_THRESHOLD_MS - 60_000);
@@ -228,7 +237,7 @@ describe("suspendNotFoundRoom", () => {
     });
     const streamer = await attachStreamer(room.id);
 
-    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokHandle: room.tiktokHandle }, false);
 
     expect(entry).not.toBeNull();
     expect(entry!.outcome).toBe("suspended");
@@ -252,7 +261,7 @@ describe("suspendNotFoundRoom", () => {
     const streamer = await attachStreamer(room.id);
     await attachGift(room.id);
 
-    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokHandle: room.tiktokHandle }, false);
 
     expect(entry).not.toBeNull();
     expect(entry!.outcome).toBe("suspended");
@@ -276,11 +285,11 @@ describe("suspendNotFoundRoom", () => {
       data: { email: `itest-cln-${suffix()}@local.test`, name: "itest" },
       select: { id: true },
     });
-    userIds.push(user.id);
+    principalIds.push(user.id);
     await attachSubscription(user.id);
     const streamer = await attachStreamer(room.id, user.id);
 
-    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokHandle: room.tiktokHandle }, false);
 
     expect(entry).toBeNull();
 
@@ -300,7 +309,7 @@ describe("suspendNotFoundRoom", () => {
     });
     await attachStreamer(room.id);
 
-    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, true);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokHandle: room.tiktokHandle }, true);
 
     expect(entry).not.toBeNull();
     expect(entry!.outcome).toBe("dry_run");
@@ -309,7 +318,7 @@ describe("suspendNotFoundRoom", () => {
     expect(roomAfter.monitoringSuspended).toBe(false);
   });
 
-  it("Streamerが0人のRoomも停止する(情報プール方針。課金者判定はuserIds=[]でfalse相当になる)", async () => {
+  it("Streamerが0人のRoomも停止する(情報プール方針。課金者判定はprincipalIds=[]でfalse相当になる)", async () => {
     const room = await makeRoom({
       tag: "no-streamer-suspend",
       listenerStatus: "retrying",
@@ -318,7 +327,7 @@ describe("suspendNotFoundRoom", () => {
     });
     // Streamerを付けない。
 
-    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokHandle: room.tiktokHandle }, false);
 
     expect(entry).not.toBeNull();
     expect(entry!.outcome).toBe("suspended");
@@ -337,7 +346,7 @@ describe("suspendNotFoundRoom", () => {
     });
     await attachStreamer(room.id);
 
-    const entry = await suspendNotFoundRoom({ id: room.id, tiktokId: room.tiktokId }, false);
+    const entry = await suspendNotFoundRoom({ id: room.id, tiktokHandle: room.tiktokHandle }, false);
 
     expect(entry).toBeNull();
 

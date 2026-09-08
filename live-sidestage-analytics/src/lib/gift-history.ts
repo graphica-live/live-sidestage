@@ -1,13 +1,16 @@
 // ギフト履歴一覧の取得クエリ。ルートハンドラから分離してテスト可能にしている。
 
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
+import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
+import { resolveAvatarUrls } from "@/lib/avatar-storage";
 
 export type GiftHistoryEvent = {
   id: string;
-  uniqueId: string;
-  nickname: string;
+  /** 同一性キー。表示用の tiktokHandle / nickname は TikTokUser から順引きした現在値。 */
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   giftId: number;
   giftName: string;
@@ -17,26 +20,35 @@ export type GiftHistoryEvent = {
   receivedAt: string;
 };
 
-// listenerQuery: uniqueId / nickname の部分一致(大小文字無視)で絞り込む。省略時は全件。
+// listenerQuery: tiktokHandle / nickname の部分一致(大小文字無視)で絞り込む。省略時は全件。
 export async function queryGiftHistory(
   roomId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
   limit: number,
   listenerQuery?: string | null
 ): Promise<{ events: GiftHistoryEvent[]; total: { count: number; diamonds: number }; hasMore: boolean }> {
-  // イベント単位の一覧なので、そのイベント自身のuniqueId/nicknameが一致するかで素直に
-  // フィルタしてよい(queryGiftsのような表示名変更による過少集計問題はここには当てはまらない
-  // — 各行は「受信当時の記録」をそのまま出す一覧のため)。
+  // Gift は表示用の列を持たないので、名前での絞り込みは TikTokUser 側を先に引いて
+  // tiktokUid の集合へ落とす。**room + 期間で先に絞ってから当てる**(グローバルな
+  // TikTokUser を素で部分一致させると IN のバインドパラメータ上限に触れる)。
+  let tiktokUidFilter: { in: string[] } | undefined;
+  if (listenerQuery) {
+    const pattern = `%${escapeLikePattern(listenerQuery)}%`;
+    const matched = await prisma.$queryRaw<{ tiktokUid: string }[]>`
+      SELECT DISTINCT g."tiktokUid"
+        FROM public.gifts g
+        JOIN public.tiktok_users u ON u."tiktokUid" = g."tiktokUid"
+       WHERE g."roomId" = ${roomId}
+         AND (u."tiktokHandle" ILIKE ${pattern} ESCAPE '\\' OR u.nickname ILIKE ${pattern} ESCAPE '\\')
+    `;
+    if (matched.length === 0) {
+      return { events: [], total: { count: 0, diamonds: 0 }, hasMore: false };
+    }
+    tiktokUidFilter = { in: matched.map((r) => r.tiktokUid) };
+  }
+
   const fullWhere = {
     roomId,
-    ...(listenerQuery
-      ? {
-          OR: [
-            { uniqueId: { contains: escapeLikePattern(listenerQuery), mode: Prisma.QueryMode.insensitive } },
-            { nickname: { contains: escapeLikePattern(listenerQuery), mode: Prisma.QueryMode.insensitive } },
-          ],
-        }
-      : {}),
+    ...(tiktokUidFilter ? { tiktokUid: tiktokUidFilter } : {}),
     ...where,
   };
 
@@ -47,9 +59,7 @@ export async function queryGiftHistory(
     take: limit + 1,
     select: {
       id: true,
-      uniqueId: true,
-      nickname: true,
-      profileImageUrl: true,
+      tiktokUid: true,
       giftId: true,
       giftName: true,
       giftPictureUrl: true,
@@ -75,8 +85,18 @@ export async function queryGiftHistory(
     catalogRows.filter((c) => c.labelJa).map((c) => [c.giftId, c.labelJa as string])
   );
 
+  // 表示名とアイコンは tiktokUid から読み出し時に順引きする(Gift に列が無い)。
+  const tiktokUids = [...new Set(pageRows.map((r) => r.tiktokUid))];
+  const [display, avatars] = await Promise.all([
+    resolveTikTokUserDisplay(tiktokUids),
+    resolveAvatarUrls(tiktokUids),
+  ]);
+
   const events = pageRows.map(({ receivedAt, giftName, ...base }) => ({
     ...base,
+    tiktokHandle: display.get(base.tiktokUid)?.tiktokHandle ?? null,
+    nickname: display.get(base.tiktokUid)?.nickname ?? null,
+    profileImageUrl: avatars.get(base.tiktokUid) ?? null,
     giftName: labelJaByGiftId.get(base.giftId) ?? giftName,
     receivedAt: receivedAt.toISOString(),
   }));

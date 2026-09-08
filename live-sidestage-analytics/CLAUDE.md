@@ -37,6 +37,58 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 
 ## アーキテクチャの要点
 
+### 識別子の命名規約(3語彙。例外2つ以外に `userId` を使わない)
+
+> **この規約は「運用開始前」に一括改名して成立させたもの。運用開始後は同じことができない。**
+> 2026-09 の識別子統一リファクタリングで、DB列・内部型・外部JSONキー・モバイルJWTのclaim・
+> Stripe metadata まで例外なく改名し、**発行済みトークン・未完了Checkout・旧アプリ・
+> 発行済みOBS URL・公開シェアリンクが壊れることを受け入れた**(実ユーザーがいなかったため)。
+>
+> **運用開始後に規約違反を見つけても、同じ手は使えない。** 外部へシリアライズ済みの名前は
+> 「読み出した直後に内部名へ写す」か「両受け期間を設ける」ことでしか直せない — モバイルJWTは
+> 最大90日、Stripe metadataは無期限、OBS URLは配信者の手作業、旧アプリはストア更新の遅延がある。
+> **新しい列・型・JSONキーを足すときにこの規約を守るコストは、後から直すコストより桁違いに安い。**
+
+このサービスには**混同すると静かにデータが壊れる**3種類のIDがある。語幹レベルで分離してあるので、
+新しい列・型・JSONキーを足すときは必ずこの3語のどれかを使う。
+
+| 語 | 実体 | 可変性 | 取得元 |
+| --- | --- | --- | --- |
+| `principalId` | sidestage の `User.id`。認証・課金・所有の主体 | 不変 | NextAuth セッション / モバイル認証 |
+| `tiktokUid` | TikTok の不変な数値ID | **不変** | TLC payload の `anchorIdStr` / `data.userId`、`api-live/user/room/` の `data.user.id` |
+| `tiktokHandle` | ユーザー本人が変更できる @ハンドル | **可変** | TLC payload の `uniqueId`、主催者の手入力 |
+
+**`tiktokHandle` を同一性の判定キーにしてはいけない。** 改名すると同一人物の集計が別人として割れる。
+さらに**改名で空いたハンドルは第三者が取得しうる**ので、ハンドルから引いた `tiktokUid` は信用できない
+(`TikTokUser` の逆引き禁止はこの理由)。`tiktokHandle` の用途は表示と
+`https://www.tiktok.com/@<handle>` の生成だけ。
+
+**`userId` という語は使わない。** 例外は `Account.userId` と `Session.userId` の2フィールドのみで、
+`@next-auth/prisma-adapter` が Prisma のフィールド名を直書きするため改名できない(`@map` で DB 列名を
+変えても Prisma フィールド名は変わらない)。この2つ以外に `userId` が現れたら命名規約違反。
+
+**`tiktokId` という名前も使わない。** 中身は可変ハンドルなので `tiktokHandle` と書く。
+唯一の例外は関数名 `normalizeTiktokId()`(`src/lib/tiktok-room.ts`) — ハンドル正規化の正本として
+`src/event/CLAUDE.md` の規律4から参照されているため名前だけ据え置く(扱う値の意味は `tiktokHandle`)。
+
+**TLC 由来の `anchorId` / `anchorIdStr` / `uniqueId` / `data.userId` という名前は、payload の
+プロパティを読む式の右辺にしか書かない。** 同じことが**外部 TikTok API のクエリパラメータと
+応答キー**にも当てはまる(`src/lib/tiktok-profile.ts` の `?uniqueId=` と `data.user.uniqueId`)。
+読んだ値は即座に `tiktokUid` / `tiktokHandle` という名前で扱う。**ここを機械改名すると
+例外もログも出ないまま全滅する**(実際に一括改名で `data.uniqueId` → `data.tiktokHandle` と
+`?uniqueId=` → `?tiktokHandle=` が壊れた)。
+
+機械検査:
+
+```bash
+# 例外2つ(Account.userId / Session.userId)と TLC payload プロパティ以外に userId が出ないこと
+grep -rn 'userId' src scripts prisma --include=*.ts --include=*.tsx --include=*.prisma \
+  --exclude-dir=worktrees | grep -v 'Account\|Session\|data\.userId\|sender\.userId\|webcastUser\.userId'
+# uniqueId / anchorId / tiktokId が残っていないこと(除外は TLC 境界と normalizeTiktokId だけ)
+grep -rn 'uniqueId\|anchorId\|tiktokId' src scripts prisma \
+  --include=*.ts --include=*.tsx --exclude-dir=worktrees | grep -v 'normalizeTiktokId'
+```
+
 ### Web/Worker 2ロール構成
 
 - [server.js](server.js) が Next.js と socket.io を**同一プロセス**で起動し、`global.__io` に Server を格納する。`src/lib/overlay/emit.ts` はこのグローバル経由で emit する。server.js が `src/lib/prisma.ts` のシングルトンではなく独自の `PrismaClient` を作っているのは JS↔TS 境界の都合

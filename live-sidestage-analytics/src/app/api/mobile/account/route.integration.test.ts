@@ -1,7 +1,7 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 //
 // DELETE /api/mobile/account: 実DB上でUser/Account/Subscriptionを作り、
-// cascade削除・冪等性(再送で200)・Event.ownerUserIdには触れないことを確認する。
+// cascade削除・冪等性(再送で200)・Event.ownerPrincipalIdには触れないことを確認する。
 // Stripe/Apple revokeへの実際のHTTP疎通はunit(stripe/apple-auth)側で見るので、
 // ここではモックして「呼ばれたか」「失敗時にどう振る舞うか」だけを見る。
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -67,7 +67,7 @@ describe("DELETE /api/mobile/account", () => {
   });
 
   it("DBに既に存在しないUserのトークンは200(削除リクエストの再送を冪等に成功扱いする)", async () => {
-    const token = signMobileToken({ userId: `${PREFIX}already-gone` });
+    const token = signMobileToken({ principalId: `${PREFIX}already-gone` });
     const response = await deleteAccount(authedRequest(token));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
@@ -91,14 +91,14 @@ describe("DELETE /api/mobile/account", () => {
         },
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await deleteAccount(authedRequest(token));
 
     expect(response.status).toBe(200);
     expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
     expect(await prisma.account.count({ where: { userId: user.id } })).toBe(0);
-    expect(await prisma.subscription.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.subscription.count({ where: { principalId: user.id } })).toBe(0);
     expect(deleteStripeCustomer).toHaveBeenCalledWith(`${PREFIX}cus-basic`);
   });
 
@@ -118,7 +118,7 @@ describe("DELETE /api/mobile/account", () => {
         },
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await deleteAccount(authedRequest(token));
 
@@ -143,7 +143,7 @@ describe("DELETE /api/mobile/account", () => {
         },
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await deleteAccount(authedRequest(token));
 
@@ -167,7 +167,7 @@ describe("DELETE /api/mobile/account", () => {
         },
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await deleteAccount(authedRequest(token));
 
@@ -175,20 +175,20 @@ describe("DELETE /api/mobile/account", () => {
     expect(await prisma.user.findUnique({ where: { id: user.id } })).not.toBeNull();
   });
 
-  it("所有していたEventのownerUserIdには触れない(削除もブロックもしない)", async () => {
+  it("所有していたEventのownerPrincipalIdには触れない(削除もブロックもしない)", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}organizer@local.test` } });
     const event = await prisma.event.create({
       data: {
         slug: `${PREFIX}cup`,
         title: "test cup",
-        ownerUserId: user.id,
+        ownerPrincipalId: user.id,
         format: "TOURNAMENT",
         entryMode: "SOLO",
         startAt: new Date("2026-09-01T00:00:00Z"),
         endAt: new Date("2026-09-02T00:00:00Z"),
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await deleteAccount(authedRequest(token));
 
@@ -197,6 +197,6 @@ describe("DELETE /api/mobile/account", () => {
 
     const stillThere = await prisma.event.findUnique({ where: { id: event.id } });
     expect(stillThere).not.toBeNull();
-    expect(stillThere?.ownerUserId).toBe(user.id);
+    expect(stillThere?.ownerPrincipalId).toBe(user.id);
   });
 });

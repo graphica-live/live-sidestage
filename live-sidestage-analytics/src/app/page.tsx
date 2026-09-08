@@ -9,7 +9,7 @@ export default async function Home() {
   if (!session) redirect("/login");
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
   });
 
   // verified未完了でもTikTok ID登録済みならダッシュボード(オーバーレイ)を即時利用できる。

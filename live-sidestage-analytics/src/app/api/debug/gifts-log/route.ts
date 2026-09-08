@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     }
   } else if (session) {
     const streamer = await prisma.streamer.findUnique({
-      where: { userId: session.user.id },
+      where: { principalId: session.user.id },
       select: { roomId: true },
     });
     roomId = streamer?.roomId ?? undefined;

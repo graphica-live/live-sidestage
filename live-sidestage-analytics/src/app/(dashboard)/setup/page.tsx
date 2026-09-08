@@ -8,41 +8,15 @@ import { TIKTOK_ID_CHANGE_LOCK_DAYS } from "@/lib/tiktok-id-lock";
 
 type Step = "input" | "verified" | "already_verified";
 
-type RecentMerge = {
-  id: string;
-  outcome: "MERGED" | "BLOCKED_OLD_HANDLE_ALIVE" | "SELF_NOT_FOUND";
-  oldTiktokId: string | null;
-  giftCount: number | null;
-};
-
 export default function SetupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("input");
-  const [tiktokId, setTiktokId] = useState("");
+  const [tiktokHandle, setTiktokHandle] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<string | null>(null);
-  const [recentMerge, setRecentMerge] = useState<RecentMerge | null>(null);
   const [confirmPreview, setConfirmPreview] = useState<TiktokAccountConfirmPreview | null>(null);
   const [confirming, setConfirming] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/streamer/recent-merge")
-      .then((r) => r.json())
-      .then((data) => setRecentMerge(data.recentMerge ?? null))
-      .catch(() => {});
-  }, []);
-
-  async function handleDismissMergeBanner() {
-    if (!recentMerge) return;
-    const dismissed = recentMerge;
-    setRecentMerge(null);
-    await fetch("/api/streamer/recent-merge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ logId: dismissed.id }),
-    }).catch(() => {});
-  }
 
   useEffect(() => {
     fetch("/api/billing/subscription")
@@ -56,8 +30,8 @@ export default function SetupPage() {
     fetch("/api/verify/generate", { method: "GET" })
       .then((r) => r.json())
       .then((data) => {
-        if (data.tiktokId) {
-          setTiktokId(data.tiktokId);
+        if (data.tiktokHandle) {
+          setTiktokHandle(data.tiktokHandle);
           setStep("already_verified");
         }
       })
@@ -69,7 +43,7 @@ export default function SetupPage() {
     setError("");
     setLoading(true);
 
-    const clean = tiktokId.replace(/^@/, "").trim();
+    const clean = tiktokHandle.replace(/^@/, "").trim();
     if (!clean) {
       setError("TikTok IDを入力してください");
       setLoading(false);
@@ -79,7 +53,7 @@ export default function SetupPage() {
     const res = await fetch("/api/verify/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tiktokId: clean }),
+      body: JSON.stringify({ tiktokHandle: clean }),
     });
 
     const data = await res.json();
@@ -90,9 +64,9 @@ export default function SetupPage() {
       return;
     }
 
-    setTiktokId(data.tiktokId);
+    setTiktokHandle(data.tiktokHandle);
     setConfirmPreview({
-      tiktokId: data.tiktokId,
+      tiktokHandle: data.tiktokHandle,
       nickname: data.nickname,
       avatarUrl: data.avatarUrl,
       signature: data.signature,
@@ -109,7 +83,7 @@ export default function SetupPage() {
     const res = await fetch("/api/verify/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tiktokId: confirmPreview.tiktokId }),
+      body: JSON.stringify({ tiktokHandle: confirmPreview.tiktokHandle }),
     });
 
     const data = await res.json();
@@ -122,14 +96,14 @@ export default function SetupPage() {
     }
 
     setConfirmPreview(null);
-    setTiktokId(data.tiktokId);
+    setTiktokHandle(data.tiktokHandle);
     setStep("verified");
     setTimeout(() => router.push("/analytics"), 1500);
   }
 
   function handleReset() {
     setStep("input");
-    setTiktokId("");
+    setTiktokHandle("");
     setError("");
   }
 
@@ -140,29 +114,6 @@ export default function SetupPage() {
           <h1 className="text-2xl font-bold text-brand">TikTok IDの設定</h1>
         </div>
 
-        {recentMerge && (
-          <div
-            className={`flex items-start gap-2 rounded-r-xl border p-4 mb-4 ${
-              recentMerge.outcome === "MERGED"
-                ? "border-brand/30 border-l-4 border-l-brand"
-                : "border-gray-400/30 border-l-4 border-l-gray-400"
-            }`}
-          >
-            <p className="flex-1 text-sm leading-relaxed text-gray-200">
-              {recentMerge.outcome === "MERGED"
-                ? `旧ID @${recentMerge.oldTiktokId} のギフト${recentMerge.giftCount ?? 0}件を引き継ぎました`
-                : "引き継げなかったデータがあります。サポートへご連絡ください"}
-            </p>
-            <button
-              onClick={handleDismissMergeBanner}
-              className="rounded-md p-1 text-lg leading-none text-gray-400 hover:bg-white/5 hover:text-white"
-              aria-label="閉じる"
-            >
-              &times;
-            </button>
-          </div>
-        )}
-
         <div className="card space-y-4">
           {step === "already_verified" && (
             <div className="space-y-4">
@@ -170,7 +121,7 @@ export default function SetupPage() {
                 <div className="text-3xl">✓</div>
                 <p className="text-green-600 dark:text-green-400 font-semibold">登録済みです</p>
                 <p className="text-sm text-muted">
-                  対象のTikTok ID: <span className="font-mono text-brand">@{tiktokId}</span>
+                  対象のTikTok ID: <span className="font-mono text-brand">@{tiktokHandle}</span>
                 </p>
               </div>
               <button onClick={handleReset} className="btn-ghost w-full text-sm">
@@ -192,8 +143,8 @@ export default function SetupPage() {
                   <input
                     type="text"
                     placeholder="your_tiktok_id"
-                    value={tiktokId}
-                    onChange={(e) => setTiktokId(e.target.value)}
+                    value={tiktokHandle}
+                    onChange={(e) => setTiktokHandle(e.target.value)}
                     className="input-field"
                     autoCapitalize="none"
                     autoCorrect="off"

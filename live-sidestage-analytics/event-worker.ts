@@ -8,10 +8,8 @@
 // Railway では .env が存在せずプラットフォームが環境変数を注入するので無害。
 import "dotenv/config";
 import { aggregateDueEvents } from "@/event/aggregate";
-import { activeLeaseTiktokIds, renewClampedLeases } from "@/event/participants";
-import { backfillHostUserIds, backfillStreamerRoomHostIds } from "@/lib/tiktok-host-id";
+import { renewClampedLeases } from "@/event/participants";
 import { snapshotDueEventAvatars } from "@/event/avatar-snapshot";
-import { processPendingMergeJobs } from "@/lib/tiktok-id-migration";
 import { autoFinishOverdueEvents } from "@/event/auto-finish";
 import { collectDbStats } from "@/lib/db-stats/collect";
 import { compareToPrevious } from "@/lib/db-stats/compare";
@@ -32,38 +30,10 @@ const SLO_WARN_MS = 5_000;
 const RENEW_INTERVAL_MS = Number(process.env.LEASE_RENEW_INTERVAL_MS ?? 60 * 60 * 1000);
 
 /**
- * TiktokRoom.hostUserId(TikTok の数値 userId)の補完を回す間隔。
- * バトルスコアをサイドへ帰属させるのに要る対応表で、一度埋まれば二度と引かない。
- * **0 を指定すると補完自体を止める**(TikTok 側のレート制限に困ったときの逃げ道)。
- */
-const HOST_ID_INTERVAL_MS = Number(process.env.TIKTOK_HOST_ID_INTERVAL_MS ?? 60_000);
-
-/**
- * **Streamer が紐づく全 Room** の hostUserId 補完を回す間隔(上のイベント lease 由来とは別枠)。
- *
- * イベント参加中に限らず集める理由は時間制約。hostUserId は「そのハンドルが TikTok 上に
- * 存在するうち」しか引けず、改名されると旧ハンドルは永久に取得不能になる。改名の検知
- * (src/lib/tiktok-id-migration.ts)はこの対応表が唯一の materials なので、先回りして集める。
- *
- * 一度埋まれば二度と引かないので、負荷は初回の在庫消化が全て。
- * **0 を指定すると止まる**(TikTok 側のレート制限に困ったときの逃げ道)。
- */
-const STREAMER_HOST_ID_INTERVAL_MS = Number(
-  process.env.STREAMER_HOST_ID_INTERVAL_MS ?? 5 * 60_000
-);
-
-/**
  * イベントの参加者アイコンをスナップショットする間隔(Event.startAt 到来チェック)。
  * 一度スナップショットしたイベントは対象から外れるので、集計ほど頻繁に回す必要はない。
  */
 const AVATAR_SNAPSHOT_INTERVAL_MS = Number(process.env.EVENT_AVATAR_SNAPSHOT_INTERVAL_MS ?? 60_000);
-
-/**
- * TikTok ID変更時の room 合流(src/lib/tiktok-id-migration.ts)を処理する間隔。
- * 対象は TiktokIdMergeJob(pending)。TikTok への問い合わせを伴うので、集計ループとは別枠にする。
- */
-const MERGE_TICK_INTERVAL_MS = Number(process.env.TIKTOK_ID_MERGE_TICK_INTERVAL_MS ?? 60_000);
-const MERGE_TICK_MAX_PER_RUN = Number(process.env.TIKTOK_ID_MERGE_MAX_PER_RUN ?? 5);
 
 /**
  * 開催終了後もRUNNINGのまま放置されたイベントを自動でFINISHEDにする確認間隔。
@@ -85,10 +55,7 @@ let inFlight = false;
 let stopping = false;
 let currentTick: Promise<void> = Promise.resolve();
 let renewInFlight = false;
-let hostIdInFlight = false;
-let streamerHostIdInFlight = false;
 let avatarSnapshotInFlight = false;
-let mergeTickInFlight = false;
 let autoFinishInFlight = false;
 let dbStatsInFlight = false;
 
@@ -137,57 +104,6 @@ async function renewTick(): Promise<void> {
   }
 }
 
-// TiktokRoom.hostUserId の補完。バトル payload の hostScores は数値 userId をキーに持つので、
-// この対応表がないとスコアをサイドへ帰属させられない。
-//
-// 参加者登録の経路からは切り離してある(src/event/CLAUDE.md「参加者登録から TikTok へ
-// 問い合わせを足さない」)。TikTok を叩くので、失敗しても集計ループには影響させない。
-async function hostIdTick(): Promise<void> {
-  if (hostIdInFlight || stopping) return;
-
-  hostIdInFlight = true;
-  try {
-    const tiktokIds = await activeLeaseTiktokIds();
-    if (tiktokIds.length === 0) return;
-
-    const result = await backfillHostUserIds(tiktokIds);
-    if (result.filled > 0 || result.aborted) {
-      console.log(
-        `[event-worker] hostUserId を補完 ${result.filled}件 / 失敗 ${result.failed}件 / ` +
-          `バックオフ中 ${result.skipped}件${result.aborted ? " (連続失敗で打ち切り)" : ""}`
-      );
-    }
-  } catch (err) {
-    console.error("[event-worker] hostUserId の補完でエラー:", err);
-  } finally {
-    hostIdInFlight = false;
-  }
-}
-
-// Streamer が紐づく全 Room の hostUserId 補完(イベント lease 由来とは別枠)。
-//
-// **イベント側の hostIdTick を優先する。** 同じセマフォ・同じサーキットブレーカを共有するので、
-// 両方を同時に走らせると片方が枠を食い合う。イベントは開催中の締切があるぶん優先度が高い。
-async function streamerHostIdTick(): Promise<void> {
-  if (streamerHostIdInFlight || hostIdInFlight || stopping) return;
-
-  streamerHostIdInFlight = true;
-  try {
-    const result = await backfillStreamerRoomHostIds();
-    if (result.filled > 0 || result.aborted) {
-      console.log(
-        `[event-worker] Streamer room の hostUserId を補完 ${result.filled}件 / ` +
-          `失敗 ${result.failed}件 / バックオフ中 ${result.skipped}件` +
-          `${result.aborted ? " (連続失敗で打ち切り)" : ""}`
-      );
-    }
-  } catch (err) {
-    console.error("[event-worker] Streamer room の hostUserId 補完でエラー:", err);
-  } finally {
-    streamerHostIdInFlight = false;
-  }
-}
-
 // イベントのトーナメント表・参加者アイコンを startAt 到来時点で恒久ストレージへスナップショットする。
 // 個々の参加者の失敗はライブ取得への永続フォールバックに任せるので、集計ループには影響させない。
 async function avatarSnapshotTick(): Promise<void> {
@@ -206,23 +122,6 @@ async function avatarSnapshotTick(): Promise<void> {
     console.error("[event-worker] アイコンのスナップショットでエラー:", err);
   } finally {
     avatarSnapshotInFlight = false;
-  }
-}
-
-// TikTok ID変更に伴う room 合流ジョブを処理する。TikTok を叩くので失敗しても集計ループには影響させない。
-async function mergeTick(): Promise<void> {
-  if (mergeTickInFlight || stopping) return;
-
-  mergeTickInFlight = true;
-  try {
-    const result = await processPendingMergeJobs(MERGE_TICK_MAX_PER_RUN);
-    if (result.processed > 0) {
-      console.log(`[event-worker] TikTok ID合流ジョブ ${result.processed}件処理`);
-    }
-  } catch (err) {
-    console.error("[event-worker] TikTok ID合流ジョブでエラー:", err);
-  } finally {
-    mergeTickInFlight = false;
   }
 }
 
@@ -299,14 +198,10 @@ async function shutdown(signal: string) {
 
   clearInterval(timer);
   clearInterval(renewTimer);
-  if (hostIdTimer) clearInterval(hostIdTimer);
-  if (streamerHostIdTimer) clearInterval(streamerHostIdTimer);
   clearInterval(avatarSnapshotTimer);
-  clearInterval(mergeTimer);
   clearInterval(autoFinishTimer);
   clearInterval(dbStatsTimer);
   await currentTick.catch(() => {});
-  await mergeTickCurrent.catch(() => {});
   await prisma.$disconnect().catch(() => {});
   console.log("[event-worker] 終了");
   process.exit(0);
@@ -316,21 +211,9 @@ function scheduleTick() {
   currentTick = tick();
 }
 
-let mergeTickCurrent: Promise<void> = Promise.resolve();
-function scheduleMergeTick() {
-  mergeTickCurrent = mergeTick();
-}
-
 const timer = setInterval(scheduleTick, INTERVAL_MS);
 const renewTimer = setInterval(() => void renewTick(), RENEW_INTERVAL_MS);
-const hostIdTimer =
-  HOST_ID_INTERVAL_MS > 0 ? setInterval(() => void hostIdTick(), HOST_ID_INTERVAL_MS) : null;
-const streamerHostIdTimer =
-  STREAMER_HOST_ID_INTERVAL_MS > 0
-    ? setInterval(() => void streamerHostIdTick(), STREAMER_HOST_ID_INTERVAL_MS)
-    : null;
 const avatarSnapshotTimer = setInterval(() => void avatarSnapshotTick(), AVATAR_SNAPSHOT_INTERVAL_MS);
-const mergeTimer = setInterval(scheduleMergeTick, MERGE_TICK_INTERVAL_MS);
 const autoFinishTimer = setInterval(() => void autoFinishTick(), AUTO_FINISH_INTERVAL_MS);
 const dbStatsTimer = setInterval(() => void dbStatsTick(), DB_STATS_CHECK_INTERVAL_MS);
 
@@ -339,20 +222,12 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 
 console.log(
   `[event-worker] イベント集計ワーカーを開始した(集計 ${INTERVAL_MS}ms / 監視期限の確認 ${RENEW_INTERVAL_MS}ms / ` +
-    `hostUserId の補完 ${HOST_ID_INTERVAL_MS > 0 ? `${HOST_ID_INTERVAL_MS}ms` : "無効"} / ` +
-    `Streamer room の hostUserId 補完 ${
-      STREAMER_HOST_ID_INTERVAL_MS > 0 ? `${STREAMER_HOST_ID_INTERVAL_MS}ms` : "無効"
-    } / ` +
     `アイコンのスナップショット ${AVATAR_SNAPSHOT_INTERVAL_MS}ms / ` +
-    `TikTok ID合流ジョブ ${MERGE_TICK_INTERVAL_MS}ms/最大${MERGE_TICK_MAX_PER_RUN}件 / ` +
     `開催終了後の自動終了 ${AUTO_FINISH_INTERVAL_MS}ms / ` +
     `DB統計の記録確認 ${DB_STATS_CHECK_INTERVAL_MS}ms${DB_STATS_FORCE_RUN ? "(強制実行モード)" : ""})`
 );
 scheduleTick();
 void renewTick();
-if (hostIdTimer) void hostIdTick();
-if (streamerHostIdTimer) void streamerHostIdTick();
 void avatarSnapshotTick();
-scheduleMergeTick();
 void autoFinishTick();
 void dbStatsTick();

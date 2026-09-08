@@ -6,6 +6,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { loadTapPointsForBattle } from "./battle-tap-points";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const roomIds: string[] = [];
 
@@ -14,8 +15,10 @@ function handle(tag: string) {
 }
 
 async function makeRoom(tag: string) {
+  const h = handle(tag);
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: handle(tag) },
+    // hostTiktokUid は @unique。ハンドルから導くと room ごとに必ず別値になる。
+    data: { tiktokHandle: h, hostTiktokUid: makeTiktokUid(h) },
     select: { id: true },
   });
   roomIds.push(room.id);
@@ -44,23 +47,41 @@ describe("loadTapPointsForBattle", () => {
 
     await makeBattle(selfRoom.id, battleId, true);
     await makeBattle(opponentRoom.id, battleId, false);
+    // hostTiktokUid が「タップの宛先の配信者」、tiktokUid が「10タップしたリスナー」。
+    // 差し引き対象(tapTrackedTiktokUids)は前者で、リスナー側と取り違えないこと。
+    const selfHostUid = makeTiktokUid("tap_self_host");
+    const opponentHostUid = makeTiktokUid("tap_opp_host");
     await prisma.tiktokBattleTapPoint.createMany({
       data: [
-        { roomId: selfRoom.id, battleId, anchorId: "111", occurredAt, uniqueId: "a", points: 3 },
-        { roomId: opponentRoom.id, battleId, anchorId: "222", occurredAt, uniqueId: "b", points: 3 },
+        {
+          roomId: selfRoom.id,
+          battleId,
+          hostTiktokUid: selfHostUid,
+          tiktokUid: makeTiktokUid("tap_listener_a"),
+          occurredAt,
+          points: 3,
+        },
+        {
+          roomId: opponentRoom.id,
+          battleId,
+          hostTiktokUid: opponentHostUid,
+          tiktokUid: makeTiktokUid("tap_listener_b"),
+          occurredAt,
+          points: 3,
+        },
       ],
     });
 
     const input = await loadTapPointsForBattle(battleId);
     expect(input.tapPoints).toHaveLength(2);
-    expect(input.tapPoints.map((t) => t.anchorId).sort()).toEqual(["111", "222"]);
+    expect(input.tapPoints.map((t) => t.tiktokUid).sort()).toEqual([selfHostUid, opponentHostUid].sort());
     // 相手 room は tapPointsTracked=false なので差し引き対象にしない。
-    expect(Array.from(input.tapTrackedAnchorIds)).toEqual(["111"]);
+    expect(Array.from(input.tapTrackedTiktokUids)).toEqual([selfHostUid]);
   });
 
   it("該当バトルが無ければ空(呼び出し側は差し引かない)", async () => {
     const input = await loadTapPointsForBattle(`b-missing-${Math.random().toString(36).slice(2, 10)}`);
     expect(input.tapPoints).toHaveLength(0);
-    expect(input.tapTrackedAnchorIds.size).toBe(0);
+    expect(input.tapTrackedTiktokUids.size).toBe(0);
   });
 });

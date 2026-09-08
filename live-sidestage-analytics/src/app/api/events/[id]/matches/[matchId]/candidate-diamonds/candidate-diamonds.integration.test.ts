@@ -2,13 +2,14 @@
 //
 // 候補選択UIの「1000ダイヤ以下を隠す」トグル用オンデマンドAPI(欠陥C対応)の検証。
 import { describe, it, expect, afterAll, vi } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 const { GET } = await import("./route");
@@ -26,26 +27,30 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。このファイルは表示名を検証しないので、
+// TikTokUser 行は作らず uid だけを固定で使う。
+const LISTENER_TIKTOK_UID = makeTiktokUid(`${PREFIX}_listener1`);
+
 async function insertGift(params: { roomId: string; diamonds: number; receivedAt: Date }) {
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, 'listener1', 'listener1',
+      (gen_random_uuid()::text, ${params.roomId}, ${LISTENER_TIKTOK_UID},
        5, 'Rose', 1, ${params.diamonds}, ${params.diamonds}, ${params.receivedAt},
        '2026-09-01', ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -56,7 +61,7 @@ async function newEvent() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} イベント`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -71,14 +76,17 @@ async function newEvent() {
 }
 
 async function newMatchWithSides(eventId: string, sessionId: string) {
-  const roomA = await createRoom(`${PREFIX}_a_${uniqueSuffix()}`);
-  const roomB = await createRoom(`${PREFIX}_b_${uniqueSuffix()}`);
+  // 参加者の tiktokUid は、その参加者が出場する room の hostTiktokUid と揃える。
+  const handleA = `${PREFIX}_a_${uniqueSuffix()}`;
+  const handleB = `${PREFIX}_b_${uniqueSuffix()}`;
+  const roomA = await createRoom(handleA);
+  const roomB = await createRoom(handleB);
   const pa = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId: `${PREFIX}_a_${uniqueSuffix()}`, roomId: roomA, displayName: "a" },
+    data: { eventId, tiktokUid: makeTiktokUid(handleA), tiktokHandle: handleA, roomId: roomA, displayName: "a" },
     select: { id: true },
   });
   const pb = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId: `${PREFIX}_b_${uniqueSuffix()}`, roomId: roomB, displayName: "b" },
+    data: { eventId, tiktokUid: makeTiktokUid(handleB), tiktokHandle: handleB, roomId: roomB, displayName: "b" },
     select: { id: true },
   });
   const match = await prisma.eventMatch.create({
@@ -137,7 +145,7 @@ afterAll(async () => {
 
 describe("GET candidate-diamonds", () => {
   it("owner以外は404", async () => {
-    auth.userId = `${PREFIX}_other`;
+    auth.principalId = `${PREFIX}_other`;
     const { eventId, sessionId } = await newEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
 
@@ -146,7 +154,7 @@ describe("GET candidate-diamonds", () => {
   });
 
   it("候補ごとの生ダイヤ(両サイド合計)を文字列で返す", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent();
     const { matchId, roomA, roomB } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -166,7 +174,7 @@ describe("GET candidate-diamonds", () => {
   });
 
   it("未来終了(未終了含む)の候補はnullを返す(進行中候補が低ダイヤ扱いで隠れる事故を防ぐ)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const pending = await addCandidate({ matchId, offsetMinutes: 0, endedAt: null });
@@ -185,7 +193,7 @@ describe("GET candidate-diamonds", () => {
   });
 
   it("倍率は適用しない生ダイヤで返す", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent();
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId);
     await prisma.eventMultiplier.create({
@@ -202,7 +210,7 @@ describe("GET candidate-diamonds", () => {
   });
 
   it("対戦固有のEventSessionのみを使い、他日程のギフトを含めない", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId } = await newEvent();
     // 2つ目の日程を作り、対戦は1つ目の日程に割り当てる。
     const otherSessionStartAt = new Date(SESSION_END.getTime() + 86_400_000);

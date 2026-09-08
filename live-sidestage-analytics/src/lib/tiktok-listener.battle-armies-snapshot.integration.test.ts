@@ -1,12 +1,13 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // linkMicArmies/linkMicBattle受信時のTiktokBattleArmiesSnapshot(スコア時系列)書込みを検証する。
-//   1. スコアが変化したanchorId分だけ行が追記される(無変化イベントでは増えない)
+//   1. スコアが変化したtiktokUid分だけ行が追記される(無変化イベントでは増えない)
 //   2. 同一battleIdで複数回スコアが変わると、上書きではなく追記で履歴が残る
 //   3. スナップショット書込みが失敗しても、TiktokBattle本体の保存・後続処理は失われない
 import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
 import { startListener, stopListener } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const { MockConnection } = vi.hoisted(() => {
   class MockConnection {
@@ -14,7 +15,7 @@ const { MockConnection } = vi.hoisted(() => {
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -39,15 +40,15 @@ vi.mock("TLC-sidestage", async () => {
   const actual = await vi.importActual<typeof import("TLC-sidestage")>("TLC-sidestage");
   return {
     ...actual,
-    WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-      return new MockConnection(uniqueId, options);
+    WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+      return new MockConnection(tiktokHandle, options);
     }),
   };
 });
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, principalId: null }),
   },
 }));
 
@@ -63,28 +64,30 @@ function suffix() {
 }
 
 async function setupRoom(label: string) {
-  const tiktokId = `itest_armies_${label}_${suffix()}`;
+  const tiktokHandle = `itest_armies_${label}_${suffix()}`;
   const user = await prisma.user.create({
     data: { email: `itest-armies-${label}-${suffix()}@local.test` },
   });
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId,
+      principalId: user.id,
+      // TiktokRoom.hostTiktokUid は @unique。ハンドルから導けば room ごとに必ず別値になる。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
       verificationCode: `itest-${suffix()}`,
       verified: true,
     },
   });
   const roomId = await resolveRoomForStreamer(streamer.id);
-  await startListener(roomId, tiktokId, [streamer.id]);
+  await startListener(roomId, tiktokHandle, [streamer.id]);
   const conn = MockConnection.instances[MockConnection.instances.length - 1];
   expect(conn).toBeDefined();
-  return { tiktokId, userId: user.id, streamerId: streamer.id, roomId, conn };
+  return { tiktokHandle, principalId: user.id, streamerId: streamer.id, roomId, conn };
 }
 
-async function teardownRoom(ctx: { roomId: string; userId: string }) {
+async function teardownRoom(ctx: { roomId: string; principalId: string }) {
   await stopListener(ctx.roomId);
-  await prisma.user.delete({ where: { id: ctx.userId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: ctx.principalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }
 
@@ -93,7 +96,7 @@ function armiesPayload(battleId: string, scores: Record<string, string>) {
     battleId,
     battleSettings: { startTimeMs: String(Date.now() - 1000), duration: 300 },
     battleItems: Object.fromEntries(
-      Object.entries(scores).map(([anchorId, hostScore]) => [anchorId, { anchorIdStr: anchorId, hostScore }])
+      Object.entries(scores).map(([tiktokUid, hostScore]) => [tiktokUid, { anchorIdStr: tiktokUid, hostScore }])
     ),
   };
 }
@@ -105,7 +108,7 @@ function battlePayload(battleId: string, action: number, scores: Record<string, 
     action,
     battleSetting: { startTimeMs: String(Date.now() - 5000), duration: 300 },
     armies: Object.fromEntries(
-      Object.entries(scores).map(([anchorId, hostScore]) => [anchorId, { anchorIdStr: anchorId, hostScore }])
+      Object.entries(scores).map(([tiktokUid, hostScore]) => [tiktokUid, { anchorIdStr: tiktokUid, hostScore }])
     ),
   };
 }
@@ -133,7 +136,7 @@ describe("バトルスコア時系列(TiktokBattleArmiesSnapshot)の収集", () 
         expect(await snapshotRows(ctx.roomId, battleId)).toHaveLength(2);
       });
       const rows = await snapshotRows(ctx.roomId, battleId);
-      const byAnchor = Object.fromEntries(rows.map((r) => [r.anchorId, r.score]));
+      const byAnchor = Object.fromEntries(rows.map((r) => [r.tiktokUid, r.score]));
       expect(byAnchor).toEqual({ "111": "5000", "222": "4200" });
     } finally {
       await teardownRoom(ctx);

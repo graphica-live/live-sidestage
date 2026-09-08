@@ -1,27 +1,33 @@
 ﻿import { prisma } from "../src/lib/prisma";
 
 async function main() {
-  const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokId: "local_test_streamer" } });
+  const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokHandle: "local_test_streamer" } });
   if (!selfRoom) throw new Error("local_test_streamer room not found. run seed:local first");
 
-  const selfHostUserId = selfRoom.hostUserId ?? "seed_self_host_user";
-  if (!selfRoom.hostUserId) {
-    await prisma.tiktokRoom.update({ where: { id: selfRoom.id }, data: { hostUserId: selfHostUserId } });
-  }
+  const selfHostTiktokUid = selfRoom.hostTiktokUid;
 
-  const opponentTiktokId = "local_test_rival";
-  const opponentHostUserId = "seed_rival_host_user";
+  const opponentTiktokHandle = "local_test_rival";
+  const opponentHostTiktokUid = "7000000000000000901";
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid: opponentHostTiktokUid },
+    update: { tiktokHandle: opponentTiktokHandle, nickname: "ローカル対戦相手" },
+    create: {
+      tiktokUid: opponentHostTiktokUid,
+      tiktokHandle: opponentTiktokHandle,
+      nickname: "ローカル対戦相手",
+    },
+  });
   const opponentRoom = await prisma.tiktokRoom.upsert({
-    where: { tiktokId: opponentTiktokId },
-    update: { hostUserId: opponentHostUserId },
-    create: { tiktokId: opponentTiktokId, hostUserId: opponentHostUserId },
+    where: { hostTiktokUid: opponentHostTiktokUid },
+    update: { tiktokHandle: opponentTiktokHandle },
+    create: { tiktokHandle: opponentTiktokHandle, hostTiktokUid: opponentHostTiktokUid },
   });
 
   const now = new Date();
   const startedAt = new Date(now.getTime() - 30 * 60 * 1000);
   const endedAt = new Date(now.getTime() - 20 * 60 * 1000);
   const battleId = `seed-battle-${now.getTime()}`;
-  const hostScores = { [selfHostUserId]: "1200", [opponentHostUserId]: "900" };
+  const hostScores = { [selfHostTiktokUid]: "1200", [opponentHostTiktokUid]: "900" };
 
   await prisma.tiktokBattle.create({
     data: {
@@ -32,7 +38,7 @@ async function main() {
       startedAtEstimated: false,
       endedAt,
       durationSec: 600,
-      hostUserIds: [selfHostUserId, opponentHostUserId],
+      hostTiktokUids: [selfHostTiktokUid, opponentHostTiktokUid],
       hostScores,
     },
   });
@@ -46,7 +52,7 @@ async function main() {
       startedAtEstimated: false,
       endedAt,
       durationSec: 600,
-      hostUserIds: [selfHostUserId, opponentHostUserId],
+      hostTiktokUids: [selfHostTiktokUid, opponentHostTiktokUid],
       hostScores,
     },
   });
@@ -54,9 +60,9 @@ async function main() {
   console.log(
     JSON.stringify({
       selfRoomId: selfRoom.id,
-      selfHostUserId,
+      selfHostTiktokUid,
       opponentRoomId: opponentRoom.id,
-      opponentHostUserId,
+      opponentHostTiktokUid,
       battleId,
       startedAt,
       endedAt,

@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 /// サーバー側解約APIが実在するためここで実解約する。APPLEにはサーバー側解約APIが無いため、
 /// 削除完了メッセージで「Appleの定期購読は別途App Storeから解約が必要」と案内するに留める。
 ///
-/// **`Event.ownerUserId`には触れない。** FKなしの論理参照で、Eventは主催者1人の
+/// **`Event.ownerPrincipalId`には触れない。** FKなしの論理参照で、Eventは主催者1人の
 /// 持ち物ではなく他の参加者・観戦者にとっての公開データのため、削除後は
 /// 「誰にも編集できないイベントとして残る」だけにする(自動削除も409拒否もしない)。
 /// 保持理由は /privacy に明記してある。
@@ -31,7 +31,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   const user = await prisma.user.findUnique({
-    where: { id: payload.userId },
+    where: { id: payload.principalId },
     select: {
       id: true,
       accounts: {
@@ -111,7 +111,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   // cascadeでAccount/Session/Subscription/Streamer以下が連鎖削除される。
-  // Event.ownerUserIdはFKが無いため触れずそのまま残る(上記コメント参照)。
+  // Event.ownerPrincipalIdはFKが無いため触れずそのまま残る(上記コメント参照)。
   await prisma.user.delete({ where: { id: user.id } });
 
   return NextResponse.json({

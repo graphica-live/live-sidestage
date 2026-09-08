@@ -44,7 +44,7 @@ class _FakeApi extends LiveAnalyticsApi {
       userEmail: 'me@example.com',
       onboardingRequired: false,
       provider: AuthProvider.google,
-      streamer: StreamerInfo(id: 's1', tiktokId: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
     );
   }
 
@@ -58,12 +58,15 @@ class _FakeApi extends LiveAnalyticsApi {
   }
 
   @override
-  Future<StreamerInfo> updateTiktokId({required String token, required String tiktokId}) async {
+  Future<StreamerInfo> updateTiktokHandle({
+    required String token,
+    required String tiktokHandle,
+  }) async {
     updateCalls++;
     if (token != validToken) {
       throw ApiException('認証が必要です', statusCode: 401);
     }
-    return StreamerInfo(id: 's1', tiktokId: tiktokId, apiKey: 'k', verified: true);
+    return StreamerInfo(id: 's1', tiktokHandle: tiktokHandle, apiKey: 'k', verified: true);
   }
 
   int deleteAccountCalls = 0;
@@ -108,7 +111,7 @@ AuthSession _expiredSession({
       userEmail: 'me@example.com',
       onboardingRequired: false,
       provider: provider,
-      streamer: StreamerInfo(id: 's1', tiktokId: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
     );
 
 SessionController _controller({
@@ -260,12 +263,12 @@ void main() {
       silentIdToken: () async => 'id-token',
     );
 
-    expect(await controller.changeTiktokId('newid'), isTrue);
+    expect(await controller.changeTiktokHandle('newid'), isTrue);
     expect(api.updateCalls, 2);
     // 失効トークンを保存し直していないこと。
     expect(controller.session!.token, 'new-1');
     expect(storage.saved!.token, 'new-1');
-    expect(controller.session!.streamer!.tiktokId, 'newid');
+    expect(controller.session!.streamer!.tiktokHandle, 'newid');
   });
 
   group('deleteAccount', () {

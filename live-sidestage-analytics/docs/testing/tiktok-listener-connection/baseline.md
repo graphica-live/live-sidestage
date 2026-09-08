@@ -1,12 +1,17 @@
 ---
 project: live-sidestage-analytics
 feature: tiktok-listener-connection
-last_updated: 2026-09-05
-last_risk: HIGH
-last_reviewers: Codex(不可,quota切れ)+Fable+Qwen(不可,信頼性疑義)
+last_updated: 2026-09-09
+last_risk: CRITICAL
+last_reviewers: Codex(不可,quota切れ)+Fable+Qwen(不可,信頼性疑義) / 2026-09-09 識別子統一(review-auto Code Mode)
 ---
 
 # テストベースライン: tiktok-listener-connection
+
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
 
 `src/lib/tiktok-listener.ts` のTikTok Webcast接続ライフサイクル(接続確立・切断・watchdogによる強制再接続・指数バックオフ・オフライン判定)。Euler署名は有料/rate-limitedな外部署名サービスで、`conn.connect()`呼び出しごとに消費する。無駄な消費を避けることが本機能の重要な保証事項。
 
@@ -16,8 +21,9 @@ last_reviewers: Codex(不可,quota切れ)+Fable+Qwen(不可,信頼性疑義)
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-TLC-001 | api-live/user/room/がオフライン(status=4)を報告するroomはEuler署名を消費せず再接続待機へ倒れる | `connectAndAttach()` / `isReportedOfflineByApiLive()` | 正常 | `conn.webClient.fetchRoomInfoFromApiLive`が`{data:{liveRoom:{status:4}}}`を返す | `conn.connect()`が呼ばれない(`connectCalls===0`)。`listenerReason==="user_offline"`が永続化される | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.offline-precheck.integration.test.ts` | PASS | Fable指摘(HIGH: 自動テスト不在)を受け専用モック接続で自動テスト化 |
 | TC-TLC-002 | api-live/user/room/がオンライン(status!=4)を報告するroomは通常のconnect()フローへ進む | `isReportedOfflineByApiLive()` | 正常 | `roomData.data.liveRoom.status`が2(オンライン) | `conn.connect()`が呼ばれる(`connectCalls===1`) | 同上(TC-TLC-002) | PASS | |
-| TC-TLC-002b | liveRoomフィールド自体が欠損する応答は判定不能としてconnect()フローへ進む | `isReportedOfflineByApiLive()` | 境界 | `roomData.data`が`{}`(liveRoomキー無し) | `conn.connect()`が呼ばれる(`connectCalls===1`) | 同上(TC-TLC-002b) | PASS | |
-| TC-TLC-003 | api-live/user/room/呼び出しが例外(HTTPエラー等)を投げた場合、オンライン扱いにフェイルセーフする | `isReportedOfflineByApiLive()` | 異常 | `fetchRoomInfoFromApiLive`がreject | `console.warn`ログを出しつつ`conn.connect()`を呼ぶ(無言で握り潰さない) | 同上(TC-TLC-003) | PASS | Fable指摘によりタイムアウト前提の記述を削除(接続層にタイムアウト機構なし、無応答時は無期限に待つ既存の`conn.connect()`と同じ制約。Out of Scope参照) |
+| TC-TLC-002b | `data.user.id`を取れない応答は**検証不能**として接続しない(fail-closed) | `precheckApiLive()` | 境界 | `roomData.data`が`{}`(liveRoom・userキー無し) | `conn.connect()`が呼ばれない(`connectCalls===0`) | 同上(TC-TLC-002b) | PASS | **2026-09 の識別子統一で fail-open から反転した。** 旧仕様は「判定不能ならconnect()へ進む」だったが、同一性検証を素通りすると別人の配信へ接続してA の room へ書き込む経路が残る(plan §6 の`unverifiable`) |
+| TC-TLC-002c | api-liveが別人のuidを返したら接続せず`handleStaleAt`を立てる | `precheckApiLive()` | 異常/セキュリティ | room の`hostTiktokUid`=A、api-liveの`data.user.id`=B | `conn.connect()`が呼ばれない。`TiktokRoom.handleStaleAt`が立ち、`listenerReason==="handle_mismatch"` | 同上(TC-TLC-002c) | PASS | ハンドル再利用による第三者取り違えの防止。room の一意キーを`tiktokHandle`から`hostTiktokUid`へ移したことの接続側の対 |
+| TC-TLC-003 | api-live/user/room/呼び出しが例外(HTTPエラー等)を投げた場合、**接続せず**バックオフ再試行する | `precheckApiLive()` | 異常 | `fetchRoomInfoFromApiLive`がreject | `console.warn`ログを出しつつ`conn.connect()`を呼ばない。`listenerReason==="uid_unverifiable"`で再接続予約 | 同上(TC-TLC-003) | PASS | **2026-09 の識別子統一で fail-open から反転した。**api-liveがタイムアウト/レート制限/応答形式変更になったとき、旧仕様は照合を素通りしてconnect()していた。恒久停止にはせずバックオフ再試行に留める |
 | TC-TLC-004 | 事前チェックのHTTP待機中に`stopListener()`が呼ばれても、待機完了後に`conn.connect()`もEuler消費も発生しない | `connectAndAttach()` | 異常/negative | `isReportedOfflineByApiLive()`のawait中に`stopListener()`が呼ばれ、その後status:4の応答が届く | `connectCalls===0`。`updateState`/`conn.connect()`/`scheduleReconnect`のいずれも走らない | 同上(TC-TLC-004) | PASS | Fable指摘(race condition)により判定結果に関わらずawait直後に共通ガードを通すよう実装修正済み。テスト側の固定20ms待ちがフルintegrationスイート並列実行時に不安定だったため`vi.waitFor`ポーリングへ修正、以後test:integration全体で708/708安定PASSを確認 |
 | TC-TLC-005 | watchdog強制再接続の指数バックオフ数式(数値計算)が回帰していない | `nextReconnectBackoffMs()` | 回帰 | failureCount 1,2,3,10 | 1回目≈BASE_MS、2倍/4倍に伸長、MAX_MSで頭打ち、jitterで揺らぐ | `npx vitest run src/lib/tiktok-listener.backoff.test.ts` | PASS | 5 tests pass |
 | TC-TLC-006 | watchdog無応答検知(60秒無イベント)の強制再接続とそのバックオフが回帰していない | `checkWatchdogs()` | 回帰 | MockConnection使用、無応答60秒超過を複数回シミュレート | 初回は即発火、バックオフ窓内は`skipping forced reconnect`警告でスキップ、窓超過後に再発火。実イベント受信でバックオフリセット | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.watchdog.integration.test.ts` | PASS | 3 tests pass。DB必須。**このファイルのMockConnectionにはwebClientが無いため、今回追加した事前チェックは毎回catch分岐(フェイルセーフ)を通る**(Fable指摘MEDIUM)。オンライン経路の再接続そのものはTC-TLC-002・009が別途カバーする |

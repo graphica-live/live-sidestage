@@ -7,6 +7,7 @@ import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
 import { startListener, stopListener } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const { MockConnection } = vi.hoisted(() => {
   class MockConnection {
@@ -14,7 +15,7 @@ const { MockConnection } = vi.hoisted(() => {
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -39,15 +40,15 @@ vi.mock("TLC-sidestage", async () => {
   const actual = await vi.importActual<typeof import("TLC-sidestage")>("TLC-sidestage");
   return {
     ...actual,
-    WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-      return new MockConnection(uniqueId, options);
+    WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+      return new MockConnection(tiktokHandle, options);
     }),
   };
 });
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, principalId: null }),
   },
 }));
 
@@ -69,28 +70,30 @@ function newMsgId() {
 }
 
 async function setupRoom(label: string) {
-  const tiktokId = `itest_bidedup_${label}_${suffix()}`;
+  const tiktokHandle = `itest_bidedup_${label}_${suffix()}`;
   const user = await prisma.user.create({
     data: { email: `itest-bidedup-${label}-${suffix()}@local.test` },
   });
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId,
+      principalId: user.id,
+      // TiktokRoom.hostTiktokUid は @unique。ハンドルから導けば room ごとに必ず別値になる。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
       verificationCode: `itest-${suffix()}`,
       verified: true,
     },
   });
   const roomId = await resolveRoomForStreamer(streamer.id);
-  await startListener(roomId, tiktokId, [streamer.id]);
+  await startListener(roomId, tiktokHandle, [streamer.id]);
   const conn = MockConnection.instances[MockConnection.instances.length - 1];
   expect(conn).toBeDefined();
-  return { tiktokId, userId: user.id, streamerId: streamer.id, roomId, conn };
+  return { tiktokHandle, principalId: user.id, streamerId: streamer.id, roomId, conn };
 }
 
-async function teardownRoom(ctx: { roomId: string; userId: string }) {
+async function teardownRoom(ctx: { roomId: string; principalId: string }) {
   await stopListener(ctx.roomId);
-  await prisma.user.delete({ where: { id: ctx.userId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: ctx.principalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }
 
@@ -104,6 +107,8 @@ function gloveCardPayload(msgId: string | null, createTime: number, overrides: R
     createTime,
     ...(msgId === null ? {} : { msgId }),
     gloveCard: {
+      // **生 proto のフィールド名のまま。** targetHostUserId / userId / uniqueId は
+      // TikTok 側の名前で、sidestage の識別子統一(tiktokUid / tiktokHandle)の対象外。
       targetHostUserId: "6800000000000000001",
       comment: {
         commentKey: "pm_mt_boost_send_crit_comment",
@@ -146,7 +151,7 @@ afterAll(async () => {
 });
 
 describe("バトルアイテム使用ログの保存とmsgId dedup", () => {
-  it("cardType=2(glove)のsender/targetHostUserIdが正しく保存される", async () => {
+  it("cardType=2(glove)のsender/targetHostTiktokUidが正しく保存される", async () => {
     const ctx = await setupRoom("save");
     try {
       const msgId = newMsgId();
@@ -157,11 +162,13 @@ describe("バトルアイテム使用ログの保存とmsgId dedup", () => {
       });
       const row = await prisma.tiktokBattleItemUse.findFirstOrThrow({ where: { roomId: ctx.roomId } });
       expect(row.cardType).toBe(2);
-      expect(row.senderUserId).toBe("6900000000000000002");
-      expect(row.senderUniqueId).toBe("item_sender");
-      expect(row.senderNickname).toBe("アイテム送信者");
+      expect(row.senderTiktokUid).toBe("6900000000000000002");
       expect(row.senderProfilePictureUrl).toBe("https://example.test/100x100.webp");
-      expect(row.targetHostUserId).toBe("6800000000000000001");
+      // 表示名は行ではなく TikTokUser 側へ書かれる(item-use と同一トランザクション)。
+      const senderUser = await prisma.tikTokUser.findUnique({ where: { tiktokUid: row.senderTiktokUid } });
+      expect(senderUser?.tiktokHandle).toBe("item_sender");
+      expect(senderUser?.nickname).toBe("アイテム送信者");
+      expect(row.targetHostTiktokUid).toBe("6800000000000000001");
       expect(row.battleId).toBe("7123456789012345678");
     } finally {
       await teardownRoom(ctx);
@@ -210,7 +217,7 @@ describe("バトルアイテム使用ログの保存とmsgId dedup", () => {
       });
 
       await stopListener(ctx.roomId);
-      await startListener(ctx.roomId, ctx.tiktokId, [ctx.streamerId]);
+      await startListener(ctx.roomId, ctx.tiktokHandle, [ctx.streamerId]);
       const fresh = MockConnection.instances[MockConnection.instances.length - 1];
       expect(fresh).not.toBe(ctx.conn);
 

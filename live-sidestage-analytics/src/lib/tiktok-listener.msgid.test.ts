@@ -22,7 +22,7 @@ describe("resolveMsgId", () => {
   it("connectorが平坦化した後のchatイベントからmsgIdを取り出せる", () => {
     const flattened = flattenAsConnectorDoes("WebcastChatMessage", {
       common: { msgId: "7300000000000000001", createTime: "1750000000000" },
-      user: { uniqueId: "someone", nickname: "だれか" },
+      user: { tiktokHandle: "someone", nickname: "だれか" },
       content: "こんにちは",
       emotes: [],
     });
@@ -35,7 +35,7 @@ describe("resolveMsgId", () => {
   it("connectorが平坦化した後のfollowイベント(WebcastSocialMessage)からmsgIdを取り出せる", () => {
     const flattened = flattenAsConnectorDoes("WebcastSocialMessage", {
       common: { msgId: "7300000000000000002", displayText: { key: "pm_main_follow_message_viewer_2" } },
-      user: { uniqueId: "follower", nickname: "フォロワー" },
+      user: { tiktokHandle: "follower", nickname: "フォロワー" },
     });
 
     expect(flattened.common).toBeUndefined();
@@ -45,7 +45,7 @@ describe("resolveMsgId", () => {
   it("msgIdが欠落していればnullを返す(握りつぶさずdedupを諦める側に倒す)", () => {
     const flattened = flattenAsConnectorDoes("WebcastChatMessage", {
       common: { createTime: "1750000000000" },
-      user: { uniqueId: "someone" },
+      user: { tiktokHandle: "someone" },
       content: "msgIdなし",
       emotes: [],
     });
@@ -66,7 +66,7 @@ describe("resolveMsgId", () => {
   it("旧実装が読んでいた data.common.msgId は平坦化後に存在しない", () => {
     const flattened = flattenAsConnectorDoes("WebcastChatMessage", {
       common: { msgId: "7300000000000000003" },
-      user: { uniqueId: "someone" },
+      user: { tiktokHandle: "someone" },
       content: "回帰テスト",
       emotes: [],
     });
@@ -81,7 +81,7 @@ describe("resolveMsgId", () => {
     // (WebcastGiftMessageもcommonを持つが、簡略化処理はchatと別のcase節を通る)
     const flattened = flattenAsConnectorDoes("WebcastGiftMessage", {
       common: { msgId: "7300000000000000004", createTime: "1750000000000" },
-      user: { uniqueId: "gifter", nickname: "ギフター" },
+      user: { tiktokHandle: "gifter", nickname: "ギフター" },
       giftId: 5,
       repeatCount: 3,
       repeatEnd: 0,
@@ -99,7 +99,7 @@ describe("resolveMsgId", () => {
     // 同じ既定値の流入はgroupId="0"が本番に3591件ある事実で確認済み。
     const flattened = flattenAsConnectorDoes("WebcastChatMessage", {
       common: { msgId: "0", createTime: "1750000000000" },
-      user: { uniqueId: "someone" },
+      user: { tiktokHandle: "someone" },
       content: "既定値のmsgId",
       emotes: [],
     });

@@ -22,7 +22,7 @@ class RankingListTile extends StatefulWidget {
 
   final int rank;
   final GiftRankingEntry entry;
-  final Future<GiftBreakdownResult> Function(String uniqueId)? fetchBreakdown;
+  final Future<GiftBreakdownResult> Function(String tiktokUid)? fetchBreakdown;
 
   @override
   State<RankingListTile> createState() => _RankingListTileState();
@@ -56,7 +56,7 @@ class _RankingListTileState extends State<RankingListTile> {
   /// エラーで即完了するとDartがunhandled errorとして検出することがある(テスト環境で再現)。
   /// ここでダミーのcatchErrorを登録してunhandled判定を防ぐ(実際のハンドリングはFutureBuilder側)。
   Future<GiftBreakdownResult> _startFetch(Future<GiftBreakdownResult> Function(String) fetchBreakdown) {
-    final future = fetchBreakdown(widget.entry.uniqueId);
+    final future = fetchBreakdown(widget.entry.tiktokUid);
     future.then((_) {}, onError: (_) {});
     return future;
   }
@@ -66,6 +66,11 @@ class _RankingListTileState extends State<RankingListTile> {
     final entry = widget.entry;
     final fetchBreakdown = widget.fetchBreakdown;
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    // ハンドルは可変で、TikTokUser 行が無ければサーバーが null を返す。
+    // uid では `https://www.tiktok.com/@...` を組み立てられないので、
+    // ハンドルが無い行はプロフィール導線そのものを出さない。
+    final handle = entry.tiktokHandle;
+    final openProfile = handle == null ? null : () => openTiktokProfile(context, handle);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,7 +84,7 @@ class _RankingListTileState extends State<RankingListTile> {
               // fetchBreakdown未指定(バトル履歴タブ)は従来通り行全体タップでプロフィール遷移するため、
               // メダル部分もopenTiktokProfileに合わせる(退行防止)。
               InkWell(
-                onTap: fetchBreakdown != null ? _toggle : () => openTiktokProfile(context, entry.uniqueId),
+                onTap: fetchBreakdown != null ? _toggle : openProfile,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minWidth: 26),
                   child: GradientMedal(rank: widget.rank),
@@ -87,13 +92,13 @@ class _RankingListTileState extends State<RankingListTile> {
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => openTiktokProfile(context, entry.uniqueId),
+                onTap: openProfile,
                 child: GradientRing(child: UserAvatar(entry.profileImageUrl)),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: InkWell(
-                  onTap: fetchBreakdown != null ? _toggle : () => openTiktokProfile(context, entry.uniqueId),
+                  onTap: fetchBreakdown != null ? _toggle : openProfile,
                   child: Row(
                     children: [
                       Expanded(

@@ -1,22 +1,26 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // Workerが接続を維持すべき部屋の判定条件(getMyRooms()が使うwatchedRoomFilter)を検証する。
-// 事務所のtiktokId直指定では配信者本人の登録(Streamer)が0人の部屋が生まれるため、
+// 事務所のtiktokHandle直指定では配信者本人の登録(Streamer)が0人の部屋が生まれるため、
 // この条件が正しくないと接続が一切張られずデータが1件も溜まらない。
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { watchedRoomFilter } from "@/lib/tiktok-listener";
 import type { WatchedRoomFilterOptions } from "@/lib/watched-room-filter";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 
 const suffix = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const createdRoomIds: string[] = [];
-const createdUserIds: string[] = [];
+const createdPrincipalIds: string[] = [];
 const createdAgencyIds: string[] = [];
 
 async function createRoom(prefix: string, opts: { monitoringSuspended?: boolean } = {}) {
+  // hostTiktokUid は @unique(NOT NULL)。部屋ごとに必ず別の数値文字列にする。
+  const handle = `itest_watched_${prefix}_${suffix()}`;
   const room = await prisma.tiktokRoom.create({
     data: {
-      tiktokId: `itest_watched_${prefix}_${suffix()}`,
+      tiktokHandle: handle,
+      hostTiktokUid: makeTiktokUid(handle),
       monitoringSuspended: opts.monitoringSuspended ?? false,
     },
   });
@@ -47,7 +51,7 @@ async function isWatched(
 afterEach(async () => {
   await prisma.agency.deleteMany({ where: { id: { in: createdAgencyIds.splice(0) } } });
   await Promise.all(
-    createdUserIds.splice(0).map((id) => prisma.user.delete({ where: { id } }).catch(() => {}))
+    createdPrincipalIds.splice(0).map((id) => prisma.user.delete({ where: { id } }).catch(() => {}))
   );
   await Promise.all(
     createdRoomIds.splice(0).map((id) => prisma.tiktokRoom.delete({ where: { id } }).catch(() => {}))
@@ -70,7 +74,7 @@ describe("watchedRoomFilter", () => {
     const room = await createRoom("agency_only", { monitoringSuspended: true });
     const agency = await createAgency();
     await prisma.agencyWatch.create({
-      data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
+      data: { agencyId: agency.id, roomId: room.id, tiktokUid: room.hostTiktokUid, tiktokHandle: "someliver" },
     });
 
     expect(await isWatched(room.id)).toBe(true);
@@ -83,7 +87,7 @@ describe("watchedRoomFilter", () => {
     const room = await createRoom("revoke", { monitoringSuspended: true });
     const agency = await createAgency();
     const watch = await prisma.agencyWatch.create({
-      data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
+      data: { agencyId: agency.id, roomId: room.id, tiktokUid: room.hostTiktokUid, tiktokHandle: "someliver" },
     });
 
     expect(await isWatched(room.id)).toBe(true);
@@ -96,7 +100,7 @@ describe("watchedRoomFilter", () => {
     const room = await createRoom("agency_deleted", { monitoringSuspended: true });
     const agency = await createAgency();
     await prisma.agencyWatch.create({
-      data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
+      data: { agencyId: agency.id, roomId: room.id, tiktokUid: room.hostTiktokUid, tiktokHandle: "someliver" },
     });
 
     expect(await isWatched(room.id)).toBe(true);
@@ -112,10 +116,10 @@ describe("watchedRoomFilter", () => {
     const gone = await createAgency();
     const active = await createAgency();
     await prisma.agencyWatch.create({
-      data: { agencyId: gone.id, roomId: room.id, tiktokId: "someliver" },
+      data: { agencyId: gone.id, roomId: room.id, tiktokUid: room.hostTiktokUid, tiktokHandle: "someliver" },
     });
     await prisma.agencyWatch.create({
-      data: { agencyId: active.id, roomId: room.id, tiktokId: "someliver" },
+      data: { agencyId: active.id, roomId: room.id, tiktokUid: room.hostTiktokUid, tiktokHandle: "someliver" },
     });
 
     await prisma.agency.delete({ where: { id: gone.id } });
@@ -127,9 +131,9 @@ describe("watchedRoomFilter", () => {
   it("Streamerが居る従来の部屋は引き続き接続対象", async () => {
     const room = await createRoom("streamer_only");
     const user = await prisma.user.create({ data: { email: `itest-watched-s-${suffix()}@local.test` } });
-    createdUserIds.push(user.id);
+    createdPrincipalIds.push(user.id);
     await prisma.streamer.create({
-      data: { userId: user.id, tiktokId: room.tiktokId, verificationCode: "x", roomId: room.id },
+      data: { principalId: user.id, tiktokUid: room.hostTiktokUid, tiktokHandle: room.tiktokHandle, verificationCode: "x", roomId: room.id },
     });
 
     expect(await isWatched(room.id)).toBe(true);
@@ -172,9 +176,9 @@ describe("watchedRoomFilter (匿名room自動停止トグルON相当)", () => {
     const user = await prisma.user.create({
       data: { email: `itest-watched-anon-s-${suffix()}@local.test` },
     });
-    createdUserIds.push(user.id);
+    createdPrincipalIds.push(user.id);
     await prisma.streamer.create({
-      data: { userId: user.id, tiktokId: room.tiktokId, verificationCode: "x", roomId: room.id },
+      data: { principalId: user.id, tiktokUid: room.hostTiktokUid, tiktokHandle: room.tiktokHandle, verificationCode: "x", roomId: room.id },
     });
     expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
   });
@@ -187,7 +191,7 @@ describe("watchedRoomFilter (匿名room自動停止トグルON相当)", () => {
     });
     const agency = await createAgency();
     await prisma.agencyWatch.create({
-      data: { agencyId: agency.id, roomId: room.id, tiktokId: "someliver" },
+      data: { agencyId: agency.id, roomId: room.id, tiktokUid: room.hostTiktokUid, tiktokHandle: "someliver" },
     });
     expect(await isWatched(room.id, now, { anonymousStaleBefore: staleBefore })).toBe(true);
   });

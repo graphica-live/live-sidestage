@@ -9,6 +9,11 @@ last_reviewers: [qwen]
 
 # バトル履歴一覧(web)
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 対象: `src/components/analytics/AnalyticsView.tsx`(コイン閾値非表示フィルタ)、
 `src/components/analytics/battle-types.tsx`(`BattleScoreLine`)
 

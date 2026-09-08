@@ -133,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Timer? _roomSwitchTimer;
   DateTime? _roomSwitchDeadline;
-  String? _switchingToTiktokId;
+  String? _switchingToTiktokHandle;
 
   @override
   void initState() {
@@ -464,13 +464,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> changeTiktokId() async {
+  Future<void> changeTiktokHandle() async {
     final controller = context.read<SessionController>();
     final store = context.read<AppConfigStore>();
     final newId = await showDialog<String>(
       context: context,
-      builder: (context) => _ChangeTiktokIdDialog(
-        initialValue: controller.session?.streamer?.tiktokId ?? '',
+      builder: (context) => _ChangeTiktokHandleDialog(
+        initialValue: controller.session?.streamer?.tiktokHandle ?? '',
       ),
     );
     if (newId == null || newId.isEmpty) return;
@@ -484,7 +484,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
     }
 
-    final ok = await controller.changeTiktokId(newId);
+    final ok = await controller.changeTiktokHandle(newId);
     if (!mounted) return;
     if (ok) {
       _beginRoomSwitchGrace(newId);
@@ -505,7 +505,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _beginRoomSwitchGrace(String tiktokId) {
     _roomSwitchTimer?.cancel();
     setState(() {
-      _switchingToTiktokId = tiktokId;
+      _switchingToTiktokHandle = tiktokId;
       _roomSwitchDeadline = DateTime.now().add(_roomSwitchGrace);
       // 旧IDのコメントは新しい配信と無関係なので破棄する。
       _comments.clear();
@@ -527,7 +527,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _roomSwitchTimer = null;
     setState(() {
       _roomSwitchDeadline = null;
-      _switchingToTiktokId = null;
+      _switchingToTiktokHandle = null;
     });
   }
 
@@ -699,13 +699,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final store = context.watch<AppConfigStore>();
     final ttsEnabled = store.config.ttsEnabled;
     final soundEnabled = store.sound.enabled;
-    final tiktokId = session?.streamer?.tiktokId;
+    final tiktokId = session?.streamer?.tiktokHandle;
 
     final accountStatus = context.watch<AccountStatusStore>();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('@${session?.streamer?.tiktokId ?? ''}'),
+        title: Text('@${session?.streamer?.tiktokHandle ?? ''}'),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -733,7 +733,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   busy: _serviceBusy,
                   onToggle: (enable) => _toggleFeature(isTts: true, enable: enable),
                   roomSwitching: _roomSwitching,
-                  switchingToTiktokId: _switchingToTiktokId,
+                  switchingToTiktokHandle: _switchingToTiktokHandle,
                   showFirstRunGuide: _showFirstRunGuide,
                   onDismissFirstRunGuide: _dismissFirstRunGuide,
                 ),
@@ -757,7 +757,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 SettingsTab(
                   speech: _speech,
                   busy: _serviceBusy,
-                  onChangeTiktokId: changeTiktokId,
+                  onChangeTiktokHandle: changeTiktokHandle,
                   onBeforeLogout: _stopService,
                 ),
               ],
@@ -852,16 +852,16 @@ class _RoomSwitchBanner extends StatelessWidget {
   }
 }
 
-class _ChangeTiktokIdDialog extends StatefulWidget {
-  const _ChangeTiktokIdDialog({required this.initialValue});
+class _ChangeTiktokHandleDialog extends StatefulWidget {
+  const _ChangeTiktokHandleDialog({required this.initialValue});
 
   final String initialValue;
 
   @override
-  State<_ChangeTiktokIdDialog> createState() => _ChangeTiktokIdDialogState();
+  State<_ChangeTiktokHandleDialog> createState() => _ChangeTiktokHandleDialogState();
 }
 
-class _ChangeTiktokIdDialogState extends State<_ChangeTiktokIdDialog> {
+class _ChangeTiktokHandleDialogState extends State<_ChangeTiktokHandleDialog> {
   final _formKey = GlobalKey<FormState>();
   late final _controller = TextEditingController(text: widget.initialValue);
 

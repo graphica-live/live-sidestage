@@ -178,7 +178,7 @@ export function BattleDetailModal({
                     (teams ?? []).map((team) => ({
                       isSelf: team.isSelf,
                       participants: team.participants.map((p) => ({
-                        label: p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?",
+                        label: p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokHandle ?? "?",
                       })),
                     }))
                   )}
@@ -425,9 +425,9 @@ function TeamCard({
       )}
       <div className="flex min-w-0 flex-col gap-1">
         {team.participants.map((p) => {
-          const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
+          const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokHandle ?? "?";
           return (
-            <div key={p.anchorId} className={`flex min-w-0 items-center gap-1.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
+            <div key={p.tiktokUid} className={`flex min-w-0 items-center gap-1.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
               <Avatar src={p.avatarUrl} alt={label} size="sm" />
               <div className="min-w-0 max-w-[100px] truncate text-xs font-medium" style={{ color }}>
                 {label}
@@ -459,13 +459,13 @@ function FallbackVersusHeader({
             <span className="text-muted text-sm">対戦相手不明</span>
           ) : opponent.count > 1 ? (
             <span className="text-muted text-sm">複数人バトル({opponent.count + 1}人)</span>
-          ) : opponent.nickName || opponent.displayId || opponent.tiktokId ? (
+          ) : opponent.nickName || opponent.displayId || opponent.tiktokHandle ? (
             <>
               <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
               <div className="min-w-0">
                 <div className="font-medium truncate">{opponent.nickName ?? `@${opponent.displayId}`}</div>
-                {(opponent.displayId || opponent.tiktokId) && (
-                  <div className="text-xs text-muted truncate">@{opponent.displayId ?? opponent.tiktokId}</div>
+                {(opponent.displayId || opponent.tiktokHandle) && (
+                  <div className="text-xs text-muted truncate">@{opponent.displayId ?? opponent.tiktokHandle}</div>
                 )}
               </div>
             </>
@@ -512,11 +512,11 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
   const isIndividual = team.selectorMode === "individual";
   // individual(乱戦の相手統合列)は「陣営全体合算」を持たないため、常にどれか1人を選択した状態で
   // 始まる(既定=participants[0]、サーバー側でスコア降順ソート済みなので自分以外の最高スコア者)。
-  const [selectedAnchorId, setSelectedAnchorId] = useState<string | null>(
-    isIndividual ? (team.participants[0]?.anchorId ?? null) : null
+  const [selectedTiktokUid, setSelectedTiktokUid] = useState<string | null>(
+    isIndividual ? (team.participants[0]?.tiktokUid ?? null) : null
   );
   const selectedParticipant =
-    selectedAnchorId !== null ? team.participants.find((p) => p.anchorId === selectedAnchorId) ?? null : null;
+    selectedTiktokUid !== null ? team.participants.find((p) => p.tiktokUid === selectedTiktokUid) ?? null : null;
 
   const displayTitle = selectedParticipant ? selectedParticipant.displayName : team.displayName;
   const captureStatus = selectedParticipant ? selectedParticipant.captureStatus : team.captureStatus;
@@ -558,10 +558,10 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
           {!isIndividual && (
             <button
               type="button"
-              onClick={() => setSelectedAnchorId(null)}
+              onClick={() => setSelectedTiktokUid(null)}
               className="min-w-0 max-w-[52px] flex-1 truncate rounded-full border px-2 py-0.5 text-[10px]"
               style={
-                selectedAnchorId === null
+                selectedTiktokUid === null
                   ? { borderColor: color, color }
                   : { borderColor: "rgb(var(--border))", color: "#9a9ea6" }
               }
@@ -571,12 +571,12 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
           )}
           {team.participants.map((p) => (
             <button
-              key={p.anchorId}
+              key={p.tiktokUid}
               type="button"
-              onClick={() => setSelectedAnchorId(p.anchorId)}
+              onClick={() => setSelectedTiktokUid(p.tiktokUid)}
               className="min-w-0 max-w-[72px] flex-1 truncate rounded-full border px-2 py-0.5 text-[10px]"
               style={
-                selectedAnchorId === p.anchorId
+                selectedTiktokUid === p.tiktokUid
                   ? { borderColor: color, color }
                   : { borderColor: "rgb(var(--border))", color: "#9a9ea6" }
               }
@@ -598,7 +598,7 @@ function TeamContributorColumn({ team, color }: { team: BattleTeamContributors; 
       ) : (
         <div className="max-h-64 space-y-0.5 overflow-y-auto">
           {contributors.map((c, i) => (
-            <ExpandableContributorRow key={c.uniqueId} contributor={c} color={color} rank={i + 1} />
+            <ExpandableContributorRow key={c.tiktokHandle} contributor={c} color={color} rank={i + 1} />
           ))}
         </div>
       )}
@@ -683,13 +683,13 @@ function FallbackContributorList({ contributors }: { contributors: BattleContrib
         .slice()
         .sort((a, b) => b.totalDiamonds - a.totalDiamonds)
         .map((c) => (
-          <div key={c.uniqueId} className="flex items-center gap-1.5 text-xs">
+          <div key={c.tiktokHandle} className="flex items-center gap-1.5 text-xs">
             <span className="shrink-0">
               <Avatar src={c.profileImageUrl} alt={c.nickname} />
             </span>
-            {/* nicknameが未取得(空文字)のgiftは呼び出し元でuniqueIdへフォールバック済み。
-                狭い1カラム幅では名前+@uniqueId+コインを並べると折り返して崩れるため、
-                ExpandableContributorRow(確定バトル側)と同じく名前を主表示にしuniqueId併記はしない。 */}
+            {/* nicknameが未取得(空文字)のgiftは呼び出し元でtiktokHandleへフォールバック済み。
+                狭い1カラム幅では名前+@tiktokHandle+コインを並べると折り返して崩れるため、
+                ExpandableContributorRow(確定バトル側)と同じく名前を主表示にしtiktokHandle併記はしない。 */}
             <span className="min-w-0 flex-1 truncate font-medium">{c.nickname}</span>
             <span className="shrink-0 font-mono">
               💎{c.totalDiamonds.toLocaleString()} ({c.giftCount}件)

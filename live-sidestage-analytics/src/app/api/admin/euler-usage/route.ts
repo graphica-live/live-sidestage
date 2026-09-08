@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const roomId = searchParams.get("roomId") || undefined;
-  const tiktokId = searchParams.get("tiktokId") || undefined;
+  const tiktokHandle = searchParams.get("tiktokHandle") || undefined;
   const cursor = searchParams.get("cursor") || undefined;
   const limitParam = Number(searchParams.get("limit"));
   const limit =
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const rows = await prisma.eulerSignUsage.findMany({
     where: {
       ...(roomId ? { roomId } : {}),
-      ...(tiktokId ? { tiktokId } : {}),
+      ...(tiktokHandle ? { tiktokHandle } : {}),
     },
     // createdAtだけだと同一ミリ秒の同着行が起こりうる(デプロイ直後のresumeAllListenersで
     // 数百部屋が一斉に再接続するため)。idをtie-breakerに加えないとカーソルページングで
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       createdAt: true,
       requestedAt: true,
       roomId: true,
-      tiktokId: true,
+      tiktokHandle: true,
       outcome: true,
       errorMessage: true,
       trigger: true,
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       listenerEpoch: true,
       assignedWorkerId: true,
       credentialMode: true,
-      streamerUserIds: true,
+      streamerPrincipalIds: true,
       agencyIds: true,
       eventIds: true,
       roomMonitorUntil: true,
@@ -53,13 +53,13 @@ export async function GET(req: NextRequest) {
   // 表示名解決はページ全体で3クエリにバッチ化する(行ごとのN+1を避ける)。
   // email/name/titleは現在値であって記録時点のスナップショットではない
   // (削除・改名後は当時と異なりうる。IDが常に一次情報)。
-  const userIds = Array.from(new Set(rows.flatMap((r) => r.streamerUserIds)));
+  const principalIds = Array.from(new Set(rows.flatMap((r) => r.streamerPrincipalIds)));
   const agencyIds = Array.from(new Set(rows.flatMap((r) => r.agencyIds)));
   const eventIds = Array.from(new Set(rows.flatMap((r) => r.eventIds)));
 
   const [users, agencies, events] = await Promise.all([
-    userIds.length
-      ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true } })
+    principalIds.length
+      ? prisma.user.findMany({ where: { id: { in: principalIds } }, select: { id: true, email: true } })
       : Promise.resolve([]),
     agencyIds.length
       ? prisma.agency.findMany({ where: { id: { in: agencyIds } }, select: { id: true, name: true } })
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     ...r,
     // BigIntはJSON化できないので文字列にする
     listenerEpoch: r.listenerEpoch?.toString() ?? null,
-    streamers: r.streamerUserIds.map((id) => ({ userId: id, email: userMap.get(id) ?? null })),
+    streamers: r.streamerPrincipalIds.map((id) => ({ principalId: id, email: userMap.get(id) ?? null })),
     agencies: r.agencyIds.map((id) => ({ agencyId: id, name: agencyMap.get(id) ?? null })),
     events: r.eventIds.map((id) => ({ eventId: id, title: eventMap.get(id) ?? null })),
   }));

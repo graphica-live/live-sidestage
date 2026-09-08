@@ -329,11 +329,11 @@ export type ParticipantPatchInput = {
   avatarFrame?: AvatarFrameInput | null;
   /**
    * TikTok ID の訂正(生の入力文字列)。登録ミスの後追い訂正専用。
-   * teamId/displayName と違い `null` によるクリア概念は無い(DB の tiktokId は NOT NULL)。
+   * teamId/displayName と違い `null` によるクリア概念は無い(DB の tiktokHandle は NOT NULL)。
    * 正規化(`normalizeTiktokId`)はここでは行わず `updateParticipant` 側に寄せる
    * (register 側の役割分担と揃える)。
    */
-  tiktokId?: string;
+  tiktokHandle?: string;
 };
 
 /**
@@ -371,20 +371,20 @@ export function parseParticipantPatch(body: unknown): ValidationResult<Participa
     value.avatarFrame = parsed.value;
   }
 
-  if (raw.tiktokId !== undefined) {
-    if (typeof raw.tiktokId !== "string") {
+  if (raw.tiktokHandle !== undefined) {
+    if (typeof raw.tiktokHandle !== "string") {
       return { ok: false, errors: ["TikTok ID の指定が不正です。"] };
     }
-    value.tiktokId = raw.tiktokId;
+    value.tiktokHandle = raw.tiktokHandle;
   }
 
   if (
     value.teamId === undefined &&
     value.displayName === undefined &&
-    value.tiktokId === undefined &&
+    value.tiktokHandle === undefined &&
     value.avatarFrame === undefined
   ) {
-    return { ok: false, errors: ["teamId・displayName・tiktokId・avatarFrame のいずれかが必要です。"] };
+    return { ok: false, errors: ["teamId・displayName・tiktokHandle・avatarFrame のいずれかが必要です。"] };
   }
 
   return { ok: true, value };

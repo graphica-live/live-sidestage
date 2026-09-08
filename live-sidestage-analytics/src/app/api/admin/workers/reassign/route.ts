@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       urls: parseWorkerInternalUrls(process.env.WORKER_INTERNAL_URLS),
       secret: process.env.INTERNAL_API_SECRET,
     });
-    return NextResponse.json({ ok: true, roomId: result.roomId, tiktokId: result.tiktokId, fromWorker: result.fromWorker });
+    return NextResponse.json({ ok: true, roomId: result.roomId, tiktokHandle: result.tiktokHandle, fromWorker: result.fromWorker });
   } catch (err) {
     console.error("[admin/workers/reassign] failed:", err);
     return NextResponse.json(

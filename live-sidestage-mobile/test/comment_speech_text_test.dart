@@ -3,7 +3,8 @@ import 'package:live_sidestage_mobile/models/comment.dart';
 
 Comment c(String text) => Comment(
       streamerId: 's1',
-      uniqueId: 'u1',
+      tiktokUid: '7000000000000000001',
+      tiktokHandle: 'u1',
       nickname: 'なまえ',
       profilePictureUrl: null,
       comment: text,

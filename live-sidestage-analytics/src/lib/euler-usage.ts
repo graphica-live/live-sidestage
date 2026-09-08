@@ -7,7 +7,7 @@ export type EulerSignTrigger = "start" | "scheduled_reconnect" | "watchdog";
 
 interface RecordEulerSignUsageInput {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   requestedAt: Date;
   outcome: "success" | "error";
   errorMessage?: string;
@@ -33,7 +33,7 @@ export async function recordEulerSignUsage(input: RecordEulerSignUsageInput): Pr
         select: {
           workerId: true,
           monitorUntil: true,
-          streamers: { select: { userId: true } },
+          streamers: { select: { principalId: true } },
           watches: { select: { agencyId: true } },
         },
       }),
@@ -54,7 +54,7 @@ export async function recordEulerSignUsage(input: RecordEulerSignUsageInput): Pr
     await prisma.eulerSignUsage.create({
       data: {
         roomId: input.roomId,
-        tiktokId: input.tiktokId,
+        tiktokHandle: input.tiktokHandle,
         requestedAt: input.requestedAt,
         outcome: input.outcome,
         errorMessage: input.errorMessage ?? null,
@@ -65,7 +65,7 @@ export async function recordEulerSignUsage(input: RecordEulerSignUsageInput): Pr
         listenerEpoch: input.listenerEpoch,
         assignedWorkerId: room?.workerId ?? null,
         credentialMode: input.credentialMode,
-        streamerUserIds: room?.streamers.map((s) => s.userId) ?? [],
+        streamerPrincipalIds: room?.streamers.map((s) => s.principalId) ?? [],
         agencyIds: room?.watches.map((w) => w.agencyId) ?? [],
         eventIds: leases.map((l) => l.eventId),
         roomMonitorUntil: room?.monitorUntil ?? null,

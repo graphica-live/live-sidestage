@@ -13,7 +13,7 @@ import { jstDateKey } from "@/lib/overlay/day-key";
 // (breakdownは単独で叩けるエンドポイントなので、ranking側のゲートに依存しない)。
 const buildUnregisteredResponse = () =>
   NextResponse.json({
-    uniqueId: "",
+    tiktokUid: "",
     gifts: [],
     total: { repeatCount: 0, totalDiamonds: 0 },
     coverage: { detailAvailable: false, rawFrom: null, partial: false },
@@ -25,8 +25,8 @@ export async function GET(req: NextRequest) {
   if (!ctx.ok) return ctx.response;
 
   const { searchParams } = new URL(req.url);
-  const uniqueId = searchParams.get("uniqueId");
-  if (!uniqueId) return NextResponse.json({ error: "uniqueId is required" }, { status: 400 });
+  const tiktokUid = searchParams.get("tiktokUid");
+  if (!tiktokUid) return NextResponse.json({ error: "tiktokUid is required" }, { status: 400 });
 
   const query = parseRangeQuery(searchParams, jstDateKey());
   if (!query.ok) return query.response;
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     dateRange = { start, end };
   }
 
-  const result = await queryGiftBreakdown(ctx.streamer.roomId, uniqueId, where);
+  const result = await queryGiftBreakdown(ctx.streamer.roomId, tiktokUid, where);
   return NextResponse.json(
     { ...result, dateRange },
     { headers: { "Cache-Control": "no-store" } }

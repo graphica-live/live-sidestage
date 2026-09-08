@@ -13,10 +13,15 @@ import {
   type GiftEventForContribution,
 } from "./battle-history";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
+// 集計キーは senderTiktokUid。既定ではハンドルから決定的に導いて「1ハンドル=1人」の
+// 従来ケースを再現し、改名(uid同一・ハンドル別)を試すテストだけ uid を明示的に渡す。
 function giftEvent(overrides: Partial<GiftEventForContribution>): GiftEventForContribution {
+  const handle = overrides.senderTiktokHandleSnapshot ?? "u1";
   return {
-    senderUniqueIdSnapshot: "u1",
+    senderTiktokUid: makeTiktokUid(handle),
+    senderTiktokHandleSnapshot: handle,
     senderNicknameSnapshot: "u1のnickname",
     repeatCount: 1,
     totalDiamonds: 1,
@@ -31,7 +36,7 @@ describe("aggregateGiftEventsToContributors", () => {
   it("同一送信者の複数行を合算し、nicknameは最新occurredAt行のものを採る", () => {
     const rows: GiftEventForContribution[] = [
       giftEvent({
-        senderUniqueIdSnapshot: "combo_fan",
+        senderTiktokHandleSnapshot: "combo_fan",
         senderNicknameSnapshot: "旧名",
         repeatCount: 3,
         totalDiamonds: 3,
@@ -39,7 +44,7 @@ describe("aggregateGiftEventsToContributors", () => {
         sourceGiftId: "src1",
       }),
       giftEvent({
-        senderUniqueIdSnapshot: "combo_fan",
+        senderTiktokHandleSnapshot: "combo_fan",
         senderNicknameSnapshot: "新名",
         repeatCount: 5,
         totalDiamonds: 5000,
@@ -52,7 +57,8 @@ describe("aggregateGiftEventsToContributors", () => {
     const result = aggregateGiftEventsToContributors(sorted);
     expect(result).toEqual([
       {
-        uniqueId: "combo_fan",
+        tiktokUid: makeTiktokUid("combo_fan"),
+        tiktokHandle: "combo_fan",
         nickname: "新名",
         profileImageUrl: null,
         giftCount: 8,
@@ -76,43 +82,72 @@ describe("aggregateGiftEventsToContributors", () => {
     ]);
   });
 
+  it("ハンドルを改名しても senderTiktokUid が同じなら1人として合算する", () => {
+    const uid = makeTiktokUid("renamed_fan");
+    const rows: GiftEventForContribution[] = [
+      giftEvent({
+        senderTiktokUid: uid,
+        senderTiktokHandleSnapshot: "new_handle",
+        senderNicknameSnapshot: "新名",
+        totalDiamonds: 50,
+        occurredAt: new Date("2026-09-01T00:02:00Z"),
+        sourceGiftId: "s2",
+      }),
+      giftEvent({
+        senderTiktokUid: uid,
+        senderTiktokHandleSnapshot: "old_handle",
+        senderNicknameSnapshot: "旧名",
+        totalDiamonds: 30,
+        occurredAt: new Date("2026-09-01T00:01:00Z"),
+        sourceGiftId: "s1",
+      }),
+    ];
+    const result = aggregateGiftEventsToContributors(rows);
+    expect(result).toHaveLength(1);
+    expect(result[0].tiktokUid).toBe(uid);
+    expect(result[0].totalDiamonds).toBe(80);
+    // 表示名は最新occurredAt行のスナップショットを採る。
+    expect(result[0].tiktokHandle).toBe("new_handle");
+    expect(result[0].nickname).toBe("新名");
+  });
+
   it("sourceGiftIdが重複する行は二重計上しない", () => {
     const rows: GiftEventForContribution[] = [
-      giftEvent({ senderUniqueIdSnapshot: "u1", totalDiamonds: 10, sourceGiftId: "dup" }),
-      giftEvent({ senderUniqueIdSnapshot: "u1", totalDiamonds: 10, sourceGiftId: "dup" }),
+      giftEvent({ senderTiktokHandleSnapshot: "u1", totalDiamonds: 10, sourceGiftId: "dup" }),
+      giftEvent({ senderTiktokHandleSnapshot: "u1", totalDiamonds: 10, sourceGiftId: "dup" }),
     ];
     const result = aggregateGiftEventsToContributors(rows);
     expect(result).toHaveLength(1);
     expect(result[0].totalDiamonds).toBe(10);
   });
 
-  it("totalDiamonds降順→lastGiftAt降順→uniqueId昇順でソートする", () => {
+  it("totalDiamonds降順→lastGiftAt降順→tiktokHandle昇順でソートする", () => {
     const rows: GiftEventForContribution[] = [
-      giftEvent({ senderUniqueIdSnapshot: "b", totalDiamonds: 100, sourceGiftId: "s1" }),
-      giftEvent({ senderUniqueIdSnapshot: "a", totalDiamonds: 100, sourceGiftId: "s2" }),
-      giftEvent({ senderUniqueIdSnapshot: "c", totalDiamonds: 200, sourceGiftId: "s3" }),
+      giftEvent({ senderTiktokHandleSnapshot: "b", totalDiamonds: 100, sourceGiftId: "s1" }),
+      giftEvent({ senderTiktokHandleSnapshot: "a", totalDiamonds: 100, sourceGiftId: "s2" }),
+      giftEvent({ senderTiktokHandleSnapshot: "c", totalDiamonds: 200, sourceGiftId: "s3" }),
     ];
     const result = aggregateGiftEventsToContributors(rows);
-    expect(result.map((r) => r.uniqueId)).toEqual(["c", "a", "b"]);
+    expect(result.map((r) => r.tiktokHandle)).toEqual(["c", "a", "b"]);
   });
 
   it("totalDiamondsが同値ならlastGiftAt降順で並べる", () => {
     const rows: GiftEventForContribution[] = [
       giftEvent({
-        senderUniqueIdSnapshot: "old_sender",
+        senderTiktokHandleSnapshot: "old_sender",
         totalDiamonds: 100,
         occurredAt: new Date("2026-09-01T00:00:00Z"),
         sourceGiftId: "s1",
       }),
       giftEvent({
-        senderUniqueIdSnapshot: "new_sender",
+        senderTiktokHandleSnapshot: "new_sender",
         totalDiamonds: 100,
         occurredAt: new Date("2026-09-01T00:05:00Z"),
         sourceGiftId: "s2",
       }),
     ];
     const result = aggregateGiftEventsToContributors(rows);
-    expect(result.map((r) => r.uniqueId)).toEqual(["new_sender", "old_sender"]);
+    expect(result.map((r) => r.tiktokHandle)).toEqual(["new_sender", "old_sender"]);
   });
 
   it("空配列なら空を返す", () => {
@@ -121,11 +156,11 @@ describe("aggregateGiftEventsToContributors", () => {
 });
 
 function row(hosts: string[], scores: Record<string, string>): BattleRow {
-  return { battleId: "b1", hostUserIds: hosts, hostScores: scores };
+  return { battleId: "b1", hostTiktokUids: hosts, hostScores: scores };
 }
 
 describe("mergeMaxScores", () => {
-  it("同じanchorIdは大きいほうの値を採る", () => {
+  it("同じtiktokUidは大きいほうの値を採る", () => {
     const merged = mergeMaxScores([row(["A", "B"], { A: "100", B: "50" }), row(["A", "B"], { A: "80", B: "90" })]);
     expect(merged.get("A")?.toString()).toBe("100");
     expect(merged.get("B")?.toString()).toBe("90");
@@ -138,49 +173,49 @@ describe("mergeMaxScores", () => {
 });
 
 describe("resolveBattleScore", () => {
-  it("自分のhostUserIdが未解決ならunknownを返す", () => {
+  it("自分のhostTiktokUidが未解決ならunknownを返す", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B"], { A: "10", B: "20" })],
-      selfHostUserId: null,
+      selfHostTiktokUid: null,
       selfHostTeams: {},
     });
     expect(resolved.kind).toBe("unknown");
   });
 
-  it("1vs1は消去法で相手のanchorIdとスコアを特定する(相手roomが未登録でも解決できる)", () => {
+  it("1vs1は消去法で相手のtiktokUidとスコアを特定する(相手roomが未登録でも解決できる)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B"], { A: "10", B: "20" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: {},
     });
-    expect(resolved).toMatchObject({ kind: "1v1", selfScore: "10", opponentAnchorId: "B", opponentScore: "20" });
+    expect(resolved).toMatchObject({ kind: "1v1", selfScore: "10", opponentTiktokUid: "B", opponentScore: "20" });
   });
 
   it("自分しか観測できていない場合はsoloを返す(自分のスコアは正しいので出す)", () => {
-    const resolved = resolveBattleScore({ rows: [row(["A"], { A: "10" })], selfHostUserId: "A", selfHostTeams: {} });
+    const resolved = resolveBattleScore({ rows: [row(["A"], { A: "10" })], selfHostTiktokUid: "A", selfHostTeams: {} });
     expect(resolved).toMatchObject({ kind: "solo", selfScore: "10" });
   });
 
   it("3人以上(2vs2等)でhostTeamsが無ければ自分のスコアのみ返す(敵味方を区別できないため)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: {},
     });
-    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, tiktokUids: ["A", "B", "C"], selfScore: "10" });
   });
 
-  it("観測したバトルに自分のhostUserIdが含まれていなければunknownを返す(別人のroom)", () => {
+  it("観測したバトルに自分のhostTiktokUidが含まれていなければunknownを返す(別人のroom)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["X", "Y"], { X: "10", Y: "20" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: {},
     });
     expect(resolved.kind).toBe("unknown");
   });
 
-  it("4人の2vs2バトルで実userId(大きな数字)がキーでもselfScoreが正しく解決される", () => {
-    // 実データ由来: TikTok userId は 15〜19桁の数字
+  it("4人の2vs2バトルで実tiktokUid(大きな数字)がキーでもselfScoreが正しく解決される", () => {
+    // 実データ由来: TikTok の tiktokUid は 15〜19桁の数字
     // collectHosts() 修正前はキーが「チーム番号("1"/"2")」のため selfScore が常に null になっていた
     const resolved = resolveBattleScore({
       rows: [
@@ -194,7 +229,7 @@ describe("resolveBattleScore", () => {
           }
         ),
       ],
-      selfHostUserId: "6813783089135895553",
+      selfHostTiktokUid: "6813783089135895553",
       selfHostTeams: {},
     });
     expect(resolved).toMatchObject({
@@ -217,7 +252,7 @@ describe("resolveBattleScore", () => {
           }
         ),
       ],
-      selfHostUserId: "6813783089135895553",
+      selfHostTiktokUid: "6813783089135895553",
       selfHostTeams: {
         "6813783089135895553": "1",
         "6958337949008692226": "1",
@@ -228,36 +263,36 @@ describe("resolveBattleScore", () => {
     expect(resolved).toMatchObject({
       kind: "teams",
       selfScore: "253255",
-      selfTeamAnchorIds: ["6813783089135895553", "6958337949008692226"],
-      opponentTeamAnchorIds: ["7418071357873701889", "6969117324289164290"],
+      selfTeamTiktokUids: ["6813783089135895553", "6958337949008692226"],
+      opponentTeamTiktokUids: ["7418071357873701889", "6969117324289164290"],
     });
   });
 
   it("hostTeamsが一部の参加者にしか無ければmultiにフォールバックする(バックフィル前の旧データ等)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: { A: "1", B: "2" }, // CのteamId欠損
     });
-    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10" });
+    expect(resolved).toMatchObject({ kind: "multi", participantCount: 3, tiktokUids: ["A", "B", "C"], selfScore: "10" });
   });
 
   it("hostTeamsのdistinctなteamIdが3種類以上(1vs1vs1等)なら3陣営のteamsを返す", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C"], { A: "10", B: "20", C: "30" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: { A: "1", B: "2", C: "3" },
     });
     expect(resolved).toMatchObject({
       kind: "teams",
       selfScore: "10",
-      selfTeamAnchorIds: ["A"],
+      selfTeamTiktokUids: ["A"],
       // 後方互換の左右split用。3陣営目もここでは相手側へ畳まれる。
-      opponentTeamAnchorIds: ["B", "C"],
+      opponentTeamTiktokUids: ["B", "C"],
       factions: [
-        { index: 0, isSelf: true, anchorIds: ["A"], score: "10" },
-        { index: 1, isSelf: false, anchorIds: ["B"], score: "20" },
-        { index: 2, isSelf: false, anchorIds: ["C"], score: "30" },
+        { index: 0, isSelf: true, tiktokUids: ["A"], score: "10" },
+        { index: 1, isSelf: false, tiktokUids: ["B"], score: "20" },
+        { index: 2, isSelf: false, tiktokUids: ["C"], score: "30" },
       ],
     });
   });
@@ -265,17 +300,17 @@ describe("resolveBattleScore", () => {
   it("2vs2vs2(3陣営×2人)でも陣営ごとにスコアを合算して返す", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C", "D", "E", "F"], { A: "10", B: "1", C: "20", D: "2", E: "30", F: "3" })],
-      selfHostUserId: "C",
+      selfHostTiktokUid: "C",
       selfHostTeams: { A: "1", B: "1", C: "2", D: "2", E: "3", F: "3" },
     });
     expect(resolved).toMatchObject({
       kind: "teams",
       selfScore: "20",
       factions: [
-        // 自陣が必ず index 0。残りは anchorIdList 上の初出順。
-        { index: 0, isSelf: true, anchorIds: ["C", "D"], score: "22" },
-        { index: 1, isSelf: false, anchorIds: ["A", "B"], score: "11" },
-        { index: 2, isSelf: false, anchorIds: ["E", "F"], score: "33" },
+        // 自陣が必ず index 0。残りは tiktokUidList 上の初出順。
+        { index: 0, isSelf: true, tiktokUids: ["C", "D"], score: "22" },
+        { index: 1, isSelf: false, tiktokUids: ["A", "B"], score: "11" },
+        { index: 2, isSelf: false, tiktokUids: ["E", "F"], score: "33" },
       ],
     });
   });
@@ -283,17 +318,17 @@ describe("resolveBattleScore", () => {
   it("チーム情報が無い3人以上の乱戦は1人=1陣営として全員分のスコアを返す(自分1人vs残り全員に丸めない)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C", "D"], { A: "10", B: "20", C: "30", D: "40" })],
-      selfHostUserId: "B",
+      selfHostTiktokUid: "B",
       selfHostTeams: {},
     });
     expect(resolved).toMatchObject({
       kind: "multi",
       participantCount: 4,
       factions: [
-        { index: 0, isSelf: true, anchorIds: ["B"], score: "20" },
-        { index: 1, isSelf: false, anchorIds: ["A"], score: "10" },
-        { index: 2, isSelf: false, anchorIds: ["C"], score: "30" },
-        { index: 3, isSelf: false, anchorIds: ["D"], score: "40" },
+        { index: 0, isSelf: true, tiktokUids: ["B"], score: "20" },
+        { index: 1, isSelf: false, tiktokUids: ["A"], score: "10" },
+        { index: 2, isSelf: false, tiktokUids: ["C"], score: "30" },
+        { index: 3, isSelf: false, tiktokUids: ["D"], score: "40" },
       ],
     });
   });
@@ -301,14 +336,14 @@ describe("resolveBattleScore", () => {
   it("1v1でもfactionsは2陣営の形で返る(クライアントが陣営数によらず同じ経路で描ける)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B"], { A: "10", B: "20" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: {},
     });
     expect(resolved).toMatchObject({
       kind: "1v1",
       factions: [
-        { index: 0, isSelf: true, anchorIds: ["A"], score: "10" },
-        { index: 1, isSelf: false, anchorIds: ["B"], score: "20" },
+        { index: 0, isSelf: true, tiktokUids: ["A"], score: "10" },
+        { index: 1, isSelf: false, tiktokUids: ["B"], score: "20" },
       ],
     });
   });
@@ -316,14 +351,14 @@ describe("resolveBattleScore", () => {
   it("陣営メンバーのスコアが1人も観測できていなければ陣営スコアはnull(0に丸めない)", () => {
     const resolved = resolveBattleScore({
       rows: [row(["A", "B", "C"], { A: "10" })],
-      selfHostUserId: "A",
+      selfHostTiktokUid: "A",
       selfHostTeams: { A: "1", B: "2", C: "2" },
     });
     expect(resolved).toMatchObject({
       kind: "teams",
       factions: [
-        { index: 0, isSelf: true, anchorIds: ["A"], score: "10" },
-        { index: 1, isSelf: false, anchorIds: ["B", "C"], score: null },
+        { index: 0, isSelf: true, tiktokUids: ["A"], score: "10" },
+        { index: 1, isSelf: false, tiktokUids: ["B", "C"], score: null },
       ],
     });
   });
@@ -444,16 +479,16 @@ describe("sumDiamondsPerWindow", () => {
 });
 
 describe("giftMatchesListenerQuery", () => {
-  it("uniqueIdの部分一致でマッチする(大小文字無視)", () => {
-    expect(giftMatchesListenerQuery({ uniqueId: "Taro_Tiktok", nickname: "たろう" }, "taro")).toBe(true);
+  it("tiktokHandleの部分一致でマッチする(大小文字無視)", () => {
+    expect(giftMatchesListenerQuery({ tiktokHandle: "Taro_Tiktok", nickname: "たろう" }, "taro")).toBe(true);
   });
 
   it("nicknameの部分一致でマッチする", () => {
-    expect(giftMatchesListenerQuery({ uniqueId: "xyz", nickname: "たろう推し" }, "たろう")).toBe(true);
+    expect(giftMatchesListenerQuery({ tiktokHandle: "xyz", nickname: "たろう推し" }, "たろう")).toBe(true);
   });
 
   it("どちらにも含まれなければマッチしない", () => {
-    expect(giftMatchesListenerQuery({ uniqueId: "hanako", nickname: "花子" }, "taro")).toBe(false);
+    expect(giftMatchesListenerQuery({ tiktokHandle: "hanako", nickname: "花子" }, "taro")).toBe(false);
   });
 });
 
@@ -505,45 +540,45 @@ describe("jstDateRangeToUtc", () => {
   });
 });
 
-// 左右split表示のanchorId配列。ライブ集計(buildBattleListItems)と確定処理
+// 左右split表示のtiktokUid配列。ライブ集計(buildBattleListItems)と確定処理
 // (battle-history-finalize.ts)の両方がこの関数を使うので、ここが「確定前後で表示を変えない」
 // 保証の要になる。
 describe("resolveBattleSides", () => {
   it("1v1は各サイド1人へ正規化する", () => {
     const sides = resolveBattleSides(
-      { kind: "1v1", selfScore: "10", opponentAnchorId: "B", opponentScore: "5", factions: [] },
+      { kind: "1v1", selfScore: "10", opponentTiktokUid: "B", opponentScore: "5", factions: [] },
       "A"
     );
-    expect(sides).toEqual({ selfTeamAnchorIds: ["A"], opponentTeamAnchorIds: ["B"] });
+    expect(sides).toEqual({ selfTeamTiktokUids: ["A"], opponentTeamTiktokUids: ["B"] });
   });
 
   it("teamsは解決済みのチーム分けをそのまま使う", () => {
     const sides = resolveBattleSides(
-      { kind: "teams", selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"], selfScore: "10", factions: [] },
+      { kind: "teams", selfTeamTiktokUids: ["A", "C"], opponentTeamTiktokUids: ["B", "D"], selfScore: "10", factions: [] },
       "A"
     );
-    expect(sides).toEqual({ selfTeamAnchorIds: ["A", "C"], opponentTeamAnchorIds: ["B", "D"] });
+    expect(sides).toEqual({ selfTeamTiktokUids: ["A", "C"], opponentTeamTiktokUids: ["B", "D"] });
   });
 
   it("multiは「自分1人 vs 残り全員」として埋める", () => {
     const sides = resolveBattleSides(
-      { kind: "multi", participantCount: 3, anchorIds: ["A", "B", "C"], selfScore: "10", factions: [] },
+      { kind: "multi", participantCount: 3, tiktokUids: ["A", "B", "C"], selfScore: "10", factions: [] },
       "A"
     );
-    expect(sides).toEqual({ selfTeamAnchorIds: ["A"], opponentTeamAnchorIds: ["B", "C"] });
+    expect(sides).toEqual({ selfTeamTiktokUids: ["A"], opponentTeamTiktokUids: ["B", "C"] });
   });
 
-  it("solo/unknown、および自分のanchorIdが未解決なら左右splitは作らない", () => {
+  it("solo/unknown、および自分のtiktokUidが未解決なら左右splitは作らない", () => {
     expect(resolveBattleSides({ kind: "solo", selfScore: "10" }, "A")).toEqual({
-      selfTeamAnchorIds: null,
-      opponentTeamAnchorIds: null,
+      selfTeamTiktokUids: null,
+      opponentTeamTiktokUids: null,
     });
     expect(resolveBattleSides({ kind: "unknown", selfScore: null }, "A")).toEqual({
-      selfTeamAnchorIds: null,
-      opponentTeamAnchorIds: null,
+      selfTeamTiktokUids: null,
+      opponentTeamTiktokUids: null,
     });
     expect(
-      resolveBattleSides({ kind: "1v1", selfScore: null, opponentAnchorId: "B", opponentScore: null, factions: [] }, null)
-    ).toEqual({ selfTeamAnchorIds: null, opponentTeamAnchorIds: null });
+      resolveBattleSides({ kind: "1v1", selfScore: null, opponentTiktokUid: "B", opponentScore: null, factions: [] }, null)
+    ).toEqual({ selfTeamTiktokUids: null, opponentTeamTiktokUids: null });
   });
 });

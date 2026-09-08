@@ -496,7 +496,10 @@ class CommentSpeechTaskHandler extends TaskHandler {
     FlutterForegroundTask.sendDataToMain({
       'type': 'comment',
       'streamerId': c.streamerId,
-      'uniqueId': c.uniqueId,
+      // **[Comment.tryParse] と対称に保つこと。** tiktokUid を落とすと
+      // メインisolate側の復元が丸ごと失敗し、画面にコメントが出なくなる。
+      'tiktokUid': c.tiktokUid,
+      'tiktokHandle': c.tiktokHandle,
       'nickname': c.nickname,
       'profilePictureUrl': c.profilePictureUrl,
       'comment': c.comment,

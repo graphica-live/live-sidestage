@@ -6,7 +6,7 @@
 // サーキットブレーカ。
 //
 // `fetchTiktokProfile()` はプロキシなしの単一データセンターIPで、avatar キャッシュ(閲覧契機)・
-// hostUserId 補完(event-worker)・room cleanup(日次)と**同じ枠を共用している**。
+// hostTiktokUid 補完(event-worker)・room cleanup(日次)と**同じ枠を共用している**。
 // ここが撃ちすぎると、そちらまで巻き添えでレート制限に入る。
 //
 // **判定できなかったとき(`UNVERIFIED`)も登録を拒否する(fail-closed)。** 実在しないID・
@@ -22,7 +22,7 @@ import {
   checkAccountExistence,
 } from "./tiktok-profile";
 import { normalizeTiktokId } from "./tiktok-room";
-import { isValidNormalizedTiktokId } from "./agency/params";
+import { isValidNormalizedTiktokHandle } from "./agency/params";
 
 const EMPTY_PREVIEW: TiktokAccountPreview = {
   avatarUrl: null,
@@ -81,21 +81,38 @@ export function isExistenceCheckDisabled(): boolean {
 type Entry = {
   verdict: AccountExistence;
   nickname: string | null;
-  userId: string | null;
+  tiktokUid: string | null;
   preview: TiktokAccountPreview;
   expiresAt: number;
 };
 
+export type ExistenceCheckOptions = {
+  /**
+   * `EXISTS` のキャッシュを読まず、TikTok から新鮮な応答を取る。
+   *
+   * **得られた `tiktokUid` を所有・同一性の根拠として永続化する呼び出しは必ず立てる。**
+   * このキャッシュは**ハンドルをキーに `tiktokUid` を保持する**ので、そのまま所有の根拠に使うと
+   * `TikTokUser` で禁じた「`tiktokHandle` → `tiktokUid` の逆引き表」そのものになる。
+   * A が手放したハンドルを `EXISTS_TTL_MS`(6時間)以内に B が取得すると、B の登録に A の uid が返り、
+   * **B の Streamer / 参加者が A の room へ紐付く**。接続時 uid 照合(`precheckApiLive()`)では救えない
+   * — 誤った所有紐付けは登録時点で既に成立しているため。
+   *
+   * `MISSING` の negative キャッシュと、同時要求を束ねる in-flight 重複排除は共有してよい
+   * (どちらも他人の uid を持ち回らない)。
+   */
+  skipPositiveCache?: boolean;
+};
+
 export type ExistenceChecker = {
   /** アカウントが実在するか、取れればニックネームも。**例外は投げない。** */
-  check(tiktokId: string): Promise<AccountExistenceCheck>;
+  check(tiktokHandle: string, opts?: ExistenceCheckOptions): Promise<AccountExistenceCheck>;
   /** テスト用。キャッシュしている件数。 */
   size(): number;
 };
 
 export function createExistenceChecker(options?: {
   fetchExistence?: (
-    tiktokId: string,
+    tiktokHandle: string,
     opts: { timeoutMs: number }
   ) => Promise<AccountExistenceCheck>;
   now?: () => number;
@@ -155,10 +172,10 @@ export function createExistenceChecker(options?: {
   }
 
   function remember(
-    tiktokId: string,
+    tiktokHandle: string,
     verdict: AccountExistence,
     nickname: string | null,
-    userId: string | null,
+    tiktokUid: string | null,
     preview: TiktokAccountPreview
   ): void {
     // 判定不能は覚えない。次の登録では引き直させる(状況が変わりうるため)。
@@ -168,12 +185,12 @@ export function createExistenceChecker(options?: {
     for (const [key, entry] of entries) {
       if (entry.expiresAt <= t) entries.delete(key);
     }
-    entries.delete(tiktokId);
-    entries.set(tiktokId, {
+    entries.delete(tiktokHandle);
+    entries.set(tiktokHandle, {
       verdict,
-      // MISSING に nickname/userId/preview は無いが、念のため EXISTS 以外では持ち回らない。
+      // MISSING に nickname/tiktokUid/preview は無いが、念のため EXISTS 以外では持ち回らない。
       nickname: verdict === "EXISTS" ? nickname : null,
-      userId: verdict === "EXISTS" ? userId : null,
+      tiktokUid: verdict === "EXISTS" ? tiktokUid : null,
       preview: verdict === "EXISTS" ? preview : EMPTY_PREVIEW,
       expiresAt: t + (verdict === "EXISTS" ? EXISTS_TTL_MS : MISSING_TTL_MS),
     });
@@ -184,13 +201,13 @@ export function createExistenceChecker(options?: {
     }
   }
 
-  async function load(tiktokId: string): Promise<AccountExistenceCheck> {
+  async function load(tiktokHandle: string): Promise<AccountExistenceCheck> {
     // 枠が空かないまま待ち時間を使い切ったら UNVERIFIED を返す。呼び出し元は
     // fail-closed なのでこれは「登録を拒否する」ことを意味する(通す、ではない)。
     if (!(await acquireSlot()))
-      return { verdict: "UNVERIFIED", nickname: null, userId: null, preview: EMPTY_PREVIEW };
+      return { verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: EMPTY_PREVIEW };
     try {
-      const result = await fetchExistence(tiktokId, { timeoutMs });
+      const result = await fetchExistence(tiktokHandle, { timeoutMs });
 
       if (result.verdict === "UNVERIFIED") {
         consecutiveUnverified++;
@@ -204,7 +221,7 @@ export function createExistenceChecker(options?: {
       }
 
       const preview = result.preview ?? EMPTY_PREVIEW;
-      remember(tiktokId, result.verdict, result.nickname, result.userId, preview);
+      remember(tiktokHandle, result.verdict, result.nickname, result.tiktokUid, preview);
       return { ...result, preview };
     } finally {
       releaseSlot();
@@ -212,42 +229,46 @@ export function createExistenceChecker(options?: {
   }
 
   return {
-    async check(tiktokId: string): Promise<AccountExistenceCheck> {
-      if (tiktokId.length === 0)
-        return { verdict: "UNVERIFIED", nickname: null, userId: null, preview: EMPTY_PREVIEW };
+    async check(tiktokHandle: string, opts?: ExistenceCheckOptions): Promise<AccountExistenceCheck> {
+      if (tiktokHandle.length === 0)
+        return { verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: EMPTY_PREVIEW };
 
-      const cached = entries.get(tiktokId);
-      if (cached && cached.expiresAt > now()) {
+      const cached = entries.get(tiktokHandle);
+      // 所有を確定する呼び出しは positive キャッシュを読み飛ばす(ハンドル再利用による
+      // 第三者取り違えを防ぐ)。negative(MISSING)は uid を持ち回らないので共有してよい。
+      const usableCached =
+        opts?.skipPositiveCache && cached?.verdict === "EXISTS" ? undefined : cached;
+      if (usableCached && usableCached.expiresAt > now()) {
         return {
-          verdict: cached.verdict,
-          nickname: cached.nickname,
-          userId: cached.userId,
-          preview: cached.preview,
+          verdict: usableCached.verdict,
+          nickname: usableCached.nickname,
+          tiktokUid: usableCached.tiktokUid,
+          preview: usableCached.preview,
         };
       }
 
       // 同じハンドルの取得が既に走っているなら相乗りする(枠も1つで済む)。
-      const pending = inFlight.get(tiktokId);
+      const pending = inFlight.get(tiktokHandle);
       if (pending) return pending;
 
       // ブレーカーが開いている間は外へ出さない。
       if (now() < circuitOpenUntil)
-        return { verdict: "UNVERIFIED", nickname: null, userId: null, preview: EMPTY_PREVIEW };
+        return { verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: EMPTY_PREVIEW };
 
-      const promise = load(tiktokId)
+      const promise = load(tiktokHandle)
         .catch(
           () =>
             ({
               verdict: "UNVERIFIED",
               nickname: null,
-              userId: null,
+              tiktokUid: null,
               preview: EMPTY_PREVIEW,
             }) as AccountExistenceCheck
         )
         .finally(() => {
-          inFlight.delete(tiktokId);
+          inFlight.delete(tiktokHandle);
         });
-      inFlight.set(tiktokId, promise);
+      inFlight.set(tiktokHandle, promise);
       return promise;
     },
 
@@ -267,11 +288,11 @@ export const existenceChecker: ExistenceChecker =
 if (process.env.NODE_ENV !== "production") globalForExistence.__existenceChecker = existenceChecker;
 
 export type ExistenceGateResult =
-  // `userId` は TikTok の数値 userId(anchorId)。取れないこともある(確認をスキップしたとき、
+  // `tiktokUid` は TikTok の数値 tiktokUid(tiktokUid)。取れないこともある(確認をスキップしたとき、
   // プロフィールから拾えなかったとき)。TikTok ID変更時の room 自動合流が判定材料として使う
-  // (`fillHostUserIdAtEntryIfEligible`)ので、確認と同時に取れたものをここから渡す —
+  // (`fillHostTiktokUidAtEntryIfEligible`)ので、確認と同時に取れたものをここから渡す —
   // 同じことを知るために TikTok へ2回問い合わせない。
-  | { ok: true; nickname: string | null; userId: string | null; preview: TiktokAccountPreview }
+  | { ok: true; nickname: string | null; tiktokUid: string | null; preview: TiktokAccountPreview }
   | { ok: false; reason: "MISSING" | "UNVERIFIED" };
 
 /**
@@ -283,15 +304,16 @@ export type ExistenceGateResult =
  * (`ok: true, nickname: null`)。
  */
 export async function requireExistingTiktokAccount(
-  tiktokId: string,
-  checker: ExistenceChecker = existenceChecker
+  tiktokHandle: string,
+  checker: ExistenceChecker = existenceChecker,
+  opts?: ExistenceCheckOptions
 ): Promise<ExistenceGateResult> {
   if (isExistenceCheckDisabled())
-    return { ok: true, nickname: null, userId: null, preview: EMPTY_PREVIEW };
+    return { ok: true, nickname: null, tiktokUid: null, preview: EMPTY_PREVIEW };
 
-  const result = await checker.check(tiktokId);
+  const result = await checker.check(tiktokHandle, opts);
   if (result.verdict === "EXISTS")
-    return { ok: true, nickname: result.nickname, userId: result.userId, preview: result.preview ?? EMPTY_PREVIEW };
+    return { ok: true, nickname: result.nickname, tiktokUid: result.tiktokUid, preview: result.preview ?? EMPTY_PREVIEW };
   return { ok: false, reason: result.verdict === "MISSING" ? "MISSING" : "UNVERIFIED" };
 }
 
@@ -311,19 +333,19 @@ export type ExistenceGateErrorCode = "INVALID_FORMAT" | "USER_NOT_FOUND" | "CHEC
  * **DBへは一切書き込まない**(確定は呼び出し元が別途、既存の登録APIを呼ぶ)。
  */
 export async function previewTiktokAccount(
-  rawTiktokId: string,
+  rawTiktokHandle: string,
   checker: ExistenceChecker = existenceChecker
 ): Promise<
   | {
       ok: true;
-      tiktokId: string;
+      tiktokHandle: string;
       nickname: string | null;
       preview: TiktokAccountPreview;
     }
   | { ok: false; code: ExistenceGateErrorCode }
 > {
-  const normalized = normalizeTiktokId(rawTiktokId ?? "");
-  if (!isValidNormalizedTiktokId(normalized)) {
+  const normalized = normalizeTiktokId(rawTiktokHandle ?? "");
+  if (!isValidNormalizedTiktokHandle(normalized)) {
     return { ok: false, code: "INVALID_FORMAT" };
   }
 
@@ -332,7 +354,7 @@ export async function previewTiktokAccount(
     return { ok: false, code: existence.reason === "MISSING" ? "USER_NOT_FOUND" : "CHECK_UNVERIFIED" };
   }
 
-  return { ok: true, tiktokId: normalized, nickname: existence.nickname, preview: existence.preview };
+  return { ok: true, tiktokHandle: normalized, nickname: existence.nickname, preview: existence.preview };
 }
 
 export function formatExistenceGateError(code: ExistenceGateErrorCode): { error: string; status: number } {

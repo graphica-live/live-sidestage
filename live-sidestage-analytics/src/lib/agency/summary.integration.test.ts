@@ -3,20 +3,25 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { queryRoomSummariesRaw } from "./summary";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 
 const TIKTOK_ID_A = "itest_agency_summary_a";
 const TIKTOK_ID_B = "itest_agency_summary_b";
 const TIKTOK_ID_EMPTY = "itest_agency_summary_empty";
 
+// supporterCount は tiktokUid の distinct 件数。Gift に表示名の列は無い。
+const UID_A = makeTiktokUid("itest_agency_summary_user_a");
+const UID_B = makeTiktokUid("itest_agency_summary_user_b");
+
 let roomA: string;
 let roomB: string;
 let roomEmpty: string;
 let streamerId: string;
-let userId: string;
+let principalId: string;
 
 type GiftOverrides = Partial<{
   roomId: string;
-  uniqueId: string;
+  tiktokUid: string;
   repeatCount: number;
   totalDiamonds: number;
   receivedAt: Date;
@@ -27,9 +32,7 @@ async function makeGift(overrides: GiftOverrides) {
   return prisma.gift.create({
     data: {
       roomId: roomA,
-      uniqueId: "user_a",
-      nickname: "ユーザーA",
-      profileImageUrl: null,
+      tiktokUid: UID_A,
       giftId: 1,
       giftName: "Rose",
       repeatCount: 1,
@@ -44,12 +47,26 @@ async function makeGift(overrides: GiftOverrides) {
 
 beforeAll(async () => {
   const [a, b, e] = await Promise.all([
-    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_A } }),
+    prisma.tiktokRoom.create({
+      data: { tiktokHandle: TIKTOK_ID_A, hostTiktokUid: makeTiktokUid(TIKTOK_ID_A) },
+    }),
     // B / EMPTY は Streamer も AgencyWatch も付けない集計専用の部屋。Streamer 0人でも
     // watchedRoomFilter() の監視対象になったため、monitoringSuspended: true で共有プールから
     // 外す(並行して走る listener 系テストの getMyRooms() に claim させない)。
-    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_B, monitoringSuspended: true } }),
-    prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID_EMPTY, monitoringSuspended: true } }),
+    prisma.tiktokRoom.create({
+      data: {
+        tiktokHandle: TIKTOK_ID_B,
+        hostTiktokUid: makeTiktokUid(TIKTOK_ID_B),
+        monitoringSuspended: true,
+      },
+    }),
+    prisma.tiktokRoom.create({
+      data: {
+        tiktokHandle: TIKTOK_ID_EMPTY,
+        hostTiktokUid: makeTiktokUid(TIKTOK_ID_EMPTY),
+        monitoringSuspended: true,
+      },
+    }),
   ]);
   roomA = a.id;
   roomB = b.id;
@@ -67,9 +84,9 @@ afterAll(async () => {
 
 describe("queryRoomSummariesRaw", () => {
   it("複数roomを混同せず、部屋ごとに分離して集計する", async () => {
-    await makeGift({ roomId: roomA, uniqueId: "user_a", repeatCount: 2, totalDiamonds: 20 });
-    await makeGift({ roomId: roomA, uniqueId: "user_b", repeatCount: 3, totalDiamonds: 30 });
-    await makeGift({ roomId: roomB, uniqueId: "user_a", repeatCount: 1, totalDiamonds: 7 });
+    await makeGift({ roomId: roomA, tiktokUid: UID_A, repeatCount: 2, totalDiamonds: 20 });
+    await makeGift({ roomId: roomA, tiktokUid: UID_B, repeatCount: 3, totalDiamonds: 30 });
+    await makeGift({ roomId: roomB, tiktokUid: UID_A, repeatCount: 1, totalDiamonds: 7 });
 
     const result = await queryRoomSummariesRaw([roomA, roomB], {
       from: "2026-08-15",

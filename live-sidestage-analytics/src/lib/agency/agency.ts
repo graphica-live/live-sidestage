@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizeTiktokId, upsertRoom } from "@/lib/tiktok-room";
 import { getWorkerCount, resolveWorkerForRoom } from "@/lib/tiktok-listener";
 import { type ExistenceChecker, requireExistingTiktokAccount } from "@/lib/tiktok-existence";
-import { isValidNormalizedTiktokId } from "./params";
+import { isValidNormalizedTiktokHandle } from "./params";
 
 // 企業向けAPIキーは平文で保存しない。参照は常にキー本体のSHA-256で引く。
 export function hashApiKey(apiKey: string): string {
@@ -28,7 +28,7 @@ export type AgencyRecord = {
 
 export type WatchRecord = {
   id: string;
-  tiktokId: string;
+  tiktokHandle: string;
   label: string | null;
   createdAt: string;
   listenerStatus: string | null;
@@ -140,7 +140,7 @@ export async function listWatches(agencyId: string): Promise<WatchRecord[]> {
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
-      tiktokId: true,
+      tiktokHandle: true,
       label: true,
       createdAt: true,
       room: {
@@ -151,7 +151,7 @@ export async function listWatches(agencyId: string): Promise<WatchRecord[]> {
 
   return watches.map((w) => ({
     id: w.id,
-    tiktokId: w.tiktokId,
+    tiktokHandle: w.tiktokHandle,
     label: w.label,
     createdAt: w.createdAt.toISOString(),
     listenerStatus: w.room.listenerStatus,
@@ -172,15 +172,15 @@ export type AddWatchResult =
 // 担当Workerの割当までを行い、実際のTikTok接続は担当Workerのensureループ(最大30秒間隔)が拾う。
 export async function addWatch(
   agencyId: string,
-  rawTiktokId: string,
+  rawTiktokHandle: string,
   rawLabel: string | null,
   deps: { checker?: ExistenceChecker } = {}
 ): Promise<AddWatchResult> {
-  const normalized = normalizeTiktokId(rawTiktokId ?? "");
+  const normalized = normalizeTiktokId(rawTiktokHandle ?? "");
   if (!normalized) {
     return { ok: false, code: "invalid", error: "TikTok IDを入力してください。" };
   }
-  if (!isValidNormalizedTiktokId(normalized)) {
+  if (!isValidNormalizedTiktokHandle(normalized)) {
     return {
       ok: false,
       code: "invalid",
@@ -190,7 +190,10 @@ export async function addWatch(
 
   // TikTok上に実在しないIDは監視対象に追加させない(fail-closed)。誰も配信しない部屋を
   // 無期限に監視し続ける実害を防ぐ。
-  const existence = await requireExistingTiktokAccount(normalized, deps.checker);
+  // 得られた tiktokUid を room の同一性キーとして保存するので positive キャッシュを読まない。
+  const existence = await requireExistingTiktokAccount(normalized, deps.checker, {
+    skipPositiveCache: true,
+  });
   if (!existence.ok) {
     return {
       ok: false,
@@ -202,7 +205,17 @@ export async function addWatch(
     };
   }
 
-  const room = await upsertRoom(normalized);
+  // 所有の根拠として保存するので、uid が取れない応答は通さない(§6 の登録ゲート)。
+  if (!existence.tiktokUid) {
+    return {
+      ok: false,
+      code: "unverified",
+      error: "TikTok上の実在確認ができませんでした。しばらくしてから再試行してください。",
+    };
+  }
+  const tiktokUid = existence.tiktokUid;
+
+  const room = await upsertRoom({ tiktokUid, tiktokHandle: normalized, nickname: existence.nickname });
   const label = rawLabel?.trim() || null;
 
   // 上限チェックと作成を1トランザクションに閉じる。READ COMMITTEDだと同時リクエストが
@@ -221,10 +234,10 @@ export async function addWatch(
         }
 
         return tx.agencyWatch.create({
-          data: { agencyId, roomId: room.id, tiktokId: rawTiktokId.trim(), label },
+          data: { agencyId, roomId: room.id, tiktokUid, tiktokHandle: rawTiktokHandle.trim(), label },
           select: {
             id: true,
-            tiktokId: true,
+            tiktokHandle: true,
             label: true,
             createdAt: true,
             room: {
@@ -266,7 +279,7 @@ export async function addWatch(
     ok: true,
     watch: {
       id: created.id,
-      tiktokId: created.tiktokId,
+      tiktokHandle: created.tiktokHandle,
       label: created.label,
       createdAt: created.createdAt.toISOString(),
       listenerStatus: created.room.listenerStatus,
@@ -293,8 +306,8 @@ export async function removeWatch(agencyId: string, watchId: string): Promise<bo
 
 export type WatchedRoomRef = {
   roomId: string;
-  normalizedTiktokId: string;
-  tiktokId: string;
+  normalizedTiktokHandle: string;
+  tiktokHandle: string;
   label: string | null;
   watchStartedAt: string;
   listenerStatus: string | null;
@@ -308,17 +321,17 @@ export async function listWatchedRooms(agencyId: string): Promise<WatchedRoomRef
     orderBy: { createdAt: "asc" },
     select: {
       roomId: true,
-      tiktokId: true,
+      tiktokHandle: true,
       label: true,
       createdAt: true,
-      room: { select: { tiktokId: true, listenerStatus: true, listenerUpdatedAt: true } },
+      room: { select: { tiktokHandle: true, listenerStatus: true, listenerUpdatedAt: true } },
     },
   });
 
   return watches.map((w) => ({
     roomId: w.roomId,
-    normalizedTiktokId: w.room.tiktokId,
-    tiktokId: w.tiktokId,
+    normalizedTiktokHandle: w.room.tiktokHandle,
+    tiktokHandle: w.tiktokHandle,
     label: w.label,
     watchStartedAt: w.createdAt.toISOString(),
     listenerStatus: w.room.listenerStatus,

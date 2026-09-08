@@ -367,7 +367,7 @@ function ListenerTable({
   return (
     <ul className="space-y-2">
       {rows.map((r, i) => (
-        <li key={r.listenerUniqueId} className={`border border-border bg-panel p-3 ${CARD_CLIP}`}>
+        <li key={r.listenerTiktokHandle} className={`border border-border bg-panel p-3 ${CARD_CLIP}`}>
           <div className="flex items-center gap-3">
             <RankBadge rank={i + 1} />
             {r.profileImageUrl ? (
@@ -384,7 +384,7 @@ function ListenerTable({
             )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm">{r.nickname}</p>
-              <p className="truncate font-mono text-xs text-muted">@{r.listenerUniqueId}</p>
+              <p className="truncate font-mono text-xs text-muted">@{r.listenerTiktokHandle}</p>
             </div>
             <div className="shrink-0 text-right">
               <p className="font-mono text-sm tabular-nums">

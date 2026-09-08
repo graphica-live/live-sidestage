@@ -28,7 +28,7 @@ async function main() {
       windowEnd: true,
       participants: {
         select: {
-          anchorId: true,
+          tiktokUid: true,
           roomId: true,
           captureStatus: true,
           captureCoverage: true,
@@ -46,7 +46,7 @@ async function main() {
 
   for (const p of battle.participants) {
     if (p.roomId === null) {
-      console.log(`\nanchor=${p.anchorId} (${p.nicknameSnapshot}) roomId=null -> unavailable`);
+      console.log(`\nanchor=${p.tiktokUid} (${p.nicknameSnapshot}) roomId=null -> unavailable`);
       continue;
     }
     const intervals = await prisma.roomConnectionInterval.findMany({
@@ -60,7 +60,7 @@ async function main() {
     });
     const base = coverageFromIntervals(intervals, battle.windowStart, battle.windowEnd, now);
     const rows = await prisma.tiktokBattleArmiesSnapshot.findMany({
-      where: { battleId: battle.battleId, anchorId: p.anchorId },
+      where: { battleId: battle.battleId, tiktokUid: p.tiktokUid },
       select: { occurredAt: true, score: true },
       orderBy: { occurredAt: "asc" },
     });
@@ -72,7 +72,7 @@ async function main() {
     );
 
     console.log(
-      `\nanchor=${p.anchorId} (${p.nicknameSnapshot}) stored=${p.captureStatus}/${p.captureCoverage ?? "-"}`
+      `\nanchor=${p.tiktokUid} (${p.nicknameSnapshot}) stored=${p.captureStatus}/${p.captureCoverage ?? "-"}`
     );
     console.log(`  intervals=${intervals.length} baseStatus=${base.status} baseCoverage=${base.coverage.toFixed(4)}`);
     for (const interval of intervals) {

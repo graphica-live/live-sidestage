@@ -1,6 +1,7 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // public.gifts を直接読むので、`npm run db:push:local` 済みのDBが要る。
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import { loadMatchContributions } from "./match-contributions";
 import { resolveMatchResults } from "./match-results";
@@ -27,34 +28,53 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。枠ごとの表示名は match-contributions が
+// public.tiktok_users から順引きするので、リスナーの行を先に作っておく。
+// uid の種は PREFIX 付きにして、同じハンドル名を使う他ファイルと衝突させない。
+const listenerUid = (tiktokHandle: string) => makeTiktokUid(`${PREFIX}_${tiktokHandle}`);
+const createdListenerUids = new Set<string>();
+
+async function ensureListener(tiktokHandle: string, nickname?: string): Promise<string> {
+  const tiktokUid = listenerUid(tiktokHandle);
+  const display = { tiktokHandle, nickname: nickname ?? `${tiktokHandle} nickname` };
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid },
+    create: { tiktokUid, ...display },
+    update: display,
+  });
+  createdListenerUids.add(tiktokUid);
+  return tiktokUid;
+}
+
 async function insertGift(params: {
   roomId: string;
-  uniqueId: string;
+  tiktokHandle: string;
   diamonds: number;
   receivedAt: Date;
   repeatCount?: number;
   nickname?: string;
 }) {
+  const tiktokUid = await ensureListener(params.tiktokHandle, params.nickname);
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, ${params.uniqueId},
-       ${params.nickname ?? params.uniqueId}, 5, 'Rose', ${params.repeatCount ?? 1},
+      (gen_random_uuid()::text, ${params.roomId}, ${tiktokUid},
+       5, 'Rose', ${params.repeatCount ?? 1},
        ${params.diamonds}, ${params.diamonds}, ${params.receivedAt}, '2026-09-01',
        ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -65,7 +85,7 @@ async function newEvent() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 対戦内訳テスト`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -80,13 +100,13 @@ async function newEvent() {
 }
 
 async function newParticipant(eventId: string, name: string) {
-  const tiktokId = `${PREFIX}_${name}_${uniqueSuffix()}`;
-  const roomId = await createRoom(tiktokId);
+  const tiktokHandle = `${PREFIX}_${name}_${uniqueSuffix()}`;
+  const roomId = await createRoom(tiktokHandle);
   const participant = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId, roomId, displayName: name },
+    data: { eventId, tiktokUid: makeTiktokUid(tiktokHandle), tiktokHandle, roomId, displayName: name },
     select: { id: true },
   });
-  return { id: participant.id, roomId, tiktokId };
+  return { id: participant.id, roomId, tiktokHandle };
 }
 
 async function createMatch(params: {
@@ -144,13 +164,13 @@ async function createMatch(params: {
 }
 
 /** バトル区間の内・外にギフトを1件ずつ置く。戻り値は「区間内のダイヤ」。 */
-async function seedGifts(roomId: string, uniqueId: string, insideDiamonds: number) {
+async function seedGifts(roomId: string, tiktokHandle: string, insideDiamonds: number) {
   // 区間の外(開始前・終了後)。数えてはいけない。
-  await insertGift({ roomId, uniqueId, diamonds: 999, receivedAt: new Date("2026-09-01T13:05:00.000Z") });
-  await insertGift({ roomId, uniqueId, diamonds: 999, receivedAt: new Date("2026-09-01T13:25:00.000Z") });
+  await insertGift({ roomId, tiktokHandle, diamonds: 999, receivedAt: new Date("2026-09-01T13:05:00.000Z") });
+  await insertGift({ roomId, tiktokHandle, diamonds: 999, receivedAt: new Date("2026-09-01T13:25:00.000Z") });
   await insertGift({
     roomId,
-    uniqueId,
+    tiktokHandle,
     diamonds: insideDiamonds,
     receivedAt: new Date("2026-09-01T13:15:00.000Z"),
   });
@@ -168,6 +188,9 @@ afterAll(async () => {
   for (const id of createdRoomIds) {
     await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE id = ${id}`.catch(() => {});
   }
+  await prisma.tikTokUser
+    .deleteMany({ where: { tiktokUid: { in: [...createdListenerUids] } } })
+    .catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -180,7 +203,7 @@ describe("loadMatchContributions", () => {
     await seedGifts(a.roomId, "alice", 500);
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "bob",
+      tiktokHandle: "bob",
       diamonds: 300,
       receivedAt: new Date("2026-09-01T13:16:00.000Z"),
     });
@@ -210,12 +233,12 @@ describe("loadMatchContributions", () => {
 
     // 区間外の 999 ダイヤ × 2件は入らない。
     expect(result.slots[0]).toMatchObject({ participantId: a.id, sideIndex: 0, diamonds: "800" });
-    expect(result.slots[0].listeners.map((l) => [l.uniqueId, l.diamonds])).toEqual([
+    expect(result.slots[0].listeners.map((l) => [l.tiktokHandle, l.diamonds])).toEqual([
       ["alice", "500"],
       ["bob", "300"],
     ]);
     expect(result.slots[1]).toMatchObject({ participantId: b.id, sideIndex: 1, diamonds: "400" });
-    expect(result.slots[1].listeners.map((l) => l.uniqueId)).toEqual(["carol"]);
+    expect(result.slots[1].listeners.map((l) => l.tiktokHandle)).toEqual(["carol"]);
   });
 
   it("開催日程からはみ出したぶんは数えない", async () => {
@@ -226,13 +249,13 @@ describe("loadMatchContributions", () => {
     // 日程の中(13:59)と外(14:04)にそれぞれ置く。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 100,
       receivedAt: new Date("2026-09-01T13:59:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 700,
       receivedAt: new Date("2026-09-01T14:04:00.000Z"),
     });
@@ -300,26 +323,26 @@ describe("loadMatchContributions", () => {
     // 区間は 13:10(開始) 〜 13:30(now)。開始前は入らず、now までは全部入る。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 999,
       receivedAt: new Date("2026-09-01T13:05:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 500,
       receivedAt: new Date("2026-09-01T13:15:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 300,
       receivedAt: new Date("2026-09-01T13:25:00.000Z"),
     });
     // now より後のギフトは、まだ受け取っていないので入らない。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 999,
       receivedAt: new Date("2026-09-01T13:35:00.000Z"),
     });
@@ -348,7 +371,7 @@ describe("loadMatchContributions", () => {
     // now(13:30)より後。duration から計算された将来の終了時刻。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 999,
       receivedAt: new Date("2026-09-01T13:40:00.000Z"),
     });
@@ -549,19 +572,19 @@ describe("loadMatchContributions", () => {
     // 空白のはずで、そこに置いたギフトは union に含まれてはいけない。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 100,
       receivedAt: new Date("2026-09-01T13:11:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 999,
       receivedAt: new Date("2026-09-01T13:15:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 200,
       receivedAt: new Date("2026-09-01T13:21:00.000Z"),
     });
@@ -618,19 +641,19 @@ describe("loadMatchContributions", () => {
     // resolveMatchSpans() のミラー列連続区間の挙動どおり、この空白ギフトも含まれる。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 100,
       receivedAt: new Date("2026-09-01T13:11:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 999,
       receivedAt: new Date("2026-09-01T13:15:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "alice",
+      tiktokHandle: "alice",
       diamonds: 200,
       receivedAt: new Date("2026-09-01T13:21:00.000Z"),
     });

@@ -22,8 +22,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "plan must be PRO or ULTRA" }, { status: 400 });
   }
 
-  const userId = session.user.id;
-  const ambassador = await prisma.ambassador.findUnique({ where: { userId }, select: { id: true } });
+  const principalId = session.user.id;
+  const ambassador = await prisma.ambassador.findUnique({ where: { principalId }, select: { id: true } });
 
   // アンバサダーはPROが無料特典なので、通常のPRO課金は行わせない
   // (誤って二重に支払わせないためのfail-closed)。
@@ -55,9 +55,9 @@ export async function POST(req: Request) {
   // cross-provider二重課金防止: providerを問わず、既に有効なentitlementを持つ行が
   // あれば拒否する。プラン変更はBilling Portal経由(Stripeの場合)に誘導する。
   // entitlementActive:trueだけでなく、バックフィル未実行の旧Stripe行(provider未設定)も
-  // isEntitlementRowValidのフォールバックで拾えるよう、userId一致の全行を読む。
+  // isEntitlementRowValidのフォールバックで拾えるよう、principalId一致の全行を読む。
   const activeRows = await prisma.subscription.findMany({
-    where: { userId },
+    where: { principalId },
     select: { plan: true, provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
   });
   // アンバサダーのULTRA差額アップグレードは、特典で無料になっているPROの実購読行と
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   }
 
   let link = await prisma.stripeCustomerLink.findUnique({
-    where: { userId },
+    where: { principalId },
     select: { stripeCustomerId: true },
   });
 
@@ -95,19 +95,19 @@ export async function POST(req: Request) {
   if (!customerId) {
     const customer = await stripe.customers.create({
       email: session.user.email ?? undefined,
-      metadata: { userId },
+      metadata: { principalId },
     });
     customerId = customer.id;
 
     try {
       await prisma.stripeCustomerLink.create({
-        data: { userId, stripeCustomerId: customerId },
+        data: { principalId, stripeCustomerId: customerId },
       });
     } catch (err) {
       // 同時リクエストでCustomer作成が競合した場合のP2002。孤児Customerが1件残るだけで実害はない。
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         link = await prisma.stripeCustomerLink.findUnique({
-          where: { userId },
+          where: { principalId },
           select: { stripeCustomerId: true },
         });
         customerId = link?.stripeCustomerId ?? customerId;
@@ -123,9 +123,9 @@ export async function POST(req: Request) {
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${baseUrl}/billing?checkout=success`,
     cancel_url: `${baseUrl}/billing?checkout=cancel`,
-    client_reference_id: userId,
-    metadata: { userId },
-    subscription_data: { metadata: { userId } },
+    client_reference_id: principalId,
+    metadata: { principalId },
+    subscription_data: { metadata: { principalId } },
   });
 
   if (!checkoutSession.url) {

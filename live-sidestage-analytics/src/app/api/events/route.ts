@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
           ...event,
           rules: { matchRules, bracket: { method: bracketMethod, placementDepth } },
           slug: buildEventSlug(event.title),
-          ownerUserId: session.user.id,
+          ownerPrincipalId: session.user.id,
           status: "SCHEDULED",
           // 外枠(startAt/endAt)と日程は必ず同じトランザクションで書く。
           // **新規作成では id を受け取らない**(更新APIだけが既存の id を持ち回る)。

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { findPublicParticipantTiktokId } from "@/event/public-event";
+import { findPublicParticipantTiktokUid } from "@/event/public-event";
 import { avatarCache } from "@/lib/tiktok-avatar";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
 
@@ -59,11 +59,11 @@ export async function GET(
   if (!participantId || participantId.length > MAX_ID_LENGTH) return placeholder(3600);
 
   const session = await getServerSession(authOptions);
-  const resolved = await findPublicParticipantTiktokId(participantId, session?.user?.id);
+  const resolved = await findPublicParticipantTiktokUid(participantId, session?.user?.id);
   if (!resolved) return placeholder(3600);
 
-  const snapshotted = await resolveAvatarUrls("event_participant", [resolved.tiktokId]);
-  const url = snapshotted.get(resolved.tiktokId) ?? (await avatarCache.get(resolved.tiktokId));
+  const snapshotted = await resolveAvatarUrls([resolved.tiktokUid]);
+  const url = snapshotted.get(resolved.tiktokUid) ?? null;
   if (!url) return placeholder(300);
 
   return new NextResponse(null, {

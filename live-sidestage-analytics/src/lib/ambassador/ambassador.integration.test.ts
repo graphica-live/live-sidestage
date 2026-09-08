@@ -7,7 +7,7 @@ const PREFIX = "itest_ambassador";
 let seq = 0;
 const unique = () => `${PREFIX}_${Date.now()}_${seq++}`;
 
-const userIds: string[] = [];
+const principalIds: string[] = [];
 const inviteIds: string[] = [];
 
 async function createUser(): Promise<string> {
@@ -15,15 +15,15 @@ async function createUser(): Promise<string> {
     data: { email: `${unique()}@example.test` },
     select: { id: true },
   });
-  userIds.push(user.id);
+  principalIds.push(user.id);
   return user.id;
 }
 
 afterEach(async () => {
-  await prisma.ambassador.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.ambassador.deleteMany({ where: { principalId: { in: principalIds } } });
   await prisma.ambassadorInvite.deleteMany({ where: { id: { in: inviteIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  userIds.length = 0;
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+  principalIds.length = 0;
   inviteIds.length = 0;
 });
 
@@ -31,60 +31,60 @@ describe("claimAmbassadorInviteForNewUser", () => {
   it("有効な招待を先着1名だけが消費してAmbassadorになる", async () => {
     const invite = await createInvite();
     inviteIds.push(invite.id);
-    const userId = await createUser();
+    const principalId = await createUser();
 
-    const result = await claimAmbassadorInviteForNewUser(invite.token, userId);
+    const result = await claimAmbassadorInviteForNewUser(invite.token, principalId);
     expect(result.ok).toBe(true);
 
-    const ambassador = await prisma.ambassador.findUnique({ where: { userId } });
+    const ambassador = await prisma.ambassador.findUnique({ where: { principalId } });
     expect(ambassador).not.toBeNull();
 
     const usedInvite = await prisma.ambassadorInvite.findUnique({ where: { id: invite.id } });
     expect(usedInvite?.usedAt).not.toBeNull();
-    expect(usedInvite?.usedByUserId).toBe(userId);
+    expect(usedInvite?.usedByPrincipalId).toBe(principalId);
   });
 
   it("同一招待を2人目が消費しようとすると失敗し、1人目のAmbassadorだけが残る", async () => {
     const invite = await createInvite();
     inviteIds.push(invite.id);
-    const firstUserId = await createUser();
-    const secondUserId = await createUser();
+    const firstPrincipalId = await createUser();
+    const secondPrincipalId = await createUser();
 
-    const first = await claimAmbassadorInviteForNewUser(invite.token, firstUserId);
+    const first = await claimAmbassadorInviteForNewUser(invite.token, firstPrincipalId);
     expect(first.ok).toBe(true);
 
-    const second = await claimAmbassadorInviteForNewUser(invite.token, secondUserId);
+    const second = await claimAmbassadorInviteForNewUser(invite.token, secondPrincipalId);
     expect(second.ok).toBe(false);
     if (!second.ok) expect(second.reason).toBe("invalid_or_used");
 
-    const secondAmbassador = await prisma.ambassador.findUnique({ where: { userId: secondUserId } });
+    const secondAmbassador = await prisma.ambassador.findUnique({ where: { principalId: secondPrincipalId } });
     expect(secondAmbassador).toBeNull();
   });
 
   it("期限切れの招待はclaimできない", async () => {
     const invite = await createInvite(-1);
     inviteIds.push(invite.id);
-    const userId = await createUser();
+    const principalId = await createUser();
 
-    const result = await claimAmbassadorInviteForNewUser(invite.token, userId);
+    const result = await claimAmbassadorInviteForNewUser(invite.token, principalId);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("invalid_or_used");
   });
 
   it("存在しないtokenはclaimできない", async () => {
-    const userId = await createUser();
-    const result = await claimAmbassadorInviteForNewUser("nonexistent-token", userId);
+    const principalId = await createUser();
+    const result = await claimAmbassadorInviteForNewUser("nonexistent-token", principalId);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("invalid_or_used");
   });
 
-  it("既にAmbassadorのuserIdが別の招待をclaimしようとすると招待は未消費のまま残る", async () => {
+  it("既にAmbassadorのprincipalIdが別の招待をclaimしようとすると招待は未消費のまま残る", async () => {
     const invite = await createInvite();
     inviteIds.push(invite.id);
-    const userId = await createUser();
-    await prisma.ambassador.create({ data: { userId } });
+    const principalId = await createUser();
+    await prisma.ambassador.create({ data: { principalId } });
 
-    const result = await claimAmbassadorInviteForNewUser(invite.token, userId);
+    const result = await claimAmbassadorInviteForNewUser(invite.token, principalId);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("already_ambassador");
 
@@ -113,17 +113,17 @@ describe("addAmbassadorByEmail", () => {
   it("前後空白・大文字混在のメールアドレスも正規化して既存ユーザーを見つける", async () => {
     const email = `${unique()}@example.test`;
     const user = await prisma.user.create({ data: { email }, select: { id: true } });
-    userIds.push(user.id);
+    principalIds.push(user.id);
 
     const result = await addAmbassadorByEmail(`  ${email.toUpperCase()}  `);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.ambassador.userId).toBe(user.id);
+    if (result.ok) expect(result.ambassador.principalId).toBe(user.id);
   });
 
   it("既にアンバサダーのユーザーを重複追加しようとするとduplicateを返す", async () => {
     const email = `${unique()}@example.test`;
     const user = await prisma.user.create({ data: { email }, select: { id: true } });
-    userIds.push(user.id);
+    principalIds.push(user.id);
 
     const first = await addAmbassadorByEmail(email);
     expect(first.ok).toBe(true);

@@ -3,14 +3,15 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { POST } from "./route";
 
 const TIKTOK_ID = "itest_mobile_battle_share";
 const OTHER_TIKTOK_ID = "itest_mobile_battle_share_other";
 
-let userId: string;
+let principalId: string;
 let roomId: string;
-let noRoomUserId: string;
+let noRoomPrincipalId: string;
 let token: string;
 let noRoomToken: string;
 let otherRoomId: string;
@@ -30,36 +31,43 @@ function makeBattleHistoryData(roomId: string, battleId: string) {
 }
 
 beforeAll(async () => {
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID, hostUserId: "itest_host_self" } });
+  const room = await prisma.tiktokRoom.create({ data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: makeTiktokUid(TIKTOK_ID) } });
   roomId = room.id;
 
   const otherRoom = await prisma.tiktokRoom.create({
-    data: { tiktokId: OTHER_TIKTOK_ID, hostUserId: "itest_host_other" },
+    data: { tiktokHandle: OTHER_TIKTOK_ID, hostTiktokUid: makeTiktokUid(OTHER_TIKTOK_ID) },
   });
   otherRoomId = otherRoom.id;
 
   const user = await prisma.user.create({
     data: { email: `itest-mobile-battle-share-${Date.now()}@local.test` },
   });
-  userId = user.id;
+  principalId = user.id;
   await prisma.streamer.create({
-    data: { userId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId,
+      tiktokUid: makeTiktokUid(TIKTOK_ID),
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
-  token = signMobileToken({ userId });
+  token = signMobileToken({ principalId });
 
   const noRoom = await prisma.user.create({
     data: { email: `itest-mobile-battle-share-noroom-${Date.now()}@local.test` },
   });
-  noRoomUserId = noRoom.id;
-  noRoomToken = signMobileToken({ userId: noRoomUserId });
+  noRoomPrincipalId = noRoom.id;
+  noRoomToken = signMobileToken({ principalId: noRoomPrincipalId });
 
   await prisma.battleHistory.create({ data: makeBattleHistoryData(roomId, "itest-battle-s1") });
   await prisma.battleHistory.create({ data: makeBattleHistoryData(otherRoomId, "itest-battle-s2") });
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> BattleHistory
   await prisma.tiktokRoom.delete({ where: { id: otherRoomId } }).catch(() => {});
   await prisma.$disconnect();

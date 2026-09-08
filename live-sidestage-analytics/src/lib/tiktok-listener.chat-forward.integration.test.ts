@@ -15,6 +15,7 @@ vi.hoisted(() => {
 });
 
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { startListener, stopListener } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
@@ -24,7 +25,7 @@ const { MockConnection } = vi.hoisted(() => {
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -46,14 +47,14 @@ const { MockConnection } = vi.hoisted(() => {
 });
 
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null }),
   },
 }));
 
@@ -74,10 +75,10 @@ function newMsgId() {
   return `76766394758793${String(10000 + seq).slice(-5)}`;
 }
 
-/** 同じ tiktokId を購読する Streamer を subscriberCount 人ぶん作り、listener を張る。 */
+/** 同じ tiktokHandle を購読する Streamer を subscriberCount 人ぶん作り、listener を張る。 */
 async function setupRoom(label: string, subscriberCount: number) {
-  const tiktokId = `itest_chatfwd_${label}_${suffix()}`;
-  const userIds: string[] = [];
+  const tiktokHandle = `itest_chatfwd_${label}_${suffix()}`;
+  const principalIds: string[] = [];
   const streamerIds: string[] = [];
   for (let i = 0; i < subscriberCount; i++) {
     const user = await prisma.user.create({
@@ -85,32 +86,37 @@ async function setupRoom(label: string, subscriberCount: number) {
     });
     const streamer = await prisma.streamer.create({
       data: {
-        userId: user.id,
-        tiktokId,
+        principalId: user.id,
+        // room の同一性は uid。ハンドルから決定的に導いて「同じハンドル = 同じ配信者」を保つ。
+        tiktokUid: makeTiktokUid(tiktokHandle),
+        tiktokHandle,
         verificationCode: `itest-${suffix()}`,
         verified: true,
       },
     });
-    userIds.push(user.id);
+    principalIds.push(user.id);
     streamerIds.push(streamer.id);
   }
   const roomId = await resolveRoomForStreamer(streamerIds[0]);
-  await startListener(roomId, tiktokId, streamerIds);
+  await startListener(roomId, tiktokHandle, streamerIds);
   const conn = MockConnection.instances[MockConnection.instances.length - 1];
   expect(conn).toBeDefined();
-  return { tiktokId, userIds, streamerIds, roomId, conn };
+  return { tiktokHandle, principalIds, streamerIds, roomId, conn };
 }
 
-async function teardownRoom(ctx: { roomId: string; userIds: string[] }) {
+async function teardownRoom(ctx: { roomId: string; principalIds: string[] }) {
   await stopListener(ctx.roomId);
-  for (const userId of ctx.userIds) {
-    await prisma.user.delete({ where: { id: userId } }).catch(() => {});
+  for (const principalId of ctx.principalIds) {
+    await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
   }
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }
 
+// TLC の生 payload。キー名は TikTok 側の仕様(userId / uniqueId)で、
+// sidestage の語彙(tiktokUid / tiktokHandle)へ変換するのは tiktok-listener.ts の仕事。
 function chatEvent(msgId: string | null, comment: string) {
   return {
+    userId: makeTiktokUid("listener_a"),
     uniqueId: "listener_a",
     nickname: "リスナーA",
     comment,

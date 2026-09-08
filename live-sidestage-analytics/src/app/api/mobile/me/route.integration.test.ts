@@ -45,14 +45,14 @@ describe("GET /api/mobile/me", () => {
   });
 
   it("DBに存在しないUserのトークンは401(削除済みUser対策)", async () => {
-    const token = signMobileToken({ userId: `${PREFIX}deleted-user` });
+    const token = signMobileToken({ principalId: `${PREFIX}deleted-user` });
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
     expect(response.status).toBe(401);
   });
 
   it("β無効・Subscription無しはFREE、mobileBetaActive=false", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}free@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
     const body = await response.json();
@@ -72,7 +72,7 @@ describe("GET /api/mobile/me", () => {
 
   it("mobileβ有効でもSubscription無しならplanはFREEのまま、planLabelだけβFREEになる", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}beta@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
     await setSetting(betaSettingKey("mobile"), "true");
 
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
@@ -87,7 +87,7 @@ describe("GET /api/mobile/me", () => {
 
   it("analyticsβ有効ならFREEでもmobile.history.extendedRangeが解放される(実プランはFREEのまま)", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}analytics-beta@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
     await setSetting(betaSettingKey("analytics"), "true");
 
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
@@ -104,14 +104,14 @@ describe("GET /api/mobile/me", () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}pro@local.test` } });
     await prisma.subscription.create({
       data: {
-        userId: user.id,
+        principalId: user.id,
         plan: "PRO",
         provider: "STRIPE",
         providerSubscriptionId: `${PREFIX}sub-pro`,
         entitlementActive: true,
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
     const body = await response.json();
@@ -122,7 +122,7 @@ describe("GET /api/mobile/me", () => {
 
   it("mobileMinSupportedVersion/mobileMaintenanceModeをAppSettingから反映する", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}settings@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
     await setSetting(MOBILE_MIN_SUPPORTED_VERSION_SETTING, "2.1.0");
     await setSetting(MOBILE_LATEST_VERSION_SETTING, "2.3.0");
     await setSetting(MOBILE_MAINTENANCE_MODE_SETTING, "true");
@@ -139,7 +139,7 @@ describe("GET /api/mobile/me", () => {
 describe("GET /api/mobile/entitlement/probe (requireFeatureの実証)", () => {
   it("FREEプランは403", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}probe-free@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await probeGet(authedRequest("https://example.test/api/mobile/entitlement/probe", token));
 
@@ -148,7 +148,7 @@ describe("GET /api/mobile/entitlement/probe (requireFeatureの実証)", () => {
 
   it("mobileβが有効でもbetaArea未設定の機能は403のまま(betaAccessのULTRA昇格は廃止済み)", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}probe-mobilebeta@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
     await setSetting(betaSettingKey("mobile"), "true");
 
     const response = await probeGet(authedRequest("https://example.test/api/mobile/entitlement/probe", token));
@@ -160,14 +160,14 @@ describe("GET /api/mobile/entitlement/probe (requireFeatureの実証)", () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}probe-pro@local.test` } });
     await prisma.subscription.create({
       data: {
-        userId: user.id,
+        principalId: user.id,
         plan: "PRO",
         provider: "STRIPE",
         providerSubscriptionId: `${PREFIX}sub-probe-pro`,
         entitlementActive: true,
       },
     });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     const response = await probeGet(authedRequest("https://example.test/api/mobile/entitlement/probe", token));
 
@@ -176,7 +176,7 @@ describe("GET /api/mobile/entitlement/probe (requireFeatureの実証)", () => {
 
   it("Flutter側でボタンを隠しただけでは意味がないことの実証: トークンさえあればプラン不足は必ずサーバー側で弾かれる", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}probe-direct@local.test` } });
-    const token = signMobileToken({ userId: user.id });
+    const token = signMobileToken({ principalId: user.id });
 
     // クライアント側の分岐を一切経由せず、直接APIへ到達した想定。
     const response = await probeGet(authedRequest("https://example.test/api/mobile/entitlement/probe", token));

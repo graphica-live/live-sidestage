@@ -5,7 +5,14 @@ import '../core/url_validation.dart';
 /// バトル履歴タブの貢献者展開でも同じ形状のデータが返るため、専用モデルを
 /// 作らずこれを再利用する(サーバー側 `GiftAnalyticsUser` に対応)。
 class GiftRankingEntry {
-  final String uniqueId;
+  /// TikTokの不変な数値ID。集計・同一性・リストkeyはこれ。
+  final String tiktokUid;
+
+  /// 本人が変更できる @ハンドル。**TikTokUser 行が無ければサーバーは null を返す**ので
+  /// nullable。プロフィール導線はこれが null のときに出さない。
+  final String? tiktokHandle;
+
+  /// 表示名。サーバーの nickname が無ければ tiktokHandle → tiktokUid の順で埋める。
   final String nickname;
   final String? profileImageUrl;
   final int giftCount;
@@ -13,7 +20,8 @@ class GiftRankingEntry {
   final DateTime? lastGiftAt;
 
   const GiftRankingEntry({
-    required this.uniqueId,
+    required this.tiktokUid,
+    this.tiktokHandle,
     required this.nickname,
     this.profileImageUrl,
     required this.giftCount,
@@ -23,16 +31,19 @@ class GiftRankingEntry {
 
   static GiftRankingEntry? tryParse(Object? value) {
     if (value is! Map) return null;
-    final uniqueId = value['uniqueId'];
-    if (uniqueId is! String || uniqueId.isEmpty) return null;
+    final tiktokUid = value['tiktokUid'];
+    if (tiktokUid is! String || tiktokUid.isEmpty) return null;
 
+    final rawHandle = value['tiktokHandle'];
+    final tiktokHandle = rawHandle is String && rawHandle.isNotEmpty ? rawHandle : null;
     final nickname = value['nickname'];
     final giftCount = value['giftCount'];
     final totalDiamonds = value['totalDiamonds'];
 
     return GiftRankingEntry(
-      uniqueId: uniqueId,
-      nickname: nickname is String && nickname.isNotEmpty ? nickname : uniqueId,
+      tiktokUid: tiktokUid,
+      tiktokHandle: tiktokHandle,
+      nickname: nickname is String && nickname.isNotEmpty ? nickname : (tiktokHandle ?? tiktokUid),
       profileImageUrl: parseImageUrl(value['profileImageUrl']),
       giftCount: giftCount is int ? giftCount : 0,
       totalDiamonds: totalDiamonds is int ? totalDiamonds : 0,

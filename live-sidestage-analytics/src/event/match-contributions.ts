@@ -4,6 +4,7 @@ import {
   type DbClient,
   type ListenerProfile,
 } from "./analytics-db";
+import { resolveAvatarUrls } from "@/lib/avatar-storage";
 import { resolveGroupedMatchSpans, resolveMatchSpans, type MatchSpanResult } from "./match-spans";
 import { resolveEventWindows, type EventWindow } from "./sessions";
 import {
@@ -17,14 +18,14 @@ import {
 // 対戦1件のリスナー貢献を、**枠(出場している配信枠 = EventParticipant)ごと**に集計する。
 //
 // `match-results.ts` の `scoreSides()` と同じ区間・同じ倍率で数えるが、集計キーが
-// `sideId` ではなく `participantId × uniqueId` になる。2vs2 なら1サイドが2枠に割れる。
+// `sideId` ではなく `participantId × tiktokHandle` になる。2vs2 なら1サイドが2枠に割れる。
 //
 // **DB へは書かない。** 主催者がモーダルを開いたときだけ走るオンデマンド集計で、
 // `EventContribution` のスナップショット(10秒ごとの全置換)には載せていない。
 // 対戦ごとに scope を作ると 32人トーナメントで 31対戦 × 2枠 = 62 scope を毎周
 // 入れ替えることになり、閲覧頻度に対して割に合わないため。
 //
-// **バトルスコア(TikTok の hostScore)はここでは出せない。** あれは配信者(anchorId)
+// **バトルスコア(TikTok の hostScore)はここでは出せない。** あれは配信者(tiktokUid)
 // 単位でしか配信されず、リスナー別の内訳が payload に存在しない。サイド合計としてなら
 // `battle-score.ts` が出せるので、UI 側が `MatchSlotRow.sideIndex` で突き合わせる。
 
@@ -42,8 +43,10 @@ const UNCONFIRMED_STATUSES = new Set(["NEEDS_REVIEW", "VOID"]);
 export type Bucket = { diamonds: bigint; points: bigint; giftCount: number };
 
 export type MatchListenerRow = {
-  uniqueId: string;
-  nickname: string;
+  /** 同一性キー。TikTok の不変な数値ID */
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   /** BigInt を JSON へ載せられないので文字列 */
   diamonds: string;
@@ -55,7 +58,7 @@ export type MatchListenerRow = {
 export type MatchSlotRow = {
   participantId: string;
   displayName: string;
-  tiktokId: string;
+  tiktokHandle: string;
   /** どちらのサイドの枠か。列の並び順と、バトルスコアの突き合わせに使う */
   sideIndex: number;
   diamonds: string;
@@ -79,7 +82,7 @@ export type MatchContributionResult =
 export type SlotInput = {
   participantId: string;
   displayName: string;
-  tiktokId: string;
+  tiktokHandle: string;
   sideIndex: number;
 };
 
@@ -94,7 +97,7 @@ function addTo(map: Map<string, Bucket>, key: string, add: Bucket) {
   cur.giftCount += add.giftCount;
 }
 
-/** ポイント降順 → ダイヤ降順 → uniqueId 昇順。順位表(`assignRanks`)と同じ基準に揃える。 */
+/** ポイント降順 → ダイヤ降順 → tiktokHandle 昇順。順位表(`assignRanks`)と同じ基準に揃える。 */
 function compareListeners(a: [string, Bucket], b: [string, Bucket]): number {
   if (a[1].points !== b[1].points) return a[1].points > b[1].points ? -1 : 1;
   if (a[1].diamonds !== b[1].diamonds) return a[1].diamonds > b[1].diamonds ? -1 : 1;
@@ -111,7 +114,8 @@ function compareListeners(a: [string, Bucket], b: [string, Bucket]): number {
 export function buildSlotRows(
   slots: SlotInput[],
   byParticipant: Map<string, Map<string, Bucket>>,
-  profiles: Map<string, ListenerProfile>
+  profiles: Map<string, ListenerProfile>,
+  avatars: Map<string, string> = new Map()
 ): MatchSlotRow[] {
   const seen = new Set<string>();
   const out: MatchSlotRow[] = [];
@@ -137,16 +141,16 @@ export function buildSlotRows(
     out.push({
       participantId: slot.participantId,
       displayName: slot.displayName,
-      tiktokId: slot.tiktokId,
+      tiktokHandle: slot.tiktokHandle,
       sideIndex: slot.sideIndex,
       diamonds: diamonds.toString(),
       points: formatScaledPoints(points),
       giftCount,
-      listeners: rows.map(([uniqueId, bucket]) => ({
-        uniqueId,
-        // 名前を解決できないリスナーは uniqueId をそのまま出す(`buildContributionRows` と同じ)。
-        nickname: profiles.get(uniqueId)?.nickname ?? uniqueId,
-        profileImageUrl: profiles.get(uniqueId)?.profileImageUrl ?? null,
+      listeners: rows.map(([tiktokUid, bucket]) => ({
+        tiktokUid,
+        tiktokHandle: profiles.get(tiktokUid)?.tiktokHandle ?? null,
+        nickname: profiles.get(tiktokUid)?.nickname ?? null,
+        profileImageUrl: avatars.get(tiktokUid) ?? null,
         diamonds: bucket.diamonds.toString(),
         points: formatScaledPoints(bucket.points),
         giftCount: bucket.giftCount,
@@ -185,7 +189,7 @@ export async function loadMatchContributions(
           participants: {
             select: {
               participant: {
-                select: { id: true, displayName: true, tiktokId: true, roomId: true },
+                select: { id: true, displayName: true, tiktokHandle: true, roomId: true },
               },
             },
           },
@@ -242,7 +246,7 @@ export async function loadMatchContributions(
       slots.push({
         participantId: entry.participant.id,
         displayName: entry.participant.displayName,
-        tiktokId: entry.participant.tiktokId,
+        tiktokHandle: entry.participant.tiktokHandle,
         sideIndex: side.sideIndex,
       });
       roomToParticipant.set(entry.participant.roomId, entry.participant.id);
@@ -314,7 +318,7 @@ export async function loadMatchContributions(
           map = new Map<string, Bucket>();
           byParticipant.set(participantId, map);
         }
-        addTo(map, row.uniqueId, {
+        addTo(map, row.tiktokUid, {
           diamonds: row.diamonds,
           points: scaledPoints(row.diamonds, segment.scaledFactor),
           giftCount: row.giftCount,
@@ -323,14 +327,14 @@ export async function loadMatchContributions(
     }
   }
 
-  // 表示名とアイコンは倍率と無関係なので、区間を分けず1回だけ引く。
-  // spans は日程順に並んでいるので、先頭の開始 〜 末尾の終了で覆える
-  // (日程をまたいだ隙間ぶんを余分に拾うが、`buildSlotRows` が捨てるだけ)。
-  const profiles = await fetchListenerProfiles(client, {
-    roomIds,
-    start: span.spans[0].start,
-    end: span.spans[span.spans.length - 1].end,
-  });
+  // 表示名は TikTokUser から tiktokUid で順引きし、アイコンは TiktokAvatarAsset から解決する。
+  const observedTiktokUids = [
+    ...new Set([...byParticipant.values()].flatMap((m) => [...m.keys()])),
+  ];
+  const [profiles, avatars] = await Promise.all([
+    fetchListenerProfiles(client, { tiktokUids: observedTiktokUids }),
+    resolveAvatarUrls(observedTiktokUids),
+  ]);
 
   return {
     status: "ok",
@@ -338,6 +342,6 @@ export async function loadMatchContributions(
     provisional: span.provisional,
     unconfirmed,
     hasMultiplier,
-    slots: buildSlotRows(slots, byParticipant, profiles),
+    slots: buildSlotRows(slots, byParticipant, profiles, avatars),
   };
 }

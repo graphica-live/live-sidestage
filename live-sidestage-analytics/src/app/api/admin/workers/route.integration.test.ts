@@ -2,6 +2,7 @@
 // buildWorkerReport() 自体のロジックは対象外(既存カバレッジ)。ここでは今回追加した
 // adminRoomList のレスポンス契約と、取得失敗時にレスポンス全体を落とさないフォールバックのみ固定する。
 import { describe, it, expect, afterAll, vi } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import { ADMIN_EMAIL } from "@/lib/admin";
 
@@ -16,7 +17,7 @@ const { GET } = await import("./route");
 
 const roomIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestwapi${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
@@ -33,8 +34,9 @@ describe("GET /api/admin/workers", () => {
 
   it("adminRoomListにworkerId割当済みroomが含まれ、weeklyEulerSignUsageCountが数値で返る", async () => {
     auth.email = ADMIN_EMAIL;
+    const handle = tiktokHandle("r");
     const room = await prisma.tiktokRoom.create({
-      data: { tiktokId: tiktokId("r"), workerId: 0 },
+      data: { tiktokHandle: handle, hostTiktokUid: makeTiktokUid(handle), workerId: 0 },
       select: { id: true },
     });
     roomIds.push(room.id);

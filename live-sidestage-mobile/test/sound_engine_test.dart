@@ -74,14 +74,15 @@ GiftEvent gift({
   int delta = 1,
   bool isCombo = false,
   String? comboId,
-  String uniqueId = 'user_a',
+  String tiktokUid = '7000000000000000001',
   bool baselineReset = false,
   int repeatCount = 1,
 }) {
   return GiftEvent(
     streamerId: 's',
-    uniqueId: uniqueId,
-    nickname: uniqueId,
+    tiktokUid: tiktokUid,
+    tiktokHandle: 'user_a',
+    nickname: 'user_a',
     profilePictureUrl: null,
     giftName: giftName,
     giftId: 'g1',

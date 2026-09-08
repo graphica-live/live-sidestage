@@ -2,7 +2,8 @@ import 'gift_ranking_entry.dart';
 
 /// 陣営内1参加者分の貢献者内訳。サーバーの`BattleTeamParticipantContributors`と対応する。
 class BattleTeamParticipantContributors {
-  final String anchorId;
+  /// TikTokの不変な数値ID。参加者セレクタの選択キー。
+  final String tiktokUid;
   final String displayName;
   final String? captureStatus;
   final String? partialNote;
@@ -11,7 +12,7 @@ class BattleTeamParticipantContributors {
   final List<GiftRankingEntry> contributors;
 
   const BattleTeamParticipantContributors({
-    required this.anchorId,
+    required this.tiktokUid,
     required this.displayName,
     this.captureStatus,
     this.partialNote,
@@ -22,15 +23,15 @@ class BattleTeamParticipantContributors {
 
   static BattleTeamParticipantContributors? tryParse(Object? value) {
     if (value is! Map) return null;
-    final anchorId = value['anchorId'];
-    if (anchorId is! String || anchorId.isEmpty) return null;
+    final tiktokUid = value['tiktokUid'];
+    if (tiktokUid is! String || tiktokUid.isEmpty) return null;
     final displayName = value['displayName'];
     final observedGiftTotal = value['observedGiftTotal'];
     final contributors = value['contributors'];
 
     return BattleTeamParticipantContributors(
-      anchorId: anchorId,
-      displayName: displayName is String && displayName.isNotEmpty ? displayName : anchorId,
+      tiktokUid: tiktokUid,
+      displayName: displayName is String && displayName.isNotEmpty ? displayName : tiktokUid,
       captureStatus: value['captureStatus'] as String?,
       partialNote: value['partialNote'] as String?,
       battleScore: value['battleScore'] as String?,

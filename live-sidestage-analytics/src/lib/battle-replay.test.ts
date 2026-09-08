@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { isReplayable, buildPayload, type ReplayRow } from "./battle-replay";
 import { MAX_REPLAY_EVENTS } from "./battle-replay-contract";
+import { makeTiktokUid } from "./__fixtures__/gift";
+
+// 同一性キーは tiktokUid。ハンドル(self_id / fan_a 等)は表示用スナップショットにすぎない。
+const SELF_UID = makeTiktokUid("anchor_self");
+const SELF2_UID = makeTiktokUid("anchor_self2");
+const OPP_UID = makeTiktokUid("anchor_opp");
 
 const WINDOW_START = new Date("2026-09-07T20:00:00.000Z");
 const WINDOW_END = new Date("2026-09-07T20:05:00.000Z");
@@ -62,14 +68,13 @@ function participant(
 ): ReplayRow["participants"][number] {
   return {
     id: "p1",
-    anchorId: "anchor_self",
+    tiktokUid: SELF_UID,
     teamIndex: 0,
     position: 0,
     side: "self",
     isSelf: true,
-    nickName: "自分",
-    displayId: "self_id",
-    tiktokId: "self_id",
+    nicknameSnapshot: "自分",
+    tiktokHandleSnapshot: "self_id",
     score: "100",
     officialScore: "100",
     battleTeamId: null,
@@ -82,7 +87,8 @@ function giftEvent(
   overrides: Partial<ReplayRow["participants"][number]["giftEvents"][number]> = {}
 ): ReplayRow["participants"][number]["giftEvents"][number] {
   return {
-    senderUniqueIdSnapshot: "fan_a",
+    senderTiktokUid: makeTiktokUid("fan_a"),
+    senderTiktokHandleSnapshot: "fan_a",
     senderNicknameSnapshot: "ファンA",
     repeatCount: 1,
     totalDiamonds: 100,
@@ -109,11 +115,11 @@ function row(overrides: Partial<ReplayRow> = {}): ReplayRow {
     openingWindowEndedAt: null,
     participants: [
       participant(),
-      participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent", nickName: "相手", displayId: "opp_id", tiktokId: "opp_id", score: "50", officialScore: "50" }),
+      participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent", nicknameSnapshot: "相手", tiktokHandleSnapshot: "opp_id", score: "50", officialScore: "50" }),
     ],
     scorePoints: [
-      { anchorId: "anchor_self", offsetMs: 0, score: "0" },
-      { anchorId: "anchor_opp", offsetMs: 0, score: "0" },
+      { tiktokUid: SELF_UID, offsetMs: 0, score: "0" },
+      { tiktokUid: OPP_UID, offsetMs: 0, score: "0" },
     ],
     bonusMissions: [],
     teams: [],
@@ -127,7 +133,7 @@ const NO_CATALOG = new Map<number, { labelJa: string | null; imageUrl: string | 
 describe("buildPayload", () => {
   it("anchors は陣営順・位置順の平坦化で、scorePoints はその添字を指す", () => {
     const payload = buildPayload(row(), "private", NO_AVATARS, NO_AVATARS, NO_CATALOG);
-    expect(payload.anchors).toEqual(["anchor_self", "anchor_opp"]);
+    expect(payload.anchors).toEqual([SELF_UID, OPP_UID]);
     expect(payload.scorePoints).toEqual([
       { t: 0, a: 0, s: "0" },
       { t: 0, a: 1, s: "0" },
@@ -145,7 +151,7 @@ describe("buildPayload", () => {
               // 同じ groupId でも別ギフトなら別カード(groupId の再利用で畳み込まれない)
               giftEvent({ senderGroupId: "g1", giftId: 5269, giftNameSnapshot: "Galaxy", occurredAt: new Date(WINDOW_START.getTime() + 12_000) }),
               // 別の送信者も別カード
-              giftEvent({ senderGroupId: "g1", senderUniqueIdSnapshot: "fan_b", occurredAt: new Date(WINDOW_START.getTime() + 13_000) }),
+              giftEvent({ senderGroupId: "g1", senderTiktokUid: makeTiktokUid("fan_b"), senderTiktokHandleSnapshot: "fan_b", occurredAt: new Date(WINDOW_START.getTime() + 13_000) }),
               // "0" は combo 判定に使えないので単発扱い
               giftEvent({ senderGroupId: "0", occurredAt: new Date(WINDOW_START.getTime() + 14_000) }),
               giftEvent({ senderGroupId: "0", occurredAt: new Date(WINDOW_START.getTime() + 15_000) }),
@@ -189,9 +195,9 @@ describe("buildPayload", () => {
     expect(payload.giftEvents.map((e) => e.m)).toEqual([2, null, 0]);
   });
 
-  it("participant として存在しない anchorId のスコア点は落とす", () => {
+  it("participant として存在しない tiktokUid のスコア点は落とす", () => {
     const payload = buildPayload(
-      row({ scorePoints: [{ anchorId: "anchor_ghost", offsetMs: 0, score: "1" }] }),
+      row({ scorePoints: [{ tiktokUid: "anchor_ghost", offsetMs: 0, score: "1" }] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -207,7 +213,7 @@ describe("buildPayload", () => {
           participant({
             giftEvents: [giftEvent(), giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + 20_000) })],
           }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent", giftEvents: [] }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent", giftEvents: [] }),
         ],
       }),
       "private",
@@ -226,7 +232,7 @@ describe("buildPayload", () => {
   it("ギフト表示名は labelJa を優先し、無ければ確定時のスナップショット名へ落ちる", () => {
     const catalog = new Map([[5655, { labelJa: "バラ", imageUrl: "https://example.test/rose.png" }]]);
     const withJa = buildPayload(
-      row({ participants: [participant({ giftEvents: [giftEvent()] }), participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 })] }),
+      row({ participants: [participant({ giftEvents: [giftEvent()] }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -235,7 +241,7 @@ describe("buildPayload", () => {
     expect(withJa.gifts[0]).toEqual({ id: 5655, n: "バラ", img: "https://example.test/rose.png" });
 
     const withoutJa = buildPayload(
-      row({ participants: [participant({ giftEvents: [giftEvent()] }), participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 })] }),
+      row({ participants: [participant({ giftEvents: [giftEvent()] }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -250,11 +256,11 @@ describe("buildPayload", () => {
         participants: [
           participant({
             giftEvents: [
-              giftEvent({ occurredAt: new Date(WINDOW_START.getTime() - 5_000), senderUniqueIdSnapshot: "early", senderNicknameSnapshot: "早" }),
-              giftEvent({ occurredAt: new Date(WINDOW_END.getTime() + 5_000), senderUniqueIdSnapshot: "late", senderNicknameSnapshot: "遅" }),
+              giftEvent({ occurredAt: new Date(WINDOW_START.getTime() - 5_000), senderTiktokUid: makeTiktokUid("early"), senderTiktokHandleSnapshot: "early", senderNicknameSnapshot: "早" }),
+              giftEvent({ occurredAt: new Date(WINDOW_END.getTime() + 5_000), senderTiktokUid: makeTiktokUid("late"), senderTiktokHandleSnapshot: "late", senderNicknameSnapshot: "遅" }),
             ],
           }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 }),
         ],
       }),
       "private",
@@ -270,7 +276,7 @@ describe("buildPayload", () => {
       giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + i * 10) })
     );
     const payload = buildPayload(
-      row({ participants: [participant({ giftEvents: events }), participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 })] }),
+      row({ participants: [participant({ giftEvents: events }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -287,7 +293,7 @@ describe("buildPayload", () => {
       giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + i * 10) })
     );
     const payload = buildPayload(
-      row({ participants: [participant({ giftEvents: events }), participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 })] }),
+      row({ participants: [participant({ giftEvents: events }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -301,15 +307,15 @@ describe("buildPayload", () => {
     const input = row({
       participants: [
         participant({ giftEvents: [giftEvent()] }),
-        participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent" }),
+        participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent" }),
       ],
     });
     const priv = buildPayload(input, "private", NO_AVATARS, NO_AVATARS, NO_CATALOG);
-    expect(priv.teams[0].participants[0].uniqueId).toBe("self_id");
+    expect(priv.teams[0].participants[0].tiktokHandle).toBe("self_id");
     expect(priv.senders[0].u).toBe("fan_a");
 
     const pub = buildPayload(input, "public", NO_AVATARS, NO_AVATARS, NO_CATALOG);
-    expect(pub.teams.every((t) => t.participants.every((p) => p.uniqueId === null))).toBe(true);
+    expect(pub.teams.every((t) => t.participants.every((p) => p.tiktokHandle === null))).toBe(true);
     expect(pub.senders.every((s) => s.u === null)).toBe(true);
     // ニックネームとアイコンは公開でも残す(再生UIに必要)。
     expect(pub.senders[0].n).toBe("ファンA");
@@ -319,8 +325,8 @@ describe("buildPayload", () => {
   it("公開バリアントは nickName が無くても TikTokハンドルへフォールバックしない", () => {
     const input = row({
       participants: [
-        participant({ nickName: null, displayId: "leaked_handle", tiktokId: "leaked_handle" }),
-        participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, nickName: null, displayId: "leaked_opp", tiktokId: "leaked_opp" }),
+        participant({ nicknameSnapshot: null, tiktokHandleSnapshot: "leaked_handle" }),
+        participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, nicknameSnapshot: null, tiktokHandleSnapshot: "leaked_opp" }),
       ],
     });
     const pub = buildPayload(input, "public", NO_AVATARS, NO_AVATARS, NO_CATALOG);
@@ -341,14 +347,15 @@ describe("buildPayload", () => {
       ),
       giftEvent({
         occurredAt: new Date(WINDOW_START.getTime() + 299_000),
-        senderUniqueIdSnapshot: "dropped_fan",
+        senderTiktokUid: makeTiktokUid("dropped_fan"),
+        senderTiktokHandleSnapshot: "dropped_fan",
         senderNicknameSnapshot: "落とされる人",
         giftId: 9999,
         giftNameSnapshot: "DroppedGift",
       }),
     ];
     const payload = buildPayload(
-      row({ participants: [participant({ giftEvents: events }), participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 })] }),
+      row({ participants: [participant({ giftEvents: events }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -368,8 +375,8 @@ describe("buildPayload", () => {
         ],
         participants: [
           participant({ battleTeamId: "team_self", officialScore: "3000", score: "3000" }),
-          participant({ id: "p1b", anchorId: "anchor_self2", position: 1, battleTeamId: "team_self", officialScore: "2000", score: "2000" }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent", battleTeamId: "team_opp", officialScore: "4000", score: "4000" }),
+          participant({ id: "p1b", tiktokUid: SELF2_UID, position: 1, battleTeamId: "team_self", officialScore: "2000", score: "2000" }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent", battleTeamId: "team_opp", officialScore: "4000", score: "4000" }),
         ],
       }),
       "private",
@@ -386,8 +393,8 @@ describe("buildPayload", () => {
         teams: [],
         participants: [
           participant({ officialScore: "3000", score: "3000" }),
-          participant({ id: "p1b", anchorId: "anchor_self2", position: 1, officialScore: "2000", score: "2000" }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent", officialScore: null, score: null }),
+          participant({ id: "p1b", tiktokUid: SELF2_UID, position: 1, officialScore: "2000", score: "2000" }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent", officialScore: null, score: null }),
         ],
       }),
       "private",
@@ -400,7 +407,7 @@ describe("buildPayload", () => {
 
   it("相手陣営のギフト明細が1件も無ければ opponentGiftsMissing を立てる", () => {
     const missing = buildPayload(
-      row({ participants: [participant({ giftEvents: [giftEvent()] }), participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1 })] }),
+      row({ participants: [participant({ giftEvents: [giftEvent()] }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
@@ -412,7 +419,7 @@ describe("buildPayload", () => {
       row({
         participants: [
           participant({ giftEvents: [giftEvent()] }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, giftEvents: [giftEvent({ senderUniqueIdSnapshot: "fan_b", senderNicknameSnapshot: "ファンB" })] }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, giftEvents: [giftEvent({ senderTiktokUid: makeTiktokUid("fan_b"), senderTiktokHandleSnapshot: "fan_b", senderNicknameSnapshot: "ファンB" })] }),
         ],
       }),
       "private",
@@ -423,28 +430,28 @@ describe("buildPayload", () => {
     expect(present.opponentGiftsMissing).toBe(false);
   });
 
-  it("公開バリアントもリスナーのアバターURLを載せる(2026-09-08、配信者の明示判断で解禁。uniqueIdは引き続き落とす)", () => {
+  it("公開バリアントもリスナーのアバターURLを載せる(2026-09-08、配信者の明示判断で解禁。tiktokHandleは引き続き落とす)", () => {
     const senderAvatars = new Map([
-      ["fan_a", "https://bucket.test/avatars/gift-sender/fan_a.webp?X-Amz-Signature=deadbeef"],
+      [makeTiktokUid("fan_a"), "https://bucket.test/avatars/gift-sender/fan_a.webp?X-Amz-Signature=deadbeef"],
     ]);
     const anchorAvatars = new Map([
-      ["anchor_self", "https://bucket.test/avatars/battle-host/anchor_self.webp?X-Amz-Signature=cafe"],
+      [SELF_UID, "https://bucket.test/avatars/battle-host/anchor_self.webp?X-Amz-Signature=cafe"],
     ]);
     const input = row({
       participants: [
         participant({ giftEvents: [giftEvent()] }),
-        participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent" }),
+        participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent" }),
       ],
     });
 
     const pub = buildPayload(input, "public", anchorAvatars, senderAvatars, NO_CATALOG);
-    expect(pub.senders[0].a).toBe(senderAvatars.get("fan_a"));
+    expect(pub.senders[0].a).toBe(senderAvatars.get(makeTiktokUid("fan_a")));
     expect(pub.senders[0].u).toBeNull();
-    // 配信者側は anchorId(TikTokの数値userId)で、ペイロードの anchors に載せている値そのもの。
-    expect(pub.teams[0].participants[0].avatarUrl).toBe(anchorAvatars.get("anchor_self"));
+    // 配信者側は tiktokUid(TikTokの数値ID)で、ペイロードの anchors に載せている値そのもの。
+    expect(pub.teams[0].participants[0].avatarUrl).toBe(anchorAvatars.get(SELF_UID));
 
     const priv = buildPayload(input, "private", anchorAvatars, senderAvatars, NO_CATALOG);
-    expect(priv.senders[0].a).toBe(senderAvatars.get("fan_a"));
+    expect(priv.senders[0].a).toBe(senderAvatars.get(makeTiktokUid("fan_a")));
   });
 
   it("battleTeamId があっても BattleTeam 行が無ければメンバー合計へ落とす", () => {
@@ -453,8 +460,8 @@ describe("buildPayload", () => {
         teams: [],
         participants: [
           participant({ battleTeamId: "team_gone", officialScore: "3000", score: "3000" }),
-          participant({ id: "p1b", anchorId: "anchor_self2", position: 1, battleTeamId: "team_gone", officialScore: "2000", score: "2000" }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent", battleTeamId: "team_gone_opp", officialScore: null, score: null }),
+          participant({ id: "p1b", tiktokUid: SELF2_UID, position: 1, battleTeamId: "team_gone", officialScore: "2000", score: "2000" }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent", battleTeamId: "team_gone_opp", officialScore: null, score: null }),
         ],
       }),
       "private",
@@ -471,8 +478,8 @@ describe("buildPayload", () => {
         teams: [],
         participants: [
           participant({ officialScore: "1,200", score: "1,200" }),
-          participant({ id: "p1b", anchorId: "anchor_self2", position: 1, officialScore: "800", score: "800" }),
-          participant({ id: "p2", anchorId: "anchor_opp", teamIndex: 1, side: "opponent", officialScore: "abc", score: "abc" }),
+          participant({ id: "p1b", tiktokUid: SELF2_UID, position: 1, officialScore: "800", score: "800" }),
+          participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1, side: "opponent", officialScore: "abc", score: "abc" }),
         ],
       }),
       "private",
@@ -496,12 +503,12 @@ describe("buildPayload", () => {
           }),
           participant({
             id: "p2",
-            anchorId: "anchor_opp",
+            tiktokUid: OPP_UID,
             teamIndex: 1,
             side: "opponent",
             giftEvents: [
-              giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + 20_000), senderUniqueIdSnapshot: "fan_b", senderNicknameSnapshot: "ファンB" }),
-              giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + 40_000), senderUniqueIdSnapshot: "fan_b", senderNicknameSnapshot: "ファンB" }),
+              giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + 20_000), senderTiktokUid: makeTiktokUid("fan_b"), senderTiktokHandleSnapshot: "fan_b", senderNicknameSnapshot: "ファンB" }),
+              giftEvent({ occurredAt: new Date(WINDOW_START.getTime() + 40_000), senderTiktokUid: makeTiktokUid("fan_b"), senderTiktokHandleSnapshot: "fan_b", senderNicknameSnapshot: "ファンB" }),
             ],
           }),
         ],

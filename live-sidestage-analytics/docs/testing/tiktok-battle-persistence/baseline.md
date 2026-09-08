@@ -8,6 +8,11 @@ last_reviewers: Code Mode=DeepSeek V4 Flash単独(MEDIUM)。TestCase レビュ�
 
 # テストベースライン: tiktok-battle-persistence
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 TikTok LinkMicバトル(linkMicBattle/linkMicArmies)の受信payloadを`TiktokBattle`(`tiktok_battles`)行へ永続化する処理(`src/lib/tiktok-listener.ts`のpersistBattle/recordBattleEvent、`src/lib/tiktok-battle.ts`のパース処理)。生payload(`raw`列)は保存しない — デバッグ・fixture採取専用だったため2026-09-06に列自体を撤去し、`hostUserIds`/`hostDisplayIds`/`hostScores`/`hostProfiles`/`hostTeams`等の解釈済みフィールドのみ永続化する。
 
 ## テストケース

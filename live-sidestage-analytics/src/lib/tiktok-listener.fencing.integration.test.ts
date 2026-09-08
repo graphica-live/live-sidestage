@@ -11,6 +11,7 @@
 //    listenerUpdatedAt では判定できない
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { persistState, __resetListenerEpochForTest } from "./tiktok-listener";
 import { FACTS_CONNECTED, FACTS_IDLE, factsForReconnect } from "./listener-state";
 
@@ -21,9 +22,12 @@ async function makeRoom() {
   // watchedRoomFilter() の監視対象になったため、これが無いと並行して走る listener 系
   // テストの getMyRooms() がこの部屋をグローバルに claim し、listenerStatus /
   // listenerRevision を上書きして fencing の検証を壊す。
+  const handle = `itestfence${Math.random().toString(36).slice(2, 10)}`.toLowerCase();
   const room = await prisma.tiktokRoom.create({
+    // hostTiktokUid は @unique。ハンドルが毎回ランダムなので uid も一意になる。
     data: {
-      tiktokId: `itestfence${Math.random().toString(36).slice(2, 10)}`.toLowerCase(),
+      hostTiktokUid: makeTiktokUid(handle),
+      tiktokHandle: handle,
       monitoringSuspended: true,
     },
     select: { id: true },

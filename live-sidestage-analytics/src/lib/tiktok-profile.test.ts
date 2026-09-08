@@ -98,7 +98,7 @@ describe("parseProfileResponse", () => {
         nickname: "テスト配信者",
       })
     );
-    expect(parsed).toEqual({ avatarUrl: REAL_AVATAR, nickname: "テスト配信者", userId: null });
+    expect(parsed).toEqual({ avatarUrl: REAL_AVATAR, nickname: "テスト配信者", tiktokUid: null });
   });
 
   it("解像度の高いものが使えなければ順に落とす", () => {
@@ -109,7 +109,7 @@ describe("parseProfileResponse", () => {
         nickname: "  ",
       })
     );
-    expect(parsed).toEqual({ avatarUrl: "https://p16.tiktokcdn.com/medium.webp", nickname: null, userId: null });
+    expect(parsed).toEqual({ avatarUrl: "https://p16.tiktokcdn.com/medium.webp", nickname: null, tiktokUid: null });
   });
 
   it("statusCode がエラーなら null", () => {
@@ -127,47 +127,48 @@ describe("parseProfileResponse", () => {
     expect(parseProfileResponse(response({ avatarLarger: "" }))).toBeNull();
   });
 
-  it("uniqueId を渡すと別人のレスポンスを弾く", () => {
+  it("tiktokHandle を渡すと別人のレスポンスを弾く", () => {
+    // **`uniqueId` は TikTok 側のレスポンスキー。改名しない**(sidestage の語彙ではない)。
     const body = response({ avatarLarger: REAL_AVATAR, uniqueId: "someone_else" });
     expect(parseProfileResponse(body, "target_user")).toBeNull();
     // 大文字小文字は無視する(TikTok のハンドルは大小を区別しない)。
     expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, uniqueId: "Target_User" }), "target_user"))
-      .toEqual({ avatarUrl: REAL_AVATAR, nickname: null, userId: null });
+      .toEqual({ avatarUrl: REAL_AVATAR, nickname: null, tiktokUid: null });
   });
 
-  it("uniqueId がレスポンスに無ければ照合しない", () => {
+  it("tiktokHandle がレスポンスに無ければ照合しない", () => {
     expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR }), "target_user")).toEqual({
       avatarUrl: REAL_AVATAR,
       nickname: null,
-      userId: null,
+      tiktokUid: null,
     });
   });
 
-  it("data.user.id を数値 userId として拾う", () => {
+  it("data.user.id を数値ID として拾う", () => {
     // 実測(2026-08)では文字列で返る。19桁でも JSON.parse の精度落ちが起きない。
-    expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: "5831967" }))?.userId).toBe(
+    expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: "5831967" }))?.tiktokUid).toBe(
       "5831967"
     );
     expect(
-      parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: "6745191554084586437" }))?.userId
+      parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: "6745191554084586437" }))?.tiktokUid
     ).toBe("6745191554084586437");
   });
 
   it("数値で来ても安全な範囲なら拾い、精度が落ちている値は捨てる", () => {
-    expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: 107955 }))?.userId).toBe(
+    expect(parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: 107955 }))?.tiktokUid).toBe(
       "107955"
     );
     // 19桁の数値リテラルは JSON.parse の時点で既に別の値になっている。誤った id は保存しない。
     expect(
-      parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: 6745191554084586437 }))?.userId
+      parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id: 6745191554084586437 }))?.tiktokUid
     ).toBeNull();
   });
 
-  it("id が無い・数字でない場合は userId を null にする(アイコンは返す)", () => {
+  it("id が無い・数字でない場合は tiktokUid を null にする(アイコンは返す)", () => {
     for (const id of [undefined, "", "abc", "12.5", null, {}]) {
       const parsed = parseProfileResponse(response({ avatarLarger: REAL_AVATAR, id }));
       expect(parsed?.avatarUrl).toBe(REAL_AVATAR);
-      expect(parsed?.userId).toBeNull();
+      expect(parsed?.tiktokUid).toBeNull();
     }
   });
 
@@ -186,14 +187,14 @@ describe("classifyAccountExistence", () => {
     const body = {
       statusCode: 0,
       message: "",
-      data: { user: { uniqueId: "tiktok", id: "107955", nickname: "TikTok" } },
+      data: { user: { tiktokHandle: "tiktok", id: "107955", nickname: "TikTok" } },
     };
     expect(classifyAccountExistence(body, "tiktok")).toBe("EXISTS");
   });
 
   it("アイコンが取れなくても EXISTS にする", () => {
     // 実在確認は avatar と無関係。CDN のホストが変わっても壊れてはいけない。
-    const body = { statusCode: 0, data: { user: { uniqueId: "someone" } } };
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "someone" } } };
     expect(classifyAccountExistence(body, "someone")).toBe("EXISTS");
   });
 
@@ -220,16 +221,16 @@ describe("classifyAccountExistence", () => {
   });
 
   it("別人のレスポンスは判定不能にする", () => {
-    const body = { statusCode: 0, data: { user: { uniqueId: "someone_else" } } };
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "someone_else" } } };
     expect(classifyAccountExistence(body, "target_user")).toBe("UNVERIFIED");
   });
 
-  it("uniqueId の大文字小文字は区別しない", () => {
-    const body = { statusCode: 0, data: { user: { uniqueId: "Target_User" } } };
+  it("tiktokHandle の大文字小文字は区別しない", () => {
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "Target_User" } } };
     expect(classifyAccountExistence(body, "target_user")).toBe("EXISTS");
   });
 
-  it("uniqueId がレスポンスに無ければ照合しない(parseProfileResponse と同じ方針)", () => {
+  it("tiktokHandle がレスポンスに無ければ照合しない(parseProfileResponse と同じ方針)", () => {
     expect(classifyAccountExistence({ statusCode: 0, data: { user: { id: "1" } } }, "x")).toBe(
       "EXISTS"
     );
@@ -239,7 +240,7 @@ describe("classifyAccountExistence", () => {
     // statusCode 0(成功)なのに message が user_not_found。実在を返しているほうを信じる。
     expect(
       classifyAccountExistence(
-        { statusCode: 0, message: "user_not_found", data: { user: { uniqueId: "x" } } },
+        { statusCode: 0, message: "user_not_found", data: { user: { tiktokHandle: "x" } } },
         "x"
       )
     ).toBe("EXISTS");
@@ -250,7 +251,7 @@ describe("classifyAccountExistence", () => {
         {
           statusCode: USER_NOT_FOUND_STATUS_CODE,
           message: "user_not_found",
-          data: { user: { uniqueId: "x" } },
+          data: { user: { tiktokHandle: "x" } },
         },
         "x"
       )
@@ -269,7 +270,7 @@ describe("extractVerifiedAccountPreview", () => {
     const body = {
       statusCode: 0,
       data: {
-        user: { uniqueId: "tiktok", avatarLarger: REAL_AVATAR, signature: "  公式アカウントです  " },
+        user: { tiktokHandle: "tiktok", avatarLarger: REAL_AVATAR, signature: "  公式アカウントです  " },
         stats: { followingCount: 12, followerCount: 345678 },
       },
     };
@@ -283,7 +284,7 @@ describe("extractVerifiedAccountPreview", () => {
 
   it("BIOが空・空白のみなら signature を null にする(空要素として描画しない判定に使う)", () => {
     for (const signature of ["", "   ", undefined, null]) {
-      const body = { statusCode: 0, data: { user: { uniqueId: "x", signature }, stats: {} } };
+      const body = { statusCode: 0, data: { user: { tiktokHandle: "x", signature }, stats: {} } };
       expect(extractVerifiedAccountPreview(body, "x").signature).toBeNull();
     }
   });
@@ -292,7 +293,7 @@ describe("extractVerifiedAccountPreview", () => {
     const body = {
       statusCode: 0,
       data: {
-        user: { uniqueId: "x", avatarLarger: "https://evil.example.com/x.png", avatarMedium: REAL_AVATAR },
+        user: { tiktokHandle: "x", avatarLarger: "https://evil.example.com/x.png", avatarMedium: REAL_AVATAR },
         stats: {},
       },
     };
@@ -301,7 +302,7 @@ describe("extractVerifiedAccountPreview", () => {
 
   it("stats が欠損・非数値・負値なら null にする(不正値を表示に流さない)", () => {
     for (const stats of [undefined, {}, { followingCount: "12", followerCount: -1 }, { followingCount: NaN, followerCount: Infinity }]) {
-      const body = { statusCode: 0, data: { user: { uniqueId: "x" }, stats } };
+      const body = { statusCode: 0, data: { user: { tiktokHandle: "x" }, stats } };
       const preview = extractVerifiedAccountPreview(body, "x");
       expect(preview.followingCount).toBeNull();
       expect(preview.followerCount).toBeNull();
@@ -312,7 +313,7 @@ describe("extractVerifiedAccountPreview", () => {
     const empty = { avatarUrl: null, signature: null, followingCount: null, followerCount: null };
     expect(
       extractVerifiedAccountPreview(
-        { statusCode: 0, data: { user: { uniqueId: "someone_else", avatarLarger: REAL_AVATAR }, stats: { followingCount: 1, followerCount: 2 } } },
+        { statusCode: 0, data: { user: { tiktokHandle: "someone_else", avatarLarger: REAL_AVATAR }, stats: { followingCount: 1, followerCount: 2 } } },
         "target_user"
       )
     ).toEqual(empty);
@@ -327,38 +328,38 @@ describe("extractVerifiedNickname", () => {
   it("実在確認と同じ応答から nickname を取り出す(avatar の有無に無関係)", () => {
     // avatar を一切含まない応答でも取れる — parseProfileResponse とは違い、
     // avatar URL の allowlist 検証を経由しないことがここでの要点。
-    const body = { statusCode: 0, data: { user: { uniqueId: "tiktok", nickname: "TikTok" } } };
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "tiktok", nickname: "TikTok" } } };
     expect(extractVerifiedNickname(body, "tiktok")).toBe("TikTok");
   });
 
   it("前後の空白を trim する", () => {
-    const body = { statusCode: 0, data: { user: { uniqueId: "x", nickname: "  だれか  " } } };
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "x", nickname: "  だれか  " } } };
     expect(extractVerifiedNickname(body, "x")).toBe("だれか");
   });
 
   it("nickname が空・空白のみ・欠損なら null", () => {
     for (const nickname of ["", "   ", undefined, null, 123]) {
-      const body = { statusCode: 0, data: { user: { uniqueId: "x", nickname } } };
+      const body = { statusCode: 0, data: { user: { tiktokHandle: "x", nickname } } };
       expect(extractVerifiedNickname(body, "x")).toBeNull();
     }
   });
 
   it("statusCode が 0 でなければ null(実在確認と矛盾する応答は信用しない)", () => {
-    const body = { statusCode: 10221, data: { user: { uniqueId: "x", nickname: "だれか" } } };
+    const body = { statusCode: 10221, data: { user: { tiktokHandle: "x", nickname: "だれか" } } };
     expect(extractVerifiedNickname(body, "x")).toBeNull();
   });
 
-  it("uniqueId が別人なら null(parseProfileResponse と同じ照合方針)", () => {
-    const body = { statusCode: 0, data: { user: { uniqueId: "someone_else", nickname: "だれか" } } };
+  it("tiktokHandle が別人なら null(parseProfileResponse と同じ照合方針)", () => {
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "someone_else", nickname: "だれか" } } };
     expect(extractVerifiedNickname(body, "target_user")).toBeNull();
   });
 
-  it("uniqueId の大文字小文字は区別しない", () => {
-    const body = { statusCode: 0, data: { user: { uniqueId: "Target_User", nickname: "だれか" } } };
+  it("tiktokHandle の大文字小文字は区別しない", () => {
+    const body = { statusCode: 0, data: { user: { tiktokHandle: "Target_User", nickname: "だれか" } } };
     expect(extractVerifiedNickname(body, "target_user")).toBe("だれか");
   });
 
-  it("uniqueId がレスポンスに無ければ照合しない", () => {
+  it("tiktokHandle がレスポンスに無ければ照合しない", () => {
     const body = { statusCode: 0, data: { user: { nickname: "だれか" } } };
     expect(extractVerifiedNickname(body, "target_user")).toBe("だれか");
   });

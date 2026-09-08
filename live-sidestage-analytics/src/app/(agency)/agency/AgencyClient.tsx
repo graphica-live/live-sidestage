@@ -13,7 +13,7 @@ type Agency = {
 
 type Watch = {
   id: string;
-  tiktokId: string;
+  tiktokHandle: string;
   label: string | null;
   createdAt: string;
   listenerStatus: string | null;
@@ -48,7 +48,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
   const [watches, setWatches] = useState<Watch[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const [tiktokIdInput, setTiktokIdInput] = useState("");
+  const [tiktokHandleInput, setTiktokHandleInput] = useState("");
   const [labelInput, setLabelInput] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -98,14 +98,14 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
       const res = await fetch("/api/agency/watches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tiktokId: tiktokIdInput, label: labelInput || null }),
+        body: JSON.stringify({ tiktokHandle: tiktokHandleInput, label: labelInput || null }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "追加に失敗しました。");
         return;
       }
-      setTiktokIdInput("");
+      setTiktokHandleInput("");
       setLabelInput("");
       await Promise.all([loadWatches(), loadAgency()]);
     } finally {
@@ -113,8 +113,8 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
     }
   }
 
-  async function handleRemoveWatch(id: string, tiktokId: string) {
-    if (!window.confirm(`@${tiktokId} を監視対象から外しますか？`)) return;
+  async function handleRemoveWatch(id: string, tiktokHandle: string) {
+    if (!window.confirm(`@${tiktokHandle} を監視対象から外しますか？`)) return;
     setError(null);
     const res = await fetch(`/api/agency/watches/${id}`, { method: "DELETE" });
     if (!res.ok) {
@@ -192,8 +192,8 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
             <div>
               <label className="text-xs text-muted block mb-1">TikTok ID</label>
               <input
-                value={tiktokIdInput}
-                onChange={(e) => setTiktokIdInput(e.target.value)}
+                value={tiktokHandleInput}
+                onChange={(e) => setTiktokHandleInput(e.target.value)}
                 placeholder="@example"
                 className="input-field"
                 required
@@ -213,7 +213,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={adding || !tiktokIdInput.trim() || remaining === 0}
+              disabled={adding || !tiktokHandleInput.trim() || remaining === 0}
               className="btn-primary"
             >
               {adding ? "追加中..." : "追加する"}
@@ -244,7 +244,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
               <tbody>
                 {watches.map((w) => (
                   <tr key={w.id} className="border-b border-border last:border-b-0">
-                    <td className="px-4 py-2.5 font-medium">@{w.tiktokId}</td>
+                    <td className="px-4 py-2.5 font-medium">@{w.tiktokHandle}</td>
                     <td className="px-4 py-2.5 text-muted">{w.label ?? "—"}</td>
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-1.5 text-xs text-muted">
@@ -258,7 +258,7 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <button
-                        onClick={() => handleRemoveWatch(w.id, w.tiktokId)}
+                        onClick={() => handleRemoveWatch(w.id, w.tiktokHandle)}
                         className="btn-ghost text-xs"
                       >
                         削除
@@ -331,13 +331,13 @@ export default function AgencyClient({ agencyOrigin }: { agencyOrigin: string })
               — 必須。YYYY-MM-DD形式。期間は最大366日(1年)
             </li>
             <li>
-              <code className="text-strong">tiktokIds</code> — 任意。カンマ区切り。
+              <code className="text-strong">tiktokHandles</code> — 任意。カンマ区切り。
               省略すると監視対象すべてが対象。監視対象に無いIDは{" "}
-              <code className="text-strong">unknownTiktokIds</code> として返り、集計には含まれません
+              <code className="text-strong">unknownTiktokHandles</code> として返り、集計には含まれません
             </li>
             <li>
-              レスポンスの <code className="text-strong">tiktokId</code> は正規化済み(小文字・@なし)で、
-              そのまま <code className="text-strong">tiktokIds</code> に渡せます。
+              レスポンスの <code className="text-strong">tiktokHandle</code> は正規化済み(小文字・@なし)で、
+              そのまま <code className="text-strong">tiktokHandles</code> に渡せます。
               入力した表記は <code className="text-strong">displayName</code> に入ります
             </li>
             <li>

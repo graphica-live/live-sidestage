@@ -31,14 +31,14 @@ export default async function BillingPage({
 
   const [subscriptions, link, ambassador] = await Promise.all([
     prisma.subscription.findMany({
-      where: { userId: session.user.id },
+      where: { principalId: session.user.id },
       select: { plan: true, provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
     }),
     prisma.stripeCustomerLink.findUnique({
-      where: { userId: session.user.id },
+      where: { principalId: session.user.id },
       select: { stripeCustomerId: true },
     }),
-    prisma.ambassador.findUnique({ where: { userId: session.user.id }, select: { id: true } }),
+    prisma.ambassador.findUnique({ where: { principalId: session.user.id }, select: { id: true } }),
   ]);
 
   const isAmbassador = Boolean(ambassador);

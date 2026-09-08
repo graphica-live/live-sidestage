@@ -13,7 +13,15 @@ export interface ChatCommentEmote {
 
 export interface ChatCommentPayload {
   streamerId: string;
-  uniqueId: string;
+  /**
+   * TikTokの不変な数値ID。**同一性の判定はこれだけで行う**(tiktokHandleは可変なので
+   * 端末側のボイス割当・重複判定のキーにしてはいけない)。
+   *
+   * 追加のみなので [CHAT_EVENT_SCHEMA_VERSION] は上げない。上げると
+   * `requireSchemaVersion: true` で受けている `chat:gift` / `chat:follow` を旧アプリが全部落とす。
+   */
+  tiktokUid: string;
+  tiktokHandle: string;
   nickname: string;
   profilePictureUrl: string | null;
   comment: string;
@@ -114,7 +122,9 @@ export function normalizeChatCommentEmotes(data: Record<string, unknown>): ChatC
  */
 export interface ChatGiftInput {
   streamerId: string;
-  uniqueId: string;
+  /** TikTokの不変な数値ID。同一性の判定はこれだけで行う。 */
+  tiktokUid: string;
+  tiktokHandle: string;
   nickname: string;
   profilePictureUrl: string | null;
   giftName: string; // listener側でtrim+小文字化済み(desktopのトリガー判定と揃える)
@@ -133,7 +143,9 @@ export interface ChatGiftInput {
 export interface ChatGiftPayload {
   schemaVersion: number;
   streamerId: string;
-  uniqueId: string;
+  /** TikTokの不変な数値ID。同一性の判定はこれだけで行う。 */
+  tiktokUid: string;
+  tiktokHandle: string;
   nickname: string;
   profilePictureUrl: string | null;
   giftName: string;
@@ -156,7 +168,9 @@ export interface ChatGiftPayload {
 
 export interface ChatFollowInput {
   streamerId: string;
-  uniqueId: string;
+  /** TikTokの不変な数値ID。同一性の判定はこれだけで行う。 */
+  tiktokUid: string;
+  tiktokHandle: string;
   nickname: string;
   profilePictureUrl: string | null;
   occurredAt: string;
@@ -375,7 +389,7 @@ export async function emitChatFollow(input: ChatFollowInput): Promise<boolean> {
  *
  * ギフトの種類ごとに扱いが違う:
  * - groupIdのあるコンボ: 累計の単調増加チェックでdeltaを出す(decideComboDelta)
- * - groupIdの無いコンボ: 永続的なcombo IDを作れない(uniqueId:giftIdは次のコンボで再利用され
+ * - groupIdの無いコンボ: 永続的なcombo IDを作れない(tiktokUid:giftIdは次のコンボで再利用され
  *   衝突する)。repeatEndのtickだけをmsgId/orderIdでdedupして1回だけ流す
  * - 非コンボ: orderId/groupIdでdedupして1回だけ流す。desktopも非コンボは
  *   repeatCountに関係なく1回しか再生しない
@@ -412,7 +426,8 @@ export async function emitChatGift(input: ChatGiftInput): Promise<boolean> {
   const payload: ChatGiftPayload = {
     schemaVersion: CHAT_EVENT_SCHEMA_VERSION,
     streamerId: input.streamerId,
-    uniqueId: input.uniqueId,
+    tiktokUid: input.tiktokUid,
+    tiktokHandle: input.tiktokHandle,
     nickname: input.nickname,
     profilePictureUrl: input.profilePictureUrl,
     giftName: input.giftName,

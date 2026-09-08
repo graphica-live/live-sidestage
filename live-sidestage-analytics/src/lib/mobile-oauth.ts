@@ -8,7 +8,7 @@ import { signMobileToken } from "./mobile-auth";
 
 export interface MobileAuthStreamer {
   id: string;
-  tiktokId: string;
+  tiktokHandle: string;
   verified: boolean;
   /// スキーマ上は nullable。従来からそのまま返しているので形は変えない
   /// （端末側は非 null 前提で読むが、apiKey は Streamer 作成時に必ず入る）。
@@ -26,12 +26,12 @@ export interface MobileAuthUser {
 /// （端末側はどちらのエンドポイントを叩いたか知っているので provider は返さない）。
 export function mobileAuthResponseBody(user: MobileAuthUser) {
   return {
-    token: signMobileToken({ userId: user.id, streamerId: user.streamer?.id }),
+    token: signMobileToken({ principalId: user.id, streamerId: user.streamer?.id }),
     user: { id: user.id, name: user.name, email: user.email },
     streamer: user.streamer
       ? {
           id: user.streamer.id,
-          tiktokId: user.streamer.tiktokId,
+          tiktokHandle: user.streamer.tiktokHandle,
           verified: user.streamer.verified,
           apiKey: user.streamer.apiKey,
         }

@@ -1,19 +1,19 @@
 class StreamerInfo {
   final String id;
-  final String tiktokId;
+  final String tiktokHandle;
   final String apiKey;
   final bool verified;
 
   StreamerInfo({
     required this.id,
-    required this.tiktokId,
+    required this.tiktokHandle,
     required this.apiKey,
     required this.verified,
   });
 
   factory StreamerInfo.fromJson(Map<String, dynamic> json) => StreamerInfo(
         id: json['id'] as String,
-        tiktokId: json['tiktokId'] as String,
+        tiktokHandle: json['tiktokHandle'] as String,
         apiKey: json['apiKey'] as String,
         verified: json['verified'] as bool? ?? false,
       );
@@ -90,7 +90,7 @@ class AuthSession {
         'onboardingRequired': onboardingRequired.toString(),
         'provider': provider.name,
         if (streamer != null) 'streamerId': streamer!.id,
-        if (streamer != null) 'tiktokId': streamer!.tiktokId,
+        if (streamer != null) 'tiktokHandle': streamer!.tiktokHandle,
         if (streamer != null) 'apiKey': streamer!.apiKey,
         if (streamer != null) 'verified': streamer!.verified.toString(),
       };
@@ -118,7 +118,7 @@ class AuthSession {
       streamer: hasStreamer
           ? StreamerInfo(
               id: map['streamerId']!,
-              tiktokId: map['tiktokId']!,
+              tiktokHandle: map['tiktokHandle']!,
               apiKey: map['apiKey']!,
               verified: map['verified'] == 'true',
             )

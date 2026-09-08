@@ -21,10 +21,10 @@ export const BATTLE_ACTION = {
 export type BattlePhase = "START" | "END" | "PROGRESS";
 
 /**
- * anchorId(=hostUserIds の要素)ごとのプロフィール情報。
+ * tiktokUid(=hostTiktokUids の要素)ごとのプロフィール情報。
  *
- * **`hostUserIds`/`hostDisplayIds` の配列は互いにインデックス対応していない**
- * (armies 走査と anchorInfo 走査が別ループで、順序保証がない)。anchorId をキーにした
+ * **`hostTiktokUids`/`hostDisplayIds` の配列は互いにインデックス対応していない**
+ * (armies 走査と anchorInfo 走査が別ループで、順序保証がない)。tiktokUid をキーにした
  * Record にすることで、この既存の弱点を新規フィールドへ持ち込まない。
  */
 export type HostProfile = {
@@ -36,13 +36,13 @@ export type HostProfile = {
    */
   avatarUrl: string | null;
 };
-export type HostProfiles = Record<string /* anchorId */, HostProfile>;
+export type HostProfiles = Record<string /* tiktokUid */, HostProfile>;
 
 /**
- * anchorId(=hostUserIds の要素) -> teamId。teamArmies(2vs2等のチーム戦)由来。
+ * tiktokUid(=hostTiktokUids の要素) -> teamId。teamArmies(2vs2等のチーム戦)由来。
  * 1vs1などteamArmiesが無いバトルでは空になる(サイド分割の概念自体が無いため)。
  */
-export type HostTeams = Record<string /* anchorId */, string /* teamId */>;
+export type HostTeams = Record<string /* tiktokUid */, string /* teamId */>;
 
 /**
  * 相手roomの監視がどの経路で始まった(始まらなかった)かの記録。tiktok-listener.ts の
@@ -56,12 +56,12 @@ export type OpponentWatchSource =
   | "unassigned" // 新規作成したがownWorkerIndex不明で即キックせず(reconcile待ち)
   | "skipped"; // ensureRoomWatchedForCollabがnullを返した(不正ID/上限到達)
 export type OpponentWatchEntry = {
-  tiktokId: string;
+  tiktokHandle: string;
   roomId: string | null;
   source: OpponentWatchSource;
   watchedAt: string | null;
 };
-export type OpponentWatch = Record<string /* anchorId */, OpponentWatchEntry>;
+export type OpponentWatch = Record<string /* tiktokUid */, OpponentWatchEntry>;
 
 export type ParsedBattle = {
   battleId: string;
@@ -74,7 +74,7 @@ export type ParsedBattle = {
   endTime: Date | null;
   durationSec: number | null;
   /** anchorIdStr(数値文字列)の一覧 */
-  hostUserIds: string[];
+  hostTiktokUids: string[];
   /** anchorInfo[].user.displayId(ハンドル相当。実データで検証済み、393/394件で取得できている) */
   hostDisplayIds: string[];
   /** anchorIdStr -> hostScore。TikTok 側の集計値なので文字列のまま持つ */
@@ -158,40 +158,42 @@ function findTeamArmies(data: Record<string, unknown>): Record<string, unknown>[
 }
 
 export function collectHosts(data: Record<string, unknown>) {
-  const hostUserIds: string[] = [];
+  const hostTiktokUids: string[] = [];
   const hostScores: Record<string, string> = {};
   const hostTeams: HostTeams = {};
 
   const teamArmies = findTeamArmies(data);
   if (teamArmies.length > 0) {
-    // チーム戦(2vs2等)。armies/battleItems の値の anchorIdStr は実userIdではなく
+    // チーム戦(2vs2等)。armies/battleItems の値の anchorIdStr は実 tiktokUid ではなく
     // 「チーム番号("1"/"2")」になっている(実データ・型定義で確認済み)。個々の配信者の
-    // 実userId/scoreは teamArmies[].teamUsers[] からしか取れない。
+    // 実 tiktokUid/score は teamArmies[].teamUsers[] からしか取れない。
     teamArmies.forEach((team, teamIndex) => {
       // teamId は実データで存在確認済み(tiktok-battle.test.ts参照)。念のため、無い場合は
       // 配列インデックスで代用する(teamArmies自体が「チームごとの配列」なので、並びさえ
       // あればサイド分割は成立する)。
       const teamId = nonEmptyString(team.teamId) ?? String(teamIndex);
       for (const teamUser of toEntries(team.teamUsers)) {
-        const userId = nonEmptyString(teamUser.userIdStr) ?? nonEmptyString(teamUser.userId);
-        if (userId === null) continue;
-        if (!hostUserIds.includes(userId)) hostUserIds.push(userId);
+        // **TikTok の生 payload のフィールド名は `userId`。** ここは sidestage の
+        // principalId ではないので、識別子統一の対象外(改名するとどの実データにも一致しない)。
+        const tiktokUid = nonEmptyString(teamUser.userIdStr) ?? nonEmptyString(teamUser.userId);
+        if (tiktokUid === null) continue;
+        if (!hostTiktokUids.includes(tiktokUid)) hostTiktokUids.push(tiktokUid);
 
         const score = nonEmptyString(teamUser.score);
-        if (score !== null) hostScores[userId] = score;
+        if (score !== null) hostScores[tiktokUid] = score;
 
-        hostTeams[userId] = teamId;
+        hostTeams[tiktokUid] = teamId;
       }
     });
   } else {
-    // 1vs1。armies/battleItems の値の anchorIdStr がそのまま実userIdと一致する(既存ロジック)。
+    // 1vs1。armies/battleItems の値の anchorIdStr がそのまま実 tiktokUid と一致する(既存ロジック)。
     for (const army of findArmies(data)) {
-      const anchorId = nonEmptyString(army.anchorIdStr) ?? nonEmptyString(army.anchorId);
-      if (anchorId === null) continue;
-      if (!hostUserIds.includes(anchorId)) hostUserIds.push(anchorId);
+      const tiktokUid = nonEmptyString(army.anchorIdStr) ?? nonEmptyString(army.anchorId);
+      if (tiktokUid === null) continue;
+      if (!hostTiktokUids.includes(tiktokUid)) hostTiktokUids.push(tiktokUid);
 
       const score = nonEmptyString(army.hostScore);
-      if (score !== null) hostScores[anchorId] = score;
+      if (score !== null) hostScores[tiktokUid] = score;
     }
   }
 
@@ -199,18 +201,19 @@ export function collectHosts(data: Record<string, unknown>) {
   const hostProfiles: HostProfiles = {};
   for (const info of toEntries(data.anchorInfo)) {
     // simplifyObject が足す battleUsers ではなく、生の anchorInfo を読む。
-    // BattleBaseUserInfo には uniqueId が無く displayId しか無いが、実データで
+    // BattleBaseUserInfo には tiktokHandle が無く displayId しか無いが、実データで
     // TikTok ハンドルとして使える値であることを確認済み(2026-08-27)。
     const user = asRecord(info.user) ?? info;
     const displayId = nonEmptyString(user.displayId);
     if (displayId !== null && !hostDisplayIds.includes(displayId)) {
       hostDisplayIds.push(displayId);
     }
-    const userId = nonEmptyString(user.userId);
-    if (userId !== null && !hostUserIds.includes(userId)) hostUserIds.push(userId);
+    // **TikTok の生 payload のフィールド名は `userId`。** sidestage の principalId ではない。
+    const tiktokUid = nonEmptyString(user.userId);
+    if (tiktokUid !== null && !hostTiktokUids.includes(tiktokUid)) hostTiktokUids.push(tiktokUid);
 
-    if (userId !== null) {
-      hostProfiles[userId] = {
+    if (tiktokUid !== null) {
+      hostProfiles[tiktokUid] = {
         displayId,
         nickName: nonEmptyString(user.nickName),
         avatarUrl: firstAvatarUrl(user),
@@ -218,7 +221,7 @@ export function collectHosts(data: Record<string, unknown>) {
     }
   }
 
-  return { hostUserIds, hostDisplayIds, hostScores, hostProfiles, hostTeams };
+  return { hostTiktokUids, hostDisplayIds, hostScores, hostProfiles, hostTeams };
 }
 
 /**
@@ -396,7 +399,7 @@ export type BattleRecordState = {
   startedAtEstimated: boolean;
   endedAt: Date | null;
   durationSec: number | null;
-  hostUserIds: string[];
+  hostTiktokUids: string[];
   hostDisplayIds: string[];
   hostScores: Record<string, string>;
   hostProfiles: HostProfiles;
@@ -404,16 +407,16 @@ export type BattleRecordState = {
 };
 
 /**
- * anchorIdごとにフィールド単位でマージする。オブジェクト丸ごとの spread は使わない
+ * tiktokUidごとにフィールド単位でマージする。オブジェクト丸ごとの spread は使わない
  * (後続イベントで nickName が取れなかった場合に非nullが null で潰れてしまうため)。
  * displayId/nickName は非nullを保持し、avatarUrl は「新しいほど失効までの猶予がある」
  * ため新しい非null値を優先する。
  */
 export function mergeHostProfiles(existing: HostProfiles, next: HostProfiles): HostProfiles {
   const merged: HostProfiles = { ...existing };
-  for (const [anchorId, profile] of Object.entries(next)) {
-    const prev = merged[anchorId];
-    merged[anchorId] = {
+  for (const [tiktokUid, profile] of Object.entries(next)) {
+    const prev = merged[tiktokUid];
+    merged[tiktokUid] = {
       displayId: profile.displayId ?? prev?.displayId ?? null,
       nickName: profile.nickName ?? prev?.nickName ?? null,
       avatarUrl: profile.avatarUrl ?? prev?.avatarUrl ?? null,
@@ -494,7 +497,7 @@ export function mergeBattleState(
     startedAtEstimated,
     endedAt,
     durationSec: parsed.durationSec ?? existing?.durationSec ?? null,
-    hostUserIds: mergeIds(existing?.hostUserIds ?? [], parsed.hostUserIds),
+    hostTiktokUids: mergeIds(existing?.hostTiktokUids ?? [], parsed.hostTiktokUids),
     hostDisplayIds: mergeIds(existing?.hostDisplayIds ?? [], parsed.hostDisplayIds),
     // スコアは最新の値で上書きする(増えていくので最後の観測が正しい)。
     hostScores: { ...(existing?.hostScores ?? {}), ...parsed.hostScores },

@@ -18,14 +18,14 @@ import { isEntitlementRowValid } from "./effective-entitlement";
 // 課金判定も同じtxのスナップショットで行い、削除確定までの間に外部で課金状態が
 // 変わる余地を減らす。
 export async function roomHasPaidWatcher(
-  userIds: string[],
+  principalIds: string[],
   client: Prisma.TransactionClient | typeof prisma = prisma
 ): Promise<boolean> {
-  if (userIds.length === 0) return false;
+  if (principalIds.length === 0) return false;
 
   const subscriptions = await client.subscription.findMany({
-    where: { userId: { in: userIds } },
-    select: { userId: true, plan: true, entitlementActive: true, currentPeriodEnd: true, provider: true, status: true },
+    where: { principalId: { in: principalIds } },
+    select: { principalId: true, plan: true, entitlementActive: true, currentPeriodEnd: true, provider: true, status: true },
   });
 
   const now = new Date();

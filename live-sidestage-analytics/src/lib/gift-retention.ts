@@ -134,13 +134,13 @@ async function earliestGiftDayKey(): Promise<string | null> {
  */
 async function rollupDay(dayKey: string): Promise<number> {
   return prisma.$executeRawUnsafe(
+    // 表示名(tiktokHandle / nickname / profileImageUrl)は採らない。正本は TikTokUser で、
+    // tiktokUid から読み取り時に順引きする。array_agg による最新スナップショット採取も不要。
     `INSERT INTO public."gift_daily_listener_stats" AS t
-       (id, "roomId", "dayKey", "uniqueId", nickname, "profileImageUrl",
+       (id, "roomId", "dayKey", "tiktokUid",
         "rowCount", "giftCount", "totalDiamonds", "firstReceivedAt", "lastReceivedAt")
      SELECT gen_random_uuid()::text,
-            g."roomId", g."dayKey", g."uniqueId",
-            (array_agg(g.nickname ORDER BY g."receivedAt" DESC, g.id DESC))[1],
-            (array_agg(g."profileImageUrl" ORDER BY g."receivedAt" DESC, g.id DESC))[1],
+            g."roomId", g."dayKey", g."tiktokUid",
             COUNT(*)::int,
             COALESCE(SUM(g."repeatCount"), 0)::int,
             COALESCE(SUM(g."totalDiamonds"), 0)::int,
@@ -148,10 +148,8 @@ async function rollupDay(dayKey: string): Promise<number> {
             MAX(g."receivedAt")
        FROM public."gifts" g
       WHERE g."dayKey" = $1
-      GROUP BY g."roomId", g."dayKey", g."uniqueId"
-     ON CONFLICT ("roomId", "dayKey", "uniqueId") DO UPDATE SET
-       nickname          = EXCLUDED.nickname,
-       "profileImageUrl" = EXCLUDED."profileImageUrl",
+      GROUP BY g."roomId", g."dayKey", g."tiktokUid"
+     ON CONFLICT ("roomId", "dayKey", "tiktokUid") DO UPDATE SET
        "rowCount"        = EXCLUDED."rowCount",
        "giftCount"       = EXCLUDED."giftCount",
        "totalDiamonds"   = EXCLUDED."totalDiamonds",
@@ -172,16 +170,16 @@ async function recomputeLifetimeAndAdvanceWatermark(watermark: string): Promise<
   return prisma.$transaction(async (tx) => {
     const upserted = await tx.$executeRawUnsafe(
       `INSERT INTO public."gift_lifetime_stats" AS t
-         ("uniqueId", "rowCount", "giftCount", "totalDiamonds", "firstSeenAt", "lastSeenAt")
-       SELECT s."uniqueId",
+         ("tiktokUid", "rowCount", "giftCount", "totalDiamonds", "firstSeenAt", "lastSeenAt")
+       SELECT s."tiktokUid",
               COALESCE(SUM(s."rowCount"), 0)::int,
               COALESCE(SUM(s."giftCount"), 0)::int,
               COALESCE(SUM(s."totalDiamonds"), 0)::bigint,
               MIN(s."firstReceivedAt"),
               MAX(s."lastReceivedAt")
          FROM public."gift_daily_listener_stats" s
-        GROUP BY s."uniqueId"
-       ON CONFLICT ("uniqueId") DO UPDATE SET
+        GROUP BY s."tiktokUid"
+       ON CONFLICT ("tiktokUid") DO UPDATE SET
          "rowCount"      = EXCLUDED."rowCount",
          "giftCount"     = EXCLUDED."giftCount",
          "totalDiamonds" = EXCLUDED."totalDiamonds",
@@ -189,11 +187,11 @@ async function recomputeLifetimeAndAdvanceWatermark(watermark: string): Promise<
          "lastSeenAt"    = EXCLUDED."lastSeenAt"`
     );
 
-    // 日次側から消えた uniqueId(room削除など)の残骸を落とす。
+    // 日次側から消えた tiktokUid(room削除など)の残骸を落とす。
     await tx.$executeRawUnsafe(
       `DELETE FROM public."gift_lifetime_stats" l
         WHERE NOT EXISTS (
-          SELECT 1 FROM public."gift_daily_listener_stats" s WHERE s."uniqueId" = l."uniqueId"
+          SELECT 1 FROM public."gift_daily_listener_stats" s WHERE s."tiktokUid" = l."tiktokUid"
         )`
     );
 

@@ -4,6 +4,7 @@ import { BATTLE_ACTION, type HostProfiles, type HostTeams } from "@/lib/tiktok-b
 import { getDateRange } from "@/lib/gift-analytics";
 import { queryGifts, type GiftAnalyticsUser } from "@/lib/gift-analytics";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
+import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
 import { isReplayable } from "@/lib/battle-replay";
 import type { ReplayAvailability } from "@/lib/battle-replay-contract";
@@ -15,7 +16,7 @@ const BATTLE_SELECT = {
   startedAtEstimated: true,
   endedAt: true,
   durationSec: true,
-  hostUserIds: true,
+  hostTiktokUids: true,
   hostScores: true,
   hostProfiles: true,
   hostTeams: true,
@@ -28,7 +29,7 @@ type OwnBattleRow = {
   startedAtEstimated: boolean;
   endedAt: Date | null;
   durationSec: number | null;
-  hostUserIds: string[];
+  hostTiktokUids: string[];
   hostScores: unknown;
   hostProfiles: unknown;
   hostTeams: unknown;
@@ -49,12 +50,12 @@ type ScanRow = {
 // `linkMicBattle`/`linkMicArmies` の `anchorInfo` は両サイド分が同時に配信されるため、
 // 自分の room の `TiktokBattle.hostProfiles`(tiktok-battle.ts)だけで解決できる
 // (2026-08-27 に本番データで実証済み)。「同じ battleId を持つ別 room の行」を検索するのは、
-// 相手が analytics に登録済みかどうか(= 自platform内リンクに使えるtiktokId)を知るためだけに残す。
+// 相手が analytics に登録済みかどうか(= 自platform内リンクに使えるtiktokHandle)を知るためだけに残す。
 //
-// **スコアは消去法で解決する。** TiktokRoom.hostUserId が分かっているのは基本的に自分の room
-// だけ(相手が未登録なら相手の hostUserId は永遠に埋まらない)。同じ battleId の全 room 行から
-// hostUserIds をマージして重複排除した集合がちょうど2件で、自分の hostUserId がその一方なら、
-// **もう一方が相手の anchorId** だと機械的に決まる。3人以上(2vs2 等)はサイド分割の情報が
+// **スコアは消去法で解決する。** TiktokRoom.hostTiktokUid が分かっているのは基本的に自分の room
+// だけ(相手が未登録なら相手の hostTiktokUid は永遠に埋まらない)。同じ battleId の全 room 行から
+// hostTiktokUids をマージして重複排除した集合がちょうど2件で、自分の hostTiktokUid がその一方なら、
+// **もう一方が相手の tiktokUid** だと機械的に決まる。3人以上(2vs2 等)はサイド分割の情報が
 // payload に無く敵味方を区別できないため、自分のスコアだけ出す。
 
 /** 保存できる形の hostScore か。"12.5" や "1e+21" を BigInt() に渡して落ちないようにする。 */
@@ -62,33 +63,33 @@ const SCORE_PATTERN = /^\d{1,30}$/;
 
 function asScoreEntries(value: unknown): [string, string][] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
-  return Object.entries(value as Record<string, unknown>).flatMap(([anchorId, score]) =>
-    typeof score === "string" && SCORE_PATTERN.test(score) ? [[anchorId, score] as [string, string]] : []
+  return Object.entries(value as Record<string, unknown>).flatMap(([tiktokUid, score]) =>
+    typeof score === "string" && SCORE_PATTERN.test(score) ? [[tiktokUid, score] as [string, string]] : []
   );
 }
 
-/** hostTeams(anchorId -> teamId)から妥当なエントリだけを取り出す。値は非空文字列であることのみ検証。 */
+/** hostTeams(tiktokUid -> teamId)から妥当なエントリだけを取り出す。値は非空文字列であることのみ検証。 */
 export function asTeamEntries(value: unknown): [string, string][] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
-  return Object.entries(value as Record<string, unknown>).flatMap(([anchorId, teamId]) =>
-    typeof teamId === "string" && teamId.length > 0 ? [[anchorId, teamId] as [string, string]] : []
+  return Object.entries(value as Record<string, unknown>).flatMap(([tiktokUid, teamId]) =>
+    typeof teamId === "string" && teamId.length > 0 ? [[tiktokUid, teamId] as [string, string]] : []
   );
 }
 
 export type BattleRow = {
   battleId: string;
-  hostUserIds: string[];
+  hostTiktokUids: string[];
   hostScores: unknown;
 };
 
-/** 同じ battleId の行から、anchorId ごとの最大スコアを求める。純粋関数。 */
+/** 同じ battleId の行から、tiktokUid ごとの最大スコアを求める。純粋関数。 */
 export function mergeMaxScores(rows: BattleRow[]): Map<string, bigint> {
   const merged = new Map<string, bigint>();
   for (const row of rows) {
-    for (const [anchorId, score] of asScoreEntries(row.hostScores)) {
+    for (const [tiktokUid, score] of asScoreEntries(row.hostScores)) {
       const value = BigInt(score);
-      const current = merged.get(anchorId);
-      if (current === undefined || value > current) merged.set(anchorId, value);
+      const current = merged.get(tiktokUid);
+      if (current === undefined || value > current) merged.set(tiktokUid, value);
     }
   }
   return merged;
@@ -97,13 +98,13 @@ export function mergeMaxScores(rows: BattleRow[]): Map<string, bigint> {
 /**
  * 陣営(faction)1つ分。**陣営数は2に限らない**(3陣営以上のマルチバトルをそのまま表現する)。
  *
- * `index === 0` は常に自分の陣営。以降は「anchorIdList上で最初に現れた順」で安定させる
+ * `index === 0` は常に自分の陣営。以降は「tiktokUidList上で最初に現れた順」で安定させる
  * (teamIdの文字列順は受信payload由来で意味を持たないため使わない)。
  */
 export type BattleFaction = {
   index: number;
   isSelf: boolean;
-  anchorIds: string[];
+  tiktokUids: string[];
   /**
    * 陣営内メンバーのスコア合計(観測できたメンバーのみ加算)。1人も観測できなければ null。
    * 桁あふれを避けるため BigInt で合算して文字列で保持する。
@@ -115,22 +116,22 @@ export type ResolvedBattleScore =
   | {
       kind: "1v1";
       selfScore: string | null;
-      opponentAnchorId: string;
+      opponentTiktokUid: string;
       opponentScore: string | null;
       factions: BattleFaction[];
     }
   | {
       kind: "teams";
-      selfTeamAnchorIds: string[];
+      selfTeamTiktokUids: string[];
       /** 後方互換: 自陣以外の全メンバーを1つに畳んだもの。陣営の内訳は `factions` を見る。 */
-      opponentTeamAnchorIds: string[];
+      opponentTeamTiktokUids: string[];
       selfScore: string | null;
       factions: BattleFaction[];
     }
   | {
       kind: "multi";
       participantCount: number;
-      anchorIds: string[];
+      tiktokUids: string[];
       selfScore: string | null;
       /** チーム情報が無いので「1人=1陣営」として扱う。 */
       factions: BattleFaction[];
@@ -139,9 +140,9 @@ export type ResolvedBattleScore =
   | { kind: "unknown"; selfScore: null };
 
 /** 陣営内メンバーのスコア合計。観測できたメンバーが1人もいなければ null(0に丸めない)。 */
-function sumFactionScore(anchorIds: string[], merged: Map<string, bigint>): string | null {
+function sumFactionScore(tiktokUids: string[], merged: Map<string, bigint>): string | null {
   let total: bigint | null = null;
-  for (const id of anchorIds) {
+  for (const id of tiktokUids) {
     const value = merged.get(id);
     if (value === undefined) continue;
     total = (total ?? 0n) + value;
@@ -149,24 +150,24 @@ function sumFactionScore(anchorIds: string[], merged: Map<string, bigint>): stri
   return total === null ? null : total.toString();
 }
 
-/** anchorIdのグループ配列(先頭が自陣)からBattleFaction[]を作る。純粋関数。 */
+/** tiktokUidのグループ配列(先頭が自陣)からBattleFaction[]を作る。純粋関数。 */
 function toFactions(groups: string[][], merged: Map<string, bigint>): BattleFaction[] {
-  return groups.map((anchorIds, index) => ({
+  return groups.map((tiktokUids, index) => ({
     index,
     isSelf: index === 0,
-    anchorIds,
-    score: sumFactionScore(anchorIds, merged),
+    tiktokUids,
+    score: sumFactionScore(tiktokUids, merged),
   }));
 }
 
 /**
  * 消去法でスコアを解決する。純粋関数。
  *
- * `selfHostUserId` が未解決、または観測したバトルに自分が含まれていない(別人の room)場合は
+ * `selfHostTiktokUid` が未解決、または観測したバトルに自分が含まれていない(別人の room)場合は
  * `unknown` を返す(誤って相手のスコアを自分のものとして出すより、出さないほうがよい)。
  * 自分しか観測できていない場合(`solo`)は、相手情報こそ無いが自分のスコア自体は正しいので出す。
  *
- * `selfHostTeams`(自room行のhostTeams列)にanchorIds全員分のteamId割当があり、かつ
+ * `selfHostTeams`(自room行のhostTeams列)にtiktokUids全員分のteamId割当があり、かつ
  * distinctなteamIdが2種類**以上**のとき`teams`を返す(3陣営以上もそのまま`factions`で表す)。
  * **チーム判定は自room行だけを見る**
  * (相手room行とはマージしない)。teamIdが受信room視点の相対値である可能性が未検証なため、
@@ -175,70 +176,70 @@ function toFactions(groups: string[][], merged: Map<string, bigint>): BattleFact
  */
 export function resolveBattleScore(input: {
   rows: BattleRow[];
-  selfHostUserId: string | null;
+  selfHostTiktokUid: string | null;
   selfHostTeams: unknown;
 }): ResolvedBattleScore {
-  if (input.selfHostUserId === null) return { kind: "unknown", selfScore: null };
+  if (input.selfHostTiktokUid === null) return { kind: "unknown", selfScore: null };
 
-  const anchorIds = new Set<string>();
-  for (const row of input.rows) for (const id of row.hostUserIds) anchorIds.add(id);
+  const tiktokUids = new Set<string>();
+  for (const row of input.rows) for (const id of row.hostTiktokUids) tiktokUids.add(id);
 
-  if (!anchorIds.has(input.selfHostUserId)) return { kind: "unknown", selfScore: null };
+  if (!tiktokUids.has(input.selfHostTiktokUid)) return { kind: "unknown", selfScore: null };
 
   const merged = mergeMaxScores(input.rows);
-  const selfScore = merged.get(input.selfHostUserId)?.toString() ?? null;
+  const selfScore = merged.get(input.selfHostTiktokUid)?.toString() ?? null;
 
-  if (anchorIds.size === 2) {
-    const opponentAnchorId = [...anchorIds].find((id) => id !== input.selfHostUserId)!;
+  if (tiktokUids.size === 2) {
+    const opponentTiktokUid = [...tiktokUids].find((id) => id !== input.selfHostTiktokUid)!;
     return {
       kind: "1v1",
       selfScore,
-      opponentAnchorId,
-      opponentScore: merged.get(opponentAnchorId)?.toString() ?? null,
-      factions: toFactions([[input.selfHostUserId], [opponentAnchorId]], merged),
+      opponentTiktokUid,
+      opponentScore: merged.get(opponentTiktokUid)?.toString() ?? null,
+      factions: toFactions([[input.selfHostTiktokUid], [opponentTiktokUid]], merged),
     };
   }
 
-  if (anchorIds.size === 1) return { kind: "solo", selfScore };
+  if (tiktokUids.size === 1) return { kind: "solo", selfScore };
 
   const teamOf = new Map(asTeamEntries(input.selfHostTeams));
-  const anchorIdList = [...anchorIds];
-  const allAssigned = anchorIdList.every((id) => teamOf.has(id));
-  const selfTeamId = teamOf.get(input.selfHostUserId);
+  const tiktokUidList = [...tiktokUids];
+  const allAssigned = tiktokUidList.every((id) => teamOf.has(id));
+  const selfTeamId = teamOf.get(input.selfHostTiktokUid);
   // hostTeamsに現在の参加者以外の値が(通常起きないが)残っていても巻き込まないよう、
-  // 実際のanchorIdList分だけでdistinct数を数える。
-  const distinctTeamCount = new Set(anchorIdList.map((id) => teamOf.get(id))).size;
+  // 実際のtiktokUidList分だけでdistinct数を数える。
+  const distinctTeamCount = new Set(tiktokUidList.map((id) => teamOf.get(id))).size;
 
   if (allAssigned && selfTeamId !== undefined && distinctTeamCount >= 2) {
-    // 自陣を先頭に、残りは anchorIdList 上の初出順で陣営を並べる(teamIdの文字列順は
+    // 自陣を先頭に、残りは tiktokUidList 上の初出順で陣営を並べる(teamIdの文字列順は
     // 受信payload由来で意味を持たないため使わない)。
     const orderedTeamIds: string[] = [selfTeamId];
-    for (const id of anchorIdList) {
+    for (const id of tiktokUidList) {
       const teamId = teamOf.get(id)!;
       if (!orderedTeamIds.includes(teamId)) orderedTeamIds.push(teamId);
     }
-    const groups = orderedTeamIds.map((teamId) => anchorIdList.filter((id) => teamOf.get(id) === teamId));
+    const groups = orderedTeamIds.map((teamId) => tiktokUidList.filter((id) => teamOf.get(id) === teamId));
     return {
       kind: "teams",
-      selfTeamAnchorIds: groups[0],
+      selfTeamTiktokUids: groups[0],
       // 3陣営以上でも旧UI(左右split)が壊れないよう、自陣以外は1つに畳んだものを残す。
-      opponentTeamAnchorIds: anchorIdList.filter((id) => teamOf.get(id) !== selfTeamId),
+      opponentTeamTiktokUids: tiktokUidList.filter((id) => teamOf.get(id) !== selfTeamId),
       selfScore,
       factions: toFactions(groups, merged),
     };
   }
 
   // チーム分けが取れない3人以上の乱戦。**「自分1人 vs 残り全員」に丸めず**、1人=1陣営として
-  // 全員分のスコアを個別に出せる形で返す(hostScoresはanchorId単位で観測できている)。
+  // 全員分のスコアを個別に出せる形で返す(hostScoresはtiktokUid単位で観測できている)。
   return {
     kind: "multi",
-    participantCount: anchorIds.size,
-    anchorIds: anchorIdList,
+    participantCount: tiktokUids.size,
+    tiktokUids: tiktokUidList,
     selfScore,
     factions: toFactions(
       [
-        [input.selfHostUserId],
-        ...anchorIdList.filter((id) => id !== input.selfHostUserId).map((id) => [id]),
+        [input.selfHostTiktokUid],
+        ...tiktokUidList.filter((id) => id !== input.selfHostTiktokUid).map((id) => [id]),
       ],
       merged
     ),
@@ -311,12 +312,10 @@ export function jstDateRangeToUtc(period: string, date: string): { start: Date; 
 }
 
 export type BattleOpponent = {
-  /** 相手が登録済みならそのtiktokId。未登録ならnull(補助情報)。 */
-  tiktokId: string | null;
-  /** anchorInfo由来のTikTokハンドル。相手が未登録でも取れる。ID併記用。 */
-  displayId: string | null;
+  /** 可変の @ハンドル。room 由来 or anchorInfo 由来。取れなければ null。 */
+  tiktokHandle: string | null;
   /** 表示名。UIのメイン表示。 */
-  nickName: string | null;
+  nickname: string | null;
   /** 自前ストレージのpresigned GET URL。無ければnull。 */
   avatarUrl: string | null;
   count: number;
@@ -327,13 +326,11 @@ export type BattleOpponent = {
  * 確定スナップショット(BattleHistoryParticipant)へ保存するのはこの形。
  */
 export type BattleParticipantIdentity = {
-  anchorId: string;
-  /** 登録済みならそのtiktokId。未登録ならnull(補助情報)。 */
-  tiktokId: string | null;
-  /** anchorInfo由来のTikTokハンドル。未登録でも取れる。ID併記用。 */
-  displayId: string | null;
+  tiktokUid: string;
+  /** 可変の @ハンドル。room 由来 or anchorInfo 由来。取れなければ null。 */
+  tiktokHandle: string | null;
   /** 表示名。UIのメイン表示。 */
-  nickName: string | null;
+  nickname: string | null;
 };
 
 /** 左右split表示(vs)1メンバー分。1vs1・チーム戦の両方で使う共通の形。 */
@@ -343,37 +340,37 @@ export type BattleParticipant = BattleParticipantIdentity & {
 };
 
 /**
- * 解決済みスコアから左右split表示のanchorId配列を決める。純粋関数。
+ * 解決済みスコアから左右split表示のtiktokUid配列を決める。純粋関数。
  *
  * ライブ集計(buildBattleListItems)と確定処理(battle-history-finalize.ts)の両方から呼び、
  * 「確定前後で表示が変わらない」ことをこの1箇所で担保する。
- * solo/unknown、および自分のhostUserIdが未解決の場合はどちらもnull(左右split表示なし)。
+ * solo/unknown、および自分のhostTiktokUidが未解決の場合はどちらもnull(左右split表示なし)。
  */
 export function resolveBattleSides(
   resolved: ResolvedBattleScore,
-  selfHostUserId: string | null
-): { selfTeamAnchorIds: string[] | null; opponentTeamAnchorIds: string[] | null } {
+  selfHostTiktokUid: string | null
+): { selfTeamTiktokUids: string[] | null; opponentTeamTiktokUids: string[] | null } {
   if (resolved.kind === "1v1") {
     // 1v1もteamsと同じ形(各サイド1人)に正規化し、UIが1vs1/2vs2/1vs3を同じ構造で扱えるようにする。
-    if (selfHostUserId === null) return { selfTeamAnchorIds: null, opponentTeamAnchorIds: null };
-    return { selfTeamAnchorIds: [selfHostUserId], opponentTeamAnchorIds: [resolved.opponentAnchorId] };
+    if (selfHostTiktokUid === null) return { selfTeamTiktokUids: null, opponentTeamTiktokUids: null };
+    return { selfTeamTiktokUids: [selfHostTiktokUid], opponentTeamTiktokUids: [resolved.opponentTiktokUid] };
   }
   if (resolved.kind === "teams") {
     return {
-      selfTeamAnchorIds: resolved.selfTeamAnchorIds,
-      opponentTeamAnchorIds: resolved.opponentTeamAnchorIds,
+      selfTeamTiktokUids: resolved.selfTeamTiktokUids,
+      opponentTeamTiktokUids: resolved.opponentTeamTiktokUids,
     };
   }
   if (resolved.kind === "multi") {
-    // チーム分けは不明だが、参加者全員のanchorIdは分かっている。「自分1人 vs 残り全員」として
+    // チーム分けは不明だが、参加者全員のtiktokUidは分かっている。「自分1人 vs 残り全員」として
     // 埋め、アイコン表示だけは3人以上でも出せるようにする(スコア対比は敵味方が不明なので出さない)。
-    if (selfHostUserId === null) return { selfTeamAnchorIds: null, opponentTeamAnchorIds: null };
+    if (selfHostTiktokUid === null) return { selfTeamTiktokUids: null, opponentTeamTiktokUids: null };
     return {
-      selfTeamAnchorIds: [selfHostUserId],
-      opponentTeamAnchorIds: resolved.anchorIds.filter((id) => id !== selfHostUserId),
+      selfTeamTiktokUids: [selfHostTiktokUid],
+      opponentTeamTiktokUids: resolved.tiktokUids.filter((id) => id !== selfHostTiktokUid),
     };
   }
-  return { selfTeamAnchorIds: null, opponentTeamAnchorIds: null };
+  return { selfTeamTiktokUids: null, opponentTeamTiktokUids: null };
 }
 
 /**
@@ -399,7 +396,7 @@ export type BattleListItem = {
    * multi(3人以上でhostTeamsが2チームに解決できない乱戦。「自分1人 vs 残り全員」として
    * 埋める。敵味方が不明なためopponentScoreはnullのまま=スコア対比は出さず、アイコン表示のみに使う)
    * は、どちらも非null(selfTeamは常に自分を含む1件以上、opponentTeamも1件以上)。
-   * 対戦相手不明・自分のhostUserId未解決のsolo/unknownの場合のみどちらもnull(UIは既存の
+   * 対戦相手不明・自分のhostTiktokUid未解決のsolo/unknownの場合のみどちらもnull(UIは既存の
    * opponentでフォールバック表示する)。既存の`opponent`/`selfScore`/`opponentScore`は後方互換の
    * ためそのまま残す(モバイルアプリはこれらのみを参照する)。
    */
@@ -461,13 +458,17 @@ export function sumDiamondsPerWindow(
   return result;
 }
 
-/** listenerQueryがgift(uniqueId/nickname)にマッチするか(大小文字を無視した部分一致)。 */
+/** listenerQueryがgift(tiktokHandle/nickname)にマッチするか(大小文字を無視した部分一致)。 */
 export function giftMatchesListenerQuery(
-  gift: { uniqueId: string; nickname: string },
+  display: { tiktokHandle: string | null; nickname: string | null } | null,
   listenerQuery: string
 ): boolean {
+  if (!display) return false;
   const q = listenerQuery.toLowerCase();
-  return gift.uniqueId.toLowerCase().includes(q) || gift.nickname.toLowerCase().includes(q);
+  return (
+    (display.tiktokHandle?.toLowerCase().includes(q) ?? false) ||
+    (display.nickname?.toLowerCase().includes(q) ?? false)
+  );
 }
 
 /**
@@ -505,7 +506,7 @@ const MAX_SCAN_CHUNKS = 10; // 安全弁。CHUNK_SIZE*MAX_SCAN_CHUNKS=10,000件�
 /**
  * リスナー名フィルタ有効時、一致するバトルをDISPLAY_LIMIT+1件見つかるまでチャンク走査する。
  * `startedAt`を降順カーソルにしてCHUNK_SIZE件ずつ取得し、各チャンクごとに一致判定に必要な
- * 最小限の列(receivedAt/uniqueId/nickname)だけでギフトを取得して判定する
+ * 最小限の列(receivedAt/tiktokHandle/nickname)だけでギフトを取得して判定する
  * (取得済み候補全件ぶんの表示用列・ダイヤ合計は表示対象が確定してから別途取得する)。
  *
  * 一括take(例: 5000件)で取得してから絞り込む設計だと、取得件数の上限を超えた位置にしか
@@ -524,7 +525,7 @@ async function listFinalizedBattleIds(roomId: string, battleIds: string[]): Prom
 }
 
 /**
- * 確定済みバトルのうち、listenerQueryが貢献者(uniqueId/nickname)に一致するもの。
+ * 確定済みバトルのうち、listenerQueryが貢献者(tiktokHandle/nickname)に一致するもの。
  *
  * 確定済みバトルの貢献者は「最新のニックネーム1件」に畳まれているため、バトル進行中に
  * 使っていた旧ニックネームでは一致しない(仕様変化。未確定バトルは従来どおりGiftを都度検索する)。
@@ -543,7 +544,7 @@ async function matchFinalizedBattleIds(
   const giftEventRows = await prisma.battleHistoryGiftEvent.findMany({
     where: {
       participant: { roomId, battleHistory: { roomId, battleId: { in: battleIds } } },
-      OR: [{ senderUniqueIdSnapshot: insensitiveContains }, { senderNicknameSnapshot: insensitiveContains }],
+      OR: [{ senderTiktokHandleSnapshot: insensitiveContains }, { senderNicknameSnapshot: insensitiveContains }],
     },
     select: { participant: { select: { battleHistory: { select: { battleId: true } } } } },
   });
@@ -607,10 +608,14 @@ async function scanMatchingBattleIds(
           roomId,
           OR: diamondWindows.map((w) => ({ receivedAt: { gte: w.start, lte: w.end } })),
         },
-        select: { receivedAt: true, uniqueId: true, nickname: true },
+        select: { receivedAt: true, tiktokUid: true },
         orderBy: { receivedAt: "asc" },
       });
-      const matching = gifts.filter((g) => giftMatchesListenerQuery(g, listenerQuery));
+      // Gift は表示用の列を持たないので、表示名は tiktokUid から順引きしてから照合する。
+      const display = await resolveTikTokUserDisplay(gifts.map((g) => g.tiktokUid));
+      const matching = gifts.filter((g) =>
+        giftMatchesListenerQuery(display.get(g.tiktokUid) ?? null, listenerQuery)
+      );
       for (const id of battleIdsWithGiftInWindow(
         matching.map((g) => g.receivedAt.getTime()),
         diamondWindows
@@ -635,90 +640,90 @@ async function scanMatchingBattleIds(
  * (4) 相手アイコンのTiktokAvatarAsset。(3)〜(4)はダイヤ集計対象・相手アイコンが1件も無ければ実行しない。
  */
 /**
- * 左右split表示1メンバー分を組み立てる。selfHostUserId本人はselfTiktokIdで補う(自room由来なので確実)。
+ * 左右split表示1メンバー分を組み立てる。selfHostTiktokUid本人はselfTiktokHandleで補う(自room由来なので確実)。
  *
  * チーム戦(3人以上)では「同じbattleIdを持つ他room行」が複数存在しうり、しかもその
- * hostUserIds は各roomが観測した battle payload 由来で**参加者全員分**が入る(自分だけの
+ * hostTiktokUids は各roomが観測した battle payload 由来で**参加者全員分**が入る(自分だけの
  * IDに絞られていない。teamArmiesは両チーム分を1payloadに含むため、どのroomが観測しても
- * 同じ全員分のhostUserIdsになる)。そのため「hostUserIdsにanchorIdが含まれるroom」で
+ * 同じ全員分のhostTiktokUidsになる)。そのため「hostTiktokUidsにtiktokUidが含まれるroom」で
  * 検索すると、どの他room行がヒットしても真になってしまい、2人以上の他room行が絡む
- * チーム戦でtiktokIdを取り違える(誤って別参加者のtiktokIdを割り当てる)。
- * 「そのroom自身の所有者(TiktokRoom.hostUserId)がanchorIdと一致するか」で照合する。
+ * チーム戦でtiktokHandleを取り違える(誤って別参加者のtiktokHandleを割り当てる)。
+ * 「そのroom自身の所有者(TiktokRoom.hostTiktokUid)がtiktokUidと一致するか」で照合する。
  *
  * **検索対象は`candidateRoomIds`(このバトルで実際に観測された他room)だけに絞る。**
- * `TiktokRoom.tiktokId`はuniqueだが`hostUserId`にunique制約は無く、ハンドル変更で
- * 旧ハンドルのroom行が残ると同じhostUserIdを持つroomが複数存在しうる(手続きは
+ * `TiktokRoom.tiktokHandle`はuniqueだが`hostTiktokUid`にunique制約は無く、ハンドル変更で
+ * 旧ハンドルのroom行が残ると同じhostTiktokUidを持つroomが複数存在しうる(手続きは
  * `src/lib/tiktok-host-id.ts`が一度入った値を上書きしない前提のため、新ハンドルの
  * roomは別行として作られる)。`otherRoomById`(このクエリ全体でまとめて取得した、
- * 表示対象の全バトル分の他room)を無条件に全探索すると、hostUserIdが重複するroomの
- * うちどれが先にヒットするかが不定になり、別バトル・別ハンドルのtiktokIdを取り違える。
+ * 表示対象の全バトル分の他room)を無条件に全探索すると、hostTiktokUidが重複するroomの
+ * うちどれが先にヒットするかが不定になり、別バトル・別ハンドルのtiktokHandleを取り違える。
  */
 export function resolveParticipantIdentity(
-  anchorId: string,
+  tiktokUid: string,
   hostProfiles: HostProfiles | null,
   candidateRoomIds: string[],
-  otherRoomById: Map<string, { tiktokId: string; hostUserId: string | null }>,
-  selfHostUserId: string | null,
-  selfTiktokId: string | null
+  otherRoomById: Map<string, { tiktokHandle: string; hostTiktokUid: string | null }>,
+  selfHostTiktokUid: string | null,
+  selfTiktokHandle: string | null
 ): BattleParticipantIdentity {
-  const profile = hostProfiles?.[anchorId];
-  let tiktokId: string | null = null;
-  if (anchorId === selfHostUserId) {
-    tiktokId = selfTiktokId;
+  const profile = hostProfiles?.[tiktokUid];
+  let tiktokHandle: string | null = null;
+  if (tiktokUid === selfHostTiktokUid) {
+    tiktokHandle = selfTiktokHandle;
   } else {
     for (const roomId of candidateRoomIds) {
       const room = otherRoomById.get(roomId);
-      if (room?.hostUserId === anchorId) {
-        tiktokId = room.tiktokId;
+      if (room?.hostTiktokUid === tiktokUid) {
+        tiktokHandle = room.tiktokHandle;
         break;
       }
     }
   }
   return {
-    anchorId,
-    tiktokId,
-    displayId: profile?.displayId ?? null,
-    nickName: profile?.nickName ?? null,
+    tiktokUid,
+    // room 由来のハンドルが無ければ anchorInfo 由来へ落とす(どちらも同じ @ハンドル)。
+    tiktokHandle: tiktokHandle ?? profile?.displayId ?? null,
+    nickname: profile?.nickName ?? null,
   };
 }
 
 /**
- * Phase2a(新構造dual-write)専用。参加者(anchorId)が所属するTiktokRoom.idを解決する。
- * resolveParticipantIdentityのtiktokId解決と同じ「hostUserId一致マッチ」を使うが、
+ * Phase2a(新構造dual-write)専用。参加者(tiktokUid)が所属するTiktokRoom.idを解決する。
+ * resolveParticipantIdentityのtiktokHandle解決と同じ「hostTiktokUid一致マッチ」を使うが、
  * 一致候補が2件以上ある(曖昧)場合は解決失敗としてnullに倒す(先勝ちにしない)。
  * 自分ならselfRoomId、相手はSidestageがそのroomを別途監視できていた場合のみ解決できる
  * (できなければ新構造ではその参加者の個々のギフトイベントを保存できない=null)。
  */
 export function resolveParticipantRoomId(
-  anchorId: string,
+  tiktokUid: string,
   candidateRoomIds: string[],
-  otherRoomById: Map<string, { tiktokId: string; hostUserId: string | null }>,
-  selfHostUserId: string | null,
+  otherRoomById: Map<string, { tiktokHandle: string; hostTiktokUid: string | null }>,
+  selfHostTiktokUid: string | null,
   selfRoomId: string
 ): string | null {
-  if (anchorId === selfHostUserId) return selfRoomId;
-  const matches = [...new Set(candidateRoomIds)].filter((roomId) => otherRoomById.get(roomId)?.hostUserId === anchorId);
+  if (tiktokUid === selfHostTiktokUid) return selfRoomId;
+  const matches = [...new Set(candidateRoomIds)].filter((roomId) => otherRoomById.get(roomId)?.hostTiktokUid === tiktokUid);
   return matches.length === 1 ? matches[0] : null;
 }
 
 function buildParticipant(
-  anchorId: string,
+  tiktokUid: string,
   hostProfiles: HostProfiles | null,
   candidateRoomIds: string[],
-  otherRoomById: Map<string, { tiktokId: string; hostUserId: string | null }>,
+  otherRoomById: Map<string, { tiktokHandle: string; hostTiktokUid: string | null }>,
   avatarUrls: Map<string, string>,
-  selfHostUserId: string | null,
-  selfTiktokId: string | null
+  selfHostTiktokUid: string | null,
+  selfTiktokHandle: string | null
 ): BattleParticipant {
   const identity = resolveParticipantIdentity(
-    anchorId,
+    tiktokUid,
     hostProfiles,
     candidateRoomIds,
     otherRoomById,
-    selfHostUserId,
-    selfTiktokId
+    selfHostTiktokUid,
+    selfTiktokHandle
   );
-  return { ...identity, avatarUrl: avatarUrls.get(anchorId) ?? null };
+  return { ...identity, avatarUrl: avatarUrls.get(tiktokUid) ?? null };
 }
 
 /** 確定済みスナップショット(BattleHistory)1件分。読み出しに必要な列だけ。 */
@@ -738,10 +743,10 @@ export type FinalizedBattle = {
     /** 陣営番号。0が自分の陣営。3陣営以上はここでしか区別できない。 */
     teamIndex: number;
     position: number;
-    anchorId: string;
-    tiktokId: string | null;
-    displayId: string | null;
-    nickName: string | null;
+    tiktokUid: string;
+    /** バトル時点で凍結したハンドル・ニックネーム(TikTokUserからは引かない)。 */
+    tiktokHandleSnapshot: string | null;
+    nicknameSnapshot: string | null;
     /** 確定時に観測できていたこのメンバーのスコア。未観測ならnull。 */
     score: string | null;
   }[];
@@ -769,10 +774,9 @@ async function loadFinalizedBattles(roomId: string, battleIds: string[]): Promis
           side: true,
           teamIndex: true,
           position: true,
-          anchorId: true,
-          tiktokId: true,
-          displayId: true,
-          nickName: true,
+          tiktokUid: true,
+          tiktokHandleSnapshot: true,
+          nicknameSnapshot: true,
           score: true,
         },
         orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
@@ -786,8 +790,8 @@ async function buildBattleListItems(
   ownBattles: OwnBattleRow[],
   roomId: string,
   viewerStreamerId: string,
-  selfHostUserId: string | null,
-  selfTiktokId: string | null,
+  selfHostTiktokUid: string | null,
+  selfTiktokHandle: string | null,
   now: Date
 ): Promise<BattleListItem[]> {
   if (ownBattles.length === 0) return [];
@@ -801,7 +805,7 @@ async function buildBattleListItems(
     liveBattleIds.length > 0
       ? await prisma.tiktokBattle.findMany({
           where: { battleId: { in: liveBattleIds }, roomId: { not: roomId } },
-          select: { battleId: true, roomId: true, hostUserIds: true, hostScores: true },
+          select: { battleId: true, roomId: true, hostTiktokUids: true, hostScores: true },
         })
       : [];
 
@@ -810,7 +814,7 @@ async function buildBattleListItems(
     otherRoomIds.length > 0
       ? await prisma.tiktokRoom.findMany({
           where: { id: { in: otherRoomIds } },
-          select: { id: true, tiktokId: true, hostUserId: true },
+          select: { id: true, tiktokHandle: true, hostTiktokUid: true },
         })
       : [];
   const otherRoomById = new Map(otherRooms.map((r) => [r.id, r]));
@@ -855,21 +859,20 @@ async function buildBattleListItems(
     selfScore: string | null;
     opponentScore: string | null;
     selfTotalDiamonds: number;
-    opponentTiktokId: string | null;
-    opponentDisplayId: string | null;
-    opponentNickName: string | null;
-    opponentAnchorId: string | null;
+    opponentTiktokHandle: string | null;
+    opponentNickname: string | null;
+    opponentTiktokUid: string | null;
     opponentCount: number | null;
-    /** 左右split表示用。1v1/teamsに解決できた場合のみ非null(hostProfiles解決前の生anchorId)。 */
-    selfTeamAnchorIds: string[] | null;
-    opponentTeamAnchorIds: string[] | null;
+    /** 左右split表示用。1v1/teamsに解決できた場合のみ非null(hostProfiles解決前の生tiktokUid)。 */
+    selfTeamTiktokUids: string[] | null;
+    opponentTeamTiktokUids: string[] | null;
     /** 陣営ごとの内訳(3陣営以上をそのまま持つ)。solo/unknownのみnull。 */
-    factions: { anchorIds: string[]; score: string | null }[] | null;
+    factions: { tiktokUids: string[]; score: string | null }[] | null;
     hostProfiles: HostProfiles | null;
     /** このバトルで実際に観測された他roomのroomId一覧。buildParticipantの検索対象をこのバトルだけに絞る。 */
     otherRoomIdsForBattle: string[];
     /**
-     * 確定済みバトルのみ非null。anchorId -> 保存済みの識別情報。
+     * 確定済みバトルのみ非null。tiktokUid -> 保存済みの識別情報。
      * 非nullのときはhostProfiles/otherRoomByIdを引かず、この値をそのまま表示に使う。
      */
     storedIdentities: Map<string, BattleParticipantIdentity> | null;
@@ -877,7 +880,7 @@ async function buildBattleListItems(
   };
 
   // 左右split表示・旧opponentフィールドの両方に使うアイコンをdistinctで集め、まとめて1回だけ解決する。
-  const avatarAnchorIds = new Set<string>();
+  const avatarTiktokUids = new Set<string>();
 
   /**
    * 確定済みバトルの表示アイテムをスナップショットだけから組み立てる。
@@ -916,16 +919,20 @@ async function buildBattleListItems(
       // selfScore/opponentScore(2陣営のときのみ意味がある)で補う。
       const legacy =
         index === 0 ? finalized.selfScore : factionGroups.length === 2 ? finalized.opponentScore : null;
-      return { anchorIds: group.map((p) => p.anchorId), score: total === null ? legacy : total.toString() };
+      return { tiktokUids: group.map((p) => p.tiktokUid), score: total === null ? legacy : total.toString() };
     });
 
     const storedIdentities = new Map<string, BattleParticipantIdentity>(
       finalized.participants.map((p) => [
-        p.anchorId,
-        { anchorId: p.anchorId, tiktokId: p.tiktokId, displayId: p.displayId, nickName: p.nickName },
+        p.tiktokUid,
+        {
+          tiktokUid: p.tiktokUid,
+          tiktokHandle: p.tiktokHandleSnapshot,
+          nickname: p.nicknameSnapshot,
+        },
       ])
     );
-    for (const anchorId of storedIdentities.keys()) avatarAnchorIds.add(anchorId);
+    for (const tiktokUid of storedIdentities.keys()) avatarTiktokUids.add(tiktokUid);
 
     const isOneVsOne = selfParticipants.length === 1 && opponentParticipants.length === 1;
     const opponentCount =
@@ -939,13 +946,12 @@ async function buildBattleListItems(
       selfScore: finalized.selfScore,
       opponentScore: finalized.opponentScore,
       selfTotalDiamonds: finalized.selfTotalDiamonds,
-      opponentTiktokId: soleOpponent?.tiktokId ?? null,
-      opponentDisplayId: soleOpponent?.displayId ?? null,
-      opponentNickName: soleOpponent?.nickName ?? null,
-      opponentAnchorId: soleOpponent?.anchorId ?? null,
+      opponentTiktokHandle: soleOpponent?.tiktokHandleSnapshot ?? null,
+      opponentNickname: soleOpponent?.nicknameSnapshot ?? null,
+      opponentTiktokUid: soleOpponent?.tiktokUid ?? null,
       opponentCount,
-      selfTeamAnchorIds: selfParticipants.length > 0 ? selfParticipants.map((p) => p.anchorId) : null,
-      opponentTeamAnchorIds: opponentParticipants.length > 0 ? opponentParticipants.map((p) => p.anchorId) : null,
+      selfTeamTiktokUids: selfParticipants.length > 0 ? selfParticipants.map((p) => p.tiktokUid) : null,
+      opponentTeamTiktokUids: opponentParticipants.length > 0 ? opponentParticipants.map((p) => p.tiktokUid) : null,
       factions: factions.length > 0 ? factions : null,
       hostProfiles: null,
       otherRoomIdsForBattle: [],
@@ -967,51 +973,49 @@ async function buildBattleListItems(
 
     const others = otherRowsByBattleId.get(own.battleId) ?? [];
     const rows: BattleRow[] = [
-      { battleId: own.battleId, hostUserIds: own.hostUserIds, hostScores: own.hostScores },
-      ...others.map((o) => ({ battleId: o.battleId, hostUserIds: o.hostUserIds, hostScores: o.hostScores })),
+      { battleId: own.battleId, hostTiktokUids: own.hostTiktokUids, hostScores: own.hostScores },
+      ...others.map((o) => ({ battleId: o.battleId, hostTiktokUids: o.hostTiktokUids, hostScores: o.hostScores })),
     ];
 
-    const resolved = resolveBattleScore({ rows, selfHostUserId, selfHostTeams: own.hostTeams });
+    const resolved = resolveBattleScore({ rows, selfHostTiktokUid, selfHostTeams: own.hostTeams });
     const windowInfo = windowInfoByBattleId.get(own.battleId)!;
     const selfScore: string | null = resolved.selfScore;
 
-    let opponentTiktokId: string | null = null;
-    let opponentDisplayId: string | null = null;
-    let opponentNickName: string | null = null;
-    let opponentAnchorId: string | null = null;
+    let opponentTiktokHandle: string | null = null;
+    let opponentNickname: string | null = null;
+    let opponentTiktokUid: string | null = null;
     let opponentCount: number | null = null;
     let opponentScore: string | null = null;
 
-    // 左右split表示のanchorId配列は確定処理と同じ関数で決める(確定前後で表示を変えないため)。
-    const { selfTeamAnchorIds, opponentTeamAnchorIds } = resolveBattleSides(resolved, selfHostUserId);
-    for (const id of selfTeamAnchorIds ?? []) avatarAnchorIds.add(id);
-    for (const id of opponentTeamAnchorIds ?? []) avatarAnchorIds.add(id);
+    // 左右split表示のtiktokUid配列は確定処理と同じ関数で決める(確定前後で表示を変えないため)。
+    const { selfTeamTiktokUids, opponentTeamTiktokUids } = resolveBattleSides(resolved, selfHostTiktokUid);
+    for (const id of selfTeamTiktokUids ?? []) avatarTiktokUids.add(id);
+    for (const id of opponentTeamTiktokUids ?? []) avatarTiktokUids.add(id);
 
     if (resolved.kind === "1v1") {
       opponentScore = resolved.opponentScore;
-      opponentAnchorId = resolved.opponentAnchorId;
+      opponentTiktokUid = resolved.opponentTiktokUid;
 
-      const profile = (own.hostProfiles as HostProfiles | null)?.[resolved.opponentAnchorId];
-      opponentDisplayId = profile?.displayId ?? null;
-      opponentNickName = profile?.nickName ?? null;
+      const profile = (own.hostProfiles as HostProfiles | null)?.[resolved.opponentTiktokUid];
+      opponentNickname = profile?.nickName ?? null;
 
-      const opponentRoom = others.find((o) => o.hostUserIds.includes(resolved.opponentAnchorId));
-      opponentTiktokId = opponentRoom ? otherRoomById.get(opponentRoom.roomId)?.tiktokId ?? null : null;
+      const opponentRoom = others.find((o) => o.hostTiktokUids.includes(resolved.opponentTiktokUid));
+      opponentTiktokHandle = opponentRoom ? otherRoomById.get(opponentRoom.roomId)?.tiktokHandle ?? null : null;
       opponentCount = 1;
     } else if (resolved.kind === "teams") {
       // 旧opponentフィールドはmulti時代と同じ形(人数のみ、名前・アイコンは出さない)で後方互換を保つ。
       // モバイルアプリはopponent.countだけを見て「複数人バトル(N人)」に分岐している。
-      opponentCount = resolved.selfTeamAnchorIds.length + resolved.opponentTeamAnchorIds.length - 1;
+      opponentCount = resolved.selfTeamTiktokUids.length + resolved.opponentTeamTiktokUids.length - 1;
     } else if (resolved.kind === "multi") {
-      // チーム分けは不明だが、参加者全員のanchorIdは分かっている(resolveBattleSidesが
+      // チーム分けは不明だが、参加者全員のtiktokUidは分かっている(resolveBattleSidesが
       // 「自分1人 vs 残り全員」として埋める)。アイコン表示だけは3人以上でも出すが、
       // 敵味方が不明なのでスコア対比は出さない(opponentScoreはnullのまま)。
       opponentCount = resolved.participantCount - 1;
     } else if (others.length > 0) {
-      // anchorId ベースでは解決できなくても(hostUserId未解決・別人room混在等)、別 room の
-      // 観測があれば相手候補として名前だけ出す。スコア対比は anchorId が特定できないので出さない。
+      // tiktokUid ベースでは解決できなくても(hostTiktokUid未解決・別人room混在等)、別 room の
+      // 観測があれば相手候補として名前だけ出す。スコア対比は tiktokUid が特定できないので出さない。
       const firstOther = others[0];
-      opponentTiktokId = otherRoomById.get(firstOther.roomId)?.tiktokId ?? null;
+      opponentTiktokHandle = otherRoomById.get(firstOther.roomId)?.tiktokHandle ?? null;
       // count は「このバトルの」相手room数。otherRoomIds は全バトル分の他roomを合算した
       // 集合なので使わない(使うと別バトルの相手数まで混入する)。
       const thisBattleOtherRoomIds = new Set(others.map((o) => o.roomId));
@@ -1025,16 +1029,15 @@ async function buildBattleListItems(
       selfScore,
       opponentScore,
       selfTotalDiamonds: diamondsByBattleId.get(own.battleId) ?? 0,
-      opponentTiktokId,
-      opponentDisplayId,
-      opponentNickName,
-      opponentAnchorId,
+      opponentTiktokHandle,
+      opponentNickname,
+      opponentTiktokUid,
       opponentCount,
-      selfTeamAnchorIds,
-      opponentTeamAnchorIds,
+      selfTeamTiktokUids,
+      opponentTeamTiktokUids,
       factions:
         resolved.kind === "1v1" || resolved.kind === "teams" || resolved.kind === "multi"
-          ? resolved.factions.map((f) => ({ anchorIds: f.anchorIds, score: f.score }))
+          ? resolved.factions.map((f) => ({ tiktokUids: f.tiktokUids, score: f.score }))
           : null,
       hostProfiles: own.hostProfiles as HostProfiles | null,
       otherRoomIdsForBattle: others.map((o) => o.roomId),
@@ -1044,20 +1047,20 @@ async function buildBattleListItems(
     };
   });
 
-  const avatarUrls = await resolveAvatarUrls("battle_host", [...avatarAnchorIds]);
+  const avatarUrls = await resolveAvatarUrls([...avatarTiktokUids]);
 
   /** 確定済みは保存済みの識別情報、未確定はライブ解決。どちらもアイコンだけは都度署名する。 */
-  const participantOf = (anchorId: string, p: PendingItem): BattleParticipant => {
-    const stored = p.storedIdentities?.get(anchorId);
-    if (stored) return { ...stored, avatarUrl: avatarUrls.get(anchorId) ?? null };
+  const participantOf = (tiktokUid: string, p: PendingItem): BattleParticipant => {
+    const stored = p.storedIdentities?.get(tiktokUid);
+    if (stored) return { ...stored, avatarUrl: avatarUrls.get(tiktokUid) ?? null };
     return buildParticipant(
-      anchorId,
+      tiktokUid,
       p.hostProfiles,
       p.otherRoomIdsForBattle,
       otherRoomById,
       avatarUrls,
-      selfHostUserId,
-      selfTiktokId
+      selfHostTiktokUid,
+      selfTiktokHandle
     );
   };
 
@@ -1069,20 +1072,19 @@ async function buildBattleListItems(
       p.opponentCount === null
         ? null
         : {
-            tiktokId: p.opponentTiktokId,
-            displayId: p.opponentDisplayId,
-            nickName: p.opponentNickName,
-            avatarUrl: p.opponentAnchorId ? avatarUrls.get(p.opponentAnchorId) ?? null : null,
+            tiktokHandle: p.opponentTiktokHandle,
+            nickname: p.opponentNickname,
+            avatarUrl: p.opponentTiktokUid ? avatarUrls.get(p.opponentTiktokUid) ?? null : null,
             count: p.opponentCount,
           },
-    selfTeam: p.selfTeamAnchorIds?.map((id) => participantOf(id, p)) ?? null,
-    opponentTeam: p.opponentTeamAnchorIds?.map((id) => participantOf(id, p)) ?? null,
+    selfTeam: p.selfTeamTiktokUids?.map((id) => participantOf(id, p)) ?? null,
+    opponentTeam: p.opponentTeamTiktokUids?.map((id) => participantOf(id, p)) ?? null,
     teams:
       p.factions?.map((f, index) => ({
         index,
         isSelf: index === 0,
         score: f.score,
-        participants: f.anchorIds.map((id) => participantOf(id, p)),
+        participants: f.tiktokUids.map((id) => participantOf(id, p)),
       })) ?? null,
     selfScore: p.selfScore,
     opponentScore: p.opponentScore,
@@ -1111,10 +1113,10 @@ export async function queryBattles(
 
   const selfRoom = await prisma.tiktokRoom.findUnique({
     where: { id: roomId },
-    select: { hostUserId: true, tiktokId: true },
+    select: { hostTiktokUid: true, tiktokHandle: true },
   });
-  const selfHostUserId = selfRoom?.hostUserId ?? null;
-  const selfTiktokId = selfRoom?.tiktokId ?? null;
+  const selfHostTiktokUid = selfRoom?.hostTiktokUid ?? null;
+  const selfTiktokHandle = selfRoom?.tiktokHandle ?? null;
 
   if (!listenerQuery) {
     const ownBattles = await prisma.tiktokBattle.findMany({
@@ -1123,7 +1125,7 @@ export async function queryBattles(
       take: DISPLAY_LIMIT,
       select: BATTLE_SELECT,
     });
-    const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, selfTiktokId, now);
+    const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostTiktokUid, selfTiktokHandle, now);
     return { battles, hasMore: ownBattles.length >= DISPLAY_LIMIT };
   }
 
@@ -1141,7 +1143,7 @@ export async function queryBattles(
     (a, b) => orderById.get(a.battleId)! - orderById.get(b.battleId)!
   );
 
-  const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostUserId, selfTiktokId, now);
+  const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostTiktokUid, selfTiktokHandle, now);
   return { battles, hasMore };
 }
 
@@ -1163,7 +1165,7 @@ export type BattleTeamCaptureStatus = "complete" | "partial" | "unavailable";
 
 /** 陣営内1参加者(room)分の貢献者内訳。参加者セレクタで個別に絞り込むときに使う。 */
 export type BattleTeamParticipantContributors = {
-  anchorId: string;
+  tiktokUid: string;
   displayName: string;
   captureStatus: BattleTeamCaptureStatus | null;
   partialNote: string | null;
@@ -1202,8 +1204,9 @@ export type BattleTeamContributors = {
  * `[{occurredAt:"desc"},{sourceGiftId:"desc"}]` 済みである前提(「最初に見た行を採用」で
  * nicknameを最新行のものに固定するため)。 */
 export type GiftEventForContribution = {
-  senderUniqueIdSnapshot: string;
-  senderNicknameSnapshot: string;
+  senderTiktokUid: string;
+  senderTiktokHandleSnapshot: string | null;
+  senderNicknameSnapshot: string | null;
   repeatCount: number;
   totalDiamonds: number;
   occurredAt: Date;
@@ -1220,10 +1223,12 @@ export type GiftEventForContribution = {
  */
 export function aggregateGiftEventsToContributors(rows: GiftEventForContribution[]): BattleContributorDetail[] {
   const seenSourceIds = new Set<string>();
-  const byUniqueId = new Map<
+  // 集計キーは不変のsenderTiktokUid(ハンドル改名で同一人物が割れないため)。
+  const bySenderTiktokUid = new Map<
     string,
     {
-      nickname: string;
+      tiktokHandle: string | null;
+      nickname: string | null;
       giftCount: number;
       totalDiamonds: number;
       lastGiftAt: Date;
@@ -1240,14 +1245,15 @@ export function aggregateGiftEventsToContributors(rows: GiftEventForContribution
       totalDiamonds: row.totalDiamonds,
       repeatCount: row.repeatCount,
     };
-    const existing = byUniqueId.get(row.senderUniqueIdSnapshot);
+    const existing = bySenderTiktokUid.get(row.senderTiktokUid);
     if (existing) {
       existing.giftCount += row.repeatCount;
       existing.totalDiamonds += row.totalDiamonds;
       if (row.occurredAt > existing.lastGiftAt) existing.lastGiftAt = row.occurredAt;
       existing.giftEvents.push(event);
     } else {
-      byUniqueId.set(row.senderUniqueIdSnapshot, {
+      bySenderTiktokUid.set(row.senderTiktokUid, {
+        tiktokHandle: row.senderTiktokHandleSnapshot,
         nickname: row.senderNicknameSnapshot,
         giftCount: row.repeatCount,
         totalDiamonds: row.totalDiamonds,
@@ -1256,9 +1262,10 @@ export function aggregateGiftEventsToContributors(rows: GiftEventForContribution
       });
     }
   }
-  return [...byUniqueId.entries()]
-    .map(([uniqueId, v]) => ({
-      uniqueId,
+  return [...bySenderTiktokUid.entries()]
+    .map(([tiktokUid, v]) => ({
+      tiktokUid,
+      tiktokHandle: v.tiktokHandle,
       nickname: v.nickname,
       profileImageUrl: null as string | null,
       giftCount: v.giftCount,
@@ -1273,7 +1280,9 @@ export function aggregateGiftEventsToContributors(rows: GiftEventForContribution
     .sort((a, b) => {
       if (b.totalDiamonds !== a.totalDiamonds) return b.totalDiamonds - a.totalDiamonds;
       if (a.lastGiftAt !== b.lastGiftAt) return a.lastGiftAt < b.lastGiftAt ? 1 : -1;
-      return a.uniqueId < b.uniqueId ? -1 : a.uniqueId > b.uniqueId ? 1 : 0;
+      const ah = a.tiktokHandle ?? "";
+      const bh = b.tiktokHandle ?? "";
+      return ah < bh ? -1 : ah > bh ? 1 : 0;
     });
 }
 
@@ -1339,13 +1348,12 @@ export async function queryBattleContributors(
       windowStart: true,
       participants: {
         select: {
-          anchorId: true,
+          tiktokUid: true,
           side: true,
           teamIndex: true,
           position: true,
-          nickName: true,
-          displayId: true,
-          tiktokId: true,
+          tiktokHandleSnapshot: true,
+          nicknameSnapshot: true,
           score: true,
           officialScore: true,
           captureStatus: true,
@@ -1353,7 +1361,8 @@ export async function queryBattleContributors(
           captureEndedEarlyMs: true,
           giftEvents: {
             select: {
-              senderUniqueIdSnapshot: true,
+              senderTiktokUid: true,
+              senderTiktokHandleSnapshot: true,
               senderNicknameSnapshot: true,
               repeatCount: true,
               totalDiamonds: true,
@@ -1373,12 +1382,9 @@ export async function queryBattleContributors(
     const contributors = aggregateGiftEventsToContributors(allGiftEventRows);
 
     // アバターだけは署名付きURLなので保存せず都度解決する(TiktokAvatarAssetはGift非依存の恒久キャッシュ)。
-    const avatarUrls = await resolveAvatarUrls(
-      "gift_sender",
-      contributors.map((c) => c.uniqueId)
-    );
+    const avatarUrls = await resolveAvatarUrls(contributors.map((c) => c.tiktokUid));
     const withAvatar = (list: BattleContributorDetail[]): BattleContributorDetail[] =>
-      list.map((c) => ({ ...c, profileImageUrl: avatarUrls.get(c.uniqueId) ?? null }));
+      list.map((c) => ({ ...c, profileImageUrl: avatarUrls.get(c.tiktokUid) ?? null }));
 
     // teamIndex導入前の確定データはteamIndexが全件0。その場合はside(self/opponent)から2陣営を
     // 作る(buildFinalizedPendingItemの後方互換ロジックと同じ規則)。
@@ -1413,7 +1419,7 @@ export async function queryBattleContributors(
     }
 
     const displayNameOf = (p: ParticipantRow): string =>
-      p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
+      p.nicknameSnapshot ?? (p.tiktokHandleSnapshot ? `@${p.tiktokHandleSnapshot}` : null) ?? "?";
 
     const teams: BattleTeamContributors[] = groups.map((group, index) => {
       const isSelf = index === 0;
@@ -1434,7 +1440,7 @@ export async function queryBattleContributors(
       const participants: BattleTeamParticipantContributors[] = sortedGroup.map((p) => {
         const pContributors = withAvatar(aggregateGiftEventsToContributors(p.giftEvents));
         return {
-          anchorId: p.anchorId,
+          tiktokUid: p.tiktokUid,
           displayName: displayNameOf(p),
           captureStatus: (p.captureStatus as BattleTeamCaptureStatus | null) ?? null,
           partialNote: buildPartialNote(finalized.windowStart, p.captureStartedLateMs, p.captureEndedEarlyMs),

@@ -11,7 +11,7 @@ const NOW = new Date("2026-08-23T12:00:00.000Z");
 
 const OK: TiktokProfileResult = {
   ok: true,
-  profile: { avatarUrl: "https://p16.tiktokcdn.com/x", nickname: null, userId: null },
+  profile: { avatarUrl: "https://p16.tiktokcdn.com/x", nickname: null, tiktokUid: null },
 };
 const NOT_FOUND: TiktokProfileResult = { ok: false, reason: "NOT_FOUND" };
 /** TikTok が user_not_found を明示した NOT_FOUND。 */
@@ -31,7 +31,6 @@ describe("classifyExistenceResult", () => {
       notFoundFirstAt: null,
       outcome: "exists",
       shouldSuspend: false,
-      explicitNotFound: false,
     });
   });
 
@@ -93,7 +92,6 @@ describe("classifyExistenceResult", () => {
       ...current,
       outcome: "inconclusive",
       shouldSuspend: false,
-      explicitNotFound: false,
     });
   });
 
@@ -104,21 +102,17 @@ describe("classifyExistenceResult", () => {
       ...current,
       outcome: "inconclusive",
       shouldSuspend: false,
-      explicitNotFound: false,
     });
   });
 
-  // hostUserId の補完を恒久的に諦めるかの判断材料。**監視停止(shouldSuspend)とは
-  // 独立**で、そちらはストリークと継続時間で守られているぶん粗い NOT_FOUND を許容できるが、
-  // give-up は不可逆なので明示シグナルだけを根拠にする。
-  it("explicitNotFoundはuser_not_foundが明示されたときだけ立つ", () => {
+  // TikTok が user_not_found を明示したかどうかで判定を変えない。唯一の消費者だった
+  // hostTiktokUid の補完 give-up は、room の同一性が uid になったことで廃止済み。
+  it("user_not_foundの明示有無で判定は変わらない(give-up廃止の回帰)", () => {
     const current = { notFoundStreak: 0, notFoundFirstAt: null };
 
-    expect(classifyExistenceResult(current, NOT_FOUND_EXPLICIT, NOW).explicitNotFound).toBe(true);
-    expect(classifyExistenceResult(current, NOT_FOUND, NOW).explicitNotFound).toBe(false);
-    expect(classifyExistenceResult(current, RATE_LIMITED, NOW).explicitNotFound).toBe(false);
-    expect(classifyExistenceResult(current, ERROR, NOW).explicitNotFound).toBe(false);
-    expect(classifyExistenceResult(current, OK, NOW).explicitNotFound).toBe(false);
+    expect(classifyExistenceResult(current, NOT_FOUND_EXPLICIT, NOW)).toEqual(
+      classifyExistenceResult(current, NOT_FOUND, NOW)
+    );
   });
 
   it("2回目以降のNOT_FOUNDはfirstAtを更新せず引き継ぐ", () => {

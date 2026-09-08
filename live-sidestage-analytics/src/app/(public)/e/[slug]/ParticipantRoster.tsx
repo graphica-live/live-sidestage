@@ -85,7 +85,7 @@ function ParticipantCard({ participant }: { participant: RosterParticipantDto })
   return (
     <li>
       <a
-        href={`https://www.tiktok.com/@${participant.tiktokId}`}
+        href={`https://www.tiktok.com/@${participant.tiktokHandle}`}
         target="_blank"
         rel="noreferrer"
         className={`flex items-center gap-2 border border-border bg-panel p-3 transition-colors hover:border-brand/50 hover:bg-row-hover ${CARD_CLIP}`}
@@ -100,7 +100,7 @@ function ParticipantCard({ participant }: { participant: RosterParticipantDto })
         />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{participant.displayName}</p>
-          <p className="truncate font-mono text-xs text-muted">@{participant.tiktokId}</p>
+          <p className="truncate font-mono text-xs text-muted">@{participant.tiktokHandle}</p>
         </div>
       </a>
     </li>

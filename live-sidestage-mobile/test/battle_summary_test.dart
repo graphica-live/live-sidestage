@@ -16,15 +16,15 @@ void main() {
   });
 
   group('BattleOpponent.tryParse', () {
-    test('tiktokIdとcountを解析できる', () {
-      final opponent = BattleOpponent.tryParse({'tiktokId': 'rival', 'count': 2});
-      expect(opponent!.tiktokId, 'rival');
+    test('tiktokHandleとcountを解析できる', () {
+      final opponent = BattleOpponent.tryParse({'tiktokHandle': 'rival', 'count': 2});
+      expect(opponent!.tiktokHandle, 'rival');
       expect(opponent.count, 2);
     });
 
-    test('tiktokIdが無ければnull(相手roomはあるが特定できないケース)', () {
+    test('tiktokHandleが無ければnull(相手roomはあるが特定できないケース)', () {
       final opponent = BattleOpponent.tryParse({'count': 1});
-      expect(opponent!.tiktokId, isNull);
+      expect(opponent!.tiktokHandle, isNull);
       expect(opponent.count, 1);
     });
 
@@ -45,24 +45,24 @@ void main() {
   });
 
   group('BattleParticipant.tryParseList', () {
-    test('anchorIdとavatarUrlを持つ配列を解析できる', () {
+    test('tiktokUidとavatarUrlを持つ配列を解析できる', () {
       final list = BattleParticipant.tryParseList([
-        {'anchorId': 'a1', 'avatarUrl': 'https://x/a1.png'},
-        {'anchorId': 'a2', 'avatarUrl': null},
+        {'tiktokUid': 'a1', 'avatarUrl': 'https://x/a1.png'},
+        {'tiktokUid': 'a2', 'avatarUrl': null},
       ]);
       expect(list, hasLength(2));
-      expect(list![0].anchorId, 'a1');
+      expect(list![0].tiktokUid, 'a1');
       expect(list[0].avatarUrl, 'https://x/a1.png');
       expect(list[1].avatarUrl, isNull);
     });
 
-    test('anchorIdが無い要素は除外する', () {
+    test('tiktokUidが無い要素は除外する', () {
       final list = BattleParticipant.tryParseList([
         {'avatarUrl': 'https://x/a.png'},
-        {'anchorId': 'a1'},
+        {'tiktokUid': 'a1'},
       ]);
       expect(list, hasLength(1));
-      expect(list![0].anchorId, 'a1');
+      expect(list![0].tiktokUid, 'a1');
     });
 
     test('null・List以外はnull', () {
@@ -77,7 +77,7 @@ void main() {
         'battleId': 'b1',
         'startedAt': '2026-08-28T09:00:00.000Z',
         'status': 'finished',
-        'opponent': {'tiktokId': 'rival', 'count': 1},
+        'opponent': {'tiktokHandle': 'rival', 'count': 1},
         'selfScore': '1200',
         'opponentScore': '900',
       });
@@ -85,7 +85,7 @@ void main() {
       expect(battle, isNotNull);
       expect(battle!.battleId, 'b1');
       expect(battle.status, BattleStatus.finished);
-      expect(battle.opponent!.tiktokId, 'rival');
+      expect(battle.opponent!.tiktokHandle, 'rival');
       expect(battle.selfScore, '1200');
       expect(battle.opponentScore, '900');
     });
@@ -121,11 +121,11 @@ void main() {
         'battleId': 'b1',
         'status': 'finished',
         'selfTeam': [
-          {'anchorId': 'me', 'avatarUrl': 'https://x/me.png'},
+          {'tiktokUid': 'me', 'avatarUrl': 'https://x/me.png'},
         ],
         'opponentTeam': [
-          {'anchorId': 'r1', 'avatarUrl': 'https://x/r1.png'},
-          {'anchorId': 'r2', 'avatarUrl': null},
+          {'tiktokUid': 'r1', 'avatarUrl': 'https://x/r1.png'},
+          {'tiktokUid': 'r2', 'avatarUrl': null},
         ],
       });
       expect(battle!.selfTeam, hasLength(1));
@@ -141,12 +141,12 @@ void main() {
   });
 
   group('BattleTeam(3陣営以上)', () {
-    Map<String, Object?> team(int index, bool isSelf, String? score, List<String> anchorIds) => {
+    Map<String, Object?> team(int index, bool isSelf, String? score, List<String> tiktokUids) => {
           'index': index,
           'isSelf': isSelf,
           'score': score,
           'participants': [
-            for (final id in anchorIds) {'anchorId': id, 'tiktokId': '${id}_handle'},
+            for (final id in tiktokUids) {'tiktokUid': id, 'tiktokHandle': '${id}_handle'},
           ],
         };
 
@@ -164,7 +164,7 @@ void main() {
       expect(battle!.teams, hasLength(3));
       expect(battle.teams![0].isSelf, isTrue);
       expect(battle.teams![1].score, '100');
-      expect(battle.teams![2].participants.map((p) => p.anchorId), ['y1', 'y2']);
+      expect(battle.teams![2].participants.map((p) => p.tiktokUid), ['y1', 'y2']);
     });
 
     test('陣営が2つ未満ならteamsはnull(従来のselfTeam/opponentTeam表示へ倒す)', () {

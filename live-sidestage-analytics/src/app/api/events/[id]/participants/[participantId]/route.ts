@@ -8,7 +8,7 @@ import { parseParticipantPatch } from "@/event/validation";
 // 参加者の部分更新。送られてきたキーだけを変える。
 // - teamId: null で未所属に戻す
 // - displayName: null / 空文字で TikTok ID に戻る
-// - tiktokId: 登録ミスの訂正。同じ EventParticipant.id のまま tiktokId/roomId だけ
+// - tiktokHandle: 登録ミスの訂正。同じ EventParticipant.id のまま tiktokHandle/roomId だけ
 //   書き換えるので、対戦カード・トーナメント表の枠(EventMatchSideParticipant)は
 //   維持される。集計母集団を変える操作なので、集計中は 503(EVENT_BUSY)を返しうる。
 // 検証と書き込みは updateParticipant に閉じてある(部分適用させないため)。

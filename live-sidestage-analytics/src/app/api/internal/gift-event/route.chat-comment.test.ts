@@ -37,7 +37,7 @@ function post(body: unknown, secret: string = SECRET) {
 }
 
 const comment = {
-  uniqueId: "listener_a",
+  tiktokHandle: "listener_a",
   nickname: "リスナーA",
   profilePictureUrl: null,
   comment: "こんばんは",

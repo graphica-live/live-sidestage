@@ -11,9 +11,13 @@ type HistorySortKey = "time" | "diamonds" | "user" | "gift";
 type SortOrder = "asc" | "desc";
 type ViewMode = "ranking" | "history" | "battles";
 
+// サーバ側の型は src/lib/gift-analytics.ts の `GiftAnalyticsUser`。
+// **同一性キーは tiktokUid。** tiktokHandle / nickname は TikTokUser から順引きした現在値の
+// スナップショットで、未観測なら null になる(表示・検索でそのまま触らない)。
 interface GiftUser {
-  uniqueId: string;
-  nickname: string;
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   giftCount: number;
   totalDiamonds: number;
@@ -41,7 +45,7 @@ interface GiftBreakdownEntry {
 }
 
 interface GiftBreakdownData {
-  uniqueId: string;
+  tiktokUid: string;
   gifts: GiftBreakdownEntry[];
   total: { repeatCount: number; totalDiamonds: number };
   coverage: { detailAvailable: boolean; rawFrom: string | null; partial: boolean };
@@ -53,10 +57,12 @@ type BreakdownState =
   | { status: "ready"; data: GiftBreakdownData }
   | { status: "error" };
 
+// サーバ側の型は src/lib/gift-history.ts の `GiftHistoryEvent`(GiftUser と同じ規律)。
 interface GiftEvent {
   id: string;
-  uniqueId: string;
-  nickname: string;
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   giftId: number;
   giftName: string;
@@ -175,6 +181,72 @@ function formatEventTime(iso: string, period: Period): string {
   return d.toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// 表示名。TikTokUser を未観測なら nickname も tiktokHandle も null になりうるので、
+// 最後は tiktokUid まで落とす(`@null` や空欄を出さない)。
+function displayNameOf(u: {
+  nickname: string | null;
+  tiktokHandle: string | null;
+  tiktokUid: string;
+}): string {
+  return u.nickname ?? u.tiktokHandle ?? u.tiktokUid;
+}
+
+// ギフト履歴の送信者表示。ハンドルが無い(TikTokUser 未観測)ならプロフィールリンクを出さない。
+function SenderIdentity({
+  sender,
+  nameClassName,
+  handleClassName,
+}: {
+  sender: {
+    tiktokUid: string;
+    tiktokHandle: string | null;
+    nickname: string | null;
+    profileImageUrl: string | null;
+  };
+  nameClassName: string;
+  handleClassName: string;
+}) {
+  const name = displayNameOf(sender);
+  const profileUrl = sender.tiktokHandle ? tiktokProfileUrl(sender.tiktokHandle) : null;
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      {profileUrl ? (
+        <a
+          href={profileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="TikTokプロフィールを開く"
+          className="shrink-0"
+        >
+          <Avatar src={sender.profileImageUrl} alt={name} />
+        </a>
+      ) : (
+        <span className="shrink-0">
+          <Avatar src={sender.profileImageUrl} alt={name} />
+        </span>
+      )}
+      <div className="min-w-0">
+        {profileUrl ? (
+          <a
+            href={profileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="TikTokプロフィールを開く"
+            className={`${nameClassName} hover:text-brand transition-colors block`}
+          >
+            {name}
+          </a>
+        ) : (
+          <span className={`${nameClassName} block`}>{name}</span>
+        )}
+        {sender.tiktokHandle && (
+          <div className={handleClassName}>@{sender.tiktokHandle}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function downloadCSV(
   rows: (GiftUser & { rank: number })[],
   period: Period,
@@ -184,7 +256,7 @@ function downloadCSV(
   const body = rows
     .map(
       (r) =>
-        `${r.rank},"${r.uniqueId}","${r.nickname.replace(/"/g, '""')}",${r.giftCount},${r.totalDiamonds}`
+        `${r.rank},"${r.tiktokHandle ?? ""}","${(r.nickname ?? "").replace(/"/g, '""')}",${r.giftCount},${r.totalDiamonds}`
     )
     .join("\n");
   const blob = new Blob(["﻿" + header + body], {
@@ -203,7 +275,7 @@ function downloadHistoryCSV(events: GiftEvent[], period: Period, date: string) {
   const body = events
     .map(
       (e) =>
-        `"${new Date(e.receivedAt).toLocaleString("ja-JP")}","${e.uniqueId}","${e.nickname.replace(/"/g, '""')}","${e.giftName.replace(/"/g, '""')}",${e.repeatCount},${e.totalDiamonds}`
+        `"${new Date(e.receivedAt).toLocaleString("ja-JP")}","${e.tiktokHandle ?? ""}","${(e.nickname ?? "").replace(/"/g, '""')}","${e.giftName.replace(/"/g, '""')}",${e.repeatCount},${e.totalDiamonds}`
     )
     .join("\n");
   const blob = new Blob(["﻿" + header + body], {
@@ -235,7 +307,7 @@ function BattleOpponentInfo({ battle }: { battle: BattleListItem }) {
   if (opponent.count > 1) {
     return <span className="text-muted">複数人バトル({opponent.count + 1}人)</span>;
   }
-  if (opponent.nickName || opponent.displayId || opponent.tiktokId) {
+  if (opponent.nickName || opponent.displayId || opponent.tiktokHandle) {
     return (
       <div className="flex items-center gap-2 min-w-0">
         <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
@@ -243,9 +315,9 @@ function BattleOpponentInfo({ battle }: { battle: BattleListItem }) {
           <div className="font-medium truncate max-w-[160px]">
             {opponent.nickName ?? `@${opponent.displayId}`}
           </div>
-          {(opponent.displayId || opponent.tiktokId) && (
+          {(opponent.displayId || opponent.tiktokHandle) && (
             <div className="text-xs text-muted truncate max-w-[160px]">
-              @{opponent.displayId ?? opponent.tiktokId}
+              @{opponent.displayId ?? opponent.tiktokHandle}
             </div>
           )}
         </div>
@@ -429,7 +501,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [battlesLoading, setBattlesLoading] = useState(false);
   const [openBattleId, setOpenBattleId] = useState<string | null>(null);
-  const [openUserId, setOpenUserId] = useState<string | null>(null);
+  const [openTiktokUid, setOpenTiktokUid] = useState<string | null>(null);
   const [breakdowns, setBreakdowns] = useState<Record<string, BreakdownState>>({});
   const [hideLowDiamond, setHideLowDiamond] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -486,20 +558,20 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
   const seqRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    setOpenUserId(null);
+    setOpenTiktokUid(null);
     setBreakdowns({});
   }, [scopeKey]);
 
   const fetchBreakdown = useCallback(
-    async (uniqueId: string, opts?: { silent?: boolean }) => {
+    async (tiktokUid: string, opts?: { silent?: boolean }) => {
       // 取得中に期間やroomが変わったら、遅れて返ってきた応答でキャッシュを汚さない。
       const issuedFor = scopeRef.current;
-      const seq = (seqRef.current[uniqueId] ?? 0) + 1;
-      seqRef.current[uniqueId] = seq;
+      const seq = (seqRef.current[tiktokUid] ?? 0) + 1;
+      seqRef.current[tiktokUid] = seq;
       const apply = (next: BreakdownState) => {
         if (scopeRef.current !== issuedFor) return;
-        if (seqRef.current[uniqueId] !== seq) return;
-        setBreakdowns((prev) => ({ ...prev, [uniqueId]: next }));
+        if (seqRef.current[tiktokUid] !== seq) return;
+        setBreakdowns((prev) => ({ ...prev, [tiktokUid]: next }));
       };
 
       // 自動更新での取り直しは、開いているパネルを毎回スケルトンへ戻さない。
@@ -510,7 +582,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
             ? `startDatetime=${encodeURIComponent(new Date(customStart).toISOString())}&endDatetime=${encodeURIComponent(new Date(customEnd).toISOString())}`
             : `period=${period}&date=${currentDate}`;
         const res = await fetch(
-          `${apiBase}/gifts/breakdown?${range}&uniqueId=${encodeURIComponent(uniqueId)}`
+          `${apiBase}/gifts/breakdown?${range}&tiktokUid=${encodeURIComponent(tiktokUid)}`
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         apply({ status: "ready", data: (await res.json()) as GiftBreakdownData });
@@ -522,8 +594,8 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     [apiBase, period, currentDate, customStart, customEnd]
   );
 
-  const openUserIdRef = useRef(openUserId);
-  openUserIdRef.current = openUserId;
+  const openTiktokUidRef = useRef(openTiktokUid);
+  openTiktokUidRef.current = openTiktokUid;
   const breakdownsRef = useRef(breakdowns);
   breakdownsRef.current = breakdowns;
 
@@ -536,18 +608,18 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     const hadPrevious = prevDataRef.current !== null;
     prevDataRef.current = data;
     if (!hadPrevious) return; // 初回ロードには捨てるキャッシュが無い
-    const open = openUserIdRef.current;
+    const open = openTiktokUidRef.current;
     setBreakdowns((prev) => (open && prev[open] ? { [open]: prev[open] } : {}));
     if (open) void fetchBreakdown(open, { silent: true });
   }, [data, fetchBreakdown]);
 
   const toggleBreakdown = useCallback(
-    (uniqueId: string) => {
-      const willOpen = openUserIdRef.current !== uniqueId;
-      setOpenUserId(willOpen ? uniqueId : null);
+    (tiktokUid: string) => {
+      const willOpen = openTiktokUidRef.current !== tiktokUid;
+      setOpenTiktokUid(willOpen ? tiktokUid : null);
       // 未取得のときだけ初回fetch。取得済み(成功・失敗とも)は再取得しない
       // (失敗は展開先の「再試行」ボタンから明示的に取り直す)。
-      if (willOpen && !breakdownsRef.current[uniqueId]) void fetchBreakdown(uniqueId);
+      if (willOpen && !breakdownsRef.current[tiktokUid]) void fetchBreakdown(tiktokUid);
     },
     [fetchBreakdown]
   );
@@ -694,15 +766,16 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     let rows = data.users.filter(
       (u) =>
         !q ||
-        u.uniqueId.toLowerCase().includes(q) ||
-        u.nickname.toLowerCase().includes(q)
+        (u.tiktokHandle ?? "").toLowerCase().includes(q) ||
+        (u.nickname ?? "").toLowerCase().includes(q)
     );
 
     rows = [...rows].sort((a, b) => {
       let diff = 0;
       if (sortKey === "diamonds") diff = a.totalDiamonds - b.totalDiamonds;
       else if (sortKey === "count") diff = a.giftCount - b.giftCount;
-      else if (sortKey === "name") diff = a.nickname.localeCompare(b.nickname, "ja");
+      else if (sortKey === "name")
+        diff = displayNameOf(a).localeCompare(displayNameOf(b), "ja");
       else if (sortKey === "recent")
         diff = new Date(a.lastGiftAt).getTime() - new Date(b.lastGiftAt).getTime();
       return sortOrder === "desc" ? -diff : diff;
@@ -718,8 +791,8 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
       ? historyData.events
       : historyData.events.filter(
           (e) =>
-            e.uniqueId.toLowerCase().includes(q) ||
-            e.nickname.toLowerCase().includes(q) ||
+            (e.tiktokHandle ?? "").toLowerCase().includes(q) ||
+            (e.nickname ?? "").toLowerCase().includes(q) ||
             e.giftName.toLowerCase().includes(q)
         );
 
@@ -730,7 +803,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
       else if (historySortKey === "diamonds")
         diff = a.totalDiamonds - b.totalDiamonds;
       else if (historySortKey === "user")
-        diff = a.nickname.localeCompare(b.nickname, "ja");
+        diff = displayNameOf(a).localeCompare(displayNameOf(b), "ja");
       else if (historySortKey === "gift")
         diff = a.giftName.localeCompare(b.giftName, "ja");
       return historySortOrder === "desc" ? -diff : diff;
@@ -747,7 +820,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
       if (!q) return true;
       const opponent = b.opponent;
       return (
-        opponent?.tiktokId?.toLowerCase().includes(q) ||
+        opponent?.tiktokHandle?.toLowerCase().includes(q) ||
         opponent?.displayId?.toLowerCase().includes(q) ||
         opponent?.nickName?.toLowerCase().includes(q) ||
         false
@@ -1141,10 +1214,15 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                 </thead>
                 <tbody>
                   {sortedFiltered.map((user, idx) => {
-                    const open = openUserId === user.uniqueId;
+                    const open = openTiktokUid === user.tiktokUid;
                     const panelId = `gift-breakdown-${idx}`;
+                    const name = displayNameOf(user);
+                    // TikTokUser 未観測ならハンドルが無く、プロフィールURLを作れない。
+                    const profileUrl = user.tiktokHandle
+                      ? tiktokProfileUrl(user.tiktokHandle)
+                      : null;
                     return (
-                    <Fragment key={user.uniqueId}>
+                    <Fragment key={user.tiktokUid}>
                     <tr
                       // 行全体をポインタでの展開トリガにする。行内のリンク・ボタン
                       // (プロフィールリンク、チェブロン)を押したときは展開しない。
@@ -1154,7 +1232,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                       // 足すとネストしたインタラクティブ要素になり、かえってa11yが壊れる)。
                       onClick={(e) => {
                         if ((e.target as HTMLElement).closest("a,button")) return;
-                        toggleBreakdown(user.uniqueId);
+                        toggleBreakdown(user.tiktokUid);
                       }}
                       className={`border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer ${
                         open ? "bg-row-hover" : idx === 0 ? "bg-yellow-500/5" : ""
@@ -1165,45 +1243,56 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                       </td>
                       <td className="py-[9px] px-3">
                         <div className="flex items-center gap-2 min-w-0">
-                          <a
-                            href={tiktokProfileUrl(user.uniqueId)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="TikTokプロフィールを開く"
-                            className="shrink-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Avatar
-                              src={user.profileImageUrl}
-                              alt={user.nickname}
-                            />
-                          </a>
-                          <div className="min-w-0">
+                          {profileUrl ? (
                             <a
-                              href={tiktokProfileUrl(user.uniqueId)}
+                              href={profileUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               title="TikTokプロフィールを開く"
-                              className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
+                              className="shrink-0"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {user.nickname}
+                              <Avatar src={user.profileImageUrl} alt={name} />
                             </a>
-                            <div className="flex items-center gap-1 text-xs text-muted">
-                              <span className="truncate max-w-[100px]">
-                                @{user.uniqueId}
-                              </span>
+                          ) : (
+                            <span className="shrink-0">
+                              <Avatar src={user.profileImageUrl} alt={name} />
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            {profileUrl ? (
                               <a
-                                href={tiktokProfileUrl(user.uniqueId)}
+                                href={profileUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-muted hover:text-brand transition-colors shrink-0"
                                 title="TikTokプロフィールを開く"
+                                className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <ExternalLinkIcon />
+                                {name}
                               </a>
-                            </div>
+                            ) : (
+                              <span className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none block">
+                                {name}
+                              </span>
+                            )}
+                            {user.tiktokHandle && profileUrl && (
+                              <div className="flex items-center gap-1 text-xs text-muted">
+                                <span className="truncate max-w-[100px]">
+                                  @{user.tiktokHandle}
+                                </span>
+                                <a
+                                  href={profileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-muted hover:text-brand transition-colors shrink-0"
+                                  title="TikTokプロフィールを開く"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLinkIcon />
+                                </a>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -1221,10 +1310,10 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                           type="button"
                           aria-expanded={open}
                           aria-controls={panelId}
-                          aria-label={`${user.nickname} のギフト内訳を${open ? "閉じる" : "開く"}`}
+                          aria-label={`${name} のギフト内訳を${open ? "閉じる" : "開く"}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            toggleBreakdown(user.uniqueId);
+                            toggleBreakdown(user.tiktokUid);
                           }}
                           className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-lg motion-safe:transition-transform duration-150 ${
                             open ? "text-brand rotate-180" : "text-muted"
@@ -1239,8 +1328,8 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                         <td id={panelId} colSpan={6} className="p-0 bg-panel">
                           <div className="breakdown-enter pt-2.5 pb-3 px-3 sm:pl-[52px]">
                             <GiftBreakdownPanel
-                              state={breakdowns[user.uniqueId]}
-                              onRetry={() => void fetchBreakdown(user.uniqueId)}
+                              state={breakdowns[user.tiktokUid]}
+                              onRetry={() => void fetchBreakdown(user.tiktokUid)}
                             />
                           </div>
                         </td>
@@ -1270,29 +1359,11 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                 {filteredEvents.map((ev) => (
                     <div key={ev.id} className="rounded-xl border border-border bg-panel p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <a
-                            href={tiktokProfileUrl(ev.uniqueId)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="TikTokプロフィールを開く"
-                            className="shrink-0"
-                          >
-                            <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
-                          </a>
-                          <div className="min-w-0">
-                            <a
-                              href={tiktokProfileUrl(ev.uniqueId)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="TikTokプロフィールを開く"
-                              className="font-medium truncate max-w-[160px] hover:text-brand transition-colors block"
-                            >
-                              {ev.nickname}
-                            </a>
-                            <div className="text-xs text-muted truncate max-w-[160px]">@{ev.uniqueId}</div>
-                          </div>
-                        </div>
+                        <SenderIdentity
+                          sender={ev}
+                          nameClassName="font-medium truncate max-w-[160px]"
+                          handleClassName="text-xs text-muted truncate max-w-[160px]"
+                        />
                         <span className="text-xs text-muted whitespace-nowrap shrink-0">
                           {formatEventTime(ev.receivedAt, period)}
                         </span>
@@ -1332,31 +1403,11 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                           {formatEventTime(ev.receivedAt, period)}
                         </td>
                         <td className="py-2 px-3">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <a
-                              href={tiktokProfileUrl(ev.uniqueId)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="TikTokプロフィールを開く"
-                              className="shrink-0"
-                            >
-                              <Avatar src={ev.profileImageUrl} alt={ev.nickname} />
-                            </a>
-                            <div className="min-w-0">
-                              <a
-                                href={tiktokProfileUrl(ev.uniqueId)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="TikTokプロフィールを開く"
-                                className="font-medium truncate max-w-[120px] sm:max-w-[200px] hover:text-brand transition-colors block"
-                              >
-                                {ev.nickname}
-                              </a>
-                              <div className="text-xs text-muted truncate max-w-[100px]">
-                                @{ev.uniqueId}
-                              </div>
-                            </div>
-                          </div>
+                          <SenderIdentity
+                            sender={ev}
+                            nameClassName="font-medium truncate max-w-[120px] sm:max-w-[200px]"
+                            handleClassName="text-xs text-muted truncate max-w-[100px]"
+                          />
                         </td>
                         <td className="py-2 px-3">
                           <div className="flex items-center gap-1.5 min-w-0 max-w-[150px] sm:max-w-none">

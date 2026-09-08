@@ -34,28 +34,25 @@ access/refresh token は、イベント機能には一切必要ない。
 `TiktokRoom` への**書き込み**は `src/lib/tiktok-room.ts` の
 `ensureRoomForEvent()` / `releaseRoomMonitor()` だけを通す（後述の 5 を参照）。
 
-例外は `hostUserId` の補完だけで、これは `src/lib/tiktok-host-id.ts` を通す
-（event-worker が回す）。**`monitorUntil` には触らない**ので
-上のルールの目的（監視期限の上限・検証・他イベントへの干渉）とは衝突しない。
-`hostUserId` は不変値なので `where` に `hostUserId: null` を入れて上書き不能にしてある。
+**`hostTiktokUid` の後追い補完（fill-once）は 2026-09 の識別子統一で廃止した。**
+`TiktokRoom.hostTiktokUid` は NOT NULL かつ `@unique`（room の同一性そのもの）で、
+**room を作る瞬間に登録ゲートから受け取る**。`src/lib/tiktok-host-id.ts`（backfill エンジン・
+`HOST_USER_ID_WRITABLE_WHERE`・`hostUserIdBackfillGaveUpAt` の3列）と
+`src/lib/tiktok-id-migration.ts`（`absorbRooms()` による改名後の事後合流）はファイルごと消えている。
 
-**補完の対象はイベント参加中の room だけではない。** 経路は3つある。
+- ハンドルから uid を引ける時間制約（「改名されると旧ハンドルは `user_not_found` になり永久に
+  取得不能」）が消えた。登録の瞬間はハンドルが必ず生きている
+- 改名しても room は割れない（upsert キーが uid なので `tiktokHandle` 列を更新するだけ）。
+  事後合流の機構そのものが不要になった
+- ハンドル再利用による第三者取り違えも構造的に起きない（別人は必ず別 room）
 
-- `backfillHostUserIds(tiktokIds)` — イベントの lease 由来（このドキュメントの担当範囲）
-- `backfillStreamerRoomHostIds()` — **Streamer が紐づく全 room**。改名の検知（`src/lib/tiktok-id-migration.ts`）は
-  ハンドルが生きているうちにしか `hostUserId` を集められないため、イベント参加を待たずに集める
-- `fillHostUserIdFromBattle()` — バトルの `hostProfiles` からの逆引き。**TikTok への問い合わせは増えない**
-
-**書き込みは3経路とも `saveHostUserIdOnce()`（`tiktok-host-id.ts`）を通す。**
-`where` は `HOST_USER_ID_WRITABLE_WHERE`（`hostUserId: null` と
-**`hostUserIdBackfillGaveUpAt: null`**）1箇所に集約してあるので、
-**新しい fill 経路を足すときも条件を書き写さないこと**（書き写すとドリフトで規律が抜ける）。
-
-後者は「TikTok が `user_not_found` を明示した room には二度と書かない」というセキュリティ規律。
-改名で空いたハンドルを第三者が取得したあとに引き直すと第三者の userId を fill-once して
-しまうため（詳細は `schema.prisma` の当該列のコメント）。**このフラグは一方向で、
-`notFoundStreak` と違い connected 復帰でも戻さない。** 補完ジョブは自分が観測した分しか
-記録できないので、先に `tiktok-room-cleanup.ts` が観測したケースもそちらで立てる。
+**`TikTokUser` を `tiktokHandle` → `tiktokUid` の逆引き表として使ってはいけない。**
+これが fill-once 規律の後継。改名で空いたハンドルは第三者が取得しうるので、ハンドルから引いた
+uid は所有の根拠にならない。`TikTokUser.tiktokHandle` に unique を張らないのも同じ理由
+（同一ハンドルを別時点で別 uid が持つのは正常）。登録ゲートで所有を確定する呼び出しは
+**`tiktok-existence.ts` の 6時間 positive キャッシュを読まない**（キャッシュ済みの他人の uid を
+掴むため）。`prisma.tikTokUser` の出現は `src/lib/tiktok-user.ts` の1ファイルに閉じ、
+`tiktok-user.guard.test.ts` がソース走査で固定する。
 
 ### 2. `prisma/schema.prisma` は public と event の両方を1ファイルで管理する
 
@@ -904,23 +901,24 @@ UI（`AdminBracketTree.tsx` / 公開ページの `BracketTree.tsx`）は、接�
 
 ### TikTok のバトルスコアはサイドへ帰属できたときだけ出す
 
-`hostScores` のキーは `anchorIdStr`（TikTok の数値 userId）。対応表は `TiktokRoom.hostUserId` で、
-`src/lib/tiktok-host-id.ts` が `api-live/user/room/` の `data.user.id` から後追いで埋める
-（**参加者登録の経路からは引かない**。後述の「参加者登録から TikTok へ問い合わせを足さない」）。
+`hostScores` のキーは `anchorIdStr`（TikTok の数値ID = `tiktokUid`）。対応表は
+`TiktokRoom.hostTiktokUid`（NOT NULL）で、**room 作成時に登録ゲートの実在確認レスポンス
+（`api-live/user/room/` の `data.user.id`）から受け取る**。後追いの backfill は無い。
 
 帰属は `src/event/battle-score.ts` に閉じている。**表示専用で勝敗には一切効かない**ので、
 迷ったら出さない側に倒す。守ること:
 
-- 行のマージは anchorId ごとに**最大値**を採る。`DetectedBattle.updatedAt` は `ingestBattles` の
+- 行のマージは tiktokUid ごとに**最大値**を採る。`DetectedBattle.updatedAt` は `ingestBattles` の
   毎周 upsert で書き換わるため鮮度に使えず、上書きマージだと落ちた room の古い値が新しい値を潰す
 - `BigInt()` に渡す前に `/^\d{1,30}$/` で弾く。`"12.5"` のような値で公開ページを 500 にしない
 - サイドの出場者が1人でも解決できなければ**そのサイドは出さない**（部分和にしない）
-- 同じ `hostUserId` が複数 room から解決されたら**マッチごと出さない**（改名で旧 room と
-  新 room が同じ配信者を指すと二重加算になる）
+- 同じ `hostTiktokUid` が複数 room から解決されたら**マッチごと出さない**。room の一意キーが
+  uid になったので原則起きないが、改名合流の途中状態に備えて二重加算ガードは残してある
 - 公開側は `detectionConfidence === "exact"` のマッチだけ。partial は「A が部外者と戦った」
   ケースでも付くので、カード上の対戦相手とは別の戦いの数字が載りうる
 
-lease が切れた room は補完対象外なので、**終了済みイベントの表にはスコアが出ない**（仕様）。
+`hostTiktokUid` は room 作成時に必ず埋まるので、**lease が切れた room・終了済みイベントの表でも
+スコアは出る**（backfill 方式だった頃の「補完対象外なので出ない」制約は 2026-09 に解消した）。
 
 ### 公開トーナメント表の幾何を壊さない
 
@@ -950,7 +948,7 @@ TikTok の avatar URL は署名付きで約47時間で失効する。`TiktokRoom
 
 一方で **`Event.startAt` 到来時点の参加者アイコンは、画像バイトを自前ストレージ（Railway
 Bucket）へダウンロードのうえ恒久保存する**（`src/event/avatar-snapshot.ts`、
-`TiktokAvatarAsset` の `kind: "event_participant"`。バトル履歴・貢献タブが使っている
+`TiktokAvatarAsset`。バトル履歴・貢献タブが使っている
 `src/lib/avatar-storage.ts` の仕組みをそのまま再利用しており、DB に持つのはオブジェクトキー
 だけで URL 自体は書かない）。トーナメント表が確定した後に本人がアイコンを変えても表示が
 揺れないようにする狙い。**トリガーは event-worker の定期ジョブ（`avatarSnapshotTick`、既定
@@ -961,7 +959,9 @@ Bucket）へダウンロードのうえ恒久保存する**（`src/event/avatar-
 とは異なり、延長は「スナップショットのやり直し」を意味しない設計判断）。
 
 `GET /api/public/avatar/<participantId>` はまずこのスナップショットを見に行き
-（`resolveAvatarUrls("event_participant", ...)`）、無ければ従来どおり閲覧の契機で
+（`resolveAvatarUrls(tiktokUid)`。2026-09 に `kind` 概念ごと廃止し、オブジェクトキーは
+`avatars/tiktok-user/<tiktokUid>.webp` の1空間へ統合した — 同一人物がホスト・ギフト送信者・
+イベント参加者のどれで現れても1行・1オブジェクト）、無ければ従来どおり閲覧の契機で
 プロセス内キャッシュ（`src/lib/tiktok-avatar.ts`）経由でライブ取得して 302 する。
 開催準備中（`startAt` 未到来）のプレビューは常にこちらの経路。
 参加者IDの解決は `findPublicParticipantTiktokId()` を通し、公開イベントの出場者に限る。
@@ -972,11 +972,14 @@ Bucket）へダウンロードのうえ恒久保存する**（`src/event/avatar-
 **例外は実在確認（`src/lib/tiktok-existence.ts`）だけ。** これは付随情報ではなく登録の
 要件そのもの（打ち間違いを登録すると、誰も配信しない room を監視し続けたうえに主催者は
 開催中まで気づけない）なので、1回だけ問い合わせる。**この例外を他へ広げないこと** —
-アイコンと `hostUserId` は従来どおり登録経路から引かない。次節の規則も参照。
+アイコンは従来どおり登録経路から引かない。次節の規則も参照。
 
-同じ `api-live/user/room/` から取れる `data.user.id`（数値 userId）は**逆に不変**なので
-`TiktokRoom.hostUserId` に保存してよい（バトルスコアの帰属に要る）。ただし取得タイミングは
-アイコンと同じ理由で登録経路から切り離し、event-worker の補完ジョブに任せる。
+**同じ応答から `data.user.id`（`tiktokUid`）も受け取り、`TiktokRoom.hostTiktokUid` /
+`EventParticipant.tiktokUid` へ保存する。** 値は不変なのでスナップショットにならず、
+`checkAccountExistence()` が実在確認と同時に返しているので**問い合わせは増えない**
+（`nickname` の使い回しとまったく同型）。2026-09 以前は event-worker の後追い補完に
+任せていたが、**uid を得られない登録を通さない**方針（`EXISTS` だが uid を抽出できなければ
+503 `UNVERIFIED`）へ変えたことで `hostTiktokUid` を NOT NULL にでき、補完ジョブごと廃止した。
 
 **表示名の未入力フォールバックだけは、実在確認と同じ応答から `nickname` を読む。**
 `checkAccountExistence()`（`src/lib/tiktok-profile.ts`）が実在確認(`EXISTS`)と同時に返す

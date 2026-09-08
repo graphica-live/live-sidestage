@@ -3,7 +3,8 @@ import 'package:live_sidestage_mobile/models/comment.dart';
 
 Map<String, dynamic> base({Object? emotes, String comment = 'こんにちは'}) => {
       'streamerId': 's1',
-      'uniqueId': 'u1',
+      'tiktokUid': '7000000000000000001',
+      'tiktokHandle': 'u1',
       'nickname': 'なまえ',
       'comment': comment,
       'receivedAt': '2026-08-28T10:00:00.000Z',

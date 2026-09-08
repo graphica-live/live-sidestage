@@ -31,8 +31,12 @@ class VoiceStyle {
   }
 }
 
-/// コメント投稿者(uniqueId)ごとにボイスを割り当てる。
+/// コメント投稿者(tiktokUid)ごとにボイスを割り当てる。
 /// ランダム割り当てはアプリのセッション中のみ保持し、永続化しない。
+///
+/// **キーは不変な [tiktokUid]。可変の @ハンドルを使ってはいけない**
+/// (ハンドル変更で同一人物のボイスが変わる。逆にハンドルが空文字で入ると
+/// 全投稿者が1人に畳まれて全員同じボイスになる)。
 class VoicePool {
   VoicePool(this.styles) : _fixedStyleId = _firstStyleId(styles);
 
@@ -58,15 +62,15 @@ class VoicePool {
         styles.any((s) => s.styleId == value) ? value : _firstStyleId(styles);
   }
 
-  int effectiveStyleId(String uniqueId) {
+  int effectiveStyleId(String tiktokUid) {
     if (!randomEnabled) return fixedStyleId;
 
-    final cached = _userVoiceCache[uniqueId];
+    final cached = _userVoiceCache[tiktokUid];
     if (cached != null) return cached;
 
     if (styles.isEmpty) return fixedStyleId;
     final chosen = styles[_random.nextInt(styles.length)].styleId;
-    _userVoiceCache[uniqueId] = chosen;
+    _userVoiceCache[tiktokUid] = chosen;
     return chosen;
   }
 

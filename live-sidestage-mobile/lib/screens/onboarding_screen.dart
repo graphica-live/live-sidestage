@@ -13,17 +13,17 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _tiktokIdController = TextEditingController();
+  final _tiktokHandleController = TextEditingController();
 
   @override
   void dispose() {
-    _tiktokIdController.dispose();
+    _tiktokHandleController.dispose();
     super.dispose();
   }
 
   Future<void> _submit(SessionController controller) async {
     if (!_formKey.currentState!.validate()) return;
-    await controller.completeOnboarding(tiktokId: _tiktokIdController.text.trim());
+    await controller.completeOnboarding(tiktokHandle: _tiktokHandleController.text.trim());
   }
 
   @override
@@ -60,7 +60,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 24),
                 TextFormField(
-                  controller: _tiktokIdController,
+                  controller: _tiktokHandleController,
                   decoration: const InputDecoration(labelText: 'TikTok ID（@なし）'),
                   validator: (v) => (v == null || v.trim().isEmpty) ? 'TikTok IDを入力してください' : null,
                 ),

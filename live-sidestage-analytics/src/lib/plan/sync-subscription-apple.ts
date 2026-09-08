@@ -18,7 +18,7 @@ function isUniqueConstraintError(error: unknown): error is Prisma.PrismaClientKn
 const ENTITLED_STATUSES = new Set([1, 4]);
 
 // App Store Server Notificationsは合図だけ、常にApp Store Server APIへre-fetchして収束させる。
-// userId解決に失敗した場合はno-op(200)を返さず、呼び出し元(webhook route)へ例外を投げる
+// principalId解決に失敗した場合はno-op(200)を返さず、呼び出し元(webhook route)へ例外を投げる
 // (非2xxで再送されるため、verify-purchase未達の取りこぼしをリトライで拾える)。
 export async function syncSubscriptionFromApple(originalTransactionId: string): Promise<void> {
   const fetchStartedAt = new Date();
@@ -63,7 +63,7 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
         providerSubscriptionId: originalTransactionId,
       },
     },
-    select: { id: true, userId: true, lastVerifiedAt: true },
+    select: { id: true, principalId: true, lastVerifiedAt: true },
   });
 
   if (existing) {
@@ -77,7 +77,7 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
       data,
     });
     if (result.count === 0) return;
-    await detectMultiProvider(existing.userId);
+    await detectMultiProvider(existing.principalId);
     return;
   }
 
@@ -87,7 +87,7 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
   }
 
   // expiresAtで絞らない理由はGoogle版と同じ: 横流し防止の実体はTTLではなくtoken自体が
-  // サーバー発行のrandomUUIDでuserIdに束縛される点にあり、TTLはあくまで掃除用の目安。
+  // サーバー発行のrandomUUIDでprincipalIdに束縛される点にあり、TTLはあくまで掃除用の目安。
   // Notification配信はユーザー操作から独立して遅延しうるため、TTL超過だけで正規購入が
   // 永久に紐付け不能になるのを避ける。
   const intent = await prisma.pendingPurchaseIntent.findFirst({
@@ -96,7 +96,7 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
       token: appAccountToken,
       consumedAt: null,
     },
-    select: { id: true, userId: true },
+    select: { id: true, principalId: true },
   });
   if (!intent) {
     throw new Error(`apple transaction ${originalTransactionId}: no matching PendingPurchaseIntent yet`);
@@ -105,7 +105,7 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
   try {
     await prisma.$transaction([
       prisma.subscription.create({
-        data: { userId: intent.userId, appleAppAccountToken: appAccountToken, ...data },
+        data: { principalId: intent.principalId, appleAppAccountToken: appAccountToken, ...data },
       }),
       prisma.pendingPurchaseIntent.update({
         where: { id: intent.id },
@@ -116,7 +116,7 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
     // iOS版は起動時のunfinishedTransactions回収(_recoverUnfinishedTransactions)と
     // purchaseStreamの両方が同じtransactionを検証しうるため、Stripe/Google版よりも
     // createの並行衝突が起きやすい(実装後レビュー指摘、HIGH — 修正前は初回購入直後に
-    // 高確率でユーザー可視のエラーになっていた)。userIdに一意制約は無いため、ここで
+    // 高確率でユーザー可視のエラーになっていた)。principalIdに一意制約は無いため、ここで
     // 起きうるP2002は複合unique(provider, providerSubscriptionId)の衝突のみ。
     if (isUniqueConstraintError(error)) {
       const raceRow = await prisma.subscription.findUnique({
@@ -130,11 +130,11 @@ export async function syncSubscriptionFromApple(originalTransactionId: string): 
         // intentは敗者側なので未消費のままになるが、consumedAt: nullのままでも次回の
         // 横流し防止判定には影響しない(勝者側で既にSubscription行が本人名義で存在する
         // ため、以後のverify-purchaseはexisting分岐に入りintent照合自体を通らない)。
-        await detectMultiProvider(intent.userId);
+        await detectMultiProvider(intent.principalId);
         return;
       }
     }
     throw error;
   }
-  await detectMultiProvider(intent.userId);
+  await detectMultiProvider(intent.principalId);
 }

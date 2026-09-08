@@ -8,6 +8,11 @@ last_reviewers: DeepSeek+Fable(Codex/Geminiはquota切れのため代理)
 
 # テストベースライン: listener-comment
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 TikTok LIVEのリスナーコメント(chat)を`ListenerComment`テーブルへ保存し、
 将来のAI傾向分析用途に備える。受信から30日で自動削除される
 (`listener-comment-retention.ts`)。保存はsocket.io配信(mobile読み上げ用)を

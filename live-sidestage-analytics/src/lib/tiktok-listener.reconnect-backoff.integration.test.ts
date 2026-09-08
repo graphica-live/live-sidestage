@@ -6,6 +6,7 @@
 // tiktok-live-connectorのWebcastPushConnectionをモックし、実際のTikTok接続は行わない。
 import { describe, it, expect, afterAll, afterEach, vi, beforeEach } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { startListener, stopListener, getListenerSnapshots } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
@@ -18,8 +19,22 @@ const { MockConnection } = vi.hoisted(() => {
     clientParams: Record<string, string> = {};
     connectCalls = 0;
     disconnectCalls = 0;
+    // ハンドル → tiktokUid の導出。テストファイル側で makeTiktokUid を代入する
+    // (vi.hoisted の中では import できないため)。
+    static uidFor: (tiktokHandle: string) => string = () => "0";
+    // 接続前の hostTiktokUid 照合(precheckApiLive)が読む。既定は「オンライン かつ
+    // room の hostTiktokUid と一致する配信者」。
+    // createConnection() は `@` 付きで渡してくるので、uid 導出前に剥がす。
+    webClient = {
+      fetchRoomInfoFromApiLive: vi.fn(async () => ({
+        data: {
+          liveRoom: { status: 2 },
+          user: { id: MockConnection.uidFor(this.tiktokHandle.replace(/^@/, "")) },
+        },
+      })),
+    };
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -45,9 +60,11 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
+MockConnection.uidFor = makeTiktokUid;
+
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
@@ -57,18 +74,25 @@ vi.mock("./overlay", () => ({
   emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
 }));
 
-async function createStreamer(tiktokId: string, emailPrefix: string) {
+async function createStreamer(tiktokHandle: string, emailPrefix: string) {
   const user = await prisma.user.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return prisma.streamer.create({
-    data: { userId: user.id, tiktokId, verificationCode: "x", verified: true },
+    data: {
+      principalId: user.id,
+      // room の同一性は uid。ハンドルから決定的に導いて「同じハンドル = 同じ配信者」を保つ。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      verificationCode: "x",
+      verified: true,
+    },
   });
 }
 
 async function cleanupStreamer(streamerId: string) {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
-  if (streamer) await prisma.user.delete({ where: { id: streamer.userId } });
+  if (streamer) await prisma.user.delete({ where: { id: streamer.principalId } });
 }
 
 async function cleanupRoom(roomId: string) {
@@ -94,11 +118,11 @@ afterAll(async () => {
 
 describe("scheduleReconnect()の署名取得後失敗バックオフ", () => {
   it("disconnectedでreconnectFailureCountが1増え、再接続がスケジュールされる", async () => {
-    const tiktokId = `itest_rb_disc_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-rb-disc-a");
+    const tiktokHandle = `itest_rb_disc_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-rb-disc-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     expect(MockConnection.instances).toHaveLength(1);
     expect(snapshotFor(roomId)?.reconnectFailureCount).toBe(0);
 
@@ -121,11 +145,11 @@ describe("scheduleReconnect()の署名取得後失敗バックオフ", () => {
   }, 30_000);
 
   it("接続成功でreconnectFailureCountが0にリセットされる", async () => {
-    const tiktokId = `itest_rb_reset_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-rb-reset-a");
+    const tiktokHandle = `itest_rb_reset_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-rb-reset-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     MockConnection.instances[0].fire("disconnected");
     expect(snapshotFor(roomId)?.reconnectFailureCount).toBe(1);
 
@@ -147,11 +171,11 @@ describe("scheduleReconnect()の署名取得後失敗バックオフ", () => {
   }, 30_000);
 
   it("stale化した接続からの遅延disconnectedは新しい接続の状態を汚染しない", async () => {
-    const tiktokId = `itest_rb_stale_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-rb-stale-a");
+    const tiktokHandle = `itest_rb_stale_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-rb-stale-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     const staleConn = MockConnection.instances[0];
     expect(snapshotFor(roomId)?.reconnectFailureCount).toBe(0);
 
@@ -162,7 +186,7 @@ describe("scheduleReconnect()の署名取得後失敗バックオフ", () => {
     expect(staleConn.disconnectCalls).toBe(1);
 
     // 同じ部屋で listener を再作成する(新しい ListenerInstance = 新しい connection)。
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     expect(MockConnection.instances).toHaveLength(2);
     expect(snapshotFor(roomId)?.reconnectFailureCount).toBe(0);
 

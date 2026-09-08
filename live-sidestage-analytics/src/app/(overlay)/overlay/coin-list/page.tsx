@@ -22,7 +22,7 @@ export default function CoinListOverlayPage() {
         >
           {snapshot.entries.map((entry) => (
             <li
-              key={entry.uniqueId}
+              key={entry.tiktokUid}
               className="flex items-center gap-3 px-3 py-1.5 rounded-xl"
               style={{
                 background: snapshot.bgStyle === "semi" ? "rgba(0,0,0,0.45)" : "transparent",
@@ -30,7 +30,7 @@ export default function CoinListOverlayPage() {
               }}
             >
               <span className="w-6 text-right font-bold text-white/80">{entry.rank}</span>
-              <OverlayAvatar src={entry.profileImageUrl} alt={entry.nickname} size={28} />
+              <OverlayAvatar src={entry.profileImageUrl} alt={entry.nickname ?? ""} size={28} />
               <span className="flex-1 truncate text-white font-semibold">{entry.nickname}</span>
               <span className="text-yellow-300 font-extrabold tabular-nums">{entry.coinCount.toLocaleString()}</span>
             </li>

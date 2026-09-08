@@ -18,7 +18,7 @@ async function resolveStreamerId(): Promise<{ id: string } | { error: NextRespon
   const session = await getServerSession(authOptions);
   if (!session) return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
 
-  const streamer = await prisma.streamer.findUnique({ where: { userId: session.user.id }, select: { id: true } });
+  const streamer = await prisma.streamer.findUnique({ where: { principalId: session.user.id }, select: { id: true } });
   if (!streamer) {
     return { error: NextResponse.json({ error: "配信者情報が見つかりません。" }, { status: 404 }) };
   }

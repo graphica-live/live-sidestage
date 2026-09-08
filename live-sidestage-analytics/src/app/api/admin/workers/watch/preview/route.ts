@@ -17,12 +17,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const tiktokId = (body as { tiktokId?: unknown } | null)?.tiktokId;
-  if (typeof tiktokId !== "string" || tiktokId.trim().length === 0) {
+  const tiktokHandle = (body as { tiktokHandle?: unknown } | null)?.tiktokHandle;
+  if (typeof tiktokHandle !== "string" || tiktokHandle.trim().length === 0) {
     return NextResponse.json({ error: "TikTok IDを入力してください。" }, { status: 400 });
   }
 
-  const result = await previewTiktokAccount(tiktokId);
+  const result = await previewTiktokAccount(tiktokHandle);
   if (!result.ok) {
     const { error, status } = formatExistenceGateError(result.code);
     return NextResponse.json({ error, code: result.code }, { status });
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    tiktokId: result.tiktokId,
+    tiktokHandle: result.tiktokHandle,
     nickname: result.nickname,
     avatarUrl: result.preview.avatarUrl,
     signature: result.preview.signature,

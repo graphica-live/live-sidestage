@@ -1,6 +1,7 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // public.gifts を直接読むので、`npm run db:push:local` 済みのDBが要る。
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import {
   AGGREGATE_GRACE_MS,
@@ -18,33 +19,52 @@ const END = new Date("2026-09-08T00:00:00.000Z");
 let seq = 0;
 const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。表示名(listenerTiktokHandle)は集計が
+// public.tiktok_users から順引きするので、リスナーの行を先に作っておく。
+// uid の種は PREFIX 付きにして、同じハンドル名を使う他ファイルと衝突させない。
+const listenerUid = (tiktokHandle: string) => makeTiktokUid(`${PREFIX}_${tiktokHandle}`);
+const createdListenerUids = new Set<string>();
+
+async function ensureListener(tiktokHandle: string, nickname?: string): Promise<string> {
+  const tiktokUid = listenerUid(tiktokHandle);
+  const display = { tiktokHandle, nickname: nickname ?? `${tiktokHandle} nickname` };
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid },
+    create: { tiktokUid, ...display },
+    update: display,
+  });
+  createdListenerUids.add(tiktokUid);
+  return tiktokUid;
+}
+
 async function insertGift(params: {
   roomId: string;
-  uniqueId: string;
+  tiktokHandle: string;
   diamonds: number;
   receivedAt: Date;
   repeatCount?: number;
   nickname?: string;
 }) {
+  const tiktokUid = await ensureListener(params.tiktokHandle, params.nickname);
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, ${params.uniqueId},
-       ${params.nickname ?? params.uniqueId}, 5, 'Rose', ${params.repeatCount ?? 1},
+      (gen_random_uuid()::text, ${params.roomId}, ${tiktokUid},
+       5, 'Rose', ${params.repeatCount ?? 1},
        ${params.diamonds}, ${params.diamonds}, ${params.receivedAt}, '2026-09-01',
        ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -63,7 +83,7 @@ async function createEvent(overrides: {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 集計テスト`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "DIAMOND_RACE",
       entryMode: overrides.entryMode ?? "SOLO",
       status: overrides.status ?? "RUNNING",
@@ -78,12 +98,19 @@ async function createEvent(overrides: {
 
 async function addParticipant(
   eventId: string,
-  tiktokId: string,
+  tiktokHandle: string,
   teamId?: string
 ): Promise<{ id: string; roomId: string }> {
-  const roomId = await createRoom(tiktokId);
+  const roomId = await createRoom(tiktokHandle);
   const p = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId, roomId, displayName: tiktokId, teamId: teamId ?? null },
+    data: {
+      eventId,
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      roomId,
+      displayName: tiktokHandle,
+      teamId: teamId ?? null,
+    },
     select: { id: true },
   });
   return { id: p.id, roomId };
@@ -98,8 +125,8 @@ async function newEvent(overrides = {}) {
   return e;
 }
 
-async function newParticipant(eventId: string, tiktokId: string, teamId?: string) {
-  const p = await addParticipant(eventId, `${PREFIX}_${tiktokId}_${uniqueSuffix()}`, teamId);
+async function newParticipant(eventId: string, tiktokHandle: string, teamId?: string) {
+  const p = await addParticipant(eventId, `${PREFIX}_${tiktokHandle}_${uniqueSuffix()}`, teamId);
   createdRoomIds.push(p.roomId);
   return p;
 }
@@ -116,6 +143,9 @@ afterAll(async () => {
   for (const id of createdRoomIds) {
     await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE id = ${id}`.catch(() => {});
   }
+  await prisma.tikTokUser
+    .deleteMany({ where: { tiktokUid: { in: [...createdListenerUids] } } })
+    .catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -126,9 +156,9 @@ describe("aggregateEvent", () => {
     const b = await newParticipant(event.id, "b");
 
     const at = new Date("2026-09-02T12:00:00.000Z");
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
-    await insertGift({ roomId: a.roomId, uniqueId: "listener2", diamonds: 50, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 30, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener2", diamonds: 50, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "listener1", diamonds: 30, receivedAt: at });
 
     const result = await aggregateEvent(event.id);
     expect(result.status).toBe("done");
@@ -150,7 +180,7 @@ describe("aggregateEvent", () => {
       where: { eventId: event.id, scope: "EVENT" },
       orderBy: { diamonds: "desc" },
     });
-    expect(eventScope.map((c) => [c.listenerUniqueId, c.diamonds])).toEqual([
+    expect(eventScope.map((c) => [c.listenerTiktokHandle, c.diamonds])).toEqual([
       ["listener1", 130n],
       ["listener2", 50n],
     ]);
@@ -160,7 +190,7 @@ describe("aggregateEvent", () => {
       where: { eventId: event.id, scope: "PARTICIPANT", scopeId: a.id },
       orderBy: { diamonds: "desc" },
     });
-    expect(forA.map((c) => [c.listenerUniqueId, c.diamonds])).toEqual([
+    expect(forA.map((c) => [c.listenerTiktokHandle, c.diamonds])).toEqual([
       ["listener1", 100n],
       ["listener2", 50n],
     ]);
@@ -173,17 +203,17 @@ describe("aggregateEvent", () => {
 
     const at = new Date("2026-09-02T12:00:00.000Z");
     // listener1 は b の方へ多く投げている(a:30 / b:100)
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 30, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 30, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: at });
     // listener2 は a だけ
-    await insertGift({ roomId: a.roomId, uniqueId: "listener2", diamonds: 50, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener2", diamonds: 50, receivedAt: at });
 
     await aggregateEvent(event.id);
 
     const eventScope = await prisma.eventContribution.findMany({
       where: { eventId: event.id, scope: "EVENT" },
     });
-    const byListener = new Map(eventScope.map((c) => [c.listenerUniqueId, c]));
+    const byListener = new Map(eventScope.map((c) => [c.listenerTiktokHandle, c]));
     expect(byListener.get("listener1")?.topParticipantId).toBe(b.id);
     expect(byListener.get("listener1")?.participantCount).toBe(2);
     expect(byListener.get("listener2")?.topParticipantId).toBe(a.id);
@@ -204,18 +234,18 @@ describe("aggregateEvent", () => {
     const c = await newParticipant(event.id, "c");
 
     const at = new Date("2026-09-02T12:00:00.000Z");
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 30, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
-    await insertGift({ roomId: c.roomId, uniqueId: "listener1", diamonds: 50, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 30, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: c.roomId, tiktokHandle: "listener1", diamonds: 50, receivedAt: at });
     // 1枠だけのリスナーも内訳を持つ(1件)
-    await insertGift({ roomId: a.roomId, uniqueId: "listener2", diamonds: 20, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener2", diamonds: 20, receivedAt: at });
 
     await aggregateEvent(event.id);
 
     const eventScope = await prisma.eventContribution.findMany({
       where: { eventId: event.id, scope: "EVENT" },
     });
-    const byListener = new Map(eventScope.map((r) => [r.listenerUniqueId, r]));
+    const byListener = new Map(eventScope.map((r) => [r.listenerTiktokHandle, r]));
 
     expect(byListener.get("listener1")?.breakdown).toEqual([
       { p: b.id, d: "100", pt: "100.00" },
@@ -241,13 +271,13 @@ describe("aggregateEvent", () => {
     });
 
     const at = new Date("2026-09-02T12:00:00.000Z");
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 10, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "listener1", diamonds: 4, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 10, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "listener1", diamonds: 4, receivedAt: at });
 
     await aggregateEvent(event.id);
 
     const row = await prisma.eventContribution.findFirst({
-      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "listener1" },
+      where: { eventId: event.id, scope: "EVENT", listenerTiktokHandle: "listener1" },
     });
 
     expect(row?.breakdown).toEqual([
@@ -262,20 +292,20 @@ describe("aggregateEvent", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "before",
+      tiktokHandle: "before",
       diamonds: 1000,
       receivedAt: new Date(START.getTime() - 1),
     });
-    await insertGift({ roomId: a.roomId, uniqueId: "at_start", diamonds: 10, receivedAt: START });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "at_start", diamonds: 10, receivedAt: START });
     // endAt ちょうどは含まない
-    await insertGift({ roomId: a.roomId, uniqueId: "at_end", diamonds: 2000, receivedAt: END });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "at_end", diamonds: 2000, receivedAt: END });
 
     await aggregateEvent(event.id);
 
     const rows = await prisma.eventContribution.findMany({
       where: { eventId: event.id, scope: "EVENT" },
     });
-    expect(rows.map((r) => r.listenerUniqueId)).toEqual(["at_start"]);
+    expect(rows.map((r) => r.listenerTiktokHandle)).toEqual(["at_start"]);
     expect(rows[0].diamonds).toBe(10n);
   });
 
@@ -301,20 +331,20 @@ describe("aggregateEvent", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "day1",
+      tiktokHandle: "day1",
       diamonds: 10,
       receivedAt: new Date("2026-09-01T13:30:00.000Z"),
     });
     // 1日目の終了〜2日目の開始。外枠の中だが、どの日程にも入らない。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "gap",
+      tiktokHandle: "gap",
       diamonds: 5000,
       receivedAt: new Date("2026-09-02T02:00:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "day2",
+      tiktokHandle: "day2",
       diamonds: 20,
       receivedAt: new Date("2026-09-02T13:30:00.000Z"),
     });
@@ -323,9 +353,9 @@ describe("aggregateEvent", () => {
 
     const rows = await prisma.eventContribution.findMany({
       where: { eventId: event.id, scope: "EVENT" },
-      orderBy: { listenerUniqueId: "asc" },
+      orderBy: { listenerTiktokHandle: "asc" },
     });
-    expect(rows.map((r) => r.listenerUniqueId)).toEqual(["day1", "day2"]);
+    expect(rows.map((r) => r.listenerTiktokHandle)).toEqual(["day1", "day2"]);
 
     const standing = await prisma.eventStanding.findFirst({
       where: { eventId: event.id, subjectType: "PARTICIPANT" },
@@ -348,7 +378,7 @@ describe("aggregateEvent", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "boundary",
+      tiktokHandle: "boundary",
       diamonds: 100,
       receivedAt: boundary,
     });
@@ -370,7 +400,7 @@ describe("aggregateEvent", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 70,
       receivedAt: new Date("2026-09-04T12:00:00.000Z"),
     });
@@ -393,7 +423,7 @@ describe("aggregateEvent", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 100,
       receivedAt: new Date("2026-09-02T12:00:00.000Z"),
     });
@@ -430,13 +460,13 @@ describe("aggregateEvent", () => {
     // 倍率区間の中と外に1件ずつ
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "inside",
+      tiktokHandle: "inside",
       diamonds: 100,
       receivedAt: new Date("2026-09-03T12:00:00.000Z"),
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "outside",
+      tiktokHandle: "outside",
       diamonds: 100,
       receivedAt: new Date("2026-09-05T12:00:00.000Z"),
     });
@@ -446,7 +476,7 @@ describe("aggregateEvent", () => {
     const rows = await prisma.eventContribution.findMany({
       where: { eventId: event.id, scope: "EVENT" },
     });
-    const byListener = new Map(rows.map((r) => [r.listenerUniqueId, r]));
+    const byListener = new Map(rows.map((r) => [r.listenerTiktokHandle, r]));
     expect(byListener.get("inside")?.points.toString()).toBe("300");
     expect(byListener.get("outside")?.points.toString()).toBe("100");
     // 実弾は同じ
@@ -470,9 +500,9 @@ describe("aggregateEvent", () => {
     const c = await newParticipant(event.id, "c", blue.id);
 
     const at = new Date("2026-09-02T12:00:00.000Z");
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 40, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 30, receivedAt: at });
-    await insertGift({ roomId: c.roomId, uniqueId: "l2", diamonds: 60, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 40, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l1", diamonds: 30, receivedAt: at });
+    await insertGift({ roomId: c.roomId, tiktokHandle: "l2", diamonds: 60, receivedAt: at });
 
     await aggregateEvent(event.id);
 
@@ -490,7 +520,7 @@ describe("aggregateEvent", () => {
     const redContrib = await prisma.eventContribution.findMany({
       where: { eventId: event.id, scope: "TEAM", scopeId: red.id },
     });
-    expect(redContrib.map((r) => [r.listenerUniqueId, r.diamonds])).toEqual([["l1", 70n]]);
+    expect(redContrib.map((r) => [r.listenerTiktokHandle, r.diamonds])).toEqual([["l1", 70n]]);
   });
 
   it("再集計は冪等で、2回流しても値が増えない", async () => {
@@ -498,7 +528,7 @@ describe("aggregateEvent", () => {
     const a = await newParticipant(event.id, "a");
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 100,
       receivedAt: new Date("2026-09-02T12:00:00.000Z"),
     });
@@ -523,8 +553,8 @@ describe("aggregateEvent", () => {
     const b = await newParticipant(event.id, "b");
 
     const at = new Date("2026-09-02T12:00:00.000Z");
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 50, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l1", diamonds: 50, receivedAt: at });
 
     await aggregateEvent(event.id);
     expect(
@@ -550,7 +580,7 @@ describe("aggregateEvent", () => {
     const a = await newParticipant(event.id, "a");
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 100,
       receivedAt: new Date("2026-09-02T12:00:00.000Z"),
     });
@@ -573,7 +603,7 @@ describe("aggregateEvent", () => {
     const at = new Date("2026-09-02T12:00:00.000Z");
     const extra = 5;
     for (let i = 0; i < MAX_CONTRIBUTION_ROWS + extra; i++) {
-      await insertGift({ roomId: a.roomId, uniqueId: `l${i}`, diamonds: i + 1, receivedAt: at });
+      await insertGift({ roomId: a.roomId, tiktokHandle: `l${i}`, diamonds: i + 1, receivedAt: at });
     }
 
     await aggregateEvent(event.id);
@@ -599,14 +629,14 @@ describe("aggregateEvent", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 50,
       receivedAt: at,
       repeatCount: 10,
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 5,
       receivedAt: at,
       repeatCount: 1,
@@ -647,7 +677,7 @@ describe("最終集計(finalizedAt)", () => {
     const a = await newParticipant(event.id, "a");
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 100,
       receivedAt: new Date(endAt.getTime() - 3600_000),
     });
@@ -691,7 +721,7 @@ describe("最終集計(finalizedAt)", () => {
     const a = await newParticipant(event.id, "a");
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 100,
       receivedAt: new Date(endAt.getTime() - 3600_000),
     });
@@ -815,7 +845,7 @@ describe("0点の扱い", () => {
 
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 100,
       receivedAt: new Date("2026-09-02T12:00:00.000Z"),
     });
@@ -846,7 +876,7 @@ describe("0点の扱い", () => {
     const a = await newParticipant(event.id, "a", red.id);
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "l1",
+      tiktokHandle: "l1",
       diamonds: 100,
       receivedAt: new Date("2026-09-02T12:00:00.000Z"),
     });
@@ -888,8 +918,8 @@ describe("0点の扱い", () => {
     const loner = await newParticipant(event.id, "loner"); // teamId なし
 
     const at = new Date("2026-09-02T12:00:00.000Z");
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 50, receivedAt: at });
-    await insertGift({ roomId: loner.roomId, uniqueId: "l2", diamonds: 999, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 50, receivedAt: at });
+    await insertGift({ roomId: loner.roomId, tiktokHandle: "l2", diamonds: 999, receivedAt: at });
 
     await aggregateEvent(event.id);
 

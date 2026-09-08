@@ -4,6 +4,7 @@
 // TiktokRoom.listenerStatus は best effort な値なので、鮮度(listenerUpdatedAt)込みで
 // 正規化して返すのがこのルートの責務。判定そのものは listener-liveness.test.ts が持つ。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
@@ -11,10 +12,10 @@ import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_listener";
 
-let userId: string;
+let principalId: string;
 let roomId: string;
-let noRoomUserId: string;
-let unverifiedUserId: string;
+let noRoomPrincipalId: string;
+let unverifiedPrincipalId: string;
 let token: string;
 let noStreamerToken: string;
 let noRoomToken: string;
@@ -47,42 +48,58 @@ async function setListener(status: string | null, message: string | null, update
 }
 
 beforeAll(async () => {
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID } });
+  const room = await prisma.tiktokRoom.create({
+    data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: makeTiktokUid(TIKTOK_ID) },
+  });
   roomId = room.id;
 
   const user = await prisma.user.create({
     data: { email: `itest-mobile-listener-${Date.now()}@local.test` },
   });
-  userId = user.id;
+  principalId = user.id;
   apiKey = `itest-listener-key-${Date.now()}`;
   const streamer = await prisma.streamer.create({
-    data: { userId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId, apiKey },
+    data: {
+      principalId,
+      tiktokUid: makeTiktokUid(TIKTOK_ID),
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+      apiKey,
+    },
   });
-  token = signMobileToken({ userId, streamerId: streamer.id });
+  token = signMobileToken({ principalId, streamerId: streamer.id });
 
   // streamerId を持たないトークン（オンボーディング途中）。
-  noStreamerToken = signMobileToken({ userId });
+  noStreamerToken = signMobileToken({ principalId });
 
   // Streamer はあるが部屋がまだ割り当たっていないユーザー。
   const noRoom = await prisma.user.create({
     data: { email: `itest-mobile-listener-noroom-${Date.now()}@local.test` },
   });
-  noRoomUserId = noRoom.id;
+  noRoomPrincipalId = noRoom.id;
   const noRoomStreamer = await prisma.streamer.create({
-    data: { userId: noRoomUserId, tiktokId: `${TIKTOK_ID}_noroom`, verificationCode: "x" },
+    data: {
+      principalId: noRoomPrincipalId,
+      tiktokUid: makeTiktokUid(`${TIKTOK_ID}_noroom`),
+      tiktokHandle: `${TIKTOK_ID}_noroom`,
+      verificationCode: "x",
+    },
   });
-  noRoomToken = signMobileToken({ userId: noRoomUserId, streamerId: noRoomStreamer.id });
+  noRoomToken = signMobileToken({ principalId: noRoomPrincipalId, streamerId: noRoomStreamer.id });
 
   // BIO認証が済んでいない配信者。モバイルはBIO認証ゲート対象外なので弾かれないこと。
   const unverified = await prisma.user.create({
     data: { email: `itest-mobile-listener-unverified-${Date.now()}@local.test` },
   });
-  unverifiedUserId = unverified.id;
+  unverifiedPrincipalId = unverified.id;
   unverifiedApiKey = `itest-listener-unverified-${Date.now()}`;
   await prisma.streamer.create({
     data: {
-      userId: unverifiedUserId,
-      tiktokId: `${TIKTOK_ID}_unverified`,
+      principalId: unverifiedPrincipalId,
+      tiktokUid: makeTiktokUid(`${TIKTOK_ID}_unverified`),
+      tiktokHandle: `${TIKTOK_ID}_unverified`,
       verificationCode: "x",
       verified: false,
       apiKey: unverifiedApiKey,
@@ -91,9 +108,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: unverifiedUserId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: unverifiedPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {});
   await prisma.$disconnect();
 });

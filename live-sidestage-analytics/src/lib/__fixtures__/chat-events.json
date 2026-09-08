@@ -1,9 +1,10 @@
 {
-  "_comment": "chat:* イベントの契約。TypeScript 側(chat-feed.contract.test.ts)と Dart 側(live-sidestage-mobile/test/chat_event_contract_test.dart)の両方から読む。片方だけ変えるとどちらかのテストが落ちる。",
+  "_comment": "chat:* イベントの契約。TypeScript 側(chat-feed.contract.test.ts)と Dart 側(live-sidestage-mobile/test/chat_event_contract_test.dart)の両方から読む。片方だけ変えるとどちらかのテストが落ちる。2026-09 の識別子統一で uniqueId を tiktokHandle へ改名し、不変ID tiktokUid を追加した(端末側の受け口も同時に直すこと)。",
   "gift": {
     "schemaVersion": 1,
     "streamerId": "streamer-1",
-    "uniqueId": "viewer_a",
+    "tiktokUid": "7000000000000000101",
+    "tiktokHandle": "viewer_a",
     "nickname": "Viewer A",
     "profilePictureUrl": "https://example.invalid/a.png",
     "giftName": "rose",
@@ -22,7 +23,8 @@
   "giftWithoutCombo": {
     "schemaVersion": 1,
     "streamerId": "streamer-1",
-    "uniqueId": "viewer_b",
+    "tiktokUid": "7000000000000000102",
+    "tiktokHandle": "viewer_b",
     "nickname": "Viewer B",
     "profilePictureUrl": null,
     "giftName": "galaxy",
@@ -41,7 +43,8 @@
   "follow": {
     "schemaVersion": 1,
     "streamerId": "streamer-1",
-    "uniqueId": "viewer_c",
+    "tiktokUid": "7000000000000000103",
+    "tiktokHandle": "viewer_c",
     "nickname": "Viewer C",
     "profilePictureUrl": "https://example.invalid/c.png",
     "occurredAt": "2026-08-21T12:36:00.000Z",
@@ -50,7 +53,8 @@
   },
   "comment": {
     "streamerId": "streamer-1",
-    "uniqueId": "viewer_d",
+    "tiktokUid": "7000000000000000104",
+    "tiktokHandle": "viewer_d",
     "nickname": "Viewer D",
     "profilePictureUrl": null,
     "comment": "こんばんは",

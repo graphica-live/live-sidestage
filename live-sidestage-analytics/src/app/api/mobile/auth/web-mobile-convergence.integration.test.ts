@@ -64,6 +64,7 @@ describe("Web/Mobileアカウント統合(同一sub→同一User.id)", () => {
       emailVerified: null,
     } as never);
     await adapter.linkAccount!({
+      // `Account.userId` は NextAuth の PrismaAdapter が直書きする列名。principalId へ改名しない。
       userId: webUser.id,
       type: "oauth",
       provider: "google",
@@ -92,7 +93,7 @@ describe("Web/Mobileアカウント統合(同一sub→同一User.id)", () => {
     expect(webUser?.id).toBe(mobileBody.user.id);
   });
 
-  it("Subscriptionは(Web/Mobileどちらから見ても)同じUserId経由で共有される", async () => {
+  it("Subscriptionは(Web/Mobileどちらから見ても)同じPrincipalId経由で共有される", async () => {
     const sub = `${PREFIX}sub-subscription`;
     const email = `${PREFIX}subscription@local.test`;
 
@@ -102,7 +103,7 @@ describe("Web/Mobileアカウント統合(同一sub→同一User.id)", () => {
     // WebのStripe Webhook経由で付与されたのと同じ状態を模す。
     await prisma.subscription.create({
       data: {
-        userId: mobileBody.user.id,
+        principalId: mobileBody.user.id,
         plan: "PRO",
         provider: "STRIPE",
         providerSubscriptionId: `${PREFIX}sub-stripe-subscription`,
@@ -111,7 +112,7 @@ describe("Web/Mobileアカウント統合(同一sub→同一User.id)", () => {
     });
 
     const webUser = await adapter.getUserByAccount!({ provider: "google", providerAccountId: sub });
-    const subscription = await prisma.subscription.findFirst({ where: { userId: webUser!.id } });
+    const subscription = await prisma.subscription.findFirst({ where: { principalId: webUser!.id } });
 
     expect(subscription?.plan).toBe("PRO");
   });

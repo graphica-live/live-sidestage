@@ -2,6 +2,7 @@
 // public.gifts / public.tiktok_battles を直接読むので、
 // `npm run db:push:local` 済みのDBが要る。
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 import { aggregateEvent } from "./aggregate";
@@ -37,31 +38,50 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。表示名(listenerTiktokHandle)は集計が
+// public.tiktok_users から順引きするので、リスナーの行を先に作っておく。
+// uid の種は PREFIX 付きにして、同じハンドル名を使う他ファイルと衝突させない。
+const listenerUid = (tiktokHandle: string) => makeTiktokUid(`${PREFIX}_${tiktokHandle}`);
+const createdListenerUids = new Set<string>();
+
+async function ensureListener(tiktokHandle: string): Promise<string> {
+  const tiktokUid = listenerUid(tiktokHandle);
+  const display = { tiktokHandle, nickname: `${tiktokHandle} nickname` };
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid },
+    create: { tiktokUid, ...display },
+    update: display,
+  });
+  createdListenerUids.add(tiktokUid);
+  return tiktokUid;
+}
+
 async function insertGift(params: {
   roomId: string;
-  uniqueId: string;
+  tiktokHandle: string;
   diamonds: number;
   receivedAt: Date;
 }) {
+  const tiktokUid = await ensureListener(params.tiktokHandle);
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, ${params.uniqueId}, ${params.uniqueId},
+      (gen_random_uuid()::text, ${params.roomId}, ${tiktokUid},
        5, 'Rose', 1, ${params.diamonds}, ${params.diamonds}, ${params.receivedAt},
        '2026-09-01', ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -80,7 +100,7 @@ async function insertBattle(params: {
   await prisma.$executeRaw`
     INSERT INTO public.tiktok_battles
       (id, "roomId", "battleId", action, "startedAt", "startedAtEstimated", "endedAt",
-       "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", "updatedAt")
+       "durationSec", "hostTiktokUids", "hostDisplayIds", "hostScores", "updatedAt")
     VALUES
       (gen_random_uuid()::text, ${params.roomId}, ${params.battleId}, ${params.action ?? 5},
        ${params.startedAt}, ${params.startedAtEstimated ?? false}, ${params.endedAt},
@@ -113,7 +133,7 @@ async function newTournament() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} トーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -134,7 +154,7 @@ async function newBestOfThreeTournament() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 2本先取トーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -155,7 +175,7 @@ async function newPastTournament() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 終了済みトーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "FINISHED",
@@ -204,10 +224,10 @@ async function finishFirstMatch(eventId: string): Promise<string> {
 }
 
 async function newParticipant(eventId: string, name: string) {
-  const tiktokId = `${PREFIX}_${name}_${uniqueSuffix()}`;
-  const roomId = await createRoom(tiktokId);
+  const tiktokHandle = `${PREFIX}_${name}_${uniqueSuffix()}`;
+  const roomId = await createRoom(tiktokHandle);
   const p = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId, roomId, displayName: name },
+    data: { eventId, tiktokUid: makeTiktokUid(tiktokHandle), tiktokHandle, roomId, displayName: name },
     select: { id: true },
   });
   return { id: p.id, roomId };
@@ -226,6 +246,9 @@ afterAll(async () => {
   }
   await prisma.detectedBattle
     .deleteMany({ where: { battleId: { startsWith: PREFIX } } })
+    .catch(() => {});
+  await prisma.tikTokUser
+    .deleteMany({ where: { tiktokUid: { in: [...createdListenerUids] } } })
     .catch(() => {});
   await prisma.$disconnect();
 });
@@ -252,8 +275,8 @@ describe("バトルの取り込みと対戦の確定", () => {
 
     // バトル中のギフト。a のほうが多い。
     const at = GIFT_AT;
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 500, receivedAt: at });
-    await insertGift({ roomId: d.roomId, uniqueId: "listener2", diamonds: 300, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 500, receivedAt: at });
+    await insertGift({ roomId: d.roomId, tiktokHandle: "listener2", diamonds: 300, receivedAt: at });
 
     await aggregateEvent(event.id);
 
@@ -303,7 +326,7 @@ describe("バトルの取り込みと対戦の確定", () => {
     });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 100,
       receivedAt: GIFT_AT,
     });
@@ -383,7 +406,7 @@ describe("バトルの取り込みと対戦の確定", () => {
     const battleId = `${PREFIX}_open_${uniqueSuffix()}`;
     await insertBattle({ roomId: a.roomId, battleId, startedAt: BATTLE_START, endedAt: null });
     await insertBattle({ roomId: b.roomId, battleId, startedAt: BATTLE_START, endedAt: null });
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 500, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 500, receivedAt: GIFT_AT });
 
     await aggregateEvent(event.id);
 
@@ -440,7 +463,7 @@ describe("バトルの取り込みと対戦の確定", () => {
       await insertBattle({ roomId: a.roomId, battleId, startedAt: start, endedAt: end });
       await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
     }
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 500, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 500, receivedAt: GIFT_AT });
 
     await aggregateEvent(event.id);
 
@@ -507,8 +530,8 @@ describe("バトルの取り込みと対戦の確定", () => {
     await insertBattle({ roomId: b.roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
 
     const at = GIFT_AT;
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
-    await insertGift({ roomId: c.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: c.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: at });
 
     // 1周目でバトル区間が確定し、2周目でその区間に倍率がかかる。
     await aggregateEvent(event.id);
@@ -550,16 +573,16 @@ describe("バトルの取り込みと対戦の確定", () => {
     });
 
     // 同じリスナーが、バトル中(100)とバトル外(900)に投げる。
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: GIFT_AT });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 900,
       receivedAt: new Date(BATTLE_END.getTime() + 30 * 60_000),
     });
     // 境界のギフト: 開始ちょうどは含み、終了ちょうどは含まない(半開区間)。
-    await insertGift({ roomId: a.roomId, uniqueId: "edge", diamonds: 7, receivedAt: BATTLE_START });
-    await insertGift({ roomId: a.roomId, uniqueId: "edge", diamonds: 500, receivedAt: BATTLE_END });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "edge", diamonds: 7, receivedAt: BATTLE_START });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "edge", diamonds: 500, receivedAt: BATTLE_END });
 
     await aggregateEvent(event.id);
     await aggregateEvent(event.id);
@@ -570,12 +593,12 @@ describe("バトルの取り込みと対戦の確定", () => {
     expect(standing.diamonds).toBe(107n);
 
     const listener = await prisma.eventContribution.findFirstOrThrow({
-      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "listener1" },
+      where: { eventId: event.id, scope: "EVENT", listenerTiktokHandle: "listener1" },
     });
     expect(listener.diamonds).toBe(100n);
 
     const edge = await prisma.eventContribution.findFirstOrThrow({
-      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "edge" },
+      where: { eventId: event.id, scope: "EVENT", listenerTiktokHandle: "edge" },
     });
     expect(edge.diamonds).toBe(7n);
   });
@@ -603,7 +626,7 @@ describe("バトルの取り込みと対戦の確定", () => {
       startedAt: BATTLE_START,
       endedAt: BATTLE_END,
     });
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: GIFT_AT });
 
     await aggregateEvent(event.id);
     await aggregateEvent(event.id);
@@ -651,7 +674,7 @@ describe("バトルの取り込みと対戦の確定", () => {
       startedAt: BATTLE_START,
       endedAt: BATTLE_END,
     });
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: GIFT_AT });
 
     await aggregateEvent(event.id);
     await aggregateEvent(event.id);
@@ -696,7 +719,7 @@ describe("バトルの取り込みと対戦の確定", () => {
       endedAt: null,
       action: BATTLE_ACTION.OPEN,
     });
-    await insertGift({ roomId: a.roomId, uniqueId: "listener1", diamonds: 100, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "listener1", diamonds: 100, receivedAt: GIFT_AT });
 
     await aggregateEvent(event.id);
     await aggregateEvent(event.id);
@@ -776,8 +799,8 @@ describe("バトルの取り込みと対戦の確定", () => {
     await insertBattle({ roomId: b.roomId, battleId, startedAt: battleStart, endedAt: battleEnd });
 
     const at = GIFT_AT;
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: at });
-    await insertGift({ roomId: b.roomId, uniqueId: "l2", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: at });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l2", diamonds: 100, receivedAt: at });
 
     await aggregateEvent(event.id);
 
@@ -1033,7 +1056,7 @@ describe("バトルの取り込みと対戦の確定", () => {
     }
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 500,
       receivedAt: GIFT_AT,
     });
@@ -1080,7 +1103,7 @@ describe("バトルの取り込みと対戦の確定", () => {
     }
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 500,
       receivedAt: GIFT_AT,
     });
@@ -1163,8 +1186,8 @@ describe("バトルの取り込みと対戦の確定", () => {
       await insertBattle({ roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
     }
     // 同額 = 同点なので勝者は決まらず DETECTED のまま。サイドのダイヤだけ入る。
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 500, receivedAt: GIFT_AT });
-    await insertGift({ roomId: b.roomId, uniqueId: "l2", diamonds: 500, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 500, receivedAt: GIFT_AT });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l2", diamonds: 500, receivedAt: GIFT_AT });
     await aggregateEvent(event.id);
 
     const before = await prisma.eventMatch.findFirstOrThrow({
@@ -1277,9 +1300,9 @@ describe("勝利条件(BEST_OF_THREE)", () => {
       await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
     }
     // g1・g2 は a が勝つ、g3 は b が勝つ(が、2-0で決着済みなので無視されるはず)。
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
-    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g3Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g3Start.getTime() + 60_000) });
 
     await aggregateEvent(event.id);
 
@@ -1323,8 +1346,8 @@ describe("勝利条件(BEST_OF_THREE)", () => {
       await insertBattle({ roomId: a.roomId, battleId, startedAt: start, endedAt: end });
       await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
     }
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
-    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
 
     await aggregateEvent(event.id);
 
@@ -1359,10 +1382,10 @@ describe("勝利条件(BEST_OF_THREE)", () => {
       await insertBattle({ roomId: b.roomId, battleId, startedAt: start, endedAt: end });
     }
     // g1: a勝ち, g2: a勝ち(まだ) → 2-0でFINISHEDになるはず。g3は無視される。
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g1Start.getTime() + 60_000) });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g2Start.getTime() + 60_000) });
     // g3: b勝ち(この時点では無視される)。
-    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 100, receivedAt: new Date(g3Start.getTime() + 60_000) });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l1", diamonds: 100, receivedAt: new Date(g3Start.getTime() + 60_000) });
 
     await aggregateEvent(event.id);
     const firstPass = await prisma.eventMatch.findFirstOrThrow({
@@ -1373,7 +1396,7 @@ describe("勝利条件(BEST_OF_THREE)", () => {
     expect(firstPass.winnerSideId).toBe(firstPass.sides[0].id); // a
 
     // 遅延して届いたギフトで g2 の結果が反転する(b が大量に投げていたことが後で判明)。
-    await insertGift({ roomId: b.roomId, uniqueId: "l1", diamonds: 1000, receivedAt: new Date(g2Start.getTime() + 120_000) });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l1", diamonds: 1000, receivedAt: new Date(g2Start.getTime() + 120_000) });
 
     await aggregateEvent(event.id);
     const secondPass = await prisma.eventMatch.findFirstOrThrow({
@@ -1882,7 +1905,7 @@ describe("締切後に表を作り直しても進行が止まらない", () => {
     // 同点(0対0を含む)だと自動確定しないので、片側にだけギフトを入れる。
     await insertGift({
       roomId: rooms[0],
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 500,
       receivedAt: new Date(battleStart.getTime() + 60_000),
     });
@@ -2057,13 +2080,13 @@ describe("手動で配置したトーナメント表", () => {
     await insertBattle({ roomId: b.roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "listener1",
+      tiktokHandle: "listener1",
       diamonds: 500,
       receivedAt: GIFT_AT,
     });
     await insertGift({
       roomId: b.roomId,
-      uniqueId: "listener2",
+      tiktokHandle: "listener2",
       diamonds: 100,
       receivedAt: GIFT_AT,
     });
@@ -2199,15 +2222,15 @@ describe("順位決定戦", () => {
     const battle1 = `${PREFIX}_sf1_${uniqueSuffix()}`;
     await insertBattle({ roomId: a.roomId, battleId: battle1, startedAt: BATTLE_START, endedAt: BATTLE_END });
     await insertBattle({ roomId: d.roomId, battleId: battle1, startedAt: BATTLE_START, endedAt: BATTLE_END });
-    await insertGift({ roomId: a.roomId, uniqueId: "l1", diamonds: 500, receivedAt: GIFT_AT });
-    await insertGift({ roomId: d.roomId, uniqueId: "l2", diamonds: 300, receivedAt: GIFT_AT });
+    await insertGift({ roomId: a.roomId, tiktokHandle: "l1", diamonds: 500, receivedAt: GIFT_AT });
+    await insertGift({ roomId: d.roomId, tiktokHandle: "l2", diamonds: 300, receivedAt: GIFT_AT });
 
     // (1,1): b が c に勝つ。
     const battle2 = `${PREFIX}_sf2_${uniqueSuffix()}`;
     await insertBattle({ roomId: b.roomId, battleId: battle2, startedAt: BATTLE_START, endedAt: BATTLE_END });
     await insertBattle({ roomId: c.roomId, battleId: battle2, startedAt: BATTLE_START, endedAt: BATTLE_END });
-    await insertGift({ roomId: b.roomId, uniqueId: "l3", diamonds: 400, receivedAt: GIFT_AT });
-    await insertGift({ roomId: c.roomId, uniqueId: "l4", diamonds: 200, receivedAt: GIFT_AT });
+    await insertGift({ roomId: b.roomId, tiktokHandle: "l3", diamonds: 400, receivedAt: GIFT_AT });
+    await insertGift({ roomId: c.roomId, tiktokHandle: "l4", diamonds: 200, receivedAt: GIFT_AT });
 
     return { event, a, b, c, d };
   }
@@ -2491,8 +2514,8 @@ describe("順位決定戦", () => {
       const loser = seeds[loserIndex];
       await insertBattle({ roomId: winner.roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
       await insertBattle({ roomId: loser.roomId, battleId, startedAt: BATTLE_START, endedAt: BATTLE_END });
-      await insertGift({ roomId: winner.roomId, uniqueId: `w${winnerIndex}`, diamonds: 500, receivedAt: GIFT_AT });
-      await insertGift({ roomId: loser.roomId, uniqueId: `l${loserIndex}`, diamonds: 100, receivedAt: GIFT_AT });
+      await insertGift({ roomId: winner.roomId, tiktokHandle: `w${winnerIndex}`, diamonds: 500, receivedAt: GIFT_AT });
+      await insertGift({ roomId: loser.roomId, tiktokHandle: `l${loserIndex}`, diamonds: 100, receivedAt: GIFT_AT });
     }
 
     // 1周目: 1回戦が確定し、敗者がブロックの葉へ入る。
@@ -2537,7 +2560,7 @@ describe("順位決定戦", () => {
       data: {
         slug: `${PREFIX}-${uniqueSuffix()}`,
         title: `${PREFIX} 2日程トーナメント`,
-        ownerUserId: `${PREFIX}_owner`,
+        ownerPrincipalId: `${PREFIX}_owner`,
         format: "TOURNAMENT",
         entryMode: "SOLO",
         status: "RUNNING",

@@ -15,7 +15,7 @@ const NINETY_DAYS_SEC = 90 * 24 * 60 * 60;
 
 /// 指定時刻に発行された 90 日トークンを作る。
 /// `exp` は将来のままにしてあるので、弾かれるとしたら期限切れではなく iat 下限が理由。
-function signIssuedAt(iatSec: number, payload: Record<string, unknown> = { userId: "u1" }): string {
+function signIssuedAt(iatSec: number, payload: Record<string, unknown> = { principalId: "u1" }): string {
   return jwt.sign({ ...payload, iat: iatSec, exp: iatSec + NINETY_DAYS_SEC }, SECRET);
 }
 
@@ -31,21 +31,21 @@ describe("verifyMobileToken の旧トークン締め出し", () => {
 
   it("カットオフちょうどは通す（境界を閉区間で扱う）", () => {
     expect(verifyMobileToken(signIssuedAt(CUTOFF_SEC))).toEqual({
-      userId: "u1",
+      principalId: "u1",
       streamerId: undefined,
     });
   });
 
   it("カットオフより後に発行されたトークンは通す", () => {
-    expect(verifyMobileToken(signIssuedAt(CUTOFF_SEC + 3600, { userId: "u2", streamerId: "s2" }))).toEqual({
-      userId: "u2",
+    expect(verifyMobileToken(signIssuedAt(CUTOFF_SEC + 3600, { principalId: "u2", streamerId: "s2" }))).toEqual({
+      principalId: "u2",
       streamerId: "s2",
     });
   });
 
   it("iat を持たないトークンは拒否する（jwt.sign が必ず付ける前提から外れている）", () => {
     const token = jwt.sign(
-      { userId: "u3", exp: Math.floor(Date.now() / 1000) + NINETY_DAYS_SEC },
+      { principalId: "u3", exp: Math.floor(Date.now() / 1000) + NINETY_DAYS_SEC },
       SECRET,
       { noTimestamp: true },
     );
@@ -53,14 +53,14 @@ describe("verifyMobileToken の旧トークン締め出し", () => {
   });
 
   it("いま signMobileToken で発行したトークンは通る（現行フローを壊していない）", () => {
-    expect(verifyMobileToken(signMobileToken({ userId: "u4", streamerId: "s4" }))).toEqual({
-      userId: "u4",
+    expect(verifyMobileToken(signMobileToken({ principalId: "u4", streamerId: "s4" }))).toEqual({
+      principalId: "u4",
       streamerId: "s4",
     });
   });
 
   it("署名が違うトークンは従来どおり拒否する", () => {
-    const forged = jwt.sign({ userId: "u5", iat: CUTOFF_SEC + 10 }, "wrong-secret");
+    const forged = jwt.sign({ principalId: "u5", iat: CUTOFF_SEC + 10 }, "wrong-secret");
     expect(verifyMobileToken(forged)).toBeNull();
   });
 });

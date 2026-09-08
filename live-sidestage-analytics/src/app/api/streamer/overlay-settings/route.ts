@@ -19,9 +19,9 @@ import {
   shiftDayKey,
 } from "@/lib/overlay";
 
-async function loadStreamer(userId: string) {
+async function loadStreamer(principalId: string) {
   return prisma.streamer.findUnique({
-    where: { userId },
+    where: { principalId },
     select: {
       id: true,
       overlayToken: true,

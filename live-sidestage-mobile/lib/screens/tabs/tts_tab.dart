@@ -21,7 +21,7 @@ class TtsTab extends StatelessWidget {
     required this.busy,
     required this.onToggle,
     required this.roomSwitching,
-    required this.switchingToTiktokId,
+    required this.switchingToTiktokHandle,
     required this.showFirstRunGuide,
     required this.onDismissFirstRunGuide,
   });
@@ -41,7 +41,7 @@ class TtsTab extends StatelessWidget {
   final ValueChanged<bool> onToggle;
 
   final bool roomSwitching;
-  final String? switchingToTiktokId;
+  final String? switchingToTiktokHandle;
 
   /// オンボーディング後、初回だけ出す誘導バナーを見せるか。
   final bool showFirstRunGuide;
@@ -101,7 +101,7 @@ class TtsTab extends StatelessWidget {
                         padding: const EdgeInsets.all(24),
                         child: Text(
                           roomSwitching
-                              ? '@${switchingToTiktokId ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「開始」を押しておけば、反映され次第コメントが流れ始めます）'
+                              ? '@${switchingToTiktokHandle ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「開始」を押しておけば、反映され次第コメントが流れ始めます）'
                               : '「開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
                           textAlign: TextAlign.center,
                           style: Theme.of(

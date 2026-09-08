@@ -3,13 +3,20 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { prisma } from "./prisma";
 import { queryGiftBreakdown } from "./gift-breakdown";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const STREAMER_TIKTOK_ID = "itest_gift_breakdown_streamer";
+const HOST_TIKTOK_UID = makeTiktokUid("itest_gift_breakdown_host");
 const CATALOG_GIFT_ID = 900_001;
+// 絞り込みは tiktokUid で行う(Gift にハンドル列は無い)。
+const LISTENER_A = makeTiktokUid("itest_breakdown_listener_a");
+const LISTENER_B = makeTiktokUid("itest_breakdown_listener_b");
+const LISTENER_C = makeTiktokUid("itest_breakdown_listener_c");
+const LISTENER_D = makeTiktokUid("itest_breakdown_listener_d");
 let roomId: string;
 
 type GiftOverrides = Partial<{
-  uniqueId: string;
+  tiktokUid: string;
   giftId: number;
   giftName: string;
   giftPictureUrl: string | null;
@@ -24,9 +31,7 @@ async function makeGift(overrides: GiftOverrides) {
   return prisma.gift.create({
     data: {
       roomId,
-      uniqueId: "listener_a",
-      nickname: "リスナーA",
-      profileImageUrl: null,
+      tiktokUid: LISTENER_A,
       giftId: 1,
       giftName: "Rose",
       giftPictureUrl: null,
@@ -45,7 +50,9 @@ const NOW = new Date("2026-09-07T00:00:00Z");
 const DAY = { gte: "2026-09-05", lte: "2026-09-05" };
 
 beforeAll(async () => {
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: STREAMER_TIKTOK_ID } });
+  const room = await prisma.tiktokRoom.create({
+    data: { tiktokHandle: STREAMER_TIKTOK_ID, hostTiktokUid: HOST_TIKTOK_UID },
+  });
   roomId = room.id;
 });
 
@@ -75,7 +82,7 @@ describe("queryGiftBreakdown", () => {
       receivedAt: new Date("2026-09-05T12:00:00Z"),
     });
 
-    const result = await queryGiftBreakdown(roomId, "listener_a", { dayKey: DAY }, NOW);
+    const result = await queryGiftBreakdown(roomId, LISTENER_A, { dayKey: DAY }, NOW);
 
     expect(result.gifts.map((g) => g.giftId)).toEqual([12, 11]); // totalDiamonds 降順
     const rose = result.gifts.find((g) => g.giftId === 11)!;
@@ -92,25 +99,25 @@ describe("queryGiftBreakdown", () => {
   });
 
   it("他ユーザーのギフトは混ざらない", async () => {
-    await makeGift({ uniqueId: "listener_b", giftId: 21, giftName: "Lion", totalDiamonds: 999 });
+    await makeGift({ tiktokUid: LISTENER_B, giftId: 21, giftName: "Lion", totalDiamonds: 999 });
 
-    const result = await queryGiftBreakdown(roomId, "listener_a", { dayKey: DAY }, NOW);
+    const result = await queryGiftBreakdown(roomId, LISTENER_A, { dayKey: DAY }, NOW);
     expect(result.gifts.find((g) => g.giftId === 21)).toBeUndefined();
 
-    const other = await queryGiftBreakdown(roomId, "listener_b", { dayKey: DAY }, NOW);
+    const other = await queryGiftBreakdown(roomId, LISTENER_B, { dayKey: DAY }, NOW);
     expect(other.gifts.map((g) => g.giftId)).toEqual([21]);
   });
 
   it("期間外のギフトは含めない", async () => {
     await makeGift({
-      uniqueId: "listener_c",
+      tiktokUid: LISTENER_C,
       giftId: 31,
       dayKey: "2026-09-01",
       receivedAt: new Date("2026-09-01T10:00:00Z"),
       totalDiamonds: 777,
     });
 
-    const result = await queryGiftBreakdown(roomId, "listener_c", { dayKey: DAY }, NOW);
+    const result = await queryGiftBreakdown(roomId, LISTENER_C, { dayKey: DAY }, NOW);
     expect(result.gifts).toEqual([]);
     expect(result.total).toEqual({ repeatCount: 0, totalDiamonds: 0 });
     // 明細は読めた(単に0件)。「内訳が残っていない」とは区別する。
@@ -128,13 +135,13 @@ describe("queryGiftBreakdown", () => {
       },
     });
     await makeGift({
-      uniqueId: "listener_d",
+      tiktokUid: LISTENER_D,
       giftId: CATALOG_GIFT_ID,
       giftName: "Doughnut",
       totalDiamonds: 30,
     });
 
-    const result = await queryGiftBreakdown(roomId, "listener_d", { dayKey: DAY }, NOW);
+    const result = await queryGiftBreakdown(roomId, LISTENER_D, { dayKey: DAY }, NOW);
     expect(result.gifts[0].giftName).toBe("ドーナツ");
   });
 });

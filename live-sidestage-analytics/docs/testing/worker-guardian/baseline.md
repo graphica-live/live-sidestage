@@ -8,6 +8,11 @@ last_reviewers: Fable(TestCase Mode。Qwenはcanary検証で検出失敗のた�
 
 # テストベースライン: worker-guardian
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `worker-guardian.ts`（+ `src/lib/worker-guardian.ts` / `src/lib/worker-status.ts`）が担う worker1〜3 の死活監視・フェイルオーバー。30秒間隔（`GUARDIAN_POLL_INTERVAL_MS`）で probe し、連続不健全が閾値に達した worker を死亡と判定して担当 room を least-loaded worker へ再割当する。個別に接続できない blocked room の救済、kill switch による無効化、audit log 記録を含む。
 
 ## テストケース

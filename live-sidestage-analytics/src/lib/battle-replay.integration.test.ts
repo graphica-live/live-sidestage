@@ -9,10 +9,16 @@ import { prisma } from "./prisma";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 import { materializeBattleHistory } from "./battle-history-finalize";
 import { ensureShareToken, queryBattleReplay, queryBattleReplayByShareToken } from "./battle-replay";
+import { BATTLE_REPLAY_VERSION } from "./battle-replay-contract";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const SELF_TIKTOK_ID = "itest_replay_self";
-const SELF_ANCHOR_ID = "replay_host_self";
-const OPPONENT_ANCHOR_ID = "replay_host_opp";
+const SELF_ANCHOR_ID = makeTiktokUid("replay_host_self");
+const OPPONENT_ANCHOR_ID = makeTiktokUid("replay_host_opp");
+
+// ギフト送信者。表示名は Gift ではなく TikTokUser にだけ存在し、確定時に
+// *Snapshot へ凍結される。公開ペイロードでハンドルが漏れないことの検証に使う。
+const FAN = { tiktokUid: makeTiktokUid("replay_fan"), tiktokHandle: "replay_fan", nickname: "ふぁん" };
 
 const STARTED_AT = new Date("2026-08-11T10:00:00Z");
 const ENDED_AT = new Date("2026-08-11T10:05:00Z");
@@ -36,7 +42,7 @@ function battleData(battleId: string): Prisma.TiktokBattleUncheckedCreateInput {
     startedAtEstimated: false,
     endedAt: ENDED_AT,
     durationSec: 300,
-    hostUserIds: [SELF_ANCHOR_ID, OPPONENT_ANCHOR_ID],
+    hostTiktokUids: [SELF_ANCHOR_ID, OPPONENT_ANCHOR_ID],
     hostScores: { [SELF_ANCHOR_ID]: "1200", [OPPONENT_ANCHOR_ID]: "900" },
     hostProfiles: {
       [SELF_ANCHOR_ID]: { displayId: "self_handle", nickName: "じぶん", avatarUrl: "https://example.invalid/a.jpg" },
@@ -45,12 +51,12 @@ function battleData(battleId: string): Prisma.TiktokBattleUncheckedCreateInput {
   };
 }
 
-async function makeArmies(battleId: string, anchorId: string, offsetSec: number, score: string) {
+async function makeArmies(battleId: string, tiktokUid: string, offsetSec: number, score: string) {
   await prisma.tiktokBattleArmiesSnapshot.create({
     data: {
       roomId: selfRoomId,
       battleId,
-      anchorId,
+      tiktokUid,
       score,
       occurredAt: new Date(STARTED_AT.getTime() + offsetSec * 1000),
     },
@@ -59,16 +65,21 @@ async function makeArmies(battleId: string, anchorId: string, offsetSec: number,
 
 beforeAll(async () => {
   const room = await prisma.tiktokRoom.create({
-    data: { monitoringSuspended: true, tiktokId: SELF_TIKTOK_ID, hostUserId: SELF_ANCHOR_ID },
+    data: { monitoringSuspended: true, tiktokHandle: SELF_TIKTOK_ID, hostTiktokUid: SELF_ANCHOR_ID },
   });
   selfRoomId = room.id;
+
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid: FAN.tiktokUid },
+    create: FAN,
+    update: { tiktokHandle: FAN.tiktokHandle, nickname: FAN.nickname },
+  });
 
   await prisma.tiktokBattle.create({ data: battleData(OK_BATTLE_ID) });
   await prisma.gift.create({
     data: {
       roomId: selfRoomId,
-      uniqueId: "replay_fan",
-      nickname: "ふぁん",
+      tiktokUid: FAN.tiktokUid,
       giftId: 5655,
       giftName: "Rose",
       repeatCount: 3,
@@ -113,6 +124,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.tiktokRoom.delete({ where: { id: selfRoomId } }).catch(() => {});
+  await prisma.tikTokUser.delete({ where: { tiktokUid: FAN.tiktokUid } }).catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -123,7 +135,7 @@ describe("queryBattleReplay", () => {
     if (!result.ok) return;
 
     const payload = result.payload;
-    expect(payload.version).toBe(1);
+    expect(payload.version).toBe(BATTLE_REPLAY_VERSION);
     expect(payload.battleId).toBe(OK_BATTLE_ID);
     expect(payload.durationMs).toBe(300_000);
     expect(payload.anchors).toEqual([SELF_ANCHOR_ID, OPPONENT_ANCHOR_ID]);
@@ -203,7 +215,7 @@ describe("queryBattleReplayByShareToken", () => {
       // 配信者・リスナーの TikTokハンドル。
       "self_handle",
       "opp_handle",
-      "replay_fan",
+      FAN.tiktokHandle,
     ]) {
       expect(serialized).not.toContain(forbidden);
     }
@@ -212,7 +224,7 @@ describe("queryBattleReplayByShareToken", () => {
     expect(serialized).toContain("じぶん");
     // 相手の陣営スコアは BattleTeam 由来で載る。
     expect(result.payload.teams.map((t) => t.officialScore)).toEqual(["1200", "900"]);
-    expect(result.payload.teams.every((t) => t.participants.every((p) => p.uniqueId === null))).toBe(true);
+    expect(result.payload.teams.every((t) => t.participants.every((p) => p.tiktokHandle === null))).toBe(true);
     expect(result.payload.senders.every((s) => s.u === null)).toBe(true);
   });
 

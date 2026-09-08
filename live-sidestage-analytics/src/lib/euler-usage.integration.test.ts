@@ -3,39 +3,53 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "./prisma";
 import { recordEulerSignUsage } from "./euler-usage";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 // monitoringSuspended: true は監視対象から外すための隔離。Streamer 0人・有効な
 // monitorUntil 無しの部屋も watchedRoomFilter() の監視対象になったため、そのままだと
 // 並行して走る listener 系テストの getMyRooms() がグローバルに claim してくる。
 // 署名消費のスナップショット検証に監視は要らないので共有プールへ足さない。
-async function createRoom(tiktokId: string, monitoringSuspended = false) {
-  return prisma.tiktokRoom.create({ data: { tiktokId, monitoringSuspended } });
+// room / Streamer / AgencyWatch / EventRoomLease の同一性キーは全て tiktokUid。
+// このテストではハンドルから決定的に導出して4者を揃える(ハンドルはテストごとに一意)。
+async function createRoom(tiktokHandle: string, monitoringSuspended = false) {
+  return prisma.tiktokRoom.create({
+    data: { tiktokHandle, hostTiktokUid: makeTiktokUid(tiktokHandle), monitoringSuspended },
+  });
 }
 
-async function createStreamerOn(roomId: string, tiktokId: string, emailPrefix: string) {
+async function createStreamerOn(roomId: string, tiktokHandle: string, emailPrefix: string) {
   const user = await prisma.user.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   const streamer = await prisma.streamer.create({
-    data: { userId: user.id, tiktokId, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId: user.id,
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
   return { user, streamer };
 }
 
-async function createAgencyWatchOn(roomId: string, tiktokId: string, emailPrefix: string) {
+async function createAgencyWatchOn(roomId: string, tiktokHandle: string, emailPrefix: string) {
   const agency = await prisma.agency.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test`, name: "テスト事務所" },
   });
-  const watch = await prisma.agencyWatch.create({ data: { agencyId: agency.id, roomId, tiktokId } });
+  const watch = await prisma.agencyWatch.create({
+    data: { agencyId: agency.id, roomId, tiktokUid: makeTiktokUid(tiktokHandle), tiktokHandle },
+  });
   return { agency, watch };
 }
 
-async function createEvent(ownerUserId: string, status: string = "RUNNING") {
+async function createEvent(ownerPrincipalId: string, status: string = "RUNNING") {
   return prisma.event.create({
     data: {
       slug: `itest-euler-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       title: "テストイベント",
-      ownerUserId,
+      ownerPrincipalId,
       format: "DIAMOND_RACE",
       entryMode: "SOLO",
       status,
@@ -53,7 +67,7 @@ async function createOwnerUser() {
 }
 
 const cleanupRoomIds: string[] = [];
-const cleanupUserIds: string[] = [];
+const cleanupPrincipalIds: string[] = [];
 const cleanupAgencyIds: string[] = [];
 const cleanupEventIds: string[] = [];
 
@@ -65,33 +79,39 @@ afterAll(async () => {
   await prisma.agency.deleteMany({ where: { id: { in: cleanupAgencyIds } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: cleanupRoomIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: cleanupRoomIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: cleanupUserIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: cleanupPrincipalIds } } });
   await prisma.$disconnect();
 });
 
 describe("recordEulerSignUsage", () => {
   it("配信者本人・事務所監視・有効なイベント監視の3種類を1行にスナップショットする", async () => {
-    const tiktokId = `itest_euler_snapshot_${Date.now()}`;
-    const room = await createRoom(tiktokId);
+    const tiktokHandle = `itest_euler_snapshot_${Date.now()}`;
+    const room = await createRoom(tiktokHandle);
     cleanupRoomIds.push(room.id);
 
-    const { user, streamer } = await createStreamerOn(room.id, tiktokId, "itest-euler-streamer");
-    cleanupUserIds.push(user.id, streamer.userId);
+    const { user, streamer } = await createStreamerOn(room.id, tiktokHandle, "itest-euler-streamer");
+    cleanupPrincipalIds.push(user.id, streamer.principalId);
 
-    const { agency } = await createAgencyWatchOn(room.id, tiktokId, "itest-euler-agency");
+    const { agency } = await createAgencyWatchOn(room.id, tiktokHandle, "itest-euler-agency");
     cleanupAgencyIds.push(agency.id);
 
     const owner = await createOwnerUser();
-    cleanupUserIds.push(owner.id);
+    cleanupPrincipalIds.push(owner.id);
     const event = await createEvent(owner.id, "RUNNING");
     cleanupEventIds.push(event.id);
     await prisma.eventRoomLease.create({
-      data: { eventId: event.id, roomId: room.id, tiktokId, monitorUntil: new Date(Date.now() + 3600_000) },
+      data: {
+        eventId: event.id,
+        roomId: room.id,
+        tiktokUid: makeTiktokUid(tiktokHandle),
+        tiktokHandle,
+        monitorUntil: new Date(Date.now() + 3600_000),
+      },
     });
 
     await recordEulerSignUsage({
       roomId: room.id,
-      tiktokId,
+      tiktokHandle,
       requestedAt: new Date(),
       outcome: "success",
       trigger: "start",
@@ -105,7 +125,7 @@ describe("recordEulerSignUsage", () => {
     const rows = await prisma.eulerSignUsage.findMany({ where: { roomId: room.id } });
     expect(rows).toHaveLength(1);
     const row = rows[0]!;
-    expect(row.streamerUserIds).toEqual([user.id]);
+    expect(row.streamerPrincipalIds).toEqual([user.id]);
     expect(row.agencyIds).toEqual([agency.id]);
     expect(row.eventIds).toEqual([event.id]);
     expect(row.outcome).toBe("success");
@@ -117,13 +137,13 @@ describe("recordEulerSignUsage", () => {
   });
 
   it("期限切れ・解放済み・ARCHIVEDのイベント監視要求はeventIdsに含めない", async () => {
-    const tiktokId = `itest_euler_lease_exclude_${Date.now()}`;
+    const tiktokHandle = `itest_euler_lease_exclude_${Date.now()}`;
     // Streamer も有効な monitorUntil も付かない部屋なので、共有プールから外しておく。
-    const room = await createRoom(tiktokId, true);
+    const room = await createRoom(tiktokHandle, true);
     cleanupRoomIds.push(room.id);
 
     const owner = await createOwnerUser();
-    cleanupUserIds.push(owner.id);
+    cleanupPrincipalIds.push(owner.id);
 
     const expiredEvent = await createEvent(owner.id, "RUNNING");
     const releasedEvent = await createEvent(owner.id, "RUNNING");
@@ -134,7 +154,8 @@ describe("recordEulerSignUsage", () => {
       data: {
         eventId: expiredEvent.id,
         roomId: room.id,
-        tiktokId,
+        tiktokUid: makeTiktokUid(tiktokHandle),
+        tiktokHandle,
         monitorUntil: new Date(Date.now() - 3600_000), // 期限切れ
       },
     });
@@ -142,7 +163,8 @@ describe("recordEulerSignUsage", () => {
       data: {
         eventId: releasedEvent.id,
         roomId: room.id,
-        tiktokId,
+        tiktokUid: makeTiktokUid(tiktokHandle),
+        tiktokHandle,
         monitorUntil: new Date(Date.now() + 3600_000),
         releasedAt: new Date(), // 解放済み
       },
@@ -151,14 +173,15 @@ describe("recordEulerSignUsage", () => {
       data: {
         eventId: archivedEvent.id,
         roomId: room.id,
-        tiktokId,
+        tiktokUid: makeTiktokUid(tiktokHandle),
+        tiktokHandle,
         monitorUntil: new Date(Date.now() + 3600_000),
       },
     });
 
     await recordEulerSignUsage({
       roomId: room.id,
-      tiktokId,
+      tiktokHandle,
       requestedAt: new Date(),
       outcome: "success",
       trigger: "watchdog",
@@ -172,7 +195,7 @@ describe("recordEulerSignUsage", () => {
     const rows = await prisma.eulerSignUsage.findMany({ where: { roomId: room.id } });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.eventIds).toEqual([]);
-    expect(rows[0]!.streamerUserIds).toEqual([]);
+    expect(rows[0]!.streamerPrincipalIds).toEqual([]);
     expect(rows[0]!.agencyIds).toEqual([]);
   });
 
@@ -181,7 +204,7 @@ describe("recordEulerSignUsage", () => {
     await expect(
       recordEulerSignUsage({
         roomId,
-        tiktokId: "nonexistent",
+        tiktokHandle: "nonexistent",
         requestedAt: new Date(),
         outcome: "error",
         errorMessage: "boom",
@@ -196,7 +219,7 @@ describe("recordEulerSignUsage", () => {
 
     const rows = await prisma.eulerSignUsage.findMany({ where: { roomId } });
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.streamerUserIds).toEqual([]);
+    expect(rows[0]!.streamerPrincipalIds).toEqual([]);
     expect(rows[0]!.agencyIds).toEqual([]);
     expect(rows[0]!.eventIds).toEqual([]);
     expect(rows[0]!.outcome).toBe("error");

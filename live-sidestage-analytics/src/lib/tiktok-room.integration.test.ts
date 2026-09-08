@@ -5,26 +5,37 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { deleteTiktokRoomPermanently, resolveRoomForStreamer, suspendRoomMonitoring } from "./tiktok-room";
+import { makeGiftRow, makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
 const roomIds: string[] = [];
-const userIds: string[] = [];
+const principalIds: string[] = [];
 
-function tiktokId(tag: string) {
-  return `itesttr${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+// room の同一性は hostTiktokUid(@unique)で決まるので、テストごとに必ず別の数値IDを配る。
+let uidSeq = 0;
+
+type Subject = { tiktokUid: string; tiktokHandle: string };
+
+function makeSubject(tag: string): Subject {
+  uidSeq += 1;
+  return {
+    tiktokUid: `7${String(Date.now() % 1_000_000).padStart(6, "0")}${String(uidSeq).padStart(11, "0")}`,
+    tiktokHandle: `itesttr${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase(),
+  };
 }
 
-async function makeStreamerWithoutRoom(targetTiktokId: string) {
+async function makeStreamerWithoutRoom(subject: Subject) {
   const user = await prisma.user.create({
     data: { email: `itest-tr-${suffix()}@local.test`, name: "itest" },
     select: { id: true },
   });
-  userIds.push(user.id);
+  principalIds.push(user.id);
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId: targetTiktokId,
+      principalId: user.id,
+      tiktokUid: subject.tiktokUid,
+      tiktokHandle: subject.tiktokHandle,
       verificationCode: `itest-${suffix()}`,
       apiKey: `itest-key-${suffix()}`,
       overlayToken: `itest-overlay-${suffix()}`,
@@ -35,17 +46,18 @@ async function makeStreamerWithoutRoom(targetTiktokId: string) {
 }
 
 afterAll(async () => {
-  await prisma.streamer.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.streamer.deleteMany({ where: { principalId: { in: principalIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 
 describe("resolveRoomForStreamer", () => {
   it("監視停止(monitoringSuspended:true)されたRoomへ新規登録すると監視を復活させる", async () => {
-    const id = tiktokId("suspended");
+    const subject = makeSubject("suspended");
     const room = await prisma.tiktokRoom.create({
       data: {
-        tiktokId: id,
+        hostTiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
         monitoringSuspended: true,
         notFoundStreak: 3,
         lastLowValueCheckAt: new Date("2000-01-01T00:00:00.000Z"),
@@ -54,7 +66,7 @@ describe("resolveRoomForStreamer", () => {
       select: { id: true },
     });
     roomIds.push(room.id);
-    const streamer = await makeStreamerWithoutRoom(id);
+    const streamer = await makeStreamerWithoutRoom(subject);
 
     const roomId = await resolveRoomForStreamer(streamer.id);
     expect(roomId).toBe(room.id);
@@ -72,19 +84,48 @@ describe("resolveRoomForStreamer", () => {
   });
 
   it("既に監視中のRoomへ新規登録しても無害(no-op)", async () => {
-    const id = tiktokId("active");
+    const subject = makeSubject("active");
     const room = await prisma.tiktokRoom.create({
-      data: { tiktokId: id, monitoringSuspended: false },
+      data: {
+        hostTiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+        monitoringSuspended: false,
+      },
       select: { id: true },
     });
     roomIds.push(room.id);
-    const streamer = await makeStreamerWithoutRoom(id);
+    const streamer = await makeStreamerWithoutRoom(subject);
 
     const roomId = await resolveRoomForStreamer(streamer.id);
     expect(roomId).toBe(room.id);
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.monitoringSuspended).toBe(false);
+  });
+
+  it("本人が改名して再登録すると handleStaleAt が解除され、room のハンドルが追随する", async () => {
+    // 接続時 uid 照合が別人を検出して handleStaleAt を立てた room。uid は本人のままなので
+    // 本人の再登録で解除されないと、TikTok 接続がハンドル失効のまま二度と張れなくなる。
+    const subject = makeSubject("stale");
+    const room = await prisma.tiktokRoom.create({
+      data: {
+        hostTiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+        handleStaleAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+      select: { id: true },
+    });
+    roomIds.push(room.id);
+
+    const renamed = { tiktokUid: subject.tiktokUid, tiktokHandle: `${subject.tiktokHandle}2` };
+    const streamer = await makeStreamerWithoutRoom(renamed);
+
+    const roomId = await resolveRoomForStreamer(streamer.id);
+    expect(roomId).toBe(room.id);
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.handleStaleAt).toBeNull();
+    expect(after.tiktokHandle).toBe(renamed.tiktokHandle);
   });
 });
 
@@ -96,7 +137,7 @@ async function makeEvent(overrides: Partial<{ finalizedAt: Date | null }> = {}) 
     data: {
       slug: `itest-tr-event-${suffix()}`,
       title: "itest event",
-      ownerUserId: "itest-owner",
+      ownerPrincipalId: "itest-owner",
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -119,8 +160,11 @@ afterAll(async () => {
 
 describe("suspendRoomMonitoring", () => {
   it("監視中の部屋を一時停止し、監査ログを1件残す", async () => {
-    const id = tiktokId("susp");
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: id }, select: { id: true } });
+    const subject = makeSubject("susp");
+    const room = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      select: { id: true },
+    });
     roomIds.push(room.id);
 
     const result = await suspendRoomMonitoring(room.id, operatorEmail);
@@ -136,9 +180,13 @@ describe("suspendRoomMonitoring", () => {
   });
 
   it("既に一時停止中なら already_suspended を返し、監査ログを増やさない(冪等)", async () => {
-    const id = tiktokId("susp2");
+    const subject = makeSubject("susp2");
     const room = await prisma.tiktokRoom.create({
-      data: { tiktokId: id, monitoringSuspended: true },
+      data: {
+        hostTiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+        monitoringSuspended: true,
+      },
       select: { id: true },
     });
     roomIds.push(room.id);
@@ -158,20 +206,30 @@ describe("suspendRoomMonitoring", () => {
 
 describe("deleteTiktokRoomPermanently", () => {
   it("Gift/BattleHistory等をカスケード削除し、AgencyWatchも削除して成功する。監査ログdetailは投入値と一致する", async () => {
-    const id = tiktokId("del");
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: id }, select: { id: true } });
+    const subject = makeSubject("del");
+    const room = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      select: { id: true },
+    });
     roomIds.push(room.id);
-    const streamer = await makeStreamerWithoutRoom(id);
+    const streamer = await makeStreamerWithoutRoom(subject);
     await prisma.streamer.update({ where: { id: streamer.id }, data: { roomId: room.id } });
     const agency = await prisma.agency.create({
       data: { email: `itest-tr-agency-${suffix()}@local.test`, name: "itest事務所" },
       select: { id: true },
     });
-    await prisma.agencyWatch.create({ data: { agencyId: agency.id, roomId: room.id, tiktokId: id } });
+    await prisma.agencyWatch.create({
+      data: {
+        agencyId: agency.id,
+        roomId: room.id,
+        tiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+      },
+    });
     await prisma.gift.createMany({
       data: [
-        { roomId: room.id, uniqueId: "itest-sender1", nickname: "s1", giftId: 1, giftName: "Rose", dayKey: "2026-09-01" },
-        { roomId: room.id, uniqueId: "itest-sender2", nickname: "s2", giftId: 2, giftName: "GG", dayKey: "2026-09-01" },
+        makeGiftRow({ roomId: room.id, tiktokUid: makeTiktokUid("itest-sender1"), giftId: 1, giftName: "Rose", dayKey: "2026-09-01" }),
+        makeGiftRow({ roomId: room.id, tiktokUid: makeTiktokUid("itest-sender2"), giftId: 2, giftName: "GG", dayKey: "2026-09-01" }),
       ],
     });
     const battleId = `itest-battle-${suffix()}`;
@@ -201,7 +259,7 @@ describe("deleteTiktokRoomPermanently", () => {
     const logs = await prisma.tiktokRoomAdminAuditLog.findMany({ where: { roomId: room.id } });
     expect(logs).toHaveLength(1);
     expect(logs[0]!.action).toBe("delete");
-    expect(logs[0]!.tiktokId).toBe(id);
+    expect(logs[0]!.tiktokHandle).toBe(subject.tiktokHandle);
     expect(logs[0]!.operatorEmail).toBe(operatorEmail);
     const detail = logs[0]!.detail as {
       streamerCount: number;
@@ -219,11 +277,14 @@ describe("deleteTiktokRoomPermanently", () => {
     await prisma.agency.delete({ where: { id: agency.id } });
   });
 
-  it("Streamerは削除されずroomIdがnullになり、次回アクセスで同じtiktokIdの部屋が自動再作成される", async () => {
-    const id = tiktokId("delstr");
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: id }, select: { id: true } });
+  it("Streamerは削除されずroomIdがnullになり、次回アクセスで同じ配信者の部屋が自動再作成される", async () => {
+    const subject = makeSubject("delstr");
+    const room = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      select: { id: true },
+    });
     roomIds.push(room.id);
-    const streamer = await makeStreamerWithoutRoom(id);
+    const streamer = await makeStreamerWithoutRoom(subject);
     await resolveRoomForStreamer(streamer.id);
 
     const result = await deleteTiktokRoomPermanently(room.id, operatorEmail);
@@ -235,7 +296,9 @@ describe("deleteTiktokRoomPermanently", () => {
     const recreatedRoomId = await resolveRoomForStreamer(streamer.id);
     expect(recreatedRoomId).not.toBe(room.id);
     const recreated = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: recreatedRoomId } });
-    expect(recreated.tiktokId).toBe(id);
+    // 再作成された room は同じ配信者(hostTiktokUid)を指す。ハンドルは表示用スナップショット。
+    expect(recreated.hostTiktokUid).toBe(subject.tiktokUid);
+    expect(recreated.tiktokHandle).toBe(subject.tiktokHandle);
     roomIds.push(recreatedRoomId);
   });
 
@@ -245,12 +308,21 @@ describe("deleteTiktokRoomPermanently", () => {
   });
 
   it("未finalizeイベントのEventParticipantが参照する部屋はevent_activeを返し削除しない", async () => {
-    const id = tiktokId("delevt1");
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: id }, select: { id: true } });
+    const subject = makeSubject("delevt1");
+    const room = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      select: { id: true },
+    });
     roomIds.push(room.id);
     const event = await makeEvent({ finalizedAt: null });
     await prisma.eventParticipant.create({
-      data: { eventId: event.id, tiktokId: id, roomId: room.id, displayName: id },
+      data: {
+        eventId: event.id,
+        tiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+        roomId: room.id,
+        displayName: subject.tiktokHandle,
+      },
     });
 
     const result = await deleteTiktokRoomPermanently(room.id, operatorEmail);
@@ -259,15 +331,19 @@ describe("deleteTiktokRoomPermanently", () => {
   });
 
   it("未releaseのEventRoomLeaseが参照する部屋もevent_activeを返し削除しない", async () => {
-    const id = tiktokId("delevt2");
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: id }, select: { id: true } });
+    const subject = makeSubject("delevt2");
+    const room = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      select: { id: true },
+    });
     roomIds.push(room.id);
     const event = await makeEvent({ finalizedAt: new Date() });
     await prisma.eventRoomLease.create({
       data: {
         eventId: event.id,
         roomId: room.id,
-        tiktokId: id,
+        tiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
         monitorUntil: new Date(Date.now() + 60 * 60 * 1000),
         releasedAt: null,
       },
@@ -278,12 +354,21 @@ describe("deleteTiktokRoomPermanently", () => {
   });
 
   it("finalize済みイベントのEventParticipantのみが残る場合は孤児化を許容し削除が成功する", async () => {
-    const id = tiktokId("delevt3");
-    const room = await prisma.tiktokRoom.create({ data: { tiktokId: id }, select: { id: true } });
+    const subject = makeSubject("delevt3");
+    const room = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      select: { id: true },
+    });
     roomIds.push(room.id);
     const event = await makeEvent({ finalizedAt: new Date() });
     await prisma.eventParticipant.create({
-      data: { eventId: event.id, tiktokId: id, roomId: room.id, displayName: id },
+      data: {
+        eventId: event.id,
+        tiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+        roomId: room.id,
+        displayName: subject.tiktokHandle,
+      },
     });
 
     const result = await deleteTiktokRoomPermanently(room.id, operatorEmail);
