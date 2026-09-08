@@ -261,6 +261,15 @@ body {
     animation: none;
   }
 }
+/* バトル終了(残り時間 00:00)。止まったことに気づけるよう点滅させる。 */
+.replay-clock--ended {
+  animation: replay-clock-blink 900ms ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-clock--ended {
+    animation: none;
+  }
+}
 
 /* ---------- 陣営グリッド。縦横比は実バトル画面の実測値で、計器のために縮めない ---------- */
 .replay-grid {
@@ -485,6 +494,20 @@ body {
   background: var(--replay-gold);
   border-radius: 5px;
   padding: 1px 6px;
+}
+/* 終了直後、誰が勝ったか一目でわかるよう中央に大きく出してから .replay-win の位置・大きさへ
+   移動する演出。top/left(%)・scale は JS(elapsedMs の純関数)が計算し、ここでは器だけ持つ。 */
+.replay-win-big {
+  position: absolute;
+  z-index: 3;
+  font-family: var(--replay-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: #0d0f13;
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* ---------- ギフトカード ---------- */

@@ -120,6 +120,9 @@ export function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
 
   const clock = useReplayClock(payload.durationMs, { boostAt });
   const quietSkipping = quietSkip && isQuietAt(quietRanges, clock.elapsedMs);
+  // 終了後は演出の自然消滅のため clock.elapsedMs が durationMs を超えて進み続ける
+  // (`END_FADE_MS`)。時計・シークバー等の表示はそれをそのまま出さず durationMs へ丸める。
+  const displayElapsedMs = Math.min(clock.elapsedMs, payload.durationMs);
 
   // スコアバーの伸び縮み。**等速で 420ms、再生速度と自動早送りの倍率で割る**
   // (16倍速で 420ms かけると常に追いつかず、実際のスコアと見た目がずれる)。
@@ -194,6 +197,7 @@ export function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
         cards={cards}
         colorByAnchor={colorByAnchor}
         elapsedMs={clock.elapsedMs}
+        clockElapsedMs={displayElapsedMs}
         scoreTransitionMs={scoreTransitionMs}
         motionScale={motionScale}
         quietSkipping={quietSkipping}
@@ -215,7 +219,7 @@ export function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
       </div>
 
       <ReplayControls
-        elapsedMs={clock.elapsedMs}
+        elapsedMs={displayElapsedMs}
         durationMs={payload.durationMs}
         playing={clock.playing}
         speed={clock.speed}

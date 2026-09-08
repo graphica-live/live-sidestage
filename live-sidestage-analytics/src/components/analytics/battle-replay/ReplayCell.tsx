@@ -20,6 +20,36 @@ function bigGiftPhase(sinceMs: number): { opacity: number; transform: string } {
   return { opacity: 1 - t, transform: `scale(${1 + 0.07 * t})` };
 }
 
+/** バトル終了直後、中央へ大きく「WIN」を出してから右上の常設バッジ位置へ移動・縮小する尺。 */
+const WIN_REVEAL_MS = 900;
+const WIN_TRAVEL_MS = 650;
+const WIN_TOTAL_MS = WIN_REVEAL_MS + WIN_TRAVEL_MS;
+
+/**
+ * 誰が勝ったか一目でわかるよう、終了の瞬間だけ大きく出す演出。**elapsedMs の純関数**
+ * (一時停止・シークでも位置がそのまま出るように、CSS アニメではなく計算で出入りを作る)。
+ * `sinceEndMs` は `elapsedMs - durationMs`。0 未満(まだ終わっていない)・
+ * `WIN_TOTAL_MS` 以上(移動完了、以後は常設の小バッジのみ)は null。
+ */
+function winRevealPhase(
+  sinceEndMs: number
+): { opacity: number; scale: number; top: string; left: string } | null {
+  if (sinceEndMs < 0 || sinceEndMs >= WIN_TOTAL_MS) return null;
+  if (sinceEndMs < WIN_REVEAL_MS) {
+    const t = sinceEndMs / WIN_REVEAL_MS;
+    return { opacity: t, scale: 0.4 + 0.6 * t, top: "50%", left: "50%" };
+  }
+  const t = (sinceEndMs - WIN_REVEAL_MS) / WIN_TRAVEL_MS;
+  const eased = t * t * (3 - 2 * t); // smoothstep
+  return {
+    opacity: 1,
+    scale: 1 - 0.6 * eased,
+    // 中央(50%,50%) → 右上の常設バッジ位置(`.replay-win` は right/top 7px)へ寄せる。
+    top: `${50 - 43 * eased}%`,
+    left: `${50 + 43 * eased}%`,
+  };
+}
+
 export function ReplayCell({
   cell,
   participant,
@@ -31,6 +61,7 @@ export function ReplayCell({
   senders,
   gifts,
   elapsedMs,
+  durationMs,
   bigGift,
   motionScale,
   /** 1vs1 はステージ全幅のレーンを使うので、セル内にはカードを置かない。 */
@@ -47,6 +78,8 @@ export function ReplayCell({
   senders: ReplaySender[];
   gifts: ReplayGift[];
   elapsedMs: number;
+  /** バトルの尺。WIN 演出(終了直後だけ大きく出す)の起点計算に使う。 */
+  durationMs: number;
   /** 枠いっぱいの大演出を出すギフト(`BIG_GIFT_MIN_DIAMONDS` 以上)。無ければ null。 */
   bigGift: ReplayCard | null;
   /** アニメーション尺の倍率。再生速度の逆数(4倍速なら 0.25)。 */
@@ -79,6 +112,7 @@ export function ReplayCell({
   // ギフト画像が取れないときは大演出を出さない(配信者アイコンを隠すだけになるため)。
   const bigGiftImg = bigGift ? gifts[bigGift.giftIndex]?.img ?? null : null;
   const bigGiftTier = bigGift ? bigGiftTierOf(bigGift.diamonds) : null;
+  const winReveal = isWinner ? winRevealPhase(elapsedMs - durationMs) : null;
   const cellClass = [
     "replay-cell",
     cell.right ? "replay-cell--right" : "",
@@ -135,8 +169,22 @@ export function ReplayCell({
         </span>
       )}
       <span className="replay-namechip">{name}</span>
-      {isWinner ? (
+      {isWinner && !winReveal ? (
         <span className="replay-win" style={{ background: GOLD }}>
+          WIN
+        </span>
+      ) : null}
+      {winReveal ? (
+        <span
+          className="replay-win-big"
+          style={{
+            background: GOLD,
+            opacity: winReveal.opacity,
+            top: winReveal.top,
+            left: winReveal.left,
+            transform: `translate(-50%, -50%) scale(${winReveal.scale})`,
+          }}
+        >
           WIN
         </span>
       ) : null}

@@ -45,6 +45,7 @@ export const ReplayStage = memo(function ReplayStage({
   cards,
   colorByAnchor,
   elapsedMs,
+  clockElapsedMs,
   scoreTransitionMs,
   motionScale,
   quietSkipping,
@@ -53,7 +54,10 @@ export const ReplayStage = memo(function ReplayStage({
   layout: StageLayout;
   cards: ReplayCard[];
   colorByAnchor: string[];
+  /** 演出(カード・大ギフト・WIN 演出)の消滅計算に使う生の経過時間。終了後 `END_FADE_MS` まで進み続ける。 */
   elapsedMs: number;
+  /** 時計表示専用。durationMs でクランプ済み。 */
+  clockElapsedMs: number;
   /** スコアバーの幅補間時間(ms)。シーク中は 0。 */
   scoreTransitionMs: number;
   /** アニメーション尺の倍率。実効再生速度の逆数。 */
@@ -83,7 +87,7 @@ export const ReplayStage = memo(function ReplayStage({
       <ReplayScoreBar
         scores={scores}
         colors={colorByAnchor}
-        elapsedMs={elapsedMs}
+        elapsedMs={clockElapsedMs}
         durationMs={payload.durationMs}
         transitionMs={scoreTransitionMs}
         boosting={quietSkipping}
@@ -105,6 +109,7 @@ export const ReplayStage = memo(function ReplayStage({
               senders={payload.senders}
               gifts={payload.gifts}
               elapsedMs={elapsedMs}
+              durationMs={payload.durationMs}
               bigGift={bigGifts[cell.anchorIndex] ?? null}
               motionScale={motionScale}
               hideLanes={layout.fullWidthLanes}
