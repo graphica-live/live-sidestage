@@ -1455,10 +1455,13 @@ export async function queryBattleContributors(
         battleScore = (battleScore ?? 0n) + BigInt(v);
       }
 
+      // isSelf(自陣)でも「自分」固定文字列にせず、他陣営と同じく代表者(=自分自身。
+      // sortedGroupは非統合列ならposition昇順のため自陣の先頭は自分)の実プロフィール名を使う
+      // (2026-09-06にparticipants[].displayName側で修正済みだった同種の「自分」固定を、
+      // 陣営全体のdisplayName側にも適用)。
       const representative = sortedGroup[0];
-      const displayName = isSelf
-        ? "自分"
-        : sortedGroup.length <= 1
+      const displayName =
+        sortedGroup.length <= 1
           ? displayNameOf(representative)
           : `${displayNameOf(representative)} 他${sortedGroup.length - 1}人`;
 

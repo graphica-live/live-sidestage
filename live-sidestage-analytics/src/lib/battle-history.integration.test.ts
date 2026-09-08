@@ -1221,6 +1221,8 @@ describe("queryBattles/queryBattleContributors 確定済みスナップショッ
     // 自陣営(teamIndex=0)の集計には味方(別room)のgiftEventsを合算する。相手陣営(teamIndex=1)は混ざらない。
     expect(selfTeam.contributors.map((c) => c.uniqueId)).toEqual(["teammate_fan", "self_fan"]);
     expect(opponentTeam.contributors.map((c) => c.uniqueId)).toEqual(["opponent_fan"]);
+    // 自陣営(isSelf:true)でも displayName は "自分" 固定にせず、他陣営と同じ代表者nickname(+他N人)形式にする。
+    expect(selfTeam.displayName).toBe("確定自分 他1人");
   });
 
   it("listenerQueryは確定済み(giftEventsスナップショット)と未確定(Gift)の両方から一致を拾う", async () => {
