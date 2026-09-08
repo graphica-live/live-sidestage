@@ -1001,24 +1001,34 @@ class _TeamTabContentState extends State<_TeamTabContent> {
         if (showSelector)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
+            // 折り返し禁止で常に1行。「合算」は短い固定文言なので自然幅のまま、
+            // 参加者チップはExpanded(flex:1)で残り幅を均等分割し、はみ出す名前は
+            // ChoiceChipのlabelをellipsis指定して省略する(親幅にどれだけ人数が
+            // 増えても、行内には収まるが縮む形で常に1行を担保する)。
+            child: Row(
               children: [
-                // aggregateモードだけ「合算」を選択肢に含める(individualモードには
-                // 陣営合算という概念が無い)。
-                if (!team.isIndividual)
+                if (!team.isIndividual) ...[
                   ChoiceChip(
                     label: const Text('合算'),
                     selected: _selectedAnchorId == null,
                     onSelected: (_) => setState(() => _selectedAnchorId = null),
                   ),
-                for (final p in team.participants)
-                  ChoiceChip(
-                    label: Text(p.displayName),
-                    selected: p.anchorId == _selectedAnchorId,
-                    onSelected: (_) => setState(() => _selectedAnchorId = p.anchorId),
+                  const SizedBox(width: 6),
+                ],
+                for (var i = 0; i < team.participants.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: Text(
+                        team.participants[i].displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: team.participants[i].anchorId == _selectedAnchorId,
+                      onSelected: (_) => setState(() => _selectedAnchorId = team.participants[i].anchorId),
+                    ),
                   ),
+                ],
               ],
             ),
           ),

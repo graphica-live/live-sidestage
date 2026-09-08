@@ -8,6 +8,7 @@ import '../../core/api_retry.dart';
 import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
 import '../../core/session_controller.dart';
+import '../../models/gift_breakdown.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/diamond_format.dart';
@@ -155,6 +156,31 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     }
   }
 
+  /// [RankingListTile]の`key`に使う、現在の期間指定の署名。
+  String _rangeSignature() {
+    final customRange = _customRange;
+    if (customRange != null) {
+      return 'custom_${customRange.start.toIso8601String()}_${customRange.end.toIso8601String()}';
+    }
+    return '${_selection.period.apiValue}_${_selection.date}';
+  }
+
+  /// 行展開時のギフト内訳取得。[RankingListTile]の`key`に期間を含めているため、
+  /// 期間が変わった行は再マウントされ、ここは常にそのマウント時点の期間で呼ばれる。
+  Future<GiftBreakdownResult> _fetchBreakdown(String uniqueId) {
+    final token = context.read<SessionController>().session?.token;
+    if (token == null) return Future.error(ApiException('ログインが必要です'));
+    final customRange = _customRange;
+    return _api.fetchGiftBreakdown(
+      token: token,
+      uniqueId: uniqueId,
+      period: _selection.period.apiValue,
+      date: _selection.date,
+      startDatetime: customRange?.start,
+      endDatetime: customRange?.end,
+    );
+  }
+
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
     setState(() => _selection = selection);
     _load();
@@ -287,7 +313,17 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
           if (users.isNotEmpty)
             ListPanel(
-              children: [for (var i = 0; i < users.length; i++) RankingListTile(rank: i + 1, entry: users[i])],
+              children: [
+                for (var i = 0; i < users.length; i++)
+                  RankingListTile(
+                    // 期間をkeyへ含め、期間切替で行が再マウントされるようにする
+                    // (前の期間で展開・取得済みのギフト内訳を残さないため)。
+                    key: ValueKey('${users[i].uniqueId}_${_rangeSignature()}'),
+                    rank: i + 1,
+                    entry: users[i],
+                    fetchBreakdown: _fetchBreakdown,
+                  ),
+              ],
             ),
         ],
       ),

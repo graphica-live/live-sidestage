@@ -3,7 +3,7 @@ project: live-sidestage-mobile
 feature: battle-history-tab
 last_updated: 2026-09-09
 last_risk: LOW
-last_reviewers: [Code]DeepSeek(high, NO ISSUES)(Design Modeは局所的な状態管理ロジック修正のため対象外)
+last_reviewers: [Code]DeepSeek(high, finding 1件INVALID判定)(Design Modeは局所的な状態管理ロジック修正のため対象外)
 ---
 
 # テストベースライン: battle-history-tab
@@ -38,8 +38,9 @@ last_reviewers: [Code]DeepSeek(high, NO ISSUES)(Design Modeは局所的な状態
 | TC-BH-016 | `selectorMode:"individual"`の陣営タブは参加者セレクタを持ち、初期選択は`participants[0]` | `_TeamTabContent` | 正常/境界 | 相手が3陣営以上に分かれる乱戦(統合列、`participants`3件以上) | チップ列で参加者を選べ、未選択時は`participants[0]`の内訳(スコア・貢献者一覧)が表示される。選び直すと選択者の内訳に切り替わる | `battle_team_contributors_test.dart`(4陣営統合のパース)でユニット検証。実画面切替操作はMarionette MCP/実機 | NOT RUN: 実データに乱戦(3陣営以上)バトルが存在しなかった。パースはPASS | |
 | TC-BH-017 | 陣営が2つ未満(または旧サーバー応答でteams自体が無い)なら従来のフラット貢献者一覧にフォールバックする | `_BattleContributorsSheetState.build` | 回帰/境界 | `teams`がnull(1陣営のみ、または`teams`キー自体が無い) | 陣営タブは表示されず、`contributors`の`RankingListTile`フラット一覧がそのまま表示される(既存挙動を維持) | 実機adb screencap(Pixel 7a、WiFi ADB、実データ) | PASS(2026-09-08、1vs1バトルの貢献者ボトムシートがタブ無しのフラット一覧で表示されることを確認) | 既存のTC-BH-006(貢献者シート表示)と同じ経路の分岐 |
 | TC-BH-018 | `captureStatus`/`partialNote`/`battleScore`がある陣営・参加者はタブ内に注記として表示される | `_TeamTabContent` | 境界 | 一部欠測(`captureStatus`)や部分集計(`partialNote`)を持つ陣営 | タブ上部に「スコア: N / <captureStatus> / <partialNote>」の軽量テキストが表示される。いずれも無ければ何も表示しない | 実機/エミュレータ(Marionette MCP) | NOT RUN: 陣営別タブ自体が表示される実データ(TC-BH-015/016)が無かった | |
-| TC-BH-019 | `selectorMode:"aggregate"`の陣営で参加者が2人以上(コラボ)なら「合算」+各参加者のチップセレクタが出て、個別に切り替えられる | `_TeamTabContent` | 正常 | 2vs2または1vs3の複数人側など、`selectorMode:"aggregate"`かつ`participants`が2件以上の陣営 | チップ列に「合算」(既定選択、陣営全体の内訳)と各参加者(表示名=nickname、「自分」表記は使わない)が並び、選び直すとその参加者単独の内訳(スコア・貢献者一覧)に切り替わる | `battle_team_contributors_test.dart`でパースはユニット検証。実画面切替操作はMarionette MCP/実機 | NOT RUN: Marionette MCP未接続(worktree内に`.mcp.json`なし)、adbもPATH未導入で実機接続不可。実データにも複数人陣営(2vs2等)のバトルが存在しなかった(TC-BH-015と同じ制約) | 修正前は`selectorMode:"aggregate"`の陣営が常に陣営合算固定で、参加者個別を見る手段が無かった(今回の修正対象そのもの) |
+| TC-BH-019 | `selectorMode:"aggregate"`の陣営で参加者が2人以上(コラボ)なら「合算」+各参加者のチップセレクタが出て、個別に切り替えられる。人数が多くても常に1行に収まる | `_TeamTabContent` | 正常/境界 | 2vs2または1vs3の複数人側など、`selectorMode:"aggregate"`かつ`participants`が2件以上の陣営(名前が長い参加者を含む場合も) | チップ列に「合算」(既定選択、陣営全体の内訳、固定幅)と各参加者(表示名=nickname、「自分」表記は使わない、`Expanded`で均等縮小)が横1列に並び、折り返さない。名前が長く入りきらない参加者は`ellipsis`で省略され、はみ出さない。選び直すとその参加者単独の内訳(スコア・貢献者一覧)に切り替わる | `battle_team_contributors_test.dart`でパースはユニット検証。実画面切替操作はMarionette MCP/実機 | NOT RUN: Marionette MCP未接続(worktree内に`.mcp.json`なし)、adbもPATH未導入で実機接続不可。実データにも複数人陣営(2vs2等)のバトルが存在しなかった(TC-BH-015と同じ制約) | 修正前は`selectorMode:"aggregate"`の陣営が常に陣営合算固定で、参加者個別を見る手段が無かった。さらに旧`Wrap`実装は参加者が多い/名前が長いと2行に折り返っていたため、`Row`+`Expanded`+`ellipsis`へ変更(今回の修正対象そのもの) |
 | TC-BH-020 | 陣営の参加者が1人だけ(1vs3の1人側等)ならセレクタを出さない | `_TeamTabContent` | 境界 | `participants.length <= 1`の陣営(aggregate/individual問わず) | チップ列自体が表示されず、陣営合算(=その1人)の内訳がそのまま表示される | `battle_team_contributors_test.dart`でパースはユニット検証。実画面はMarionette MCP/実機 | NOT RUN: 同上(Marionette未接続・adb未導入・該当実データなし) | |
+| TC-BH-021 | 陣営タブ(`_TeamsContributorsView`)のラベルは自陣も「自分」固定文字列でなく、代表者nickname(+他N人)で表示される | `_TeamsContributorsView` | 正常/回帰 | 自陣(`isSelf:true`)に自分1人、または自分+チームメイトがいるバトル | 自陣タブのラベルが「自分」ではなく実際のnickname(例:「ゆきのじょー」、複数人なら「ゆきのじょー 他1人」)で表示される。他陣営のラベル生成ロジックと同一 | analytics側`battle-history.integration.test.ts`(自陣営2名ケース)で`displayName`が`isSelf`によらず代表者nickname(+他N人)になることを検証。実画面はMarionette MCP/実機 | NOT RUN: Marionette MCP未接続・adb未導入・該当実データなし(TC-BH-015と同じ制約) | analytics側`queryBattleContributors`の陣営`displayName`生成で`isSelf`分岐(`"自分"`固定)を撤廃した変更。web版(analytics)は2026-09-06に`participants[].displayName`側だけ同種修正済みで、陣営全体の`displayName`は今回まで「自分」固定が残っていた |
 
 ## Quality Gate
 
