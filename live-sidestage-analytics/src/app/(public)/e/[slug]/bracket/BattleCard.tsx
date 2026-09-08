@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { BattleContributionSlot, BattleDetail, GameDetail, PublicMatchDetail } from "@/event/match-detail";
 import { formatJstStamp } from "@/event/datetime";
-import { formatNumber } from "@/event/public-event";
+import { formatNumber } from "@/event/format";
 import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 
 // バトル内訳カード。スマホでは対戦相手2枚を横並びにしつつ、貢献者一覧までは

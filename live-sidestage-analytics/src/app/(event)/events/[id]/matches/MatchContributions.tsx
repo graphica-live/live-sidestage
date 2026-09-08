@@ -4,7 +4,7 @@ import { useState } from "react";
 // 型だけを取る。`match-contributions.ts` は prisma を引いているので、
 // 値を import するとクライアントバンドルに入りうる(`import type` は消える)。
 import type { MatchContributionResult, MatchSlotRow } from "@/event/match-contributions";
-import { formatNumber, formatPoints } from "@/event/public-event";
+import { formatNumber, formatPoints } from "@/event/format";
 
 // 対戦の詳細に出す「枠ごとのリスナー貢献」。
 //

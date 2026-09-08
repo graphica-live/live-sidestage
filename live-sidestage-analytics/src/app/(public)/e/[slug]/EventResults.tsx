@@ -14,7 +14,7 @@ import type {
   LifeStandingDto,
   StandingDto,
 } from "@/event/public-event";
-import { formatNumber, formatPoints } from "@/event/public-event";
+import { formatNumber, formatPoints } from "@/event/format";
 import type { EventFormat } from "@/event/validation";
 import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "./battle-ui";
 

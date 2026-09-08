@@ -7,7 +7,7 @@ import {
   WIN_CONDITION_LABELS,
   WINNER_DECIDED_BY_LABELS,
 } from "@/event/labels";
-import { formatNumber } from "@/event/public-event";
+import { formatNumber } from "@/event/format";
 import { CARD_CLIP, TAG_SKEW, TAG_UNSKEW } from "../battle-ui";
 import { BattleCard, UnselectedBattleNote } from "./BattleCard";
 

@@ -9,7 +9,7 @@ import { canShowTiktokScore, loadMatchTiktokScores } from "@/event/battle-score"
 import { parseDeathmatchRules } from "@/event/deathmatch";
 import { parseMatchRules } from "@/event/match-rules";
 import { isByeRow, isForceFullPeriod, parsePlacement, parseWinnerFeeders } from "@/event/match-status";
-import { formatNumber } from "@/event/public-event";
+import { formatNumber } from "@/event/format";
 import { feederFlowEdges } from "@/event/winner-feeders";
 import { EventSetupSteps } from "../../EventSetupSteps";
 import { MatchManager, type EntrantOption, type LifeRow, type MatchRow } from "./MatchManager";
