@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-08
-last_risk: HIGH
-last_reviewers: [Code Mode]Codex(low)+DeepSeek(high)、2026-09-08 公開ページアバター露出解禁時
+last_risk: LOW
+last_reviewers: [Code Mode]DeepSeek(high)、2026-09-08 モード切替タブの見た目統一時
 ---
 
 # バトル再生の共有リンク
@@ -55,10 +55,11 @@ last_reviewers: [Code Mode]Codex(low)+DeepSeek(high)、2026-09-08 公開ペー�
 | TC-BRS-016 | mobile向けshare routeは認証・所有者境界を守る | 同上route | 異常/認可/境界 | (a)トークン無し (b)room未接続JWT (c)別roomにのみ存在するbattleId (d)存在しないbattleId | (a)401でtoken発行なし (b)(c)(d)いずれも404 | 同上コマンド | PASS(2026-09-08) | (c)は所有者境界(Codex Design Review medium effortの指摘で追加) |
 | TC-BRS-017 | mobile向けshare routeは既発行tokenを再利用する | 同上route | 回帰 | 同じbattleIdへ2回POST | 2回目も同じURLを返す(新規token発行しない) | 同上コマンド | PASS(2026-09-08) | Web版と同じ`ensureShareToken`の冪等性 |
 | TC-BRS-019 | 公開ページヘッダーのコピーボタンはシェアアイコンで表示され、コピー成功でチェックアイコンへ変わる | `PublicBattleClient` の `CopyLinkButton` | 正常 | `/b/[token]` を開いてボタンを押す | 押す前は共有(share)アイコンかつ `aria-label="リンクをコピー"`。押すとクリップボードへURLが入り、アイコンがチェックへ変わり `aria-label="コピーした"` に。2秒後に共有アイコンへ戻る | `[anon]` | PASS(2026-09-08) | クリップボード不可時のテキスト入力フォールバックは TC-BRS-012 と共通ロジック |
+| TC-BRS-020 | 公開ページのモード切替タブは、配信者ページの再生ボタンと同じ見た目・文言を使う(シェアボタンの有無だけが差) | `PublicBattleClient` の `ModeTab` | 正常/回帰 | `/b/[token]` を開き、選択中/非選択のタブそれぞれを見る | 「バトルを再生」タブは選択中のとき配信者ページの再生ボタンと同一の見た目(accent色・大きめパディング・太字・▶マーク付き文言)になる。非選択タブは枠線+ミュートテキストの小さいボタン。選択の切替はこれまでどおりクリックで即時反映され、URLの `?v=` も連動する | `[anon]` | PASS(2026-09-08) | ユーザー指示「公開ページと自分のページでシェアボタンの有無以外で差を出さないで」への対応。配信者ページ(`BattleDetailModal`)の再生ボタンは常時タブ形式ではなく片方向ボタンのため、タブ構造自体は据え置き見た目だけ合わせる方針(ユーザー確認済み) |
 
 ## Quality Gate
 
-- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-08)
+- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-08、モード切替タブ見た目統一時に再実行)
 - `npm run test:unit` → 1471 tests PASS(2026-09-08)
 - `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ PASS(2026-09-08、Errors:0/Warnings:0)
 

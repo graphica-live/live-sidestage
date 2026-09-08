@@ -60,7 +60,7 @@ export function PublicBattleClient({
 
         <div className="flex gap-1 border-b border-row-border px-[14px] py-2">
           <ModeTab active={mode === "replay"} onClick={() => switchMode("replay")}>
-            バトルを再生
+            ▶ バトルを再生
           </ModeTab>
           <ModeTab active={mode === "list"} onClick={() => switchMode("list")}>
             貢献者一覧
@@ -116,9 +116,11 @@ function ModeTab({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-field px-3 py-1 text-[12px] transition-colors ${
-        active ? "bg-brand text-on-accent" : "border border-border text-muted hover:text-strong"
-      }`}
+      className={
+        active
+          ? "rounded-field bg-brand px-5 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-brand-hover"
+          : "rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong"
+      }
     >
       {children}
     </button>
