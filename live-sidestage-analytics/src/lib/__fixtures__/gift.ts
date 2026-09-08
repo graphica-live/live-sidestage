@@ -9,13 +9,23 @@ import type { Prisma } from "@prisma/client";
 
 /** seed から決定的な tiktokUid(数値文字列)を作る。normalizeTikTokUserId() の /^\d{1,32}$/ を満たす。 */
 export function makeTiktokUid(seed: number | string): string {
-  const n = typeof seed === "number" ? seed : hashSeed(seed);
-  return `7${String(Math.abs(n) % 1_000_000_000_000_000_000).padStart(18, "0")}`;
+  const n =
+    typeof seed === "number"
+      ? BigInt(Math.abs(Math.trunc(seed)))
+      : hashSeed(seed);
+  return `7${(n % 1_000_000_000_000_000_000n).toString().padStart(18, "0")}`;
 }
 
-function hashSeed(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+// FNV-1a 64bit。32bit ハッシュ(h * 31 + c | 0)だと生成値が 2^31 未満へ固まり、
+// integration テスト全体で数百件の TiktokRoom を作ると hostTiktokUid の @unique 衝突が
+// 単独実行では再現しない flaky として出る(2026-09-09 実測)。手書きの固定 uid
+// (7000000000000000901 等)とも同じ帯へ落ちていた。
+function hashSeed(s: string): bigint {
+  let h = 0xcbf29ce484222325n;
+  for (let i = 0; i < s.length; i++) {
+    h ^= BigInt(s.charCodeAt(i));
+    h = (h * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
   return h;
 }
 
