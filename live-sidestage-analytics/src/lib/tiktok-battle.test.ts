@@ -85,12 +85,12 @@ describe("parseBattleEvent", () => {
   it("ホストのIDとスコアを集める", () => {
     const parsed = parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN));
 
-    expect(parsed?.hostUserIds).toEqual(["111", "222"]);
+    expect(parsed?.hostTiktokUids).toEqual(["111", "222"]);
     expect(parsed?.hostDisplayIds).toEqual(["hostA", "hostB"]);
     expect(parsed?.hostScores).toEqual({ "111": "5000", "222": "4200" });
   });
 
-  it("anchorIdごとにnickName/displayId/avatarUrlをRecordで集める", () => {
+  it("tiktokUidごとにnickName/displayId/avatarUrlをRecordで集める", () => {
     const parsed = parseBattleEvent(battlePayload(BATTLE_ACTION.OPEN));
 
     expect(parsed?.hostProfiles).toEqual({
@@ -131,11 +131,11 @@ describe("parseBattleEvent", () => {
       })
     );
 
-    expect(parsed?.hostUserIds).toEqual(["111"]);
+    expect(parsed?.hostTiktokUids).toEqual(["111"]);
     expect(parsed?.hostScores).toEqual({ "111": "10" });
   });
 
-  it("2vs2のチームバトル(teamArmies)から4人のuserIdと個人スコアを取得する", () => {
+  it("2vs2のチームバトル(teamArmies)から4人の tiktokUid と個人スコアを取得する", () => {
     // 実データ由来: teamUsers[].score の合計 = hostScore になる(253255+22846=276101)
     const parsed = parseBattleEvent(
       battlePayload(BATTLE_ACTION.OPEN, {
@@ -199,8 +199,8 @@ describe("parseBattleEvent", () => {
       })
     );
 
-    // 4人の実userId が取れる
-    expect(parsed?.hostUserIds).toEqual([
+    // 4人の実 tiktokUid が取れる
+    expect(parsed?.hostTiktokUids).toEqual([
       "6813783089135895553",
       "6958337949008692226",
       "7418071357873701889",
@@ -208,7 +208,7 @@ describe("parseBattleEvent", () => {
     ]);
     expect(parsed?.hostDisplayIds).toEqual(["hostA", "hostB", "hostC", "hostD"]);
 
-    // 個人別のスコア(チーム番号ではなく実userIdがキー)
+    // 個人別のスコア(チーム番号ではなく実 tiktokUid がキー)
     expect(parsed?.hostScores).toEqual({
       "6813783089135895553": "253255",
       "6958337949008692226": "22846",
@@ -217,10 +217,10 @@ describe("parseBattleEvent", () => {
     });
 
     // チーム番号("1"/"2")が含まれないこと(バグの確認)
-    expect(parsed?.hostUserIds).not.toContain("1");
-    expect(parsed?.hostUserIds).not.toContain("2");
+    expect(parsed?.hostTiktokUids).not.toContain("1");
+    expect(parsed?.hostTiktokUids).not.toContain("2");
 
-    // hostTeams: 各anchorIdがteamArmies[].teamIdへ正しく紐づく(左右split表示に使う)
+    // hostTeams: 各tiktokUidがteamArmies[].teamIdへ正しく紐づく(左右split表示に使う)
     expect(parsed?.hostTeams).toEqual({
       "6813783089135895553": "1",
       "6958337949008692226": "1",
@@ -264,7 +264,7 @@ describe("parseBattleEvent", () => {
       })
     );
 
-    expect(parsed?.hostUserIds).toEqual(["111", "222"]);
+    expect(parsed?.hostTiktokUids).toEqual(["111", "222"]);
     expect(parsed?.hostScores).toEqual({ "111": "5000", "222": "4200" });
   });
 
@@ -284,7 +284,7 @@ describe("parseBattleEvent", () => {
     expect(parseBattleEvent({ battleId: "1" })).toBeNull(); // action が無い
     expect(
       parseBattleEvent({ battleId: "1", action: 4, armies: "x", anchorInfo: 5 })
-    ).toMatchObject({ phase: "START", hostUserIds: [] });
+    ).toMatchObject({ phase: "START", hostTiktokUids: [] });
   });
 
   it("時刻が不正なら取れなかったものとして扱う", () => {
@@ -363,7 +363,7 @@ describe("mergeBattleState", () => {
       startedAtEstimated: true,
       endedAt: null,
       durationSec: null,
-      hostUserIds: [],
+      hostTiktokUids: [],
       hostDisplayIds: [],
       hostScores: {},
       hostProfiles: {},
@@ -390,7 +390,7 @@ describe("mergeBattleState", () => {
       startedAtEstimated: false,
       endedAt: null,
       durationSec: 300,
-      hostUserIds: ["111"],
+      hostTiktokUids: ["111"],
       hostDisplayIds: [],
       hostScores: { "111": "100" },
       hostProfiles: {},
@@ -449,7 +449,7 @@ describe("mergeBattleState", () => {
     );
 
     expect(second.hostScores).toEqual({ "111": "9999", "222": "4200" });
-    expect(second.hostUserIds).toEqual(["111", "222"]);
+    expect(second.hostTiktokUids).toEqual(["111", "222"]);
     expect(second.durationSec).toBe(300);
   });
 

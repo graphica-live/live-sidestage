@@ -8,6 +8,11 @@ last_reviewers: Qwen(NO ISSUES応答だがカナリア検証で未読と判明�
 
 # テストベースライン: login-stats
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 ログイン画面(`/login`)の実績訴求バナー。未認証で見える公開API
 `GET /api/public/login-stats`([route.ts](../../../src/app/api/public/login-stats/route.ts))が集計値を返し、
 `GoogleLoginPanel.tsx`が表示する。5分キャッシュ(`revalidate=300`)。

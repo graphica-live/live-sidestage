@@ -8,18 +8,26 @@ import { prisma } from "./prisma";
 import { addWatchedRoom } from "./worker-status";
 import type { ExistenceChecker } from "./tiktok-existence";
 import type { AccountExistence } from "./tiktok-profile";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
+// addWatchedRoom は room の同一性を tiktokUid(実在確認応答の不変ID)で決め、uid が取れない
+// 応答は unverified で弾く。stub はハンドルから決定的に uid を返すので、テスト側で同じ
+// ハンドルから作った既存 room と確実に一致する。
 function stubChecker(verdict: AccountExistence = "EXISTS"): ExistenceChecker {
   return {
-    async check() {
-      return { verdict, nickname: verdict === "EXISTS" ? "テストニックネーム" : null, userId: null };
+    async check(tiktokHandle: string) {
+      return {
+        verdict,
+        nickname: verdict === "EXISTS" ? "テストニックネーム" : null,
+        tiktokUid: verdict === "EXISTS" ? makeTiktokUid(tiktokHandle) : null,
+      };
     },
     size: () => 0,
   };
 }
 
 const roomIds: string[] = [];
-// isValidNormalizedTiktokId は正規化後2〜24文字までしか許さないため、接頭辞込みで収まる短さにする。
+// isValidNormalizedTiktokHandle は正規化後2〜24文字までしか許さないため、接頭辞込みで収まる短さにする。
 const suffix = () => Math.random().toString(36).slice(2, 8);
 
 afterAll(async () => {
@@ -28,40 +36,47 @@ afterAll(async () => {
 
 describe("addWatchedRoom", () => {
   it("実在するIDは新規TiktokRoomを作成し監視対象(monitoringSuspended: false)になる", async () => {
-    const tiktokId = `awnew_${suffix()}`;
+    const tiktokHandle = `awnew_${suffix()}`;
 
-    const result = await addWatchedRoom(tiktokId, stubChecker("EXISTS"));
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("EXISTS"));
 
-    expect(result).toMatchObject({ status: "ok", tiktokId, created: true, nickname: "テストニックネーム" });
+    expect(result).toMatchObject({ status: "ok", tiktokHandle, created: true, nickname: "テストニックネーム" });
     if (result.status === "ok") roomIds.push(result.roomId);
-    const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { tiktokId } });
+    // tiktokHandle は @unique ではなくなったので findFirst で引く。
+    const room = await prisma.tiktokRoom.findFirstOrThrow({ where: { tiktokHandle } });
     expect(room.monitoringSuspended).toBe(false);
+    expect(room.hostTiktokUid).toBe(makeTiktokUid(tiktokHandle));
   });
 
   it("休止中(monitoringSuspended: true)の既存roomは復帰させる(新規作成しない)", async () => {
-    const tiktokId = `awrev_${suffix()}`;
+    const tiktokHandle = `awrev_${suffix()}`;
     const existing = await prisma.tiktokRoom.create({
-      data: { tiktokId, monitoringSuspended: true },
+      data: { tiktokHandle, hostTiktokUid: makeTiktokUid(tiktokHandle), monitoringSuspended: true },
       select: { id: true },
     });
     roomIds.push(existing.id);
 
-    const result = await addWatchedRoom(tiktokId, stubChecker("EXISTS"));
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("EXISTS"));
 
-    expect(result).toMatchObject({ status: "ok", roomId: existing.id, tiktokId, created: false });
+    expect(result).toMatchObject({ status: "ok", roomId: existing.id, tiktokHandle, created: false });
     const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: existing.id } });
     expect(room.monitoringSuspended).toBe(false);
   });
 
   it("監視中(monitoringSuspended: false)の既存roomは冪等(何も壊さない)", async () => {
-    const tiktokId = `awidem_${suffix()}`;
+    const tiktokHandle = `awidem_${suffix()}`;
     const existing = await prisma.tiktokRoom.create({
-      data: { tiktokId, monitoringSuspended: false, workerId: 1 },
+      data: {
+        tiktokHandle,
+        hostTiktokUid: makeTiktokUid(tiktokHandle),
+        monitoringSuspended: false,
+        workerId: 1,
+      },
       select: { id: true },
     });
     roomIds.push(existing.id);
 
-    const result = await addWatchedRoom(tiktokId, stubChecker("EXISTS"));
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("EXISTS"));
 
     expect(result).toMatchObject({ status: "ok", roomId: existing.id, created: false });
     const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: existing.id } });
@@ -69,21 +84,21 @@ describe("addWatchedRoom", () => {
   });
 
   it("TikTok上に実在しないIDはfail-closedで拒否し部屋を作らない", async () => {
-    const tiktokId = `awmiss_${suffix()}`;
+    const tiktokHandle = `awmiss_${suffix()}`;
 
-    const result = await addWatchedRoom(tiktokId, stubChecker("MISSING"));
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("MISSING"));
 
     expect(result).toEqual({ status: "not_found" });
-    expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId } })).toBeNull();
+    expect(await prisma.tiktokRoom.findFirst({ where: { tiktokHandle } })).toBeNull();
   });
 
   it("実在確認できない(UNVERIFIED)場合もfail-closedで拒否する", async () => {
-    const tiktokId = `awunv_${suffix()}`;
+    const tiktokHandle = `awunv_${suffix()}`;
 
-    const result = await addWatchedRoom(tiktokId, stubChecker("UNVERIFIED"));
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("UNVERIFIED"));
 
     expect(result).toEqual({ status: "unverified" });
-    expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId } })).toBeNull();
+    expect(await prisma.tiktokRoom.findFirst({ where: { tiktokHandle } })).toBeNull();
   });
 
   it("不正な形式のIDは実在確認を呼ばずinvalidを返す", async () => {
@@ -91,7 +106,7 @@ describe("addWatchedRoom", () => {
     const checker: ExistenceChecker = {
       async check() {
         checkerCalled = true;
-        return { verdict: "EXISTS", nickname: null, userId: null };
+        return { verdict: "EXISTS", nickname: null, tiktokUid: makeTiktokUid("never_called") };
       },
       size: () => 0,
     };
@@ -107,7 +122,7 @@ describe("addWatchedRoom", () => {
     const checker: ExistenceChecker = {
       async check() {
         checkerCalled = true;
-        return { verdict: "EXISTS", nickname: null, userId: null };
+        return { verdict: "EXISTS", nickname: null, tiktokUid: makeTiktokUid("never_called") };
       },
       size: () => 0,
     };
@@ -124,16 +139,16 @@ describe("addWatchedRoom", () => {
   });
 
   it("下限(2文字)ちょうどは有効な形式として実在確認へ進む", async () => {
-    const tiktokId = `ab`; // 2文字ちょうど。実運用では衝突しうるが形式検証の境界確認が目的
-    const result = await addWatchedRoom(tiktokId, stubChecker("MISSING"));
+    const tiktokHandle = `ab`; // 2文字ちょうど。実運用では衝突しうるが形式検証の境界確認が目的
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("MISSING"));
     // 形式は通り実在確認まで進んだ結果MISSINGで拒否される(invalidにはならない)ことを確認する
     expect(result.status).toBe("not_found");
   });
 
   it("上限(24文字)ちょうどは有効な形式として実在確認へ進む", async () => {
-    const tiktokId = `aw24_${"x".repeat(19)}`; // 正規化後ちょうど24文字
-    expect(tiktokId.length).toBe(24);
-    const result = await addWatchedRoom(tiktokId, stubChecker("EXISTS"));
+    const tiktokHandle = `aw24_${"x".repeat(19)}`; // 正規化後ちょうど24文字
+    expect(tiktokHandle.length).toBe(24);
+    const result = await addWatchedRoom(tiktokHandle, stubChecker("EXISTS"));
     expect(result.status).toBe("ok");
     if (result.status === "ok") roomIds.push(result.roomId);
   });
@@ -146,7 +161,7 @@ describe("addWatchedRoom", () => {
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       roomIds.push(result.roomId);
-      expect(result.tiktokId).toBe(raw.replace(/^@/, "").toLowerCase());
+      expect(result.tiktokHandle).toBe(raw.replace(/^@/, "").toLowerCase());
     }
   });
 });

@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { parseBreakdownRange, resolveBreakdownWindow } from "./gift-breakdown";
 import type { GiftAggregateWhere, SplitPlan } from "./gift-analytics";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const ROOM = "room_1";
-const USER = { in: ["listener_1"] };
+// 絞り込みキーは tiktokUid(不変の数値ID)。ハンドルでは絞れない。
+const USER = { in: [makeTiktokUid("listener_1")] };
 
 function splitPlan(cutoffDayKey: string): SplitPlan {
   return { kind: "split", cutoffDayKey, rollupLower: null, rollupUpper: null };
@@ -13,7 +15,7 @@ describe("resolveBreakdownWindow", () => {
   it("明細だけで足りる期間(raw)は where をそのまま使い、全範囲カバー扱いにする", () => {
     const where: GiftAggregateWhere = {
       roomId: ROOM,
-      uniqueId: USER,
+      tiktokUid: USER,
       dayKey: { gte: "2026-09-01", lte: "2026-09-07" },
     };
 
@@ -26,7 +28,7 @@ describe("resolveBreakdownWindow", () => {
   it("範囲がカットオフをまたぐ(dayKey)ときは、明細側の下限をカットオフへ引き上げて partial にする", () => {
     const where: GiftAggregateWhere = {
       roomId: ROOM,
-      uniqueId: USER,
+      tiktokUid: USER,
       dayKey: { gte: "2026-01-01", lte: "2026-09-07" },
     };
 
@@ -39,7 +41,7 @@ describe("resolveBreakdownWindow", () => {
   it("範囲がまるごとカットオフより古い(dayKey)ときは内訳を出せないと返す", () => {
     const where: GiftAggregateWhere = {
       roomId: ROOM,
-      uniqueId: USER,
+      tiktokUid: USER,
       dayKey: { gte: "2026-01-01", lte: "2026-03-31" },
     };
 
@@ -54,7 +56,7 @@ describe("resolveBreakdownWindow", () => {
   it("範囲がまるごとカットオフより古い(receivedAt)ときも内訳を出せないと返す", () => {
     const where: GiftAggregateWhere = {
       roomId: ROOM,
-      uniqueId: USER,
+      tiktokUid: USER,
       receivedAt: { gte: new Date("2026-01-01T00:00:00Z"), lte: new Date("2026-03-31T23:59:59Z") },
     };
 
@@ -67,7 +69,7 @@ describe("resolveBreakdownWindow", () => {
   it("receivedAt 指定でカットオフをまたぐときは dayKey 下限を足して partial にする", () => {
     const where: GiftAggregateWhere = {
       roomId: ROOM,
-      uniqueId: USER,
+      tiktokUid: USER,
       receivedAt: { gte: new Date("2026-01-01T00:00:00Z"), lte: new Date("2026-09-07T23:59:59Z") },
     };
 

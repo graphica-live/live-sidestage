@@ -50,22 +50,25 @@ describe("isCollabJoinSource", () => {
 });
 
 describe("parseCollabGroupChange", () => {
-  it("messageType:18のpayloadからdisplayIds一覧を取り出す", () => {
+  it("messageType:18のpayloadからsubjects(uid+ハンドル+nickname)を取り出す", () => {
     const result = parseCollabGroupChange(groupChangePayload("SOURCE_TYPE_FRIEND_LIST[REPLY_STATUS_AGREE]"));
     expect(result).not.toBeNull();
     expect(result?.source).toBe("SOURCE_TYPE_FRIEND_LIST[REPLY_STATUS_AGREE]");
-    expect(result?.displayIds).toEqual(["yu_ki_nojo", "reokanao_"]);
+    expect(result?.subjects).toEqual([
+      { tiktokUid: "7058742286294189058", tiktokHandle: "yu_ki_nojo", nickname: "配信主own" },
+      { tiktokUid: "6573845034394238977", tiktokHandle: "reokanao_", nickname: "れお" },
+    ]);
   });
 
   it("messageType以外(例: createChannelContent=1)はnull", () => {
     expect(parseCollabGroupChange({ messageType: 1, source: "" })).toBeNull();
   });
 
-  it("businessContentが欠落していてもdisplayIds空配列で返す(例外にしない)", () => {
+  it("businessContentが欠落していてもsubjects空配列で返す(例外にしない)", () => {
     const result = parseCollabGroupChange({ messageType: 18, source: "live_end" });
     expect(result).toEqual({
       source: "live_end",
-      displayIds: [],
+      subjects: [],
       linkedCount: 0,
       waitingCount: 0,
       otherCount: 0,
@@ -82,13 +85,18 @@ describe("parseCollabGroupChange", () => {
                 "1": { displayId: "", nickname: "空" },
                 "2": { nickname: "displayIdなし" },
                 "3": { displayId: "valid_user", nickname: "有効" },
+                // uidキーとして使えない値(protobuf既定値の"0"、非数値)も落とす
+                "0": { displayId: "zero_uid", nickname: "既定値" },
+                not_numeric: { displayId: "handle_key", nickname: "ハンドルキー" },
               },
             },
           },
         },
       })
     );
-    expect(result?.displayIds).toEqual(["valid_user"]);
+    expect(result?.subjects).toEqual([
+      { tiktokUid: "3", tiktokHandle: "valid_user", nickname: "有効" },
+    ]);
   });
 
   it("非オブジェクト入力はnull", () => {
@@ -96,7 +104,9 @@ describe("parseCollabGroupChange", () => {
     expect(parseCollabGroupChange("string")).toBeNull();
   });
 
-  it("重複displayIdは1回だけ含める", () => {
+  // 同一性の判定キーは tiktokUid。ハンドルが同じでも uid が違えば別人として両方採用する
+  // (改名で空いたハンドルを第三者が取得しうるため、ハンドルで畳んではいけない)。
+  it("同じdisplayIdでもuidが違えば別のsubjectとして残す", () => {
     const result = parseCollabGroupChange(
       groupChangePayload("x", {
         businessContent: {
@@ -111,7 +121,10 @@ describe("parseCollabGroupChange", () => {
         },
       })
     );
-    expect(result?.displayIds).toEqual(["same_user"]);
+    expect(result?.subjects).toEqual([
+      { tiktokUid: "1", tiktokHandle: "same_user", nickname: null },
+      { tiktokUid: "2", tiktokHandle: "same_user", nickname: null },
+    ]);
   });
 
   it("userListのstatusをLINKED(3)/WAITING(1)/その他で数え分ける", () => {
@@ -156,7 +169,7 @@ describe("shouldWatchCollabSnapshot", () => {
     expect(shouldWatchCollabSnapshot(parsed("SOURCE_TYPE_RECOMMEND_LIST", [3, 2]))).toBe(false);
   });
 
-  it("displayIdsがLINKED件数より多い(userListに居ない人が混ざる)イベントは採用しない", () => {
+  it("subjectsがLINKED件数より多い(userListに居ない人が混ざる)イベントは採用しない", () => {
     // groupChangePayloadのuserInfosは2人、userListはLINKED 1人。
     expect(shouldWatchCollabSnapshot(parsed("live_end", [3]))).toBe(false);
   });
@@ -181,7 +194,7 @@ describe("shouldWatchCollabSnapshot", () => {
     expect(shouldWatchCollabSnapshot(agree!)).toBe(true);
   });
 
-  it("displayIdsが空なら採用しない", () => {
+  it("subjectsが空なら採用しない", () => {
     const empty = parseCollabGroupChange({ messageType: 18, source: "live_end" });
     expect(shouldWatchCollabSnapshot(empty!)).toBe(false);
   });

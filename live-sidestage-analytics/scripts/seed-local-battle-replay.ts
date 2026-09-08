@@ -23,15 +23,15 @@ const OPENING_MS = 48 * 1000;
 const OPENING_MULTIPLIER = 2;
 
 type Anchor = {
-  hostUserId: string;
-  tiktokId: string;
+  hostTiktokUid: string;
+  tiktokHandle: string;
   roomId: string;
 };
 
 type SeedGift = {
   anchor: number;
   atMs: number;
-  senderUniqueId: string;
+  senderTiktokHandle: string;
   senderNickname: string;
   giftId: number;
   giftName: string;
@@ -42,27 +42,52 @@ type SeedGift = {
   multiplierValue?: number;
 };
 
-async function ensureRoom(tiktokId: string, hostUserId: string): Promise<Anchor> {
-  const room = await prisma.tiktokRoom.upsert({
-    where: { tiktokId },
-    update: { hostUserId },
-    create: { tiktokId, hostUserId },
+async function ensureRoom(tiktokHandle: string, hostTiktokUid: string): Promise<Anchor> {
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid: hostTiktokUid },
+    update: { tiktokHandle },
+    create: { tiktokUid: hostTiktokUid, tiktokHandle, nickname: tiktokHandle },
   });
-  return { hostUserId, tiktokId, roomId: room.id };
+  const room = await prisma.tiktokRoom.upsert({
+    where: { hostTiktokUid },
+    update: { tiktokHandle },
+    create: { tiktokHandle, hostTiktokUid },
+  });
+  return { hostTiktokUid, tiktokHandle, roomId: room.id };
+}
+
+// Gift は表示列を持たないので、送信者ハンドルごとに安定した tiktokUid を割り当てて
+// TikTokUser 側へ表示名を置く(シードの目視確認で名無しが並ばないようにする)。
+const senderUidByHandle = new Map<string, string>();
+function senderTiktokUidFor(tiktokHandle: string): string {
+  const known = senderUidByHandle.get(tiktokHandle);
+  if (known) return known;
+  const uid = `70000000000000005${String(senderUidByHandle.size + 1).padStart(2, "0")}`;
+  senderUidByHandle.set(tiktokHandle, uid);
+  return uid;
 }
 
 /** コンボは各段を差分行で残す(`saveComboGift()` と同じ形)。 */
 async function writeGift(anchor: Anchor, gift: SeedGift, startedAt: Date): Promise<void> {
-  const groupId = gift.repeat > 1 ? `seed_${gift.senderUniqueId}_${gift.atMs}` : "0";
+  const groupId = gift.repeat > 1 ? `seed_${gift.senderTiktokHandle}_${gift.atMs}` : "0";
   const dayKey = startedAt.toISOString().slice(0, 10);
+  const senderTiktokUid = senderTiktokUidFor(gift.senderTiktokHandle);
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid: senderTiktokUid },
+    update: { tiktokHandle: gift.senderTiktokHandle, nickname: gift.senderNickname },
+    create: {
+      tiktokUid: senderTiktokUid,
+      tiktokHandle: gift.senderTiktokHandle,
+      nickname: gift.senderNickname,
+    },
+  });
   for (let step = 1; step <= gift.repeat; step++) {
     // 段ごとに 350ms ずつ遅らせる(コンボのカウントアップが見えるように)
     const receivedAt = new Date(startedAt.getTime() + gift.atMs + (step - 1) * 350);
     await prisma.gift.create({
       data: {
         roomId: anchor.roomId,
-        uniqueId: gift.senderUniqueId,
-        nickname: gift.senderNickname,
+        tiktokUid: senderTiktokUid,
         giftId: gift.giftId,
         giftName: gift.giftName,
         groupId,
@@ -88,7 +113,7 @@ async function writeArmies(
 ): Promise<void> {
   const totals = anchors.map(() => 0);
   const sorted = [...gifts].sort((a, b) => a.atMs - b.atMs);
-  const rows: { anchorId: string; occurredAt: Date; score: string }[] = [];
+  const rows: { tiktokUid: string; occurredAt: Date; score: string }[] = [];
 
   for (const gift of sorted) {
     const gain = gift.diamonds * gift.repeat * (gift.atMs < OPENING_MS ? OPENING_MULTIPLIER : 1);
@@ -96,7 +121,7 @@ async function writeArmies(
     // 1イベントで全anchor分が同じ occurredAt で届く(実データと同じ形)
     const occurredAt = new Date(startedAt.getTime() + gift.atMs + gift.repeat * 350);
     anchors.forEach((anchor, index) => {
-      rows.push({ anchorId: anchor.hostUserId, occurredAt, score: String(totals[index]) });
+      rows.push({ tiktokUid: anchor.hostTiktokUid, occurredAt, score: String(totals[index]) });
     });
   }
 
@@ -122,7 +147,7 @@ async function seedBattle(options: {
   for (const gift of gifts) {
     totals[gift.anchor] += gift.diamonds * gift.repeat * (gift.atMs < OPENING_MS ? OPENING_MULTIPLIER : 1);
   }
-  const hostScores = Object.fromEntries(anchors.map((a, i) => [a.hostUserId, String(totals[i])]));
+  const hostScores = Object.fromEntries(anchors.map((a, i) => [a.hostTiktokUid, String(totals[i])]));
 
   for (const anchor of anchors) {
     await prisma.tiktokBattle.create({
@@ -134,7 +159,7 @@ async function seedBattle(options: {
         startedAtEstimated: false,
         endedAt,
         durationSec: DURATION_MS / 1000,
-        hostUserIds: anchors.map((a) => a.hostUserId),
+        hostTiktokUids: anchors.map((a) => a.hostTiktokUid),
         hostScores,
       },
     });
@@ -223,12 +248,12 @@ async function seedGiftCatalog(): Promise<void> {
 }
 
 const FANS = [
-  { uniqueId: "seed_fan_a", nickname: "たちら🌿" },
-  { uniqueId: "seed_fan_b", nickname: "ドラ" },
-  { uniqueId: "seed_fan_c", nickname: "みかん" },
-  { uniqueId: "seed_fan_d", nickname: "ゆう" },
-  { uniqueId: "seed_fan_e", nickname: "けん" },
-  { uniqueId: "seed_fan_f", nickname: "さくら" },
+  { tiktokHandle: "seed_fan_a", nickname: "たちら🌿" },
+  { tiktokHandle: "seed_fan_b", nickname: "ドラ" },
+  { tiktokHandle: "seed_fan_c", nickname: "みかん" },
+  { tiktokHandle: "seed_fan_d", nickname: "ゆう" },
+  { tiktokHandle: "seed_fan_e", nickname: "けん" },
+  { tiktokHandle: "seed_fan_f", nickname: "さくら" },
 ];
 
 /** 決定的な擬似乱数(seed固定)。実行のたびに絵が変わると照合できない。 */
@@ -255,7 +280,7 @@ function buildGifts(anchorCount: number, count: number, seed: number, startMs = 
     gifts.push({
       anchor: Math.floor(random() * anchorCount),
       atMs: Math.floor(random() * span) + startMs,
-      senderUniqueId: fan.uniqueId,
+      senderTiktokHandle: fan.tiktokHandle,
       senderNickname: fan.nickname,
       giftId: catalog.giftId,
       giftName: catalog.giftName,
@@ -269,7 +294,7 @@ function buildGifts(anchorCount: number, count: number, seed: number, startMs = 
   gifts.push({
     anchor: 0,
     atMs: Math.max(8_000, startMs + 3_000),
-    senderUniqueId: FANS[0]!.uniqueId,
+    senderTiktokHandle: FANS[0]!.tiktokHandle,
     senderNickname: FANS[0]!.nickname,
     giftId: 5269,
     giftName: "Galaxy",
@@ -280,13 +305,13 @@ function buildGifts(anchorCount: number, count: number, seed: number, startMs = 
 }
 
 async function main() {
-  const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokId: "local_test_streamer" } });
+  const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokHandle: "local_test_streamer" } });
   if (!selfRoom) throw new Error("local_test_streamer room not found. run seed:local first");
-  const selfHostUserId = selfRoom.hostUserId ?? "seed_self_host_user";
-  if (!selfRoom.hostUserId) {
-    await prisma.tiktokRoom.update({ where: { id: selfRoom.id }, data: { hostUserId: selfHostUserId } });
+  const selfHostTiktokUid = selfRoom.hostTiktokUid ?? "seed_self_host_user";
+  if (!selfRoom.hostTiktokUid) {
+    await prisma.tiktokRoom.update({ where: { id: selfRoom.id }, data: { hostTiktokUid: selfHostTiktokUid } });
   }
-  const self: Anchor = { hostUserId: selfHostUserId, tiktokId: selfRoom.tiktokId, roomId: selfRoom.id };
+  const self: Anchor = { hostTiktokUid: selfHostTiktokUid, tiktokHandle: selfRoom.tiktokHandle, roomId: selfRoom.id };
 
   const rivals = await Promise.all([
     ensureRoom("local_replay_rival_1", "seed_replay_rival_host_1"),

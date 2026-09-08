@@ -3,6 +3,7 @@
 // 日程の差分更新。**対戦が日程を参照している**ので、ここが全置換に戻ると
 // 対戦の割り当てが壊れる(あるいは外部キーで保存できなくなる)。
 import { describe, it, expect, afterAll } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import { applySessionDiff, SessionUpdateError } from "./session-update";
 import type { NormalizedSession } from "./sessions";
@@ -24,7 +25,7 @@ async function newEvent() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} イベント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "DEATHMATCH",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -39,18 +40,24 @@ async function newEvent() {
 }
 
 async function newParticipant(eventId: string, name: string) {
-  const tiktokId = `${PREFIX}_${name}_${uniqueSuffix()}`;
+  const tiktokHandle = `${PREFIX}_${name}_${uniqueSuffix()}`;
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   const p = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId, roomId: rows[0].id, displayName: name },
+    data: {
+      eventId,
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      roomId: rows[0].id,
+      displayName: name,
+    },
     select: { id: true },
   });
   return { id: p.id, roomId: rows[0].id };

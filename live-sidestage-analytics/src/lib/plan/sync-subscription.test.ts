@@ -40,7 +40,7 @@ function fakeSubscription(overrides: Record<string, unknown> = {}) {
     customer: "cus_123",
     status: "active",
     cancel_at_period_end: false,
-    metadata: { userId: "user_123" },
+    metadata: { principalId: "user_123" },
     items: {
       data: [
         {
@@ -74,7 +74,7 @@ beforeEach(() => {
 describe("syncSubscriptionFromStripe", () => {
   it("既存行がある場合はproviderSubscriptionIdで更新する(payloadでなくretrieve結果を使う)", async () => {
     retrieve.mockResolvedValue(fakeSubscription());
-    findUnique.mockResolvedValue({ id: "row_1", userId: "user_123", lastVerifiedAt: null });
+    findUnique.mockResolvedValue({ id: "row_1", principalId: "user_123", lastVerifiedAt: null });
 
     await syncSubscriptionFromStripe("sub_123");
 
@@ -105,20 +105,20 @@ describe("syncSubscriptionFromStripe", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("既存行が無ければmetadata.userIdでcreateする", async () => {
+  it("既存行が無ければmetadata.principalIdでcreateする", async () => {
     retrieve.mockResolvedValue(fakeSubscription());
     findUnique.mockResolvedValue(null);
 
     await syncSubscriptionFromStripe("sub_123");
 
     expect(create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ userId: "user_123", plan: "PRO", provider: "STRIPE" }),
+      data: expect.objectContaining({ principalId: "user_123", plan: "PRO", provider: "STRIPE" }),
     });
   });
 
   it("canceledはFREEへ収束する(price/plan導出よりstatusを優先)", async () => {
     retrieve.mockResolvedValue(fakeSubscription({ status: "canceled" }));
-    findUnique.mockResolvedValue({ id: "row_1", userId: "user_123", lastVerifiedAt: null });
+    findUnique.mockResolvedValue({ id: "row_1", principalId: "user_123", lastVerifiedAt: null });
 
     await syncSubscriptionFromStripe("sub_123");
 
@@ -131,7 +131,7 @@ describe("syncSubscriptionFromStripe", () => {
 
   it("past_dueは猶予期間として有償プランを維持する", async () => {
     retrieve.mockResolvedValue(fakeSubscription({ status: "past_due" }));
-    findUnique.mockResolvedValue({ id: "row_1", userId: "user_123", lastVerifiedAt: null });
+    findUnique.mockResolvedValue({ id: "row_1", principalId: "user_123", lastVerifiedAt: null });
 
     await syncSubscriptionFromStripe("sub_123");
 
@@ -144,7 +144,7 @@ describe("syncSubscriptionFromStripe", () => {
     retrieve.mockResolvedValue(fakeSubscription());
     findUnique.mockResolvedValue({
       id: "row_1",
-      userId: "user_123",
+      principalId: "user_123",
       lastVerifiedAt: new Date(Date.now() + 60_000),
     });
     updateMany.mockResolvedValue({ count: 0 });
@@ -157,11 +157,11 @@ describe("syncSubscriptionFromStripe", () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it("既存行が無くmetadata.userIdも無ければ例外を投げる", async () => {
+  it("既存行が無くmetadata.principalIdも無ければ例外を投げる", async () => {
     retrieve.mockResolvedValue(fakeSubscription({ metadata: {} }));
     findUnique.mockResolvedValue(null);
 
-    await expect(syncSubscriptionFromStripe("sub_123")).rejects.toThrow(/metadata\.userId/);
+    await expect(syncSubscriptionFromStripe("sub_123")).rejects.toThrow(/metadata\.principalId/);
     expect(create).not.toHaveBeenCalled();
   });
 

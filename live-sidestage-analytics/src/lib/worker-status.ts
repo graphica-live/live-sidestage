@@ -2,10 +2,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { type ListenerSnapshot } from "./tiktok-listener";
 import { resolveWatchedRoomFilter } from "./watched-room-filter";
-import { normalizeTiktokId } from "./tiktok-room";
-import { reviveSuspendedMonitoring } from "./mark-last-active";
+import { normalizeTiktokId, ensureRoomWatchedByAdmin } from "./tiktok-room";
+import { resolveTikTokUserDisplay } from "./tiktok-user";
 import { requireExistingTiktokAccount, type ExistenceChecker } from "./tiktok-existence";
-import { isValidNormalizedTiktokId } from "./agency/params";
+import { isValidNormalizedTiktokHandle } from "./agency/params";
 
 // Worker プロセスの稼働状況を管理画面向けに集約する。
 //
@@ -60,7 +60,7 @@ export type WorkerProbe =
 /** DB 上の「担当予定部屋」。実際に listener が動いているかはここでは分からない。 */
 export type AssignedRoom = {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   /** TikTok表示名。表示専用(取得できていない部屋はnull)。 */
   nickname: string | null;
   workerId: number | null;
@@ -97,7 +97,7 @@ export type WorkerIssue = {
     | "listener_not_connected";
   severity: "error" | "warn";
   workerIndex?: number;
-  tiktokId?: string;
+  tiktokHandle?: string;
   detail: string;
 };
 
@@ -150,8 +150,8 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     // Streamer.apiKey などを持ってこないよう列は明示する。
     select: {
       id: true,
-      tiktokId: true,
-      nickname: true,
+      tiktokHandle: true,
+      hostTiktokUid: true,
       workerId: true,
       listenerStatus: true,
       listenerMessage: true,
@@ -162,13 +162,15 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
       specialWatch: true,
       _count: { select: { streamers: true, watches: true } },
     },
-    orderBy: [{ workerId: "asc" }, { tiktokId: "asc" }],
+    orderBy: [{ workerId: "asc" }, { tiktokHandle: "asc" }],
   });
+
+  const display = await resolveTikTokUserDisplay(rooms.map((r) => r.hostTiktokUid));
 
   return rooms.map((r) => ({
     roomId: r.id,
-    tiktokId: r.tiktokId,
-    nickname: r.nickname,
+    tiktokHandle: r.tiktokHandle,
+    nickname: display.get(r.hostTiktokUid)?.nickname ?? null,
     workerId: r.workerId,
     listenerStatus: r.listenerStatus,
     listenerMessage: r.listenerMessage,
@@ -207,8 +209,8 @@ export async function fetchAdminRoomList(
     where: { workerId: { not: null } },
     select: {
       id: true,
-      tiktokId: true,
-      nickname: true,
+      tiktokHandle: true,
+      hostTiktokUid: true,
       workerId: true,
       listenerStatus: true,
       listenerMessage: true,
@@ -221,7 +223,7 @@ export async function fetchAdminRoomList(
     },
     // listenerUpdatedAt が null(一度も接続していない部屋)は Postgres の DESC 既定(NULLS FIRST)だと
     // 先頭に来て take の対象を占有してしまうため、明示的に末尾へ回す。
-    orderBy: [{ listenerUpdatedAt: { sort: "desc", nulls: "last" } }, { tiktokId: "asc" }],
+    orderBy: [{ listenerUpdatedAt: { sort: "desc", nulls: "last" } }, { tiktokHandle: "asc" }],
     take: ADMIN_ROOM_LIST_LIMIT,
   });
 
@@ -238,10 +240,12 @@ export async function fetchAdminRoomList(
     usageByRoomId = new Map(grouped.map((g) => [g.roomId, g._count._all]));
   }
 
+  const display = await resolveTikTokUserDisplay(rooms.map((r) => r.hostTiktokUid));
+
   return rooms.map((r) => ({
     roomId: r.id,
-    tiktokId: r.tiktokId,
-    nickname: r.nickname,
+    tiktokHandle: r.tiktokHandle,
+    nickname: display.get(r.hostTiktokUid)?.nickname ?? null,
     workerId: r.workerId,
     listenerStatus: r.listenerStatus,
     listenerMessage: r.listenerMessage,
@@ -260,7 +264,7 @@ export async function fetchAdminRoomList(
 export type ManualReassignAuditEntry = {
   at: string;
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   fromWorker: number | null;
   toWorker: number;
   operator: string | null;
@@ -305,7 +309,7 @@ async function appendManualReassignAuditLog(
 }
 
 export type ReassignResult =
-  | { status: "ok"; roomId: string; tiktokId: string; fromWorker: number | null }
+  | { status: "ok"; roomId: string; tiktokHandle: string; fromWorker: number | null }
   | { status: "not_found" }
   | { status: "conflict"; actualWorkerId: number | null };
 
@@ -335,7 +339,7 @@ export async function reassignRoomWorker(
   return prisma.$transaction(async (tx) => {
     const room = await tx.tiktokRoom.findUnique({
       where: { id: roomId },
-      select: { tiktokId: true, workerId: true },
+      select: { tiktokHandle: true, workerId: true },
     });
     if (!room) return { status: "not_found" };
 
@@ -352,18 +356,18 @@ export async function reassignRoomWorker(
     await appendManualReassignAuditLog(tx, {
       at: new Date().toISOString(),
       roomId,
-      tiktokId: room.tiktokId,
+      tiktokHandle: room.tiktokHandle,
       fromWorker: expectedWorkerId,
       toWorker: toWorkerIndex,
       operator,
     });
 
-    return { status: "ok", roomId, tiktokId: room.tiktokId, fromWorker: expectedWorkerId };
+    return { status: "ok", roomId, tiktokHandle: room.tiktokHandle, fromWorker: expectedWorkerId };
   });
 }
 
 export type AddWatchedRoomResult =
-  | { status: "ok"; roomId: string; tiktokId: string; created: boolean; nickname: string | null }
+  | { status: "ok"; roomId: string; tiktokHandle: string; created: boolean; nickname: string | null }
   | { status: "invalid"; error: string }
   | { status: "not_found" }
   | { status: "unverified" };
@@ -383,48 +387,35 @@ export type AddWatchedRoomResult =
 // 30分放置すると自動停止しうる — Sidestageユーザーのroomとは異なり永続監視ではない
 // (仕様確認済み。再度監視したい場合は同じIDをもう一度追加する)。
 export async function addWatchedRoom(
-  rawTiktokId: string,
+  rawTiktokHandle: string,
   checker?: ExistenceChecker
 ): Promise<AddWatchedRoomResult> {
-  const normalized = normalizeTiktokId(rawTiktokId ?? "");
-  if (!isValidNormalizedTiktokId(normalized)) {
+  const normalized = normalizeTiktokId(rawTiktokHandle ?? "");
+  if (!isValidNormalizedTiktokHandle(normalized)) {
     return {
       status: "invalid",
       error: "TikTok IDの形式が正しくありません(英数字・アンダースコア・ドットの2〜24文字)。",
     };
   }
 
-  const existence = await requireExistingTiktokAccount(normalized, checker);
+  // 得られた tiktokUid を room の同一性キーとして保存するので positive キャッシュを読まない。
+  const existence = await requireExistingTiktokAccount(normalized, checker, {
+    skipPositiveCache: true,
+  });
   if (!existence.ok) {
     return { status: existence.reason === "MISSING" ? "not_found" : "unverified" };
   }
+  // TikTok の不変ID が取れない応答は所有の根拠にできない(§6 の登録ゲート)。
+  if (!existence.tiktokUid) {
+    return { status: "unverified" };
+  }
 
-  const existing = await prisma.tiktokRoom.findUnique({
-    where: { tiktokId: normalized },
-    select: { id: true },
+  const { roomId, created } = await ensureRoomWatchedByAdmin({
+    tiktokUid: existence.tiktokUid,
+    tiktokHandle: normalized,
+    nickname: existence.nickname,
   });
-
-  if (existing) {
-    await reviveSuspendedMonitoring(existing.id);
-    if (existence.nickname) {
-      await prisma.tiktokRoom.update({ where: { id: existing.id }, data: { nickname: existence.nickname } });
-    }
-    return { status: "ok", roomId: existing.id, tiktokId: normalized, created: false, nickname: existence.nickname };
-  }
-
-  try {
-    const room = await prisma.tiktokRoom.create({
-      data: { tiktokId: normalized, nickname: existence.nickname },
-      select: { id: true },
-    });
-    return { status: "ok", roomId: room.id, tiktokId: normalized, created: true, nickname: existence.nickname };
-  } catch (err) {
-    // findUnique と create の間に別リクエストが同じ tiktokId を作った場合。
-    if ((err as { code?: string })?.code === "P2002") {
-      return addWatchedRoom(rawTiktokId, checker);
-    }
-    throw err;
-  }
+  return { status: "ok", roomId, tiktokHandle: normalized, created, nickname: existence.nickname };
 }
 
 /**
@@ -560,7 +551,7 @@ export function buildWorkerReport(input: {
     issues.push({
       type: "room_unassigned",
       severity: "warn",
-      tiktokId: room.tiktokId,
+      tiktokHandle: room.tiktokHandle,
       detail: "workerId 未割当。次の reconcile でどれかの Worker が引き取る",
     });
   }
@@ -568,7 +559,7 @@ export function buildWorkerReport(input: {
     issues.push({
       type: "room_out_of_range",
       severity: "error",
-      tiktokId: room.tiktokId,
+      tiktokHandle: room.tiktokHandle,
       detail: `workerId=${room.workerId} は WORKER_COUNT=${workerCount} の範囲外。担当する Worker が存在しない`,
     });
   }
@@ -682,7 +673,7 @@ export function buildWorkerReport(input: {
               type: "assigned_not_running",
               severity: "error",
               workerIndex,
-              tiktokId: room.tiktokId,
+              tiktokHandle: room.tiktokHandle,
               detail: "DB 上はこの Worker の担当だが listener が存在しない",
             });
           }
@@ -694,7 +685,7 @@ export function buildWorkerReport(input: {
               type: "running_not_assigned",
               severity: "warn",
               workerIndex,
-              tiktokId: listener.tiktokId,
+              tiktokHandle: listener.tiktokHandle,
               detail: "listener は動いているが DB 上この Worker の担当ではない(次の reconcile で解放される)",
             });
           }
@@ -707,7 +698,7 @@ export function buildWorkerReport(input: {
             type: "listener_not_connected",
             severity: "warn",
             workerIndex,
-            tiktokId: listener.tiktokId,
+            tiktokHandle: listener.tiktokHandle,
             detail: `${listener.status}: ${listener.message}`,
           });
         }

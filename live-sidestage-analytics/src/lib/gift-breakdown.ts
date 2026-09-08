@@ -39,14 +39,14 @@ export type GiftBreakdownCoverage = {
 };
 
 export type GiftBreakdownResult = {
-  uniqueId: string;
+  tiktokUid: string;
   gifts: GiftBreakdownEntry[];
   total: { repeatCount: number; totalDiamonds: number };
   coverage: GiftBreakdownCoverage;
 };
 
-function emptyResult(uniqueId: string, coverage: GiftBreakdownCoverage): GiftBreakdownResult {
-  return { uniqueId, gifts: [], total: { repeatCount: 0, totalDiamonds: 0 }, coverage };
+function emptyResult(tiktokUid: string, coverage: GiftBreakdownCoverage): GiftBreakdownResult {
+  return { tiktokUid, gifts: [], total: { repeatCount: 0, totalDiamonds: 0 }, coverage };
 }
 
 /**
@@ -79,15 +79,15 @@ export function resolveBreakdownWindow(
 
 export async function queryGiftBreakdown(
   roomId: string,
-  uniqueId: string,
+  tiktokUid: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
   now: Date = new Date()
 ): Promise<GiftBreakdownResult> {
-  const baseWhere: GiftAggregateWhere = { roomId, uniqueId: { in: [uniqueId] }, ...where };
+  const baseWhere: GiftAggregateWhere = { roomId, tiktokUid: { in: [tiktokUid] }, ...where };
 
   const { rawWhere, coverage } = resolveBreakdownWindow(baseWhere, await planSplit(baseWhere, now));
 
-  if (!rawWhere) return emptyResult(uniqueId, coverage);
+  if (!rawWhere) return emptyResult(tiktokUid, coverage);
 
   const grouped = await prisma.gift.groupBy({
     by: ["giftId"],
@@ -97,7 +97,7 @@ export async function queryGiftBreakdown(
     orderBy: { _sum: { totalDiamonds: "desc" } },
   });
 
-  if (grouped.length === 0) return emptyResult(uniqueId, coverage);
+  if (grouped.length === 0) return emptyResult(tiktokUid, coverage);
 
   const giftIds = grouped.map((g) => g.giftId);
 
@@ -142,7 +142,7 @@ export async function queryGiftBreakdown(
     { repeatCount: 0, totalDiamonds: 0 }
   );
 
-  return { uniqueId, gifts, total, coverage };
+  return { tiktokUid, gifts, total, coverage };
 }
 
 /**

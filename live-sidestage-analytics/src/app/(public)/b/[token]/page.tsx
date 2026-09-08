@@ -12,7 +12,7 @@ import { PublicBattleClient } from "./PublicBattleClient";
 // 入れてあり、**境界を外すと `/billing` まで公開される**(src/middleware.test.ts が固定)。
 //
 // ペイロードは `queryBattleReplayByShareToken` の公開バリアントで、配信者・リスナーとも
-// TikTokハンドル(`uniqueId`)を含まない。ここでサーバー側が1回だけ読み、クライアントへ
+// TikTokハンドル(`tiktokHandle`)を含まない。ここでサーバー側が1回だけ読み、クライアントへ
 // 渡す(再生・一覧の両モードが同じデータを使うので、モードごとに fetch しない)。
 export const dynamic = "force-dynamic";
 

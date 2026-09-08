@@ -2,33 +2,79 @@ import { prisma } from "./prisma";
 import { MAX_LEASE_DAYS } from "./room-lease";
 import { reviveSuspendedMonitoring } from "./mark-last-active";
 import { resolveWatchedRoomFilter } from "./watched-room-filter";
+import { normalizeTikTokUserId, recordTikTokUser } from "./tiktok-user";
+
+/**
+ * room を作る・引くときに必ず一組で渡す観測値。
+ *
+ * **uid だけ渡して nickname を省略できない形にしてある**(nickname は null 許容だが、
+ * 渡すこと自体は必須)。TiktokRoom を作って TikTokUser を作らない経路を構造的に無くすため。
+ */
+export type TiktokRoomSubject = {
+  /** TikTok の不変な数値ID。登録ゲートの実在確認応答から得る。 */
+  tiktokUid: string;
+  /** 可変の @ハンドル。正規化前でよい(この関数群が normalizeTiktokId を通す)。 */
+  tiktokHandle: string;
+  /** 観測できていなければ null。既知の値を null で潰さない扱いは recordTikTokUser 側に任せる。 */
+  nickname: string | null;
+};
+
+/** 既存 room の uid と、渡された uid が食い違ったとき。サポート対応へ回す(自動合流しない)。 */
+export class RoomSubjectMismatchError extends Error {
+  constructor(
+    readonly roomId: string,
+    readonly expected: string,
+    readonly actual: string
+  ) {
+    super(`room ${roomId} の hostTiktokUid は ${expected} で、要求された ${actual} と一致しない。`);
+    this.name = "RoomSubjectMismatchError";
+  }
+}
 
 // TikTokのユーザー名は大文字小文字を区別しないため、部屋(TiktokRoom)のキーとしては
-// 正規化した値を使う。Streamer.tiktokId自体はユーザー入力値のまま表示用に残す。
+// 正規化した値を使う。Streamer.tiktokHandle自体はユーザー入力値のまま表示用に残す。
 export function normalizeTiktokId(raw: string): string {
   return raw.trim().replace(/^@/, "").toLowerCase();
 }
 
-// Streamerの現在のtiktokIdに対応するTiktokRoomを解決し、Streamer.roomIdを更新する。
+// Streamerの現在のtiktokHandleに対応するTiktokRoomを解決し、Streamer.roomIdを更新する。
 // deviceId/workerId/proxyKey(tiktok-listener.ts)と同じ「初回アクセス時に解決→永続化→再利用」
-// パターン。tiktokIdが変更された場合(再登録)は、指しているroomのtiktokIdが現在の値と
+// パターン。tiktokHandleが変更された場合(再登録)は、指しているroomのtiktokHandleが現在の値と
 // 食い違うため自己修復的に新しいroomへ付け替える。
 export async function resolveRoomForStreamer(streamerId: string): Promise<string> {
   const streamer = await prisma.streamer.findUnique({
     where: { id: streamerId },
-    select: { tiktokId: true, roomId: true, room: { select: { tiktokId: true } } },
+    select: {
+      tiktokUid: true,
+      tiktokHandle: true,
+      roomId: true,
+      room: { select: { hostTiktokUid: true, tiktokHandle: true } },
+    },
   });
   if (!streamer) {
     throw new Error(`resolveRoomForStreamer: streamer ${streamerId} not found`);
   }
 
-  const normalized = normalizeTiktokId(streamer.tiktokId);
-
-  if (streamer.roomId && streamer.room?.tiktokId === normalized) {
+  // 同一性は uid で判定する。ハンドル一致で判定すると、改名で空いたハンドルを取得した
+  // 第三者の room へ紐付きうる。
+  //
+  // **ハンドルが room の値と食い違っていたら早期 return しない。** 改名では room は割れず
+  // uid も roomId も変わらないので、ここで抜けると `upsertRoom` のハンドル追随
+  // (`update: { tiktokHandle, handleStaleAt: null }`)へ二度と到達せず、room が旧ハンドルの
+  // まま固定される。TikTok 接続はハンドルで張るので、これは接続先が死ぬということ。
+  if (
+    streamer.roomId &&
+    streamer.room?.hostTiktokUid === streamer.tiktokUid &&
+    streamer.room.tiktokHandle === normalizeTiktokId(streamer.tiktokHandle)
+  ) {
     return streamer.roomId;
   }
 
-  const room = await upsertRoom(normalized);
+  const room = await upsertRoom({
+    tiktokUid: streamer.tiktokUid,
+    tiktokHandle: streamer.tiktokHandle,
+    nickname: null,
+  });
 
   // watchedRoomFilter()はもうStreamer有無を見ない(Streamer0人のRoomも低価値クリーンアップの
   // 判定まで監視を続ける情報プール方針)ため、Streamerを新規に紐付けただけではmonitoringSuspended
@@ -86,7 +132,7 @@ export class RoomMonitorError extends Error {
 
 export type RoomMonitorLease = {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   /** 実際に設定された期限。他の要求がより長い期限を持っていれば要求値より先になる */
   monitorUntil: Date;
   /** この呼び出しで部屋を新規作成したか(false = 既存部屋の再利用) */
@@ -101,12 +147,13 @@ export type RoomMonitorLease = {
  * 部屋を短くしないため。
  */
 export async function ensureRoomForEvent(
-  rawTiktokId: string,
+  subject: TiktokRoomSubject,
   monitorUntil: Date,
   now: Date = new Date()
 ): Promise<RoomMonitorLease> {
-  const tiktokId = normalizeTiktokId(rawTiktokId);
-  if (!TIKTOK_ID_PATTERN.test(tiktokId)) {
+  const tiktokUid = requireTiktokUid(subject);
+  const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
+  if (!TIKTOK_ID_PATTERN.test(tiktokHandle)) {
     throw new RoomMonitorError("TikTok ID の形式が正しくない。", 400);
   }
 
@@ -122,7 +169,7 @@ export async function ensureRoomForEvent(
   }
 
   const existing = await prisma.tiktokRoom.findUnique({
-    where: { tiktokId },
+    where: { hostTiktokUid: tiktokUid },
     select: { id: true, monitorUntil: true },
   });
 
@@ -149,35 +196,53 @@ export async function ensureRoomForEvent(
       : monitorUntil;
 
   if (existing) {
-    const room = await prisma.tiktokRoom.update({
-      where: { id: existing.id },
-      data: { monitorUntil: granted },
-      select: { id: true, tiktokId: true, monitorUntil: true },
+    const room = await prisma.$transaction(async (tx) => {
+      const updated = await tx.tiktokRoom.update({
+        where: { id: existing.id },
+        data: { monitorUntil: granted, tiktokHandle, handleStaleAt: null },
+        select: { id: true, tiktokHandle: true, monitorUntil: true },
+      });
+      const commit = await recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle,
+        nickname: subject.nickname,
+      });
+      return { updated, commit };
     });
+    room.commit();
     return {
-      roomId: room.id,
-      tiktokId: room.tiktokId,
-      monitorUntil: room.monitorUntil ?? granted,
+      roomId: room.updated.id,
+      tiktokHandle: room.updated.tiktokHandle,
+      monitorUntil: room.updated.monitorUntil ?? granted,
       created: false,
     };
   }
 
   try {
-    const room = await prisma.tiktokRoom.create({
-      data: { tiktokId, monitorUntil: granted },
-      select: { id: true, tiktokId: true, monitorUntil: true },
+    const room = await prisma.$transaction(async (tx) => {
+      const created = await tx.tiktokRoom.create({
+        data: { hostTiktokUid: tiktokUid, tiktokHandle, monitorUntil: granted },
+        select: { id: true, tiktokHandle: true, monitorUntil: true },
+      });
+      const commit = await recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle,
+        nickname: subject.nickname,
+      });
+      return { created, commit };
     });
+    room.commit();
     return {
-      roomId: room.id,
-      tiktokId: room.tiktokId,
-      monitorUntil: room.monitorUntil ?? granted,
+      roomId: room.created.id,
+      tiktokHandle: room.created.tiktokHandle,
+      monitorUntil: room.created.monitorUntil ?? granted,
       created: true,
     };
   } catch (err) {
     // findUnique と create の間に別リクエストが同じ部屋を作った場合。
     // 期限は max(既存, 要求) なので、作った側の期限を尊重しつつ足りなければ伸ばす。
     if ((err as { code?: string })?.code === "P2002") {
-      return ensureRoomForEvent(tiktokId, monitorUntil, now);
+      return ensureRoomForEvent(subject, monitorUntil, now);
     }
     throw err;
   }
@@ -200,21 +265,42 @@ export async function releaseRoomMonitor(roomId: string): Promise<number> {
   return updated.count;
 }
 
-// 正規化済みtiktokIdに対応するTiktokRoomを取得/作成する。
-// 事務所の監視対象追加(src/lib/agency/)でも同じ部屋を共有するため、ここを唯一の入口にする。
-export async function upsertRoom(tiktokId: string): Promise<{ id: string }> {
+/**
+ * tiktokUid に対応するTiktokRoomを取得/作成する。
+ * 事務所の監視対象追加(src/lib/agency/)でも同じ部屋を共有するため、ここを唯一の入口にする。
+ *
+ * **upsert キーは hostTiktokUid**。改名しても room は割れないので、事後にデータを合流させる
+ * 機構(旧 tiktok-id-migration.ts の absorbRooms)は要らない。既存 room があれば
+ * tiktokHandle を最新の観測値へ更新する。
+ */
+export async function upsertRoom(subject: TiktokRoomSubject): Promise<{ id: string }> {
+  const tiktokUid = requireTiktokUid(subject);
+  const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
+
   try {
-    return await prisma.tiktokRoom.upsert({
-      where: { tiktokId },
-      update: {},
-      create: { tiktokId },
-      select: { id: true },
+    return await prisma.$transaction(async (tx) => {
+      const room = await tx.tiktokRoom.upsert({
+        where: { hostTiktokUid: tiktokUid },
+        // ハンドルが変わっていれば追随する。uid が同じなので同一人物であることは保証されている。
+        update: { tiktokHandle, handleStaleAt: null },
+        create: { hostTiktokUid: tiktokUid, tiktokHandle },
+        select: { id: true },
+      });
+      const commit = await recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle,
+        nickname: subject.nickname,
+      });
+      return { room, commit };
+    }).then(({ room, commit }) => {
+      commit();
+      return room;
     });
   } catch (err) {
-    // 同時に2リクエストが同じ新規tiktokIdをupsertしようとした場合のP2002競合を再フェッチで解決する。
+    // 同時に2リクエストが同じ新規uidをupsertしようとした場合のP2002競合を再フェッチで解決する。
     if ((err as { code?: string })?.code === "P2002") {
       const existing = await prisma.tiktokRoom.findUnique({
-        where: { tiktokId },
+        where: { hostTiktokUid: tiktokUid },
         select: { id: true },
       });
       if (existing) return existing;
@@ -223,11 +309,20 @@ export async function upsertRoom(tiktokId: string): Promise<{ id: string }> {
   }
 }
 
+/** 呼び出し元の取り違え(ハンドルを uid の位置へ渡す等)を早期に検出する。 */
+function requireTiktokUid(subject: TiktokRoomSubject): string {
+  const tiktokUid = normalizeTikTokUserId(subject.tiktokUid);
+  if (!tiktokUid) {
+    throw new RoomMonitorError("TikTok の数値IDが解決できていない。", 503);
+  }
+  return tiktokUid;
+}
+
 export type CollabWatchSource = "collab" | "battle_start";
 
 export type CollabWatchResult = {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   /** この呼び出しで monitoringSuspended: true → false に書き換えたか(= 休止中だった) */
   resumed: boolean;
   /** この呼び出しで TiktokRoom を新規作成したか。呼び出し元は created===true のときだけ
@@ -266,7 +361,7 @@ const MAX_COLLAB_DISCOVERED_ROOMS = 500;
  *   (残したままだと復活直後の実在確認で古いstreakを引き継ぎ、誤って早期に再停止しうるため)。
  *   watchSourceがまだnull(この経路で発見されたのが初めて)のときだけ記録する
  *
- * tiktokId の形式が不正(TIKTOK_ID_PATTERN)な場合は何もせず null を返す — コラボ相手の
+ * tiktokHandle の形式が不正(TIKTOK_ID_PATTERN)な場合は何もせず null を返す — コラボ相手の
  * displayId は TikTok 側の値をそのまま受け取るだけの経路で、主催者入力のような検証は
  * 要らないはずだが、万一空文字・記号混じりが来ても部屋を作らないための最低限のガード。
  *
@@ -283,29 +378,39 @@ const MAX_COLLAB_DISCOVERED_ROOMS = 500;
  * 危険が生まれるため、値は必ず引数として受け取る。
  */
 export async function ensureRoomWatchedForCollab(
-  rawTiktokId: string,
+  subject: TiktokRoomSubject,
   workerId: number | undefined,
   source: CollabWatchSource
 ): Promise<CollabWatchResult | null> {
-  const tiktokId = normalizeTiktokId(rawTiktokId);
-  if (!TIKTOK_ID_PATTERN.test(tiktokId)) return null;
+  const tiktokUid = normalizeTikTokUserId(subject.tiktokUid);
+  if (!tiktokUid) return null;
+  const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
+  if (!TIKTOK_ID_PATTERN.test(tiktokHandle)) return null;
 
   const existing = await prisma.tiktokRoom.findUnique({
-    where: { tiktokId },
+    where: { hostTiktokUid: tiktokUid },
     select: { id: true, watchSource: true },
   });
 
   if (existing) {
     const resumedCount = await reviveSuspendedMonitoring(existing.id);
     let watchSource = existing.watchSource as CollabWatchSource | null;
-    if (resumedCount > 0 && watchSource === null) {
-      await prisma.tiktokRoom.update({
+    const commit = await prisma.$transaction(async (tx) => {
+      await tx.tiktokRoom.update({
         where: { id: existing.id },
-        data: { watchSource: source, watchSourceAt: new Date() },
+        data: {
+          tiktokHandle,
+          handleStaleAt: null,
+          ...(resumedCount > 0 && watchSource === null
+            ? { watchSource: source, watchSourceAt: new Date() }
+            : {}),
+        },
       });
-      watchSource = source;
-    }
-    return { roomId: existing.id, tiktokId, resumed: resumedCount > 0, created: false, watchSource };
+      return recordTikTokUser(tx, { tiktokUid, tiktokHandle, nickname: subject.nickname });
+    });
+    commit();
+    if (resumedCount > 0 && watchSource === null) watchSource = source;
+    return { roomId: existing.id, tiktokHandle, resumed: resumedCount > 0, created: false, watchSource };
   }
 
   // 上限判定は「新規作成になる」場合のみ(既存roomの監視再開は総数を増やさないため対象外)。
@@ -314,29 +419,106 @@ export async function ensureRoomWatchedForCollab(
   if (watchedCount >= MAX_COLLAB_DISCOVERED_ROOMS) {
     console.warn(
       `[collab] 監視中room数が上限(${MAX_COLLAB_DISCOVERED_ROOMS})に達しているため、相手roomの新規作成をスキップした`,
-      { tiktokId, source }
+      { tiktokHandle, source }
     );
     return null;
   }
 
   try {
-    const room = await prisma.tiktokRoom.create({
-      data: {
-        tiktokId,
-        watchSource: source,
-        watchSourceAt: new Date(),
-        ...(workerId !== undefined ? { workerId } : {}),
-      },
-      select: { id: true },
+    const { room, commit } = await prisma.$transaction(async (tx) => {
+      const created = await tx.tiktokRoom.create({
+        data: {
+          hostTiktokUid: tiktokUid,
+          tiktokHandle,
+          watchSource: source,
+          watchSourceAt: new Date(),
+          ...(workerId !== undefined ? { workerId } : {}),
+        },
+        select: { id: true },
+      });
+      const marker = await recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle,
+        nickname: subject.nickname,
+      });
+      return { room: created, commit: marker };
     });
-    return { roomId: room.id, tiktokId, resumed: false, created: true, watchSource: source };
+    commit();
+    return { roomId: room.id, tiktokHandle, resumed: false, created: true, watchSource: source };
   } catch (err) {
     // findUnique と create の間に別リクエストが同じ部屋を作った場合。
     if ((err as { code?: string })?.code === "P2002") {
-      return ensureRoomWatchedForCollab(rawTiktokId, workerId, source);
+      return ensureRoomWatchedForCollab(subject, workerId, source);
     }
     throw err;
   }
+}
+
+/**
+ * /admin/workers 管理画面の「監視追加」から呼ぶ room 用意。
+ *
+ * prisma.tiktokRoom.create/upsert はこのファイルへ閉じる規律(tiktok-room.guard.test.ts)のため、
+ * worker-status.ts から本文をここへ移した。room 作成経路はすべて同一トランザクションで
+ * recordTikTokUser() を呼ぶ。
+ */
+export async function ensureRoomWatchedByAdmin(
+  subject: TiktokRoomSubject
+): Promise<{ roomId: string; created: boolean }> {
+  const tiktokUid = requireTiktokUid(subject);
+  const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
+
+  const existing = await prisma.tiktokRoom.findUnique({
+    where: { hostTiktokUid: tiktokUid },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await reviveSuspendedMonitoring(existing.id);
+    const commit = await prisma.$transaction(async (tx) => {
+      await tx.tiktokRoom.update({
+        where: { id: existing.id },
+        data: { tiktokHandle, handleStaleAt: null },
+      });
+      return recordTikTokUser(tx, { tiktokUid, tiktokHandle, nickname: subject.nickname });
+    });
+    commit();
+    return { roomId: existing.id, created: false };
+  }
+
+  try {
+    const { room, commit } = await prisma.$transaction(async (tx) => {
+      const created = await tx.tiktokRoom.create({
+        data: { hostTiktokUid: tiktokUid, tiktokHandle },
+        select: { id: true },
+      });
+      const marker = await recordTikTokUser(tx, {
+        tiktokUid,
+        tiktokHandle,
+        nickname: subject.nickname,
+      });
+      return { room: created, commit: marker };
+    });
+    commit();
+    return { roomId: room.id, created: true };
+  } catch (err) {
+    // findUnique と create の間に別リクエストが同じ部屋を作った場合。
+    if ((err as { code?: string })?.code === "P2002") {
+      return ensureRoomWatchedByAdmin(subject);
+    }
+    throw err;
+  }
+}
+
+/**
+ * 接続直前の uid 照合(tiktok-listener.ts)が別人を検出したときに立てる。
+ *
+ * **自動では解除しない。** 解除は本人の再登録・イベント参加・管理画面の監視追加など、
+ * `tiktokHandle` を書き直す経路が `handleStaleAt: null` を同時に書くことで行う
+ * (このファイル内の update/upsert がすべてそうしている)。時間経過での自動復帰を入れると、
+ * ハンドルを取得した第三者の配信へ繰り返し接続しに行く。
+ */
+export async function markRoomHandleStale(roomId: string, at: Date = new Date()): Promise<void> {
+  await prisma.tiktokRoom.update({ where: { id: roomId }, data: { handleStaleAt: at } });
 }
 
 // --- /admin/workers 管理画面からの監視解除・完全削除(管理者専用) ---
@@ -359,14 +541,14 @@ export async function suspendRoomMonitoring(
   return prisma.$transaction(async (tx) => {
     const room = await tx.tiktokRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, tiktokId: true, monitoringSuspended: true },
+      select: { id: true, tiktokHandle: true, monitoringSuspended: true },
     });
     if (!room) return "not_found" as const;
     if (room.monitoringSuspended) return "already_suspended" as const;
 
     await tx.tiktokRoom.update({ where: { id: roomId }, data: { monitoringSuspended: true } });
     await tx.tiktokRoomAdminAuditLog.create({
-      data: { action: "suspend", roomId: room.id, tiktokId: room.tiktokId, operatorEmail },
+      data: { action: "suspend", roomId: room.id, tiktokHandle: room.tiktokHandle, operatorEmail },
     });
     return "suspended" as const;
   });
@@ -393,7 +575,7 @@ export async function toggleSpecialWatch(
   return prisma.$transaction(async (tx) => {
     const room = await tx.tiktokRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, tiktokId: true, specialWatch: true, monitoringSuspended: true },
+      select: { id: true, tiktokHandle: true, specialWatch: true, monitoringSuspended: true },
     });
     if (!room) return { status: "not_found" as const };
 
@@ -426,7 +608,7 @@ export async function toggleSpecialWatch(
       data: {
         action: "toggle_special_watch",
         roomId: room.id,
-        tiktokId: room.tiktokId,
+        tiktokHandle: room.tiktokHandle,
         operatorEmail,
         detail: { specialWatch: nextValue, ...(revivesSuspension ? { revivedSuspension: true } : {}) },
       },
@@ -443,7 +625,7 @@ export type DeleteRoomResult = "deleted" | "not_found" | "event_active" | "lock_
  * - Gift/BattleHistory等のTiktokRoom子リレーションはほぼ全てonDelete:Cascadeで消える。
  * - Streamer.roomは optional relation で onDelete 未指定 = SetNull。Streamer行自体は残り
  *   roomIdだけnullになる。**その後Streamerが1人でも残っていれば、次回アクセス時に
- *   resolveRoomForStreamer()が同じtiktokIdの部屋を自動再作成し監視も再開する**。
+ *   resolveRoomForStreamer()が同じtiktokHandleの部屋を自動再作成し監視も再開する**。
  * - AgencyWatch.roomは必須relationでonDelete未指定=Restrict。削除前にdeleteManyで
  *   明示的に取り除く必要がある(FK制約回避のための必須の前処理)。
  * - EventParticipant.roomId / EventRoomLease.roomId / DetectedBattle.roomIdはいずれも
@@ -452,7 +634,7 @@ export type DeleteRoomResult = "deleted" | "not_found" | "event_active" | "lock_
  *   "event_active" を返す(absorbRooms()のEVENT_ACTIVE判定を踏襲)。finalize済み
  *   イベントの参照・DetectedBattleは孤児として残ることを許容する(過去イベントの
  *   履歴データであり実害が限定的なため)。同様にBattleHistoryParticipant.roomId
- *   (相手roomの参照)・EulerSignUsage.roomId・TiktokIdMergeLog.oldRoomId/survivingRoomId
+ *   (相手roomの参照)・EulerSignUsage.roomId・TiktokHandleMergeLog.oldRoomId/survivingRoomId
  *   もFK制約のない論理参照で、削除後は孤児として残る(いずれも過去ログ・表示用データ)。
  * - Gift行数の多い部屋でのカスケード削除がPrisma interactive transactionの既定
  *   タイムアウト(5秒)を超えないよう、absorbRooms()と同じtimeout/advisory lockを使う。
@@ -475,7 +657,7 @@ export async function deleteTiktokRoomPermanently(
 
       const room = await tx.tiktokRoom.findUnique({
         where: { id: roomId },
-        select: { id: true, tiktokId: true },
+        select: { id: true, tiktokHandle: true },
       });
       if (!room) return "not_found" as const;
 
@@ -517,7 +699,7 @@ export async function deleteTiktokRoomPermanently(
       await tx.giftDailyListenerStat.deleteMany({ where: { roomId } });
       await tx.tiktokRoom.delete({ where: { id: roomId } });
       await tx.tiktokRoomAdminAuditLog.create({
-        data: { action: "delete", roomId: room.id, tiktokId: room.tiktokId, operatorEmail, detail },
+        data: { action: "delete", roomId: room.id, tiktokHandle: room.tiktokHandle, operatorEmail, detail },
       });
 
       return "deleted" as const;

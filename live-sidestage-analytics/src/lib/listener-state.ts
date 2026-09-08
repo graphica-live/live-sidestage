@@ -101,6 +101,18 @@ export const FACTS_CONNECTED: ListenerFacts = {
   message: "配信に接続しました",
 };
 
+/**
+ * 接続直前の uid 照合で、このハンドルの現在の持ち主が登録時の tiktokUid と別人だと判明した状態。
+ * 改名で空いたハンドルを第三者が取得した場合に起きる。接続すると別人のギフト・コメントが
+ * この room へ入るので、自動では復帰させない(本人の再登録か hostProfiles 観測で解除する)。
+ */
+export const FACTS_HANDLE_MISMATCH: ListenerFacts = {
+  activity: "unknown",
+  health: "error",
+  message:
+    "登録されたTikTokアカウントと、このIDの現在の持ち主が一致しません。サポートへお問い合わせください",
+};
+
 /** 監視対象から外れて接続をやめた状態。配信しているかどうかは分からない。 */
 export const FACTS_IDLE: ListenerFacts = {
   activity: "unknown",

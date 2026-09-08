@@ -12,7 +12,7 @@ export async function POST() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
   });
 
   if (!streamer) {
@@ -33,7 +33,7 @@ export async function POST() {
   return NextResponse.json({
     listener: {
       streamerId: streamer.id,
-      tiktokId: streamer.tiktokId,
+      tiktokHandle: streamer.tiktokHandle,
       status: room?.listenerStatus ?? "connecting",
       message: room?.listenerMessage ?? "起動中(最大30秒)",
       updatedAt: room?.listenerUpdatedAt?.toISOString() ?? new Date().toISOString(),

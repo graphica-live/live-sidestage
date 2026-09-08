@@ -354,12 +354,12 @@ class LiveAnalyticsApi {
 
   Future<(String token, StreamerInfo streamer)> registerStreamer({
     required String token,
-    required String tiktokId,
+    required String tiktokHandle,
   }) async {
     final data = await _send(
       'POST',
       '/api/mobile/streamer',
-      {'tiktokId': tiktokId},
+      {'tiktokHandle': tiktokHandle},
       token: token,
     );
     return (
@@ -368,14 +368,14 @@ class LiveAnalyticsApi {
     );
   }
 
-  Future<StreamerInfo> updateTiktokId({
+  Future<StreamerInfo> updateTiktokHandle({
     required String token,
-    required String tiktokId,
+    required String tiktokHandle,
   }) async {
     final data = await _send(
       'PATCH',
       '/api/mobile/streamer',
-      {'tiktokId': tiktokId},
+      {'tiktokHandle': tiktokHandle},
       token: token,
     );
     return StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>);

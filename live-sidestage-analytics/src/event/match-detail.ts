@@ -1,13 +1,14 @@
 import {
   aggregateGiftsBySegment,
   fetchListenerProfiles,
-  fetchRoomHostUserIds,
+  fetchRoomHostTiktokUids,
   type DbClient,
   type ListenerProfile,
 } from "./analytics-db";
 import { resolveSideTiktokScores, type BattleScoreRow, type ScoreSideInput } from "./battle-score";
 import { groupByCombinedGroup, sortCandidatesDeterministically } from "./candidate-groups";
 import { buildSlotRows, type Bucket, type MatchListenerRow, type SlotInput } from "./match-contributions";
+import { resolveAvatarUrls } from "@/lib/avatar-storage";
 import { resolveGameWinner } from "./match-results";
 import { parseMatchRules, seriesRequirement, type WinCondition } from "./match-rules";
 import { isByeRow, parsePlacement, parseWinnerFeeders, reviewReasonOf } from "./match-status";
@@ -157,9 +158,9 @@ function sumSideBreakdowns(memberSides: BattleSideBreakdown[][]): BattleSideBrea
 
 /**
  * 合算グループのメンバー(候補)ごとの貢献者内訳を1つに合算する。participantId 単位で
- * diamonds/points/giftCount を合算し、listeners は uniqueId 単位でさらに合算した上で
+ * diamonds/points/giftCount を合算し、listeners は tiktokHandle 単位でさらに合算した上で
  * 打ち切り(`MAX_BATTLE_LISTENER_ROWS`)をやり直す。並びは `match-contributions.ts` の
- * `compareListeners` と同じ規則(ポイント降順 → ダイヤ降順 → uniqueId 昇順)。
+ * `compareListeners` と同じ規則(ポイント降順 → ダイヤ降順 → tiktokHandle 昇順)。
  */
 function mergeContributionSlots(
   memberContributions: BattleContributionSlot[][]
@@ -173,7 +174,14 @@ function mergeContributionSlots(
     giftCount: number;
     listeners: Map<
       string,
-      { nickname: string; profileImageUrl: string | null; diamonds: bigint; points: bigint; giftCount: number }
+      {
+        tiktokHandle: string | null;
+        nickname: string | null;
+        profileImageUrl: string | null;
+        diamonds: bigint;
+        points: bigint;
+        giftCount: number;
+      }
     >;
   };
   const bySlot = new Map<string, SlotAcc>();
@@ -197,16 +205,17 @@ function mergeContributionSlots(
       slot.points += parseScaledPoints(c.points);
       slot.giftCount += c.giftCount;
       for (const l of c.listeners) {
-        let listener = slot.listeners.get(l.uniqueId);
+        let listener = slot.listeners.get(l.tiktokUid);
         if (!listener) {
           listener = {
+            tiktokHandle: l.tiktokHandle,
             nickname: l.nickname,
             profileImageUrl: l.profileImageUrl,
             diamonds: 0n,
             points: 0n,
             giftCount: 0,
           };
-          slot.listeners.set(l.uniqueId, listener);
+          slot.listeners.set(l.tiktokUid, listener);
         }
         listener.diamonds += BigInt(l.diamonds);
         listener.points += parseScaledPoints(l.points);
@@ -224,8 +233,9 @@ function mergeContributionSlots(
     const truncated = listenerEntries.length > MAX_BATTLE_LISTENER_ROWS;
     const listeners: MatchListenerRow[] = (
       truncated ? listenerEntries.slice(0, MAX_BATTLE_LISTENER_ROWS) : listenerEntries
-    ).map(([uniqueId, l]) => ({
-      uniqueId,
+    ).map(([tiktokUid, l]) => ({
+      tiktokUid,
+      tiktokHandle: l.tiktokHandle,
       nickname: l.nickname,
       profileImageUrl: l.profileImageUrl,
       diamonds: l.diamonds.toString(),
@@ -304,7 +314,7 @@ function addBucket(map: Map<string, Bucket>, key: string, add: Bucket) {
 /**
  * 1バトル(候補1件)の区間から、サイド別合計とリスナー別内訳を**1回のギフト集計**で
  * 同時に組み立てる。`match-results.ts` の `scoreSides()` と `match-contributions.ts` の
- * 集計ループを、対象キーが2種類(sideId / participantId×uniqueId)ある1本のループに統合したもの。
+ * 集計ループを、対象キーが2種類(sideId / participantId×tiktokHandle)ある1本のループに統合したもの。
  */
 async function scoreCandidate(
   client: DbClient,
@@ -370,7 +380,7 @@ async function scoreCandidate(
             map = new Map<string, Bucket>();
             byParticipant.set(participantId, map);
           }
-          addBucket(map, row.uniqueId, {
+          addBucket(map, row.tiktokUid, {
             diamonds: row.diamonds,
             points: scaledPoints(row.diamonds, segment.scaledFactor),
             giftCount: row.giftCount,
@@ -561,7 +571,7 @@ export async function loadPublicMatchDetail(
       side.participants.map((p) => ({
         participantId: p.participant.id,
         displayName: p.participant.displayName,
-        tiktokId: p.participant.roomId,
+        tiktokHandle: p.participant.roomId,
         sideIndex: side.sideIndex,
       }))
     );
@@ -583,14 +593,14 @@ export async function loadPublicMatchDetail(
     const battleIds = completedCandidates
       .filter((c) => c.confidence === "exact")
       .map((c) => c.battleId);
-    const [scoreRows, hostUserIdByRoomId] = await Promise.all([
+    const [scoreRows, hostTiktokUidByRoomId] = await Promise.all([
       battleIds.length > 0
         ? client.detectedBattle.findMany({
             where: { battleId: { in: battleIds } },
-            select: { battleId: true, hostUserIds: true, hostScores: true },
+            select: { battleId: true, hostTiktokUids: true, hostScores: true },
           })
         : Promise.resolve([]),
-      fetchRoomHostUserIds(client, roomIds),
+      fetchRoomHostTiktokUids(client, roomIds),
     ]);
     const scoreRowsByBattleId = new Map<string, BattleScoreRow[]>();
     for (const row of scoreRows) {
@@ -631,12 +641,17 @@ export async function loadPublicMatchDetail(
 
           const spans = intersectWindows({ start: candidate.startedAt, end: candidate.endedAt }, windows);
           if (spans.length > 0) {
-            const profiles: Map<string, ListenerProfile> = await fetchListenerProfiles(client, {
-              roomIds,
-              start: spans[0].start,
-              end: spans[spans.length - 1].end,
-            });
-            contributions = buildSlotRows(slots, byParticipant, profiles).map(truncateContribution);
+            const observedTiktokUids = [
+              ...new Set([...byParticipant.values()].flatMap((m) => [...m.keys()])),
+            ];
+            const [profiles, avatars]: [Map<string, ListenerProfile>, Map<string, string>] =
+              await Promise.all([
+                fetchListenerProfiles(client, { tiktokUids: observedTiktokUids }),
+                resolveAvatarUrls(observedTiktokUids),
+              ]);
+            contributions = buildSlotRows(slots, byParticipant, profiles, avatars).map(
+              truncateContribution
+            );
           } else {
             contributions = [];
           }
@@ -648,7 +663,7 @@ export async function loadPublicMatchDetail(
           const resolved = resolveSideTiktokScores({
             rows: matchRows,
             sides: scoreSideInputs,
-            hostUserIdByRoomId,
+            hostTiktokUidByRoomId,
           });
           tiktokScores = Object.fromEntries(resolved);
         }

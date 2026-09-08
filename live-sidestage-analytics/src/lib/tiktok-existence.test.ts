@@ -5,8 +5,9 @@ import {
   formatExistenceGateError,
   isExistenceCheckDisabled,
   previewTiktokAccount,
+  requireExistingTiktokAccount,
 } from "./tiktok-existence";
-import type { ExistenceChecker } from "./tiktok-existence";
+import type { ExistenceChecker, ExistenceCheckOptions } from "./tiktok-existence";
 
 /** `preview` を持たない旧テストfixtureへ後付けする空の付随情報(全項目 null)。 */
 const emptyPreview: TiktokAccountPreview = {
@@ -24,10 +25,10 @@ function stubFetch(verdicts: AccountExistence[] | AccountExistence) {
 
   return {
     calls,
-    fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
-      calls.push(tiktokId);
+    fn: async (tiktokHandle: string): Promise<AccountExistenceCheck> => {
+      calls.push(tiktokHandle);
       const verdict = fixed ?? queue!.shift() ?? "UNVERIFIED";
-      return { verdict, nickname: null, userId: null, preview: emptyPreview };
+      return { verdict, nickname: null, tiktokUid: null, preview: emptyPreview };
     },
   };
 }
@@ -39,9 +40,9 @@ function stubFetchWithChecks(checks: AccountExistenceCheck[]) {
 
   return {
     calls,
-    fn: async (tiktokId: string): Promise<AccountExistenceCheck> => {
-      calls.push(tiktokId);
-      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview };
+    fn: async (tiktokHandle: string): Promise<AccountExistenceCheck> => {
+      calls.push(tiktokHandle);
+      return queue.shift() ?? { verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: emptyPreview };
     },
   };
 }
@@ -60,14 +61,43 @@ function deferredFetch() {
   return {
     calls,
     resolvers,
-    fn: (tiktokId: string): Promise<AccountExistenceCheck> => {
-      calls.push(tiktokId);
+    fn: (tiktokHandle: string): Promise<AccountExistenceCheck> => {
+      calls.push(tiktokHandle);
       return new Promise<AccountExistenceCheck>((resolve) => {
-        resolvers.push((verdict) => resolve({ verdict, nickname: null, userId: null, preview: emptyPreview }));
+        resolvers.push((verdict) => resolve({ verdict, nickname: null, tiktokUid: null, preview: emptyPreview }));
       });
     },
   };
 }
+
+describe("requireExistingTiktokAccount", () => {
+  /** `check()` に渡された options を記録するだけの checker。 */
+  function recordingChecker() {
+    const seen: (ExistenceCheckOptions | undefined)[] = [];
+    const checker: ExistenceChecker = {
+      async check(_tiktokHandle, opts) {
+        seen.push(opts);
+        return { verdict: "EXISTS", nickname: "n", tiktokUid: "999", preview: emptyPreview };
+      },
+      size: () => 0,
+    };
+    return { seen, checker };
+  }
+
+  it("options をそのまま checker へ通す(所有確定経路のキャッシュ回避が効く)", async () => {
+    const { seen, checker } = recordingChecker();
+
+    await requireExistingTiktokAccount("someone", checker, { skipPositiveCache: true });
+    expect(seen).toEqual([{ skipPositiveCache: true }]);
+  });
+
+  it("options 省略時はキャッシュを使う既定のまま(表示用途の呼び出しを変えない)", async () => {
+    const { seen, checker } = recordingChecker();
+
+    await requireExistingTiktokAccount("someone", checker);
+    expect(seen).toEqual([undefined]);
+  });
+});
 
 describe("createExistenceChecker のキャッシュ", () => {
   it("EXISTS を覚えて2回目は引き直さない", async () => {
@@ -77,6 +107,55 @@ describe("createExistenceChecker のキャッシュ", () => {
     expect((await checker.check("someone")).verdict).toBe("EXISTS");
     expect((await checker.check("someone")).verdict).toBe("EXISTS");
     expect(fetcher.calls).toEqual(["someone"]);
+  });
+
+  it("skipPositiveCache は EXISTS のキャッシュを読まず、その時点の tiktokUid を返す", async () => {
+    // ハンドル H を A が手放し、6時間以内に B が取得した状況。キャッシュを読むと
+    // B の登録に A の uid が返り、B が A の room へ紐付く。
+    const fetcher = stubFetchWithChecks([
+      { verdict: "EXISTS", nickname: "A", tiktokUid: "111", preview: emptyPreview },
+      { verdict: "EXISTS", nickname: "B", tiktokUid: "222", preview: emptyPreview },
+    ]);
+    const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
+
+    expect((await checker.check("handle")).tiktokUid).toBe("111");
+    // 素の呼び出し(プレビュー等)はキャッシュのままでよい。
+    expect((await checker.check("handle")).tiktokUid).toBe("111");
+    expect(fetcher.calls).toHaveLength(1);
+
+    const fresh = await checker.check("handle", { skipPositiveCache: true });
+    expect(fresh.tiktokUid).toBe("222");
+    expect(fresh.nickname).toBe("B");
+    expect(fetcher.calls).toEqual(["handle", "handle"]);
+  });
+
+  it("skipPositiveCache でも MISSING のキャッシュは使う(negative は uid を持ち回らない)", async () => {
+    const fetcher = stubFetch("MISSING");
+    const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
+
+    expect((await checker.check("nobody")).verdict).toBe("MISSING");
+    expect((await checker.check("nobody", { skipPositiveCache: true })).verdict).toBe("MISSING");
+    expect(fetcher.calls).toEqual(["nobody"]);
+  });
+
+  it("skipPositiveCache でも同時要求の in-flight 重複排除は共有する", async () => {
+    const fetcher = deferredFetch();
+    const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
+
+    const pending = [
+      checker.check("someone", { skipPositiveCache: true }),
+      checker.check("someone"),
+      checker.check("someone", { skipPositiveCache: true }),
+    ];
+    await flush();
+    expect(fetcher.calls).toEqual(["someone"]);
+
+    fetcher.resolvers[0]("EXISTS");
+    expect((await Promise.all(pending)).map((r) => r.verdict)).toEqual([
+      "EXISTS",
+      "EXISTS",
+      "EXISTS",
+    ]);
   });
 
   it("MISSING も覚える(打ち間違いの連打で TikTok を叩き続けない)", async () => {
@@ -119,21 +198,21 @@ describe("createExistenceChecker のキャッシュ", () => {
 
   it("EXISTS のニックネームもキャッシュに残り、2回目のヒットでも同じ値が返る", async () => {
     const fetcher = stubFetchWithChecks([
-      { verdict: "EXISTS", nickname: "テスト配信者", userId: null, preview: emptyPreview },
+      { verdict: "EXISTS", nickname: "テスト配信者", tiktokUid: null, preview: emptyPreview },
     ]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
     expect(await checker.check("someone")).toEqual({
       verdict: "EXISTS",
       nickname: "テスト配信者",
-      userId: null,
+      tiktokUid: null,
       preview: emptyPreview,
     });
     // キャッシュヒット。fetch を引き直さずに同じ nickname が返る。
     expect(await checker.check("someone")).toEqual({
       verdict: "EXISTS",
       nickname: "テスト配信者",
-      userId: null,
+      tiktokUid: null,
       preview: emptyPreview,
     });
     expect(fetcher.calls).toEqual(["someone"]);
@@ -141,20 +220,20 @@ describe("createExistenceChecker のキャッシュ", () => {
 
   it("MISSING の nickname は常に null で覚える", async () => {
     const fetcher = stubFetchWithChecks([
-      { verdict: "MISSING", nickname: null, userId: null, preview: emptyPreview },
+      { verdict: "MISSING", nickname: null, tiktokUid: null, preview: emptyPreview },
     ]);
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
     expect(await checker.check("nobody")).toEqual({
       verdict: "MISSING",
       nickname: null,
-      userId: null,
+      tiktokUid: null,
       preview: emptyPreview,
     });
     expect(await checker.check("nobody")).toEqual({
       verdict: "MISSING",
       nickname: null,
-      userId: null,
+      tiktokUid: null,
       preview: emptyPreview,
     });
     expect(fetcher.calls).toEqual(["nobody"]);
@@ -228,7 +307,7 @@ describe("createExistenceChecker の呼び出し制御", () => {
 
     const pending = [checker.check("a"), checker.check("b"), checker.check("c")];
 
-    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
+    expect(await pending[2]).toEqual({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: emptyPreview });
     expect(fetcher.calls).toEqual(["a", "b"]);
 
     fetcher.resolvers[0]("EXISTS");
@@ -292,14 +371,14 @@ describe("createExistenceChecker の呼び出し制御", () => {
       },
     });
 
-    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
+    expect(await checker.check("someone")).toEqual({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: emptyPreview });
   });
 
   it("空のハンドルは外へ出さない", async () => {
     const fetcher = stubFetch("EXISTS");
     const checker = createExistenceChecker({ fetchExistence: fetcher.fn });
 
-    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
+    expect(await checker.check("")).toEqual({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: emptyPreview });
     expect(fetcher.calls).toEqual([]);
   });
 });
@@ -341,7 +420,7 @@ describe("previewTiktokAccount", () => {
     const checker: ExistenceChecker = {
       check: async () => {
         called = true;
-        return { verdict: "EXISTS", nickname: null, userId: null, preview: somePreview };
+        return { verdict: "EXISTS", nickname: null, tiktokUid: null, preview: somePreview };
       },
       size: () => 0,
     };
@@ -351,20 +430,20 @@ describe("previewTiktokAccount", () => {
   });
 
   it("MISSING は USER_NOT_FOUND を返す", async () => {
-    const checker = stubChecker({ verdict: "MISSING", nickname: null, userId: null, preview: emptyPreview });
+    const checker = stubChecker({ verdict: "MISSING", nickname: null, tiktokUid: null, preview: emptyPreview });
     expect(await previewTiktokAccount("nobody", checker)).toEqual({ ok: false, code: "USER_NOT_FOUND" });
   });
 
   it("UNVERIFIED は CHECK_UNVERIFIED を返す", async () => {
-    const checker = stubChecker({ verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview });
+    const checker = stubChecker({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: emptyPreview });
     expect(await previewTiktokAccount("someone", checker)).toEqual({ ok: false, code: "CHECK_UNVERIFIED" });
   });
 
-  it("EXISTS は正規化済み tiktokId・nickname・preview をそのまま返す", async () => {
-    const checker = stubChecker({ verdict: "EXISTS", nickname: "テスト太郎", userId: "123", preview: somePreview });
+  it("EXISTS は正規化済み tiktokHandle・nickname・preview をそのまま返す", async () => {
+    const checker = stubChecker({ verdict: "EXISTS", nickname: "テスト太郎", tiktokUid: "123", preview: somePreview });
     expect(await previewTiktokAccount("@Some_User", checker)).toEqual({
       ok: true,
-      tiktokId: "some_user",
+      tiktokHandle: "some_user",
       nickname: "テスト太郎",
       preview: somePreview,
     });

@@ -42,13 +42,13 @@ type Entry = { url: string | null; expiresAt: number };
 
 export type AvatarCache = {
   /** アイコンの URL。取れなければ null。**例外は投げない。** */
-  get(tiktokId: string): Promise<string | null>;
+  get(tiktokHandle: string): Promise<string | null>;
   /** テスト用。 */
   size(): number;
 };
 
 export function createAvatarCache(options?: {
-  fetchProfile?: (tiktokId: string) => Promise<TiktokProfileResult>;
+  fetchProfile?: (tiktokHandle: string) => Promise<TiktokProfileResult>;
   now?: () => number;
   maxConcurrency?: number;
   maxEntries?: number;
@@ -81,14 +81,14 @@ export function createAvatarCache(options?: {
     }
   }
 
-  function remember(tiktokId: string, url: string | null, ttlMs: number): void {
+  function remember(tiktokHandle: string, url: string | null, ttlMs: number): void {
     // 期限切れを掃除してから入れる。それでも溢れるなら挿入順(古い順)に捨てる。
     const t = now();
     for (const [key, entry] of entries) {
       if (entry.expiresAt <= t) entries.delete(key);
     }
-    entries.delete(tiktokId);
-    entries.set(tiktokId, { url, expiresAt: t + ttlMs });
+    entries.delete(tiktokHandle);
+    entries.set(tiktokHandle, { url, expiresAt: t + ttlMs });
     while (entries.size > maxEntries) {
       const oldest = entries.keys().next();
       if (oldest.done) break;
@@ -96,12 +96,12 @@ export function createAvatarCache(options?: {
     }
   }
 
-  async function load(tiktokId: string): Promise<string | null> {
-    const result = await withSlot(() => fetchProfile(tiktokId));
+  async function load(tiktokHandle: string): Promise<string | null> {
+    const result = await withSlot(() => fetchProfile(tiktokHandle));
 
     if (result.ok) {
       consecutiveFailures = 0;
-      remember(tiktokId, result.profile.avatarUrl, OK_TTL_MS);
+      remember(tiktokHandle, result.profile.avatarUrl, OK_TTL_MS);
       return result.profile.avatarUrl;
     }
 
@@ -116,30 +116,30 @@ export function createAvatarCache(options?: {
       consecutiveFailures = 0;
     }
 
-    remember(tiktokId, null, MISS_TTL_MS[result.reason]);
+    remember(tiktokHandle, null, MISS_TTL_MS[result.reason]);
     return null;
   }
 
   return {
-    async get(tiktokId: string): Promise<string | null> {
+    async get(tiktokHandle: string): Promise<string | null> {
       if (process.env.TIKTOK_AVATAR_DISABLED === "1") return null;
-      if (tiktokId.length === 0) return null;
+      if (tiktokHandle.length === 0) return null;
 
-      const cached = entries.get(tiktokId);
+      const cached = entries.get(tiktokHandle);
       if (cached && cached.expiresAt > now()) return cached.url;
 
       // ブレーカーが開いている間は外へ出さない(キャッシュにも入れない — 復帰後すぐ引けるように)。
       if (now() < circuitOpenUntil) return null;
 
-      const pending = inFlight.get(tiktokId);
+      const pending = inFlight.get(tiktokHandle);
       if (pending) return pending;
 
-      const promise = load(tiktokId)
+      const promise = load(tiktokHandle)
         .catch(() => null)
         .finally(() => {
-          inFlight.delete(tiktokId);
+          inFlight.delete(tiktokHandle);
         });
-      inFlight.set(tiktokId, promise);
+      inFlight.set(tiktokHandle, promise);
       return promise;
     },
 

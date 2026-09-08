@@ -35,7 +35,7 @@ class SettingsTab extends StatelessWidget {
     super.key,
     required this.speech,
     required this.busy,
-    required this.onChangeTiktokId,
+    required this.onChangeTiktokHandle,
     required this.onBeforeLogout,
   });
 
@@ -45,7 +45,7 @@ class SettingsTab extends StatelessWidget {
   /// この間の変更は背景 Isolate へ渡らない。
   final bool busy;
 
-  final Future<void> Function() onChangeTiktokId;
+  final Future<void> Function() onChangeTiktokHandle;
   final Future<void> Function() onBeforeLogout;
 
   @override
@@ -218,9 +218,9 @@ class SettingsTab extends StatelessWidget {
           children: [
             _SettingValueRow(
               title: 'TikTok ID',
-              value: '@${session?.streamer?.tiktokId ?? ''}',
+              value: '@${session?.streamer?.tiktokHandle ?? ''}',
               trailingIcon: Icons.edit,
-              onTap: onChangeTiktokId,
+              onTap: onChangeTiktokHandle,
             ),
             if (session != null && session.userEmail.isNotEmpty)
               _SettingValueRow(

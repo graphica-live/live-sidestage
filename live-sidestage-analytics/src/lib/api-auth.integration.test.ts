@@ -8,10 +8,11 @@ import { describe, it, expect, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveStreamerByApiKey } from "./api-auth";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
-const userIds: string[] = [];
+const principalIds: string[] = [];
 const roomIds: string[] = [];
 
 async function makeStreamer(verified: boolean) {
@@ -19,10 +20,12 @@ async function makeStreamer(verified: boolean) {
     data: { email: `itest-apiauth-${suffix()}@local.test`, name: "itest" },
     select: { id: true },
   });
-  userIds.push(user.id);
+  principalIds.push(user.id);
 
+  const roomHandle = `itestapiauth${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+  const hostTiktokUid = makeTiktokUid(roomHandle);
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: `itestapiauth${Math.random().toString(36).slice(2, 8)}`.toLowerCase() },
+    data: { tiktokHandle: roomHandle, hostTiktokUid },
     select: { id: true },
   });
   roomIds.push(room.id);
@@ -30,8 +33,9 @@ async function makeStreamer(verified: boolean) {
   const apiKey = `itest-key-${suffix()}`;
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId: `itest-s-${suffix()}`,
+      principalId: user.id,
+      tiktokUid: hostTiktokUid,
+      tiktokHandle: `itest-s-${suffix()}`,
       roomId: room.id,
       verificationCode: `itest-${suffix()}`,
       apiKey,
@@ -51,8 +55,8 @@ function requestWithKey(apiKey: string | null) {
 }
 
 afterAll(async () => {
-  await prisma.streamer.deleteMany({ where: { userId: { in: userIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.streamer.deleteMany({ where: { principalId: { in: principalIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 

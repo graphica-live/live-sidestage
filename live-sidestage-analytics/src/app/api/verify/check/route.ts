@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
   });
 
   if (!streamer) {
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await verifyTikTokProfile(
-    streamer.tiktokId,
+    streamer.tiktokHandle,
     streamer.verificationCode
   );
 

@@ -74,7 +74,7 @@ export function __resetOverlayEmitStateForTest(): void {
 
 export type LikeMilestoneEvent = {
   id: string;
-  uniqueId: string;
+  tiktokHandle: string;
   nickname: string;
   profileImageUrl: string | null;
   milestoneCount: number;

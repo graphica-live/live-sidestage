@@ -6,6 +6,7 @@ import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
 import { startListener, stopListener } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
+import { makeListenerIdentity, makeTiktokUid } from "./__fixtures__/gift";
 
 const { MockConnection } = vi.hoisted(() => {
   class MockConnection {
@@ -13,7 +14,7 @@ const { MockConnection } = vi.hoisted(() => {
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -38,15 +39,15 @@ vi.mock("TLC-sidestage", async () => {
   const actual = await vi.importActual<typeof import("TLC-sidestage")>("TLC-sidestage");
   return {
     ...actual,
-    WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-      return new MockConnection(uniqueId, options);
+    WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+      return new MockConnection(tiktokHandle, options);
     }),
   };
 });
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, principalId: null }),
   },
 }));
 
@@ -62,28 +63,30 @@ function suffix() {
 }
 
 async function setupRoom(label: string) {
-  const tiktokId = `itest_task_${label}_${suffix()}`;
+  const tiktokHandle = `itest_task_${label}_${suffix()}`;
   const user = await prisma.user.create({
     data: { email: `itest-task-${label}-${suffix()}@local.test` },
   });
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId,
+      principalId: user.id,
+      // TiktokRoom.hostTiktokUid は @unique。ハンドルから導けば room ごとに必ず別値になる。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
       verificationCode: `itest-${suffix()}`,
       verified: true,
     },
   });
   const roomId = await resolveRoomForStreamer(streamer.id);
-  await startListener(roomId, tiktokId, [streamer.id]);
+  await startListener(roomId, tiktokHandle, [streamer.id]);
   const conn = MockConnection.instances[MockConnection.instances.length - 1];
   expect(conn).toBeDefined();
-  return { tiktokId, userId: user.id, streamerId: streamer.id, roomId, conn };
+  return { tiktokHandle, principalId: user.id, streamerId: streamer.id, roomId, conn };
 }
 
-async function teardownRoom(ctx: { roomId: string; userId: string }) {
+async function teardownRoom(ctx: { roomId: string; principalId: string }) {
   await stopListener(ctx.roomId);
-  await prisma.user.delete({ where: { id: ctx.userId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: ctx.principalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }
 
@@ -373,10 +376,13 @@ describe("ボーナスミッション区間(TiktokBattleBonusMission)の収集",
 });
 
 describe("ギフトの倍率刻印(Gift.multiplierType / multiplierValue)の収集", () => {
+  // **TikTok の生 gift payload のフィールド名。** userId が不変IDで uniqueId がハンドル。
   function giftPayload(overrides: Record<string, unknown> = {}) {
+    const listener = makeListenerIdentity(`itest_bonus_listener_${suffix()}`);
     return {
-      uniqueId: `listener_${suffix()}`,
-      nickname: "テスト視聴者",
+      userId: listener.tiktokUid,
+      uniqueId: listener.tiktokHandle,
+      nickname: listener.nickname,
       giftId: 5655,
       giftName: "Rose",
       giftType: 2,
@@ -389,8 +395,8 @@ describe("ギフトの倍率刻印(Gift.multiplierType / multiplierValue)の収�
     };
   }
 
-  async function giftRow(roomId: string, uniqueId: string) {
-    return prisma.gift.findFirst({ where: { roomId, uniqueId } });
+  async function giftRow(roomId: string, tiktokUid: string) {
+    return prisma.gift.findFirst({ where: { roomId, tiktokUid } });
   }
 
   it("ネストしたmatchInfoの倍率がGift行へ保存される", async () => {
@@ -399,7 +405,7 @@ describe("ギフトの倍率刻印(Gift.multiplierType / multiplierValue)の収�
       const payload = giftPayload({ matchInfo: { multiplierType: 1, multiplierValue: "5" } });
       ctx.conn.fire("gift", payload);
       await vi.waitFor(async () => {
-        const row = await giftRow(ctx.roomId, String(payload.uniqueId));
+        const row = await giftRow(ctx.roomId, String(payload.userId));
         expect(row?.multiplierType).toBe(1);
         expect(row?.multiplierValue).toBe(5);
       });
@@ -414,7 +420,7 @@ describe("ギフトの倍率刻印(Gift.multiplierType / multiplierValue)の収�
       const payload = giftPayload({ multiplierType: 2, multiplierValue: "10" });
       ctx.conn.fire("gift", payload);
       await vi.waitFor(async () => {
-        const row = await giftRow(ctx.roomId, String(payload.uniqueId));
+        const row = await giftRow(ctx.roomId, String(payload.userId));
         expect(row?.multiplierType).toBe(2);
         expect(row?.multiplierValue).toBe(10);
       });
@@ -429,7 +435,7 @@ describe("ギフトの倍率刻印(Gift.multiplierType / multiplierValue)の収�
       const withZero = giftPayload({ matchInfo: { multiplierType: 0, multiplierValue: 0 } });
       ctx.conn.fire("gift", withZero);
       await vi.waitFor(async () => {
-        const row = await giftRow(ctx.roomId, String(withZero.uniqueId));
+        const row = await giftRow(ctx.roomId, String(withZero.userId));
         expect(row?.multiplierType).toBe(0);
         expect(row?.multiplierValue).toBe(0);
       });
@@ -437,7 +443,7 @@ describe("ギフトの倍率刻印(Gift.multiplierType / multiplierValue)の収�
       const withoutMatchInfo = giftPayload();
       ctx.conn.fire("gift", withoutMatchInfo);
       await vi.waitFor(async () => {
-        const row = await giftRow(ctx.roomId, String(withoutMatchInfo.uniqueId));
+        const row = await giftRow(ctx.roomId, String(withoutMatchInfo.userId));
         expect(row).not.toBeNull();
         expect(row?.multiplierType).toBeNull();
         expect(row?.multiplierValue).toBeNull();

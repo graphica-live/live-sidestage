@@ -7,6 +7,7 @@
 // 葉範囲の算術そのものは DB を使わない `bracket-swap.test.ts` にある。ここで見るのは
 // 「DB の行が期待どおり動くか」— 特に不戦勝の状態遷移と、行の削除。
 import { describe, it, expect, afterAll } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import { swapBracketSlots, type SwapSlot } from "./bracket-swap-apply";
 import { acquireEventLock } from "./event-lock";
@@ -38,7 +39,7 @@ async function newTournament(count: number, options: { placementDepth?: number }
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} トーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -56,7 +57,8 @@ async function newTournament(count: number, options: { placementDepth?: number }
     const created = await prisma.eventParticipant.create({
       data: {
         eventId: event.id,
-        tiktokId: `${PREFIX}_p${i}_${suffix}`,
+        tiktokUid: makeTiktokUid(`${PREFIX}_p${i}_${suffix}`),
+        tiktokHandle: `${PREFIX}_p${i}_${suffix}`,
         // EventParticipant.roomId は TiktokRoom への論理参照(FK ではない)。
         roomId: `${PREFIX}_room_${i}_${suffix}`,
         displayName: `P${i}`,
@@ -81,7 +83,7 @@ async function newManualTournament(placement: (string | null)[], placementDepth?
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 手動配置トーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -99,7 +101,8 @@ async function newManualTournament(placement: (string | null)[], placementDepth?
     const created = await prisma.eventParticipant.create({
       data: {
         eventId: event.id,
-        tiktokId: `${PREFIX}_${name}_${suffix}`,
+        tiktokUid: makeTiktokUid(`${PREFIX}_${name}_${suffix}`),
+        tiktokHandle: `${PREFIX}_${name}_${suffix}`,
         roomId: `${PREFIX}_room_${name}_${suffix}`,
         displayName: name,
       },

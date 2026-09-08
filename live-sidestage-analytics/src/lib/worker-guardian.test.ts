@@ -18,7 +18,7 @@ const NOW = new Date("2026-08-22T12:00:00.000Z");
 function listener(overrides: Partial<ListenerSnapshot> = {}): ListenerSnapshot {
   return {
     roomId: "room-a",
-    tiktokId: "alice",
+    tiktokHandle: "alice",
     status: "connected",
     message: "接続中",
     updatedAt: NOW.toISOString(),
@@ -33,7 +33,7 @@ function listener(overrides: Partial<ListenerSnapshot> = {}): ListenerSnapshot {
 function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
   return {
     roomId: "room-a",
-    tiktokId: "alice",
+    tiktokHandle: "alice",
     nickname: null,
     workerId: 0,
     listenerStatus: "connected",
@@ -244,11 +244,11 @@ describe("classifyWorkerHealth", () => {
         payload({
           listeners: [
             listener({ roomId: "room-a", watchdogTriggerCount: WATCHDOG_TRIGGER_DEAD_THRESHOLD }),
-            listener({ roomId: "room-b", tiktokId: "bob", watchdogTriggerCount: 0 }),
+            listener({ roomId: "room-b", tiktokHandle: "bob", watchdogTriggerCount: 0 }),
           ],
         })
       ),
-      assignedRooms: [room(), room({ roomId: "room-b", tiktokId: "bob" })],
+      assignedRooms: [room(), room({ roomId: "room-b", tiktokHandle: "bob" })],
       now: NOW,
     });
     expect(c).toBe("healthy");
@@ -343,29 +343,29 @@ describe("updateHealthStreaks", () => {
 describe("planReassignment", () => {
   it("候補0件なら全部unassignableにし、書き込み対象は空", () => {
     const { assignments, unassignable } = planReassignment({
-      rooms: [{ id: "room-a", tiktokId: "alice" }],
+      rooms: [{ id: "room-a", tiktokHandle: "alice" }],
       eligibleTargets: [],
       currentLoad: new Map(),
     });
     expect(assignments).toEqual([]);
-    expect(unassignable).toEqual([{ roomId: "room-a", tiktokId: "alice" }]);
+    expect(unassignable).toEqual([{ roomId: "room-a", tiktokHandle: "alice" }]);
   });
 
   it("least-loadedへ割り振る", () => {
     const { assignments } = planReassignment({
-      rooms: [{ id: "room-a", tiktokId: "alice" }],
+      rooms: [{ id: "room-a", tiktokHandle: "alice" }],
       eligibleTargets: [1, 2],
       currentLoad: new Map([
         [1, 3],
         [2, 0],
       ]),
     });
-    expect(assignments).toEqual([{ roomId: "room-a", tiktokId: "alice", toWorker: 2 }]);
+    expect(assignments).toEqual([{ roomId: "room-a", tiktokHandle: "alice", toWorker: 2 }]);
   });
 
   it("同数ならworkerIndexが小さい方を選ぶ(タイブレーク)", () => {
     const { assignments } = planReassignment({
-      rooms: [{ id: "room-a", tiktokId: "alice" }],
+      rooms: [{ id: "room-a", tiktokHandle: "alice" }],
       eligibleTargets: [2, 1],
       currentLoad: new Map([
         [1, 0],
@@ -378,8 +378,8 @@ describe("planReassignment", () => {
   it("複数部屋を分配し、割り振るたびにloadを増やして偏らせない", () => {
     const { assignments } = planReassignment({
       rooms: [
-        { id: "room-a", tiktokId: "alice" },
-        { id: "room-b", tiktokId: "bob" },
+        { id: "room-a", tiktokHandle: "alice" },
+        { id: "room-b", tiktokHandle: "bob" },
       ],
       eligibleTargets: [1, 2],
       currentLoad: new Map([

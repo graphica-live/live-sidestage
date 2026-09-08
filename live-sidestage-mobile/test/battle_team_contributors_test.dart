@@ -2,9 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/models/battle_team_contributors.dart';
 
 void main() {
-  Map<String, Object?> contributor(String uniqueId) => {
-        'uniqueId': uniqueId,
-        'nickname': uniqueId,
+  Map<String, Object?> contributor(String tiktokUid) => {
+        'tiktokUid': tiktokUid,
+        'nickname': tiktokUid,
         'giftCount': 1,
         'totalDiamonds': 10,
       };
@@ -12,7 +12,7 @@ void main() {
   group('BattleTeamParticipantContributors.tryParse', () {
     test('正常な行を解析できる', () {
       final p = BattleTeamParticipantContributors.tryParse({
-        'anchorId': 'a1',
+        'tiktokUid': 'a1',
         'displayName': 'Aさん',
         'captureStatus': 'partial',
         'partialNote': '一部欠測',
@@ -21,22 +21,22 @@ void main() {
         'contributors': [contributor('u1')],
       });
       expect(p, isNotNull);
-      expect(p!.anchorId, 'a1');
+      expect(p!.tiktokUid, 'a1');
       expect(p.displayName, 'Aさん');
       expect(p.captureStatus, 'partial');
       expect(p.partialNote, '一部欠測');
       expect(p.battleScore, '120');
       expect(p.observedGiftTotal, 5);
       expect(p.contributors, hasLength(1));
-      expect(p.contributors[0].uniqueId, 'u1');
+      expect(p.contributors[0].tiktokUid, 'u1');
     });
 
-    test('anchorIdが無ければnull', () {
+    test('tiktokUidが無ければnull', () {
       expect(BattleTeamParticipantContributors.tryParse({'displayName': 'x'}), isNull);
     });
 
-    test('displayName欠落はanchorIdへフォールバック', () {
-      final p = BattleTeamParticipantContributors.tryParse({'anchorId': 'a1'});
+    test('displayName欠落はtiktokUidへフォールバック', () {
+      final p = BattleTeamParticipantContributors.tryParse({'tiktokUid': 'a1'});
       expect(p!.displayName, 'a1');
     });
 
@@ -72,21 +72,21 @@ void main() {
         'contributors': [contributor('u1')],
         'participants': [
           {
-            'anchorId': 'r1',
+            'tiktokUid': 'r1',
             'displayName': 'R1',
             'battleScore': '80',
             'observedGiftTotal': 1,
             'contributors': [contributor('u1')],
           },
           {
-            'anchorId': 'r2',
+            'tiktokUid': 'r2',
             'displayName': 'R2',
             'battleScore': '60',
             'observedGiftTotal': 1,
             'contributors': [contributor('u2')],
           },
           {
-            'anchorId': 'r3',
+            'tiktokUid': 'r3',
             'displayName': 'R3',
             'battleScore': '40',
             'observedGiftTotal': 1,
@@ -98,7 +98,7 @@ void main() {
       expect(team, isNotNull);
       expect(team!.isIndividual, isTrue);
       expect(team.participants, hasLength(3));
-      expect(team.participants[0].anchorId, 'r1');
+      expect(team.participants[0].tiktokUid, 'r1');
     });
 
     test('selectorMode欠落・未知値はaggregateへフォールバック', () {

@@ -60,7 +60,7 @@ export async function syncSubscriptionFromStripe(stripeSubscriptionId: string): 
 
   const existing = await prisma.subscription.findUnique({
     where: { provider_providerSubscriptionId: { provider: "STRIPE", providerSubscriptionId: subscription.id } },
-    select: { id: true, userId: true, lastVerifiedAt: true },
+    select: { id: true, principalId: true, lastVerifiedAt: true },
   });
 
   if (existing) {
@@ -76,32 +76,32 @@ export async function syncSubscriptionFromStripe(stripeSubscriptionId: string): 
       data,
     });
     if (result.count === 0) return;
-    await detectMultiProvider(existing.userId);
+    await detectMultiProvider(existing.principalId);
     return;
   }
 
   // まだproviderSubscriptionIdが紐付いていない(初回のcheckout完了)場合、
-  // Checkout Session作成時にsubscription_data.metadata.userIdを付けているのでそこから解決する。
-  const userId = subscription.metadata.userId;
-  if (!userId) {
+  // Checkout Session作成時にsubscription_data.metadata.principalIdを付けているのでそこから解決する。
+  const principalId = subscription.metadata.principalId;
+  if (!principalId) {
     throw new Error(
-      `stripe subscription ${subscription.id} has no metadata.userId and no existing row to update`,
+      `stripe subscription ${subscription.id} has no metadata.principalId and no existing row to update`,
     );
   }
 
-  // アカウント削除でUserが既に消えている場合、Subscription.userIdはUserへのFK
+  // アカウント削除でUserが既に消えている場合、Subscription.principalIdはUserへのFK
   // (onDelete: Cascade)なのでcreateがP2003で失敗し続ける。削除は
   // DELETE /api/mobile/account 側でCustomer自体をStripeから消しているはずで、
   // ここへ遅延webhookが届いても復元すべきデータが無いのでno-opにする。
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  const user = await prisma.user.findUnique({ where: { id: principalId }, select: { id: true } });
   if (!user) return;
 
   try {
-    await prisma.subscription.create({ data: { userId, ...data } });
+    await prisma.subscription.create({ data: { principalId, ...data } });
   } catch (error) {
-    // userIdに一意制約は無いため、ここで起きうるP2002は複合unique
+    // principalIdに一意制約は無いため、ここで起きうるP2002は複合unique
     // (provider, providerSubscriptionId)の衝突のみ(並行webhookが同時にcreateを試みた場合)。
-    // userId基準でfindFirstすると、同一ユーザーの別provider行を誤って
+    // principalId基準でfindFirstすると、同一ユーザーの別provider行を誤って
     // このStripeデータで上書きしてしまう(実装後レビュー指摘)ため、
     // 必ず衝突した複合key自身で再取得する。
     if (isUniqueConstraintError(error)) {
@@ -111,11 +111,11 @@ export async function syncSubscriptionFromStripe(stripeSubscriptionId: string): 
       });
       if (raceRow) {
         await prisma.subscription.update({ where: { id: raceRow.id }, data });
-        await detectMultiProvider(userId);
+        await detectMultiProvider(principalId);
         return;
       }
     }
     throw error;
   }
-  await detectMultiProvider(userId);
+  await detectMultiProvider(principalId);
 }

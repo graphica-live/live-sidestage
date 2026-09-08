@@ -8,16 +8,24 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "./prisma";
 import { recordBlockedAttempt } from "./tiktok-listener";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const roomIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestba${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
 async function makeRoom(workerId: number | null) {
+  const handle = tiktokHandle("r");
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: tiktokId("r"), monitoringSuspended: true, workerId },
+    // hostTiktokUid は @unique。ハンドルが毎回ランダムなので uid も一意になる。
+    data: {
+      hostTiktokUid: makeTiktokUid(handle),
+      tiktokHandle: handle,
+      monitoringSuspended: true,
+      workerId,
+    },
     select: { id: true },
   });
   roomIds.push(room.id);

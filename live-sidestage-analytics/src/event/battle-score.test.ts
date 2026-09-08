@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { canShowTiktokScore, resolveSideTiktokScores } from "./battle-score";
 
-// hostUserId は TikTok の数値 userId。テストでは短い値で表す。
+// hostTiktokUid は TikTok の数値ID。テストでは短い値で表す。
 const A = "1001";
 const B = "1002";
 const C = "1003";
 const D = "1004";
 
 function rows(...entries: { hosts: string[]; scores: Record<string, unknown> }[]) {
-  return entries.map((e) => ({ hostUserIds: e.hosts, hostScores: e.scores }));
+  return entries.map((e) => ({ hostTiktokUids: e.hosts, hostScores: e.scores }));
 }
 
 describe("resolveSideTiktokScores", () => {
@@ -19,7 +19,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: ["r1"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", B],
       ]),
@@ -39,7 +39,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0", "r1"] },
         { sideId: "s1", roomIds: ["r2", "r3"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", B],
         ["r2", C],
@@ -62,7 +62,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: ["r1"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", B],
       ]),
@@ -72,14 +72,14 @@ describe("resolveSideTiktokScores", () => {
     expect(resolved.get("s1")).toBe("9999");
   });
 
-  it("hostUserId が未取得のサイドは出さない(相手側は出す)", () => {
+  it("hostTiktokUid が未取得のサイドは出さない(相手側は出す)", () => {
     const resolved = resolveSideTiktokScores({
       rows: rows({ hosts: [A, B], scores: { [A]: "5000", [B]: "4200" } }),
       sides: [
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: ["r1"] },
       ],
-      hostUserIdByRoomId: new Map([["r0", A]]),
+      hostTiktokUidByRoomId: new Map([["r0", A]]),
     });
 
     expect(resolved.get("s0")).toBe("5000");
@@ -93,11 +93,11 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0", "r1"] },
         { sideId: "s1", roomIds: ["r2", "r3"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", B],
         ["r2", C],
-        // r3 の hostUserId が未取得
+        // r3 の hostTiktokUid が未取得
       ]),
     });
 
@@ -105,12 +105,12 @@ describe("resolveSideTiktokScores", () => {
     expect(resolved.has("s1")).toBe(false);
   });
 
-  it("そのバトルに出ていない hostUserId は採らない", () => {
-    // hostUserId は取れているが、観測したバトルの参加者に含まれていない(別人の room)。
+  it("そのバトルに出ていない hostTiktokUid は採らない", () => {
+    // hostTiktokUid は取れているが、観測したバトルの参加者に含まれていない(別人の room)。
     const resolved = resolveSideTiktokScores({
       rows: rows({ hosts: [A], scores: { [A]: "5000", [B]: "4200" } }),
       sides: [{ sideId: "s1", roomIds: ["r1"] }],
-      hostUserIdByRoomId: new Map([["r1", B]]),
+      hostTiktokUidByRoomId: new Map([["r1", B]]),
     });
 
     expect(resolved.size).toBe(0);
@@ -123,7 +123,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: ["r1"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", B],
       ]),
@@ -140,7 +140,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: ["r1"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", B],
       ]),
@@ -149,7 +149,7 @@ describe("resolveSideTiktokScores", () => {
     expect(resolved.size).toBe(0);
   });
 
-  it("同じ hostUserId が複数の room から解決されたらマッチごと出さない", () => {
+  it("同じ hostTiktokUid が複数の room から解決されたらマッチごと出さない", () => {
     // 改名で旧 room と新 room が同じ配信者を指しているケース。二重加算・誤帰属になる。
     const resolved = resolveSideTiktokScores({
       rows: rows({ hosts: [A, B], scores: { [A]: "5000", [B]: "4200" } }),
@@ -157,7 +157,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: ["r1"] },
       ],
-      hostUserIdByRoomId: new Map([
+      hostTiktokUidByRoomId: new Map([
         ["r0", A],
         ["r1", A],
       ]),
@@ -173,7 +173,7 @@ describe("resolveSideTiktokScores", () => {
         { sideId: "s0", roomIds: ["r0"] },
         { sideId: "s1", roomIds: [] },
       ],
-      hostUserIdByRoomId: new Map([["r0", A]]),
+      hostTiktokUidByRoomId: new Map([["r0", A]]),
     });
 
     expect(resolved.get("s0")).toBe("5000");
@@ -184,7 +184,7 @@ describe("resolveSideTiktokScores", () => {
     const resolved = resolveSideTiktokScores({
       rows: [],
       sides: [{ sideId: "s0", roomIds: ["r0"] }],
-      hostUserIdByRoomId: new Map([["r0", A]]),
+      hostTiktokUidByRoomId: new Map([["r0", A]]),
     });
 
     expect(resolved.size).toBe(0);
@@ -193,9 +193,9 @@ describe("resolveSideTiktokScores", () => {
   it("hostScores が壊れていても落ちない", () => {
     for (const broken of [null, undefined, "x", 1, []]) {
       const resolved = resolveSideTiktokScores({
-        rows: [{ hostUserIds: [A], hostScores: broken }],
+        rows: [{ hostTiktokUids: [A], hostScores: broken }],
         sides: [{ sideId: "s0", roomIds: ["r0"] }],
-        hostUserIdByRoomId: new Map([["r0", A]]),
+        hostTiktokUidByRoomId: new Map([["r0", A]]),
       });
       expect(resolved.size).toBe(0);
     }

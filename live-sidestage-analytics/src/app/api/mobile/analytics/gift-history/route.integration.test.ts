@@ -7,14 +7,15 @@ import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { setSetting } from "@/lib/settings";
 import { betaSettingKey } from "@/lib/plan/beta-settings";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_gift_history";
 
-let userId: string;
+let principalId: string;
 let roomId: string;
-let noRoomUserId: string;
-let freeUserId: string;
+let noRoomPrincipalId: string;
+let freePrincipalId: string;
 let token: string;
 let noRoomToken: string;
 let freeToken: string;
@@ -28,39 +29,55 @@ beforeAll(async () => {
   // analytics領域のβでバイパスされる設計のため、mobileではなくanalyticsを明示的にfalseへ倒す。
   await setSetting(betaSettingKey("analytics"), "false");
 
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID } });
+  const room = await prisma.tiktokRoom.create({
+    data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: makeTiktokUid(TIKTOK_ID) },
+  });
   roomId = room.id;
 
   const user = await prisma.user.create({ data: { email: `itest-mobile-gift-history-${Date.now()}@local.test` } });
-  userId = user.id;
+  principalId = user.id;
   await prisma.streamer.create({
-    data: { userId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId,
+      tiktokUid: makeTiktokUid(TIKTOK_ID),
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
-  token = signMobileToken({ userId });
+  token = signMobileToken({ principalId });
 
   const noRoom = await prisma.user.create({
     data: { email: `itest-mobile-gift-history-noroom-${Date.now()}@local.test` },
   });
-  noRoomUserId = noRoom.id;
-  noRoomToken = signMobileToken({ userId: noRoomUserId });
+  noRoomPrincipalId = noRoom.id;
+  noRoomToken = signMobileToken({ principalId: noRoomPrincipalId });
 
   // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
   // Subscription無し(=FREE)のユーザー。
   const freeUser = await prisma.user.create({
     data: { email: `itest-mobile-gift-history-free-${Date.now()}@local.test` },
   });
-  freeUserId = freeUser.id;
+  freePrincipalId = freeUser.id;
   await prisma.streamer.create({
-    data: { userId: freeUserId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId: freePrincipalId,
+      tiktokUid: makeTiktokUid(TIKTOK_ID),
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
-  freeToken = signMobileToken({ userId: freeUserId });
+  freeToken = signMobileToken({ principalId: freePrincipalId });
 
   // custom range / listenerQuery はPRO限定機能(requireHistoryPlan)なので、
   // FREEのままだと既存のcustom range系テストが403で落ちる。このファイルの主目的は
-  // ルートハンドラの配線検証であってプラン判定の検証ではないため、mainのuserIdはPRO扱いにする。
+  // ルートハンドラの配線検証であってプラン判定の検証ではないため、mainのprincipalIdはPRO扱いにする。
   await prisma.subscription.create({
     data: {
-      userId,
+      principalId,
       plan: "PRO",
       entitlementActive: true,
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -69,13 +86,32 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: freeUserId } }).catch(() => {});
+  await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: freePrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
+  await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [...listenerUids] } } }).catch(() => {});
   await prisma.$disconnect();
 });
+
+/** このファイルが作る TikTokUser 行の uid。他ファイルと衝突しないよう接頭辞を付ける。 */
+const listenerUids = new Set<string>();
+
+/**
+ * 送信者の TikTokUser 行を用意して tiktokUid を返す。
+ * **表示名(tiktokHandle / nickname)は Gift ではなくこちらが持つ。**
+ */
+async function listener(tiktokHandle: string, nickname: string): Promise<string> {
+  const tiktokUid = makeTiktokUid(`itest_mobile_gift_history_${tiktokHandle}`);
+  listenerUids.add(tiktokUid);
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid },
+    create: { tiktokUid, tiktokHandle, nickname },
+    update: { tiktokHandle, nickname },
+  });
+  return tiktokUid;
+}
 
 function request(query: string, bearer?: string) {
   return new NextRequest(`http://localhost/api/mobile/analytics/gift-history${query}`, {
@@ -152,8 +188,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
     await prisma.gift.create({
       data: {
         roomId,
-        uniqueId: "user_a",
-        nickname: "ユーザーA",
+        tiktokUid: await listener("user_a", "ユーザーA"),
         giftId: 1,
         giftName: "Rose",
         giftPictureUrl: "javascript:alert(1)",
@@ -178,8 +213,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       await prisma.gift.create({
         data: {
           roomId,
-          uniqueId: "user_custom_in",
-          nickname: "範囲内さん",
+          tiktokUid: await listener("user_custom_in", "範囲内さん"),
           giftId: 1,
           giftName: "Rose",
           repeatCount: 1,
@@ -192,8 +226,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       await prisma.gift.create({
         data: {
           roomId,
-          uniqueId: "user_custom_out",
-          nickname: "範囲外さん",
+          tiktokUid: await listener("user_custom_out", "範囲外さん"),
           giftId: 1,
           giftName: "Rose",
           repeatCount: 1,
@@ -210,7 +243,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       const body = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.events.map((e: { uniqueId: string }) => e.uniqueId)).toEqual(["user_custom_in"]);
+      expect(body.events.map((e: { tiktokHandle: string }) => e.tiktokHandle)).toEqual(["user_custom_in"]);
       expect(body.dateRange).toEqual({
         start: "2026-08-25T09:00:00.000Z",
         end: "2026-08-25T12:00:00.000Z",
@@ -221,8 +254,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       await prisma.gift.create({
         data: {
           roomId,
-          uniqueId: "user_boundary_end",
-          nickname: "境界さん",
+          tiktokUid: await listener("user_boundary_end", "境界さん"),
           giftId: 1,
           giftName: "Rose",
           repeatCount: 1,
@@ -237,7 +269,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
         request("?startDatetime=2026-08-26T00%3A00%3A00Z&endDatetime=2026-08-26T12%3A00%3A00Z", token)
       );
       const body = await res.json();
-      expect(body.events.map((e: { uniqueId: string }) => e.uniqueId)).toContain("user_boundary_end");
+      expect(body.events.map((e: { tiktokHandle: string }) => e.tiktokHandle)).toContain("user_boundary_end");
     });
 
     it("片方だけの指定は400", async () => {
@@ -254,12 +286,11 @@ describe("GET /api/mobile/analytics/gift-history", () => {
   });
 
   describe("listenerQuery", () => {
-    it("uniqueId/nicknameの部分一致(大小文字無視)で絞り込む", async () => {
+    it("tiktokHandle/nicknameの部分一致(大小文字無視)で絞り込む", async () => {
       await prisma.gift.create({
         data: {
           roomId,
-          uniqueId: "Taro_Listener",
-          nickname: "たろう",
+          tiktokUid: await listener("Taro_Listener", "たろう"),
           giftId: 1,
           giftName: "Rose",
           repeatCount: 1,
@@ -272,8 +303,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       await prisma.gift.create({
         data: {
           roomId,
-          uniqueId: "hanako_listener",
-          nickname: "花子",
+          tiktokUid: await listener("hanako_listener", "花子"),
           giftId: 1,
           giftName: "Rose",
           repeatCount: 1,
@@ -288,7 +318,7 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       const body = await res.json();
 
       expect(res.status).toBe(200);
-      expect(body.events.map((e: { uniqueId: string }) => e.uniqueId)).toEqual(["Taro_Listener"]);
+      expect(body.events.map((e: { tiktokHandle: string }) => e.tiktokHandle)).toEqual(["Taro_Listener"]);
     });
 
     it("100文字を超えるlistenerQueryは400", async () => {

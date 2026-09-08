@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
 
-  const planDenied = await requireHistoryPlan(ctx.streamer.userId, {
+  const planDenied = await requireHistoryPlan(ctx.streamer.principalId, {
     range: query.value,
     listenerQuery: listenerQuery.value,
   });

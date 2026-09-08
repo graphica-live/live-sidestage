@@ -5,6 +5,7 @@ import { describe, it, expect, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ADMIN_EMAIL } from "@/lib/admin";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 
 const auth = vi.hoisted(() => ({ email: null as string | null }));
 
@@ -18,13 +19,19 @@ const { DELETE, PATCH } = await import("./route");
 const roomIds: string[] = [];
 const eventIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itesttrapi${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
 async function makeRoom(overrides: { monitoringSuspended?: boolean } = {}) {
+  // hostTiktokUid は @unique。room ごとに別の値でないと2部屋目の作成が落ちる。
+  const handle = tiktokHandle("r");
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: tiktokId("r"), monitoringSuspended: overrides.monitoringSuspended ?? false },
+    data: {
+      tiktokHandle: handle,
+      hostTiktokUid: makeTiktokUid(handle),
+      monitoringSuspended: overrides.monitoringSuspended ?? false,
+    },
     select: { id: true },
   });
   roomIds.push(room.id);
@@ -33,12 +40,12 @@ async function makeRoom(overrides: { monitoringSuspended?: boolean } = {}) {
 
 async function makeUnfinalizedEventRoom() {
   const room = await makeRoom();
-  const id = tiktokId("evt");
+  const id = tiktokHandle("evt");
   const event = await prisma.event.create({
     data: {
       slug: `itest-tr-api-event-${Date.now()}${Math.random().toString(36).slice(2, 8)}`,
       title: "itest event",
-      ownerUserId: "itest-owner",
+      ownerPrincipalId: "itest-owner",
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -50,7 +57,13 @@ async function makeUnfinalizedEventRoom() {
   });
   eventIds.push(event.id);
   await prisma.eventParticipant.create({
-    data: { eventId: event.id, tiktokId: id, roomId: room.id, displayName: id },
+    data: {
+      eventId: event.id,
+      tiktokUid: makeTiktokUid(id),
+      tiktokHandle: id,
+      roomId: room.id,
+      displayName: id,
+    },
   });
   return room;
 }
@@ -279,8 +292,9 @@ describe("PATCH /api/admin/tiktok-rooms", () => {
 
   it("再度toggle_special_watchを実行すると特別監視がOFFに戻る", async () => {
     auth.email = ADMIN_EMAIL;
+    const handle = tiktokHandle("r");
     const room = await prisma.tiktokRoom.create({
-      data: { tiktokId: tiktokId("r"), specialWatch: true },
+      data: { tiktokHandle: handle, hostTiktokUid: makeTiktokUid(handle), specialWatch: true },
       select: { id: true },
     });
     roomIds.push(room.id);
@@ -301,8 +315,14 @@ describe("PATCH /api/admin/tiktok-rooms", () => {
 
   it("特別監視OFF操作は一時停止中でも一時停止状態を変更しない", async () => {
     auth.email = ADMIN_EMAIL;
+    const handle = tiktokHandle("r");
     const room = await prisma.tiktokRoom.create({
-      data: { tiktokId: tiktokId("r"), specialWatch: true, monitoringSuspended: true },
+      data: {
+        tiktokHandle: handle,
+        hostTiktokUid: makeTiktokUid(handle),
+        specialWatch: true,
+        monitoringSuspended: true,
+      },
       select: { id: true },
     });
     roomIds.push(room.id);

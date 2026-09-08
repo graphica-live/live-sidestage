@@ -5,14 +5,15 @@
 // - loadBattleRangesByRoom が検知区間ではなく開催日程まるごとを返すようになる
 // - reopen / void を通ると自動的に消える
 import { describe, it, expect, afterAll, vi } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { loadBattleRangesByRoom } from "@/event/battles";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 // next-auth をモックしてから読む(authz.ts が import 時に束縛するため)。
@@ -29,13 +30,13 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
@@ -51,7 +52,7 @@ async function newTournamentWithMatch(params: {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} トーナメント`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -63,15 +64,18 @@ async function newTournamentWithMatch(params: {
   });
   createdEventIds.push(event.id);
 
-  const roomA = await createRoom(`${PREFIX}_a_${uniqueSuffix()}`);
-  const roomB = await createRoom(`${PREFIX}_b_${uniqueSuffix()}`);
+  // 参加者の tiktokUid は、その参加者が出場する room の hostTiktokUid と揃える。
+  const handleA = `${PREFIX}_a_${uniqueSuffix()}`;
+  const handleB = `${PREFIX}_b_${uniqueSuffix()}`;
+  const roomA = await createRoom(handleA);
+  const roomB = await createRoom(handleB);
   const [a, b] = await Promise.all([
     prisma.eventParticipant.create({
-      data: { eventId: event.id, tiktokId: `${PREFIX}_a_${uniqueSuffix()}`, roomId: roomA, displayName: "A" },
+      data: { eventId: event.id, tiktokUid: makeTiktokUid(handleA), tiktokHandle: handleA, roomId: roomA, displayName: "A" },
       select: { id: true },
     }),
     prisma.eventParticipant.create({
-      data: { eventId: event.id, tiktokId: `${PREFIX}_b_${uniqueSuffix()}`, roomId: roomB, displayName: "B" },
+      data: { eventId: event.id, tiktokUid: makeTiktokUid(handleB), tiktokHandle: handleB, roomId: roomB, displayName: "B" },
       select: { id: true },
     }),
   ]);
@@ -119,7 +123,7 @@ afterAll(async () => {
 
 describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   it("FINISHED の対戦で有効にすると、開催日程まるごとが集計区間になる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId, roomA, roomB } = await newTournamentWithMatch({
       status: "FINISHED",
       winnerDecidedBy: "MANUAL",
@@ -141,7 +145,7 @@ describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   });
 
   it("FINISHED 以外の対戦には設定できない", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newTournamentWithMatch({ status: "NEEDS_REVIEW" });
 
     const res = await send(eventId, matchId, { action: "forceFullPeriod", enabled: true });
@@ -149,7 +153,7 @@ describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   });
 
   it("不戦勝の対戦には設定できない", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newTournamentWithMatch({
       status: "FINISHED",
       winnerDecidedBy: "BYE",
@@ -161,7 +165,7 @@ describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   });
 
   it("enabled を真偽値以外で送ると拒否する", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newTournamentWithMatch({
       status: "FINISHED",
       winnerDecidedBy: "MANUAL",
@@ -172,7 +176,7 @@ describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   });
 
   it("検知をやり直す(reopen)とフラグが消える", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newTournamentWithMatch({
       status: "FINISHED",
       winnerDecidedBy: "MANUAL",
@@ -187,7 +191,7 @@ describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   });
 
   it("無効にする(void)とフラグが消える", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newTournamentWithMatch({
       status: "FINISHED",
       winnerDecidedBy: "MANUAL",
@@ -202,7 +206,7 @@ describe("⚠️トラブル対処フラグ(forceFullPeriod)", () => {
   });
 
   it("再度 enabled: false を送ると解除できる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newTournamentWithMatch({
       status: "FINISHED",
       winnerDecidedBy: "MANUAL",

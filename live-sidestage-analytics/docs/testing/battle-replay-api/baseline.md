@@ -6,6 +6,11 @@ last_reviewers: [deepseek-v4-flash, fable]
 
 # バトル再生API
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 対象: `src/lib/battle-replay-contract.ts`, `src/lib/battle-replay.ts`
 (`isReplayable` / `buildPayload` / `ensureShareToken` / `queryBattleReplay` / `queryBattleReplayByShareToken`),
 `src/app/api/analytics/battles/[battleId]/replay/`, `src/app/api/admin/rooms/[roomId]/analytics/battles/[battleId]/replay/`,

@@ -9,17 +9,26 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "./prisma";
 import { reassignRoomWorker, fetchManualReassignAuditLog } from "./worker-status";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const roomIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestrw${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
 async function makeRoom(workerId: number | null, consecutiveBlockedCount = 0) {
+  const handle = tiktokHandle("r");
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: tiktokId("r"), monitoringSuspended: true, workerId, consecutiveBlockedCount },
-    select: { id: true, tiktokId: true },
+    data: {
+      tiktokHandle: handle,
+      // @unique(NOT NULL)。部屋ごとに一意な数値文字列にする。
+      hostTiktokUid: makeTiktokUid(handle),
+      monitoringSuspended: true,
+      workerId,
+      consecutiveBlockedCount,
+    },
+    select: { id: true, tiktokHandle: true },
   });
   roomIds.push(room.id);
   return room;
@@ -35,7 +44,7 @@ describe("reassignRoomWorker", () => {
 
     const result = await reassignRoomWorker(room.id, 1, 3, 0, "admin@example.com");
 
-    expect(result).toEqual({ status: "ok", roomId: room.id, tiktokId: room.tiktokId, fromWorker: 0 });
+    expect(result).toEqual({ status: "ok", roomId: room.id, tiktokHandle: room.tiktokHandle, fromWorker: 0 });
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.workerId).toBe(1);
     expect(after.consecutiveBlockedCount).toBe(0);
@@ -56,7 +65,7 @@ describe("reassignRoomWorker", () => {
 
     const result = await reassignRoomWorker(room.id, 2, 3, null, "admin@example.com");
 
-    expect(result).toEqual({ status: "ok", roomId: room.id, tiktokId: room.tiktokId, fromWorker: null });
+    expect(result).toEqual({ status: "ok", roomId: room.id, tiktokHandle: room.tiktokHandle, fromWorker: null });
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(after.workerId).toBe(2);
   });

@@ -18,4 +18,7 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-shared-tiktok-room.ts && npx tsx scripts/migrate-match-session.ts && npx prisma db push --accept-data-loss && npx tsx scripts/migrate-match-battle-candidates.ts && node server.js"]
+# migrate-shared-tiktok-room.ts は削除した。2026-08-15 以前の DB 形(Streamer.tiktokId /
+# gifts.streamerId)を対象にした一度きりの移行で、識別子統一の reset が全テーブルを
+# TRUNCATE する以上、対象は永久に0件になる。
+CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-match-session.ts && npx tsx scripts/migrate-tiktok-userid-reset.ts && npx prisma db push --accept-data-loss && npx tsx scripts/migrate-match-battle-candidates.ts && node server.js"]

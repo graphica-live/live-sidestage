@@ -175,7 +175,7 @@ function ContributionSlot({ slot }: { slot: BattleContributionSlot }) {
       ) : (
         <ul className="mt-1 space-y-1">
           {slot.listeners.map((l) => (
-            <li key={l.uniqueId} className="flex items-center gap-2 text-xs text-muted">
+            <li key={l.tiktokHandle} className="flex items-center gap-2 text-xs text-muted">
               {l.profileImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img

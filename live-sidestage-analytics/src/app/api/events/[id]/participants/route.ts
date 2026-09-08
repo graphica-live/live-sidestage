@@ -10,19 +10,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const body = (await req.json().catch(() => null)) as {
-    tiktokId?: string;
+    tiktokHandle?: string;
     displayName?: string | null;
     teamId?: string | null;
   } | null;
 
-  if (!body?.tiktokId) {
+  if (!body?.tiktokHandle) {
     return NextResponse.json({ error: "TikTok ID を入力すること。" }, { status: 400 });
   }
 
   try {
     const result = await registerParticipant({
       eventId: params.id,
-      rawTiktokId: body.tiktokId,
+      rawTiktokHandle: body.tiktokHandle,
       displayName: body.displayName ?? null,
       teamId: body.teamId ?? null,
     });

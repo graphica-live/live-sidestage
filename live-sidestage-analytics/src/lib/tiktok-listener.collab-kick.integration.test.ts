@@ -6,6 +6,7 @@ import { describe, it, expect, afterAll, vi, beforeEach } from "vitest";
 import { prisma } from "./prisma";
 import { startListener, stopListener, getListenerStatus, ensureAllListenersAlive } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 // vi.mockのfactoryはファイル先頭へホイストされるため、参照するオブジェクトは
 // vi.hoisted()で明示的にホイストしておく必要がある。tiktok-listener.room.integration.test.ts
@@ -17,8 +18,22 @@ const { MockConnection } = vi.hoisted(() => {
     clientParams: Record<string, string> = {};
     connectCalls = 0;
     disconnectCalls = 0;
+    // ハンドル → tiktokUid の導出。テストファイル側で makeTiktokUid を代入する
+    // (vi.hoisted の中では import できないため)。
+    static uidFor: (tiktokHandle: string) => string = () => "0";
+    // 接続前の hostTiktokUid 照合(precheckApiLive)が読む。既定は「オンライン かつ
+    // room の hostTiktokUid と一致する配信者」。
+    webClient = {
+      fetchRoomInfoFromApiLive: vi.fn(async () => ({
+        // createConnection() は `@` 付きで渡してくるので、uid 導出前に剥がす。
+        data: {
+          liveRoom: { status: 2 },
+          user: { id: MockConnection.uidFor(this.tiktokHandle.replace(/^@/, "")) },
+        },
+      })),
+    };
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -44,9 +59,11 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
+MockConnection.uidFor = makeTiktokUid;
+
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
@@ -56,18 +73,37 @@ vi.mock("./overlay", () => ({
   emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
 }));
 
-async function createStreamer(tiktokId: string, emailPrefix: string) {
+// room の同一性は hostTiktokUid。テストは配信者をハンドルで書いているので、
+// ハンドルから決定的に uid を導いて「別ハンドル = 別配信者 = 別 room」を保つ。
+const uidOf = (tiktokHandle: string) => makeTiktokUid(tiktokHandle);
+
+/** 指定ハンドルの room を uid で引く(tiktokHandle には unique が無いので where には使えない)。 */
+function findRoomByHandle(tiktokHandle: string) {
+  return prisma.tiktokRoom.findUnique({ where: { hostTiktokUid: uidOf(tiktokHandle) } });
+}
+
+function findRoomByHandleOrThrow(tiktokHandle: string) {
+  return prisma.tiktokRoom.findUniqueOrThrow({ where: { hostTiktokUid: uidOf(tiktokHandle) } });
+}
+
+async function createStreamer(tiktokHandle: string, emailPrefix: string) {
   const user = await prisma.user.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return prisma.streamer.create({
-    data: { userId: user.id, tiktokId, verificationCode: "x", verified: true },
+    data: {
+      principalId: user.id,
+      tiktokUid: uidOf(tiktokHandle),
+      tiktokHandle,
+      verificationCode: "x",
+      verified: true,
+    },
   });
 }
 
 async function cleanupStreamer(streamerId: string) {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
-  if (streamer) await prisma.user.delete({ where: { id: streamer.userId } });
+  if (streamer) await prisma.user.delete({ where: { id: streamer.principalId } });
 }
 
 async function cleanupRoom(roomId: string) {
@@ -93,9 +129,10 @@ function groupChangePayload(
     businessContent: {
       cohostContent: {
         listChangeBizContent: {
+          // userInfos のキーは TikTok の不変な数値ID(tiktokUid)。
           userInfos: {
-            "1": { displayId: ownDisplayId, nickname: "own" },
-            "2": { displayId: partnerDisplayId, nickname: "partner" },
+            [uidOf(ownDisplayId)]: { displayId: ownDisplayId, nickname: "own" },
+            [uidOf(partnerDisplayId)]: { displayId: partnerDisplayId, nickname: "partner" },
           },
         },
       },
@@ -107,9 +144,10 @@ function battleOpenPayload(battleId: string, ownDisplayId: string, partnerDispla
   return {
     battleId,
     action: 4, // BATTLE_ACTION.OPEN
+    // TikTok の生 payload のキーは userId(sidestage の principalId ではない)。
     anchorInfo: [
-      { user: { userId: "1", displayId: ownDisplayId, nickName: "own" } },
-      { user: { userId: "2", displayId: partnerDisplayId, nickName: "partner" } },
+      { user: { userId: uidOf(ownDisplayId), displayId: ownDisplayId, nickName: "own" } },
+      { user: { userId: uidOf(partnerDisplayId), displayId: partnerDisplayId, nickName: "partner" } },
     ],
   };
 }
@@ -125,29 +163,27 @@ afterAll(async () => {
 
 describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キック", () => {
   it("新規発見のコラボ相手roomは自WORKER_INDEXで作成され、即接続される。再送では二重接続しない", async () => {
-    const ownTiktokId = `itest_collabkick_own_${Date.now()}`;
-    const partnerTiktokId = `itest_collabkick_partner_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-collabkick");
+    const ownTiktokHandle = `itest_collabkick_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_collabkick_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-collabkick");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
-    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
 
     await vi.waitFor(() => {
       expect(MockConnection.instances).toHaveLength(2); // 相手room分の接続が張られる
     });
 
-    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
-      where: { tiktokId: partnerTiktokId },
-    });
+    const partnerRoom = await findRoomByHandleOrThrow(partnerTiktokHandle);
     // テスト環境は WORKER_COUNT=1 / WORKER_INDEX=0 (.env.local.test)。
     expect(partnerRoom.workerId).toBe(Number(process.env.WORKER_INDEX));
     expect(MockConnection.instances[1].connectCalls).toBe(1);
 
     // 同一コラボ通知の再送(TikTokは短時間に何度も送りうる)。
-    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
     await new Promise((r) => setTimeout(r, 50));
     expect(MockConnection.instances).toHaveLength(2); // 増えない = 二重キックなし
 
@@ -159,20 +195,20 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
   });
 
   it("他workerが既に担当しているroomをコラボ検知しても、接続もworkerIdの上書きもしない", async () => {
-    const ownTiktokId = `itest_collabkick_own2_${Date.now()}`;
-    const otherOwnedTiktokId = `itest_collabkick_otherowned_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-collabkick-otherowned");
+    const ownTiktokHandle = `itest_collabkick_own2_${Date.now()}`;
+    const otherOwnedTiktokHandle = `itest_collabkick_otherowned_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-collabkick-otherowned");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
 
     // テスト環境はWORKER_COUNT=1/WORKER_INDEX=0。workerId=1は「別workerが担当」を模す。
     const otherRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: otherOwnedTiktokId, workerId: 1 },
+      data: { hostTiktokUid: uidOf(otherOwnedTiktokHandle), tiktokHandle: otherOwnedTiktokHandle, workerId: 1 },
     });
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
-    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, otherOwnedTiktokId));
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, otherOwnedTiktokHandle));
     await new Promise((r) => setTimeout(r, 100));
 
     expect(MockConnection.instances).toHaveLength(1); // 相手分の接続は張られない(既存room=created:false)
@@ -186,29 +222,30 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
   });
 
   it("getWorkerConfig失敗(WORKER_INDEX不正)時は、新規roomを作成しても即キックしない", async () => {
-    const ownTiktokId = `itest_collabkick_noindex_own_${Date.now()}`;
-    const partnerTiktokId = `itest_collabkick_noindex_partner_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-collabkick-noindex");
+    const ownTiktokHandle = `itest_collabkick_noindex_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_collabkick_noindex_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-collabkick-noindex");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     // ""はNumber("")===0で有効な値になってしまうため、Number.isInteger(NaN)===falseで
     // 確実に失敗する不正値を使う。
     vi.stubEnv("WORKER_INDEX", "invalid");
+    let partnerRoom: Awaited<ReturnType<typeof findRoomByHandleOrThrow>>;
     try {
-      ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
-      await new Promise((r) => setTimeout(r, 100));
+      ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
+      // **固定 sleep にしない。** 他ファイルとの並列実行でCPUが詰まると room 作成が
+      // 100ms を超え、unstubAllEnvs() 後(= WORKER_INDEX が正常値に戻った後)に
+      // 作られて workerId が入ってしまう。stub を張ったまま着弾を待つ。
+      partnerRoom = await vi.waitFor(() => findRoomByHandleOrThrow(partnerTiktokHandle));
     } finally {
       vi.unstubAllEnvs();
     }
 
     expect(MockConnection.instances).toHaveLength(1); // 即キックされない
-    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
-      where: { tiktokId: partnerTiktokId },
-    });
     expect(partnerRoom.workerId).toBeNull(); // workerId未設定で作成される(次のreconcileのhash割当待ち)
     expect(
       consoleErrorSpy.mock.calls.some((c) => String(c[0]).includes("getWorkerConfig失敗"))
@@ -222,11 +259,11 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
   });
 
   it("reconcile中(getMyRooms()スナップショット取得後)に作られたlistenerは、その周回ではteardownされず次周回で正規にteardownされる", async () => {
-    const orphanTiktokId = `itest_collabkick_orphan_${Date.now()}`;
+    const orphanTiktokHandle = `itest_collabkick_orphan_${Date.now()}`;
     // WORKER_COUNT=1/WORKER_INDEX=0のテスト環境でworkerId=1は「担当外」
     // (Streamer紐付けなし・AgencyWatchなし・monitorUntilなしでwatchedRoomFilterにも一致しない)。
     const orphanRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: orphanTiktokId, workerId: 1 },
+      data: { hostTiktokUid: uidOf(orphanTiktokHandle), tiktokHandle: orphanTiktokHandle, workerId: 1 },
     });
 
     // getMyRooms()内の最初のfindMany呼び出し(DBスナップショット取得)の最中に、
@@ -238,7 +275,7 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
       async (...args: unknown[]) => {
         if (!injected) {
           injected = true;
-          await startListener(orphanRoom.id, orphanTiktokId, []);
+          await startListener(orphanRoom.id, orphanTiktokHandle, []);
         }
         return (originalFindMany as (...args: unknown[]) => unknown)(...args);
       }
@@ -260,20 +297,22 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
 
 describe("linkLayer: コラボ発見のキックはStreamer購読または特別監視のroomに限る(2026-09-06、連鎖爆発の再発防止)", () => {
   it("subscriberIds空・specialWatch falseのroomでは、linkLayerのコラボ承諾があっても相手roomを作成しない", async () => {
-    const ownTiktokId = `itest_noguard_own_${Date.now()}`;
-    const partnerTiktokId = `itest_noguard_partner_${Date.now()}`;
+    const ownTiktokHandle = `itest_noguard_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_noguard_partner_${Date.now()}`;
     // resolveRoomForStreamerを経由せず、Streamer紐付けなしのroomを直接作る。
-    const ownRoom = await prisma.tiktokRoom.create({ data: { tiktokId: ownTiktokId } });
+    const ownRoom = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: uidOf(ownTiktokHandle), tiktokHandle: ownTiktokHandle },
+    });
 
-    await startListener(ownRoom.id, ownTiktokId, []); // subscriberIds空、specialWatch既定false
+    await startListener(ownRoom.id, ownTiktokHandle, []); // subscriberIds空、specialWatch既定false
     const ownConn = MockConnection.instances[0];
 
-    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
 
     // 発火しないことの確認は「一定時間後も存在しない」でしか確かめられないため、
     // 実処理が非同期で完走するのを待つ目的で他の副作用のない待機を挟む。
     await new Promise((resolve) => setTimeout(resolve, 200));
-    const partnerRoom = await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } });
+    const partnerRoom = await findRoomByHandle(partnerTiktokHandle);
     expect(partnerRoom).toBeNull();
 
     await stopListener(ownRoom.id);
@@ -281,25 +320,23 @@ describe("linkLayer: コラボ発見のキックはStreamer購読または特別
   });
 
   it("specialWatch trueのroomなら、subscriberIds空でもlinkLayerのコラボ承諾で相手roomを作成する", async () => {
-    const ownTiktokId = `itest_specialwatch_own_${Date.now()}`;
-    const partnerTiktokId = `itest_specialwatch_partner_${Date.now()}`;
+    const ownTiktokHandle = `itest_specialwatch_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_specialwatch_partner_${Date.now()}`;
     const ownRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: ownTiktokId, specialWatch: true },
+      data: { hostTiktokUid: uidOf(ownTiktokHandle), tiktokHandle: ownTiktokHandle, specialWatch: true },
     });
 
-    await startListener(ownRoom.id, ownTiktokId, [], true); // subscriberIds空、specialWatch true
+    await startListener(ownRoom.id, ownTiktokHandle, [], true); // subscriberIds空、specialWatch true
     const ownConn = MockConnection.instances[0];
 
-    ownConn.fire("linkLayer", groupChangePayload(ownTiktokId, partnerTiktokId));
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
 
     await vi.waitFor(async () => {
-      const partnerRoom = await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } });
+      const partnerRoom = await findRoomByHandle(partnerTiktokHandle);
       expect(partnerRoom).not.toBeNull();
     });
 
-    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
-      where: { tiktokId: partnerTiktokId },
-    });
+    const partnerRoom = await findRoomByHandleOrThrow(partnerTiktokHandle);
     expect(partnerRoom.watchSource).toBe("collab");
 
     await stopListener(ownRoom.id);
@@ -311,17 +348,17 @@ describe("linkLayer: コラボ発見のキックはStreamer購読または特別
 
 describe("linkLayer: 待機者(status:1)の有無で採用可否を切り替える(2026-09-07)", () => {
   it("待機者が居る招待送信イベントでは相手roomを作成しない", async () => {
-    const ownTiktokId = `itest_waiting_own_${Date.now()}`;
-    const partnerTiktokId = `itest_waiting_partner_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-waiting");
+    const ownTiktokHandle = `itest_waiting_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_waiting_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-waiting");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
     ownConn.fire(
       "linkLayer",
-      groupChangePayload(ownTiktokId, partnerTiktokId, {
+      groupChangePayload(ownTiktokHandle, partnerTiktokHandle, {
         source: "SOURCE_TYPE_RECOMMEND_LIST",
         statuses: [3, 1],
       })
@@ -330,7 +367,7 @@ describe("linkLayer: 待機者(status:1)の有無で採用可否を切り替え�
     // 作成されないことは「一定時間観測し続けて現れない」でしか確かめられない。固定待ちだと
     // 遅いCIで作成が待ち時間の後ろへずれた場合に見逃すため、pollで繰り返し確認する。
     await expect
-      .poll(async () => prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } }), {
+      .poll(async () => findRoomByHandle(partnerTiktokHandle), {
         timeout: 2000,
         interval: 50,
       })
@@ -342,25 +379,23 @@ describe("linkLayer: 待機者(status:1)の有無で採用可否を切り替え�
   });
 
   it("待機者0なら承諾以外のsource(live_end)でも相手roomをcollabとして作成する", async () => {
-    const ownTiktokId = `itest_nowaiting_own_${Date.now()}`;
-    const partnerTiktokId = `itest_nowaiting_partner_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-nowaiting");
+    const ownTiktokHandle = `itest_nowaiting_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_nowaiting_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-nowaiting");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
     ownConn.fire(
       "linkLayer",
-      groupChangePayload(ownTiktokId, partnerTiktokId, { source: "live_end", statuses: [3, 3] })
+      groupChangePayload(ownTiktokHandle, partnerTiktokHandle, { source: "live_end", statuses: [3, 3] })
     );
 
     await vi.waitFor(async () => {
-      expect(await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } })).not.toBeNull();
+      expect(await findRoomByHandle(partnerTiktokHandle)).not.toBeNull();
     });
-    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
-      where: { tiktokId: partnerTiktokId },
-    });
+    const partnerRoom = await findRoomByHandleOrThrow(partnerTiktokHandle);
     expect(partnerRoom.watchSource).toBe("collab");
 
     await stopListener(ownRoomId);
@@ -373,24 +408,22 @@ describe("linkLayer: 待機者(status:1)の有無で採用可否を切り替え�
 
 describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める補助トリガー", () => {
   it("相手roomが未監視ならbattle_start経由で作成し、opponentWatchへ記録する", async () => {
-    const ownTiktokId = `itest_battlewatch_own_${Date.now()}`;
-    const partnerTiktokId = `itest_battlewatch_partner_${Date.now()}`;
+    const ownTiktokHandle = `itest_battlewatch_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_battlewatch_partner_${Date.now()}`;
     const battleId = `itest_battle_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-battlewatch");
+    const streamer = await createStreamer(ownTiktokHandle, "itest-battlewatch");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
-    ownConn.fire("linkMicBattle", battleOpenPayload(battleId, ownTiktokId, partnerTiktokId));
+    ownConn.fire("linkMicBattle", battleOpenPayload(battleId, ownTiktokHandle, partnerTiktokHandle));
 
     await vi.waitFor(async () => {
-      const partnerRoom = await prisma.tiktokRoom.findUnique({ where: { tiktokId: partnerTiktokId } });
+      const partnerRoom = await findRoomByHandle(partnerTiktokHandle);
       expect(partnerRoom).not.toBeNull();
     });
-    const partnerRoom = await prisma.tiktokRoom.findUniqueOrThrow({
-      where: { tiktokId: partnerTiktokId },
-    });
+    const partnerRoom = await findRoomByHandleOrThrow(partnerTiktokHandle);
     expect(partnerRoom.watchSource).toBe("battle_start");
 
     await vi.waitFor(async () => {
@@ -398,7 +431,7 @@ describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める�
         where: { roomId_battleId: { roomId: ownRoomId, battleId } },
       });
       const opponentWatch = battle.opponentWatch as Record<string, { source: string }>;
-      expect(opponentWatch["2"]?.source).toBe("battle_start");
+      expect(opponentWatch[uidOf(partnerTiktokHandle)]?.source).toBe("battle_start");
     });
 
     await stopListener(ownRoomId);
@@ -409,19 +442,19 @@ describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める�
   });
 
   it("相手roomが既にcollab経由で監視中なら、watchSourceを上書きせずopponentWatchへcollabと記録する", async () => {
-    const ownTiktokId = `itest_battlewatch_kept_own_${Date.now()}`;
-    const partnerTiktokId = `itest_battlewatch_kept_partner_${Date.now()}`;
+    const ownTiktokHandle = `itest_battlewatch_kept_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_battlewatch_kept_partner_${Date.now()}`;
     const battleId = `itest_battle_kept_${Date.now()}`;
-    const streamer = await createStreamer(ownTiktokId, "itest-battlewatch-kept");
+    const streamer = await createStreamer(ownTiktokHandle, "itest-battlewatch-kept");
     const ownRoomId = await resolveRoomForStreamer(streamer.id);
     const partnerRoom = await prisma.tiktokRoom.create({
-      data: { tiktokId: partnerTiktokId, watchSource: "collab" },
+      data: { hostTiktokUid: uidOf(partnerTiktokHandle), tiktokHandle: partnerTiktokHandle, watchSource: "collab" },
     });
 
-    await startListener(ownRoomId, ownTiktokId, [streamer.id]);
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
     const ownConn = MockConnection.instances[0];
 
-    ownConn.fire("linkMicBattle", battleOpenPayload(battleId, ownTiktokId, partnerTiktokId));
+    ownConn.fire("linkMicBattle", battleOpenPayload(battleId, ownTiktokHandle, partnerTiktokHandle));
 
     await vi.waitFor(async () => {
       const battle = await prisma.tiktokBattle.findUnique({
@@ -429,7 +462,7 @@ describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める�
       });
       expect(battle).not.toBeNull();
       const opponentWatch = battle!.opponentWatch as Record<string, { source: string }>;
-      expect(opponentWatch["2"]?.source).toBe("collab");
+      expect(opponentWatch[uidOf(partnerTiktokHandle)]?.source).toBe("collab");
     });
 
     const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: partnerRoom.id } });

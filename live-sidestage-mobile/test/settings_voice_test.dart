@@ -73,7 +73,7 @@ void main() {
             body: SettingsTab(
               speech: const SpeechState(),
               busy: busy,
-              onChangeTiktokId: () async {},
+              onChangeTiktokHandle: () async {},
               onBeforeLogout: () async {},
             ),
           ),

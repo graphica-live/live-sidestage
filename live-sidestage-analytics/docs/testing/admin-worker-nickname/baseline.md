@@ -8,6 +8,11 @@ last_reviewers: Qwen(Design Mode)、Qwen(Code Mode)、Qwen(TestCase Mode) ※Cod
 
 # テストベースライン: admin-worker-nickname
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `/admin/workers`（Worker稼働状況）でtiktokId併記のTikTokプロフィール名(nickname)を表示し、nickname/tiktokIdクリックでそのroomIdのanalytics内容（ランキング・履歴・バトル）をadmin専用の新規タブ（`/admin/rooms/[roomId]`）で見られるようにする機能。`TiktokRoom.nickname`列、配信接続時(初回connected)の自動更新、既存分バックフィルスクリプト、admin専用analytics画面・APIを対象とする。
 
 ## テストケース

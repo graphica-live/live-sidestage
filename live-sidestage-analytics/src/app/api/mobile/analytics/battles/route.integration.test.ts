@@ -1,10 +1,11 @@
 ﻿// ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
-// hostUserId を事前にseedしておき、backfillHostUserIds()(外部TikTok問い合わせ)を
+// hostTiktokUid を事前にseedしておき、backfillHostTiktokUids()(外部TikTok問い合わせ)を
 // 実際には発火させない状態でテストする。
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { BATTLE_ACTION } from "@/lib/tiktok-battle";
 import { setSetting } from "@/lib/settings";
 import { betaSettingKey } from "@/lib/plan/beta-settings";
@@ -12,13 +13,17 @@ import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_battles";
 
-let userId: string;
+let principalId: string;
 let roomId: string;
-let noRoomUserId: string;
-let freeUserId: string;
+let noRoomPrincipalId: string;
+let freePrincipalId: string;
 let token: string;
 let noRoomToken: string;
 let freeToken: string;
+
+// TiktokRoom.hostTiktokUid は @unique。テストファイルは並列実行されるので値をファイル固有にする。
+const HOST_UID = makeTiktokUid("itest_mobile_battles_host");
+const LISTENER_UID = makeTiktokUid("itest_mobile_battles_taro");
 
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-battles-secret";
 
@@ -29,26 +34,33 @@ beforeAll(async () => {
   // analytics領域のβでバイパスされる設計のため、mobileではなくanalyticsを明示的にfalseへ倒す。
   await setSetting(betaSettingKey("analytics"), "false");
 
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID, hostUserId: "itest_host_self" } });
+  const room = await prisma.tiktokRoom.create({ data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: HOST_UID } });
   roomId = room.id;
 
   const user = await prisma.user.create({ data: { email: `itest-mobile-battles-${Date.now()}@local.test` } });
-  userId = user.id;
+  principalId = user.id;
   await prisma.streamer.create({
-    data: { userId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId,
+      tiktokUid: HOST_UID,
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
-  token = signMobileToken({ userId });
+  token = signMobileToken({ principalId });
 
   const noRoom = await prisma.user.create({ data: { email: `itest-mobile-battles-noroom-${Date.now()}@local.test` } });
-  noRoomUserId = noRoom.id;
-  noRoomToken = signMobileToken({ userId: noRoomUserId });
+  noRoomPrincipalId = noRoom.id;
+  noRoomToken = signMobileToken({ principalId: noRoomPrincipalId });
 
   // custom range / listenerQuery はPRO限定機能(requireHistoryPlan)なので、
   // FREEのままだと既存のcustom range系テストが403で落ちる。このファイルの主目的は
-  // バトル区間の集計ロジックの検証であってプラン判定の検証ではないため、mainのuserIdはPRO扱いにする。
+  // バトル区間の集計ロジックの検証であってプラン判定の検証ではないため、mainのprincipalIdはPRO扱いにする。
   await prisma.subscription.create({
     data: {
-      userId,
+      principalId,
       plan: "PRO",
       entitlementActive: true,
       currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -64,27 +76,35 @@ beforeAll(async () => {
       startedAtEstimated: false,
       endedAt: new Date("2026-08-24T10:05:00Z"),
       durationSec: 300,
-      hostUserIds: ["itest_host_self"],
-      hostScores: { itest_host_self: "100" },
+      hostTiktokUids: [HOST_UID],
+      hostScores: { [HOST_UID]: "100" },
     },
   });
 
   // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
   // Subscription無し(=FREE)のユーザー。
   const freeUser = await prisma.user.create({ data: { email: `itest-mobile-battles-free-${Date.now()}@local.test` } });
-  freeUserId = freeUser.id;
+  freePrincipalId = freeUser.id;
   await prisma.streamer.create({
-    data: { userId: freeUserId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId: freePrincipalId,
+      tiktokUid: HOST_UID,
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
-  freeToken = signMobileToken({ userId: freeUserId });
+  freeToken = signMobileToken({ principalId: freePrincipalId });
 });
 
 afterAll(async () => {
-  await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: freeUserId } }).catch(() => {});
+  await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: freePrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> TiktokBattle
+  await prisma.tikTokUser.deleteMany({ where: { tiktokUid: LISTENER_UID } }).catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -197,8 +217,8 @@ describe("GET /api/mobile/analytics/battles", () => {
           startedAtEstimated: false,
           endedAt: new Date("2026-08-26T12:05:00Z"),
           durationSec: 300,
-          hostUserIds: ["itest_host_self"],
-          hostScores: { itest_host_self: "50" },
+          hostTiktokUids: [HOST_UID],
+          hostScores: { [HOST_UID]: "50" },
         },
       });
 
@@ -226,11 +246,15 @@ describe("GET /api/mobile/analytics/battles", () => {
 
   describe("listenerQuery", () => {
     it("バトル区間中にそのリスナーが貢献したバトルだけに絞り込む", async () => {
+      await prisma.tikTokUser.upsert({
+        where: { tiktokUid: LISTENER_UID },
+        create: { tiktokUid: LISTENER_UID, tiktokHandle: "Taro_Listener", nickname: "たろう" },
+        update: { tiktokHandle: "Taro_Listener", nickname: "たろう" },
+      });
       await prisma.gift.create({
         data: {
           roomId,
-          uniqueId: "Taro_Listener",
-          nickname: "たろう",
+          tiktokUid: LISTENER_UID,
           giftId: 1,
           giftName: "Rose",
           repeatCount: 1,

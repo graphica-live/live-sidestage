@@ -16,7 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: { battleId: s
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
     select: { roomId: true },
   });
 

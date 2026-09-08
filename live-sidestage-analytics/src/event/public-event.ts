@@ -5,6 +5,8 @@ import { parseBreakdown, type ContributionBreakdownDto } from "./contribution-br
 import { rankByLife } from "./deathmatch";
 import { parsePlacement, parseWinnerFeeders } from "./match-status";
 import { feederFlowEdges } from "./winner-feeders";
+import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
+import { resolveAvatarUrls } from "@/lib/avatar-storage";
 
 // 公開ページ(認証なし)が読むデータをここにまとめる。
 // BigInt と Decimal はそのままだと JSON にできず、クライアントコンポーネントへも渡せないので、
@@ -14,10 +16,10 @@ import { feederFlowEdges } from "./winner-feeders";
  * 公開してよいイベントか。
  *
  * PRIVATE はオーナー以外の誰にも見せない(下書き概念はここに統合されている)。
- * `viewerUserId` はログイン中のユーザーID(未ログインなら undefined)。呼び出し側は
+ * `viewerPrincipalId` はログイン中のユーザーID(未ログインなら undefined)。呼び出し側は
  * `getServerSession(authOptions)` で取った `session?.user?.id` をそのまま渡すこと。
  */
-export async function findPublicEvent(slug: string, viewerUserId?: string) {
+export async function findPublicEvent(slug: string, viewerPrincipalId?: string) {
   const event = await prisma.event.findUnique({
     where: { slug },
     select: {
@@ -30,7 +32,7 @@ export async function findPublicEvent(slug: string, viewerUserId?: string) {
       teamPreset: true,
       status: true,
       visibility: true,
-      ownerUserId: true,
+      ownerPrincipalId: true,
       startAt: true,
       endAt: true,
       lastAggregatedAt: true,
@@ -53,7 +55,7 @@ export async function findPublicEvent(slug: string, viewerUserId?: string) {
   });
 
   if (!event) return null;
-  if (event.visibility === "PRIVATE" && event.ownerUserId !== viewerUserId) return null;
+  if (event.visibility === "PRIVATE" && event.ownerPrincipalId !== viewerPrincipalId) return null;
   return event;
 }
 
@@ -67,17 +69,17 @@ export async function findPublicEvent(slug: string, viewerUserId?: string) {
  * `visibility` も返すのは、呼び出し側がオーナー限定の応答をキャッシュしないようにするため
  * (PUBLIC のときだけ共有キャッシュを許してよい)。
  */
-export async function findPublicParticipantTiktokId(
+export async function findPublicParticipantTiktokUid(
   participantId: string,
-  viewerUserId?: string
-): Promise<{ tiktokId: string; visibility: string } | null> {
+  viewerPrincipalId?: string
+): Promise<{ tiktokUid: string; visibility: string } | null> {
   const row = await prisma.eventParticipant.findFirst({
     where: { id: participantId },
-    select: { tiktokId: true, event: { select: { visibility: true, ownerUserId: true } } },
+    select: { tiktokUid: true, event: { select: { visibility: true, ownerPrincipalId: true } } },
   });
   if (!row) return null;
-  if (row.event.visibility === "PRIVATE" && row.event.ownerUserId !== viewerUserId) return null;
-  return { tiktokId: row.tiktokId, visibility: row.event.visibility };
+  if (row.event.visibility === "PRIVATE" && row.event.ownerPrincipalId !== viewerPrincipalId) return null;
+  return { tiktokUid: row.tiktokUid, visibility: row.event.visibility };
 }
 
 export type { ContributionBreakdownDto };
@@ -85,7 +87,7 @@ export type { ContributionBreakdownDto };
 export type StandingDto = {
   subjectId: string;
   name: string;
-  /** 参加者なら @tiktokId、チームなら所属人数の表示 */
+  /** 参加者なら @tiktokHandle、チームなら所属人数の表示 */
   sub: string | null;
   colorHex: string | null;
   rank: number;
@@ -94,8 +96,11 @@ export type StandingDto = {
 };
 
 export type ContributionDto = {
-  listenerUniqueId: string;
-  nickname: string;
+  /** 同一性キー。React key とプロフィール導線の出し分けはこれで判定する。 */
+  listenerTiktokUid: string;
+  /** 表示用。TikTokUser 行が無ければ null(@表示はガードする)。 */
+  listenerTiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   diamonds: string;
   points: string;
@@ -371,7 +376,7 @@ export type LifeStandingDto = StandingDto & {
 export type RosterParticipantDto = {
   id: string;
   displayName: string;
-  tiktokId: string;
+  tiktokHandle: string;
   teamId: string | null;
 };
 
@@ -408,9 +413,8 @@ export type EventSnapshot = {
  */
 function toContributionDto(
   row: {
-    listenerUniqueId: string;
-    nickname: string;
-    profileImageUrl: string | null;
+    listenerTiktokUid: string;
+    listenerTiktokHandle: string | null;
     diamonds: bigint;
     points: unknown;
     giftCount: number;
@@ -418,12 +422,16 @@ function toContributionDto(
     participantCount: number;
     breakdown: unknown;
   },
-  participantNameById: Map<string, string>
+  participantNameById: Map<string, string>,
+  display: Map<string, { tiktokHandle: string | null; nickname: string | null }>,
+  avatars: Map<string, string>
 ): ContributionDto {
+  const seen = display.get(row.listenerTiktokUid);
   return {
-    listenerUniqueId: row.listenerUniqueId,
-    nickname: row.nickname,
-    profileImageUrl: row.profileImageUrl,
+    listenerTiktokUid: row.listenerTiktokUid,
+    listenerTiktokHandle: seen?.tiktokHandle ?? row.listenerTiktokHandle,
+    nickname: seen?.nickname ?? null,
+    profileImageUrl: avatars.get(row.listenerTiktokUid) ?? null,
     diamonds: row.diamonds.toString(),
     points: String(row.points),
     giftCount: row.giftCount,
@@ -463,7 +471,7 @@ export async function loadEventSnapshot(event: {
       }),
       prisma.eventParticipant.findMany({
         where: { eventId: event.id },
-        select: { id: true, displayName: true, tiktokId: true, teamId: true },
+        select: { id: true, displayName: true, tiktokHandle: true, teamId: true },
         orderBy: { joinedAt: "asc" },
       }),
       prisma.eventTeam.findMany({
@@ -483,6 +491,13 @@ export async function loadEventSnapshot(event: {
           })
         : Promise.resolve([]),
     ]);
+
+  // 表示名・アイコンは EventContribution ではなく tiktokUid から読み出し時に順引きする。
+  const contributionUids = contributions.map((c) => c.listenerTiktokUid);
+  const [contributionDisplay, contributionAvatars] = await Promise.all([
+    resolveTikTokUserDisplay(contributionUids),
+    resolveAvatarUrls(contributionUids),
+  ]);
 
   const participantById = new Map(participants.map((p) => [p.id, p]));
   const participantNameById = new Map(participants.map((p) => [p.id, p.displayName]));
@@ -515,7 +530,7 @@ export async function loadEventSnapshot(event: {
       {
         subjectId: s.subjectId,
         name: participant.displayName,
-        sub: `@${participant.tiktokId}`,
+        sub: `@${participant.tiktokHandle}`,
         colorHex: null,
         rank: s.rank,
         diamonds: s.diamonds.toString(),
@@ -548,11 +563,13 @@ export async function loadEventSnapshot(event: {
   return {
     standings: standingDtos,
     lives,
-    eventContributions: contributions.map((c) => toContributionDto(c, participantNameById)),
+    eventContributions: contributions.map((c) =>
+      toContributionDto(c, participantNameById, contributionDisplay, contributionAvatars)
+    ),
     participants: participants.map((p) => ({
       id: p.id,
       displayName: p.displayName,
-      tiktokId: p.tiktokId,
+      tiktokHandle: p.tiktokHandle,
       teamId: p.teamId,
     })),
     teams: teams.map((t) => ({ id: t.id, name: t.name, colorHex: t.colorHex })),
@@ -574,7 +591,12 @@ export async function loadParticipantContributions(
     where: { eventId, scope: "PARTICIPANT", scopeId: participantId },
     orderBy: [{ points: "desc" }, { diamonds: "desc" }],
   });
-  return rows.map((row) => toContributionDto(row, new Map()));
+  const uids = rows.map((r) => r.listenerTiktokUid);
+  const [display, avatars] = await Promise.all([
+    resolveTikTokUserDisplay(uids),
+    resolveAvatarUrls(uids),
+  ]);
+  return rows.map((row) => toContributionDto(row, new Map(), display, avatars));
 }
 
 /** 3桁区切り。BigInt 由来の文字列をそのまま整形する(Number へ落とさない)。 */

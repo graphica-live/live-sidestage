@@ -14,7 +14,7 @@ export async function GET() {
   const [plan, link] = await Promise.all([
     getUserPlan(session.user.id),
     prisma.stripeCustomerLink.findUnique({
-      where: { userId: session.user.id },
+      where: { principalId: session.user.id },
       select: { stripeCustomerId: true },
     }),
   ]);

@@ -11,12 +11,13 @@ import { incrementLike } from "./like-tally-store";
 
 export async function recordLike(
   roomId: string,
-  uniqueId: string,
+  tiktokUid: string,
+  tiktokHandle: string,
   nickname: string,
   profileImageUrl: string | null,
   likeCount: number
 ): Promise<{ dayKey: string; previousTotal: number; newTotal: number }> {
-  return incrementLike(roomId, uniqueId, nickname, profileImageUrl, likeCount);
+  return incrementLike(roomId, tiktokUid, tiktokHandle, nickname, profileImageUrl, likeCount);
 }
 
 /** previousTotal→newTotal の間に跨いだ interval の倍数(マイルストーン)をすべて返す。 */
@@ -37,14 +38,16 @@ export function crossedMilestones(previousTotal: number, newTotal: number, inter
 export async function applyLikeEventInProcess(input: {
   streamerIds: string[];
   roomId: string;
-  uniqueId: string;
+  tiktokUid: string;
+  tiktokHandle: string;
   nickname: string;
   profilePictureUrl: string | null;
   likeCount: number;
 }): Promise<void> {
   const { previousTotal, newTotal } = await recordLike(
     input.roomId,
-    input.uniqueId,
+    input.tiktokUid,
+    input.tiktokHandle,
     input.nickname,
     input.profilePictureUrl,
     input.likeCount
@@ -60,8 +63,8 @@ export async function applyLikeEventInProcess(input: {
     const milestones = crossedMilestones(previousTotal, newTotal, settings.interval);
     for (const milestoneCount of milestones) {
       emitLikeMilestone(streamerId, {
-        id: `${input.uniqueId}:${milestoneCount}:${newTotal}`,
-        uniqueId: input.uniqueId,
+        id: `${input.tiktokUid}:${milestoneCount}:${newTotal}`,
+        tiktokHandle: input.tiktokHandle,
         nickname: input.nickname,
         profileImageUrl: input.profilePictureUrl,
         milestoneCount,

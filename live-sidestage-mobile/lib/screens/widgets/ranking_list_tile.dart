@@ -18,8 +18,12 @@ class RankingListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ハンドルは可変で、TikTokUser 行が無ければサーバーが null を返す。
+    // uid では `https://www.tiktok.com/@...` を組み立てられないので、
+    // ハンドルが無い行はプロフィール導線そのものを出さない。
+    final handle = entry.tiktokHandle;
     return InkWell(
-      onTap: () => openTiktokProfile(context, entry.uniqueId),
+      onTap: handle == null ? null : () => openTiktokProfile(context, handle),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(

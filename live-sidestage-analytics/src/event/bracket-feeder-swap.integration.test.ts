@@ -6,6 +6,7 @@
 //
 // `vi.mock()` は足さない(`bracket-swap.integration.test.ts` と同じ理由)。
 import { describe, it, expect, afterAll } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import {
   applyBracketSwap,
@@ -40,7 +41,7 @@ async function newTournament(count: number, options: { placementDepth?: number }
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} トーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -58,7 +59,8 @@ async function newTournament(count: number, options: { placementDepth?: number }
     const created = await prisma.eventParticipant.create({
       data: {
         eventId: event.id,
-        tiktokId: `${PREFIX}_p${i}_${suffix}`,
+        tiktokUid: makeTiktokUid(`${PREFIX}_p${i}_${suffix}`),
+        tiktokHandle: `${PREFIX}_p${i}_${suffix}`,
         roomId: `${PREFIX}_room_${i}_${suffix}`,
         displayName: `P${i}`,
       },
@@ -81,7 +83,7 @@ async function newStagedTournament(count: number) {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 段階的不戦勝トーナメント`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -100,7 +102,8 @@ async function newStagedTournament(count: number) {
     const created = await prisma.eventParticipant.create({
       data: {
         eventId: event.id,
-        tiktokId: `${PREFIX}_sp${i}_${suffix}`,
+        tiktokUid: makeTiktokUid(`${PREFIX}_sp${i}_${suffix}`),
+        tiktokHandle: `${PREFIX}_sp${i}_${suffix}`,
         roomId: `${PREFIX}_sroom_${i}_${suffix}`,
         displayName: `SP${i}`,
       },
@@ -481,7 +484,8 @@ describe("接続の交換を断る条件", () => {
     const newParticipant = await prisma.eventParticipant.create({
       data: {
         eventId,
-        tiktokId: `${PREFIX}_intruder_${uniqueSuffix()}`,
+        tiktokUid: makeTiktokUid(`${PREFIX}_intruder_${uniqueSuffix()}`),
+        tiktokHandle: `${PREFIX}_intruder_${uniqueSuffix()}`,
         roomId: `${PREFIX}_room_intruder_${uniqueSuffix()}`,
         displayName: "Intruder",
       },

@@ -63,7 +63,7 @@ export const RATIO_TOLERANCE = 0.02;
 export const ALLOWED_MULTIPLIERS = [1, 2, 3] as const;
 
 export type OpeningScorePoint = {
-  anchorId: string;
+  tiktokUid: string;
   occurredAt: Date;
   /** 累積スコア。桁が大きいので文字列で受け、内部で数値化する。 */
   score: string;
@@ -74,7 +74,7 @@ export type OpeningGift = {
   id: string;
   /** **このギフトが加算された配信者。** スコア点は anchor ごとに独立して動くので、
    * 別 anchor のギフトを他人の増分の原因として割り当ててはいけない。 */
-  anchorId: string;
+  tiktokUid: string;
   /** Gift.receivedAt(TikTok createTime 由来)。 */
   occurredAt: Date;
   totalDiamonds: number;
@@ -87,7 +87,7 @@ export type OpeningGift = {
  * スコアはギフトだけで増えないので、差し引かないと ratio がタップ点のぶん一方向に上振れする。 */
 export type OpeningTapPoint = {
   /** タップの宛先になった配信者。スコア点と同じく anchor ごとに独立している。 */
-  anchorId: string;
+  tiktokUid: string;
   /** 10タップ目の like を受信した時刻。 */
   occurredAt: Date;
   points: number;
@@ -153,13 +153,13 @@ export function inferOpeningMultiplier(input: {
   scorePoints: OpeningScorePoint[];
   gifts: OpeningGift[];
   bonusIntervals: OpeningBonusInterval[];
-  /** 記録できているタップ点。**anchor が tapTrackedAnchorIds に居るときだけ意味を持つ。** */
+  /** 記録できているタップ点。**anchor が tapTrackedTiktokUids に居るときだけ意味を持つ。** */
   tapPoints: OpeningTapPoint[];
   /** **バトル開始から取りこぼしなくタップを観測できた anchor** だけを入れる。
    * ここに居ない anchor は差し引かず、タップ計測導入前と完全に同じ判定になる(安全側)。
    * 「タップ点0件」と「未計測」を混同すると、未計測のバトルで差し引き0のまま
    * 「正しく補正した」ことになってしまう。 */
-  tapTrackedAnchorIds: Set<string>;
+  tapTrackedTiktokUids: Set<string>;
 }): OpeningMultiplierResult {
   if (!input.windowStartReliable) return UNKNOWN;
   const windowStartMs = input.windowStart.getTime();
@@ -169,9 +169,9 @@ export function inferOpeningMultiplier(input: {
   for (const point of input.scorePoints) {
     const at = point.occurredAt.getTime();
     if (at < windowStartMs || at > windowEndMs) continue;
-    const list = pointsByAnchor.get(point.anchorId);
+    const list = pointsByAnchor.get(point.tiktokUid);
     if (list) list.push(point);
-    else pointsByAnchor.set(point.anchorId, [point]);
+    else pointsByAnchor.set(point.tiktokUid, [point]);
   }
   if (pointsByAnchor.size === 0) return UNKNOWN;
 
@@ -193,10 +193,10 @@ export function inferOpeningMultiplier(input: {
 
   const candidates: Candidate[] = [];
 
-  for (const [anchorId, points] of pointsByAnchor) {
+  for (const [tiktokUid, points] of pointsByAnchor) {
     const sorted = [...points].sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
     // スコア点はこの anchor のものなので、原因になりうるのは同じ anchor 宛のギフトだけ。
-    const anchorGifts = gifts.filter((g) => g.anchorId === anchorId);
+    const anchorGifts = gifts.filter((g) => g.tiktokUid === tiktokUid);
 
     // **各ギフトは高々1つの区間へ割り当てる。** 区間を (t[i-1] - lag, t[i]] と素朴に重ねると
     // 隣接区間が lag 分だけ重なり、配送遅延が lag を超えたときに「区間内ちょうど1件」が
@@ -225,11 +225,11 @@ export function inferOpeningMultiplier(input: {
     // **タップ点もギフトと同じ規則で一意の区間へ割り当てる。** 3点は totalDiamonds=100 なら
     // 比を 0.03、200 なら 0.015 動かし、RATIO_TOLERANCE(0.02) を跨ぐ。誤配賦1件で判定が変わるので、
     // 境界に貼り付いたタップがある区間はギフトと同様に候補から外す。
-    const tapTracked = input.tapTrackedAnchorIds.has(anchorId);
+    const tapTracked = input.tapTrackedTiktokUids.has(tiktokUid);
     const tapByInterval = new Map<number, number>();
     if (tapTracked) {
       for (const tap of tapPoints) {
-        if (tap.anchorId !== anchorId) continue;
+        if (tap.tiktokUid !== tiktokUid) continue;
         const tapAt = tap.occurredAt.getTime();
         const index = sorted.findIndex((p, i) => i > 0 && p.occurredAt.getTime() >= tapAt);
         if (index <= 0) continue;

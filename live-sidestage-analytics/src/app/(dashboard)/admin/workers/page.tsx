@@ -139,14 +139,14 @@ function ReassignControl({
   );
 }
 
-// nickname併記 + roomId別analyticsへの新規タブ遷移。nicknameが無い部屋は tiktokId のみ。
+// nickname併記 + roomId別analyticsへの新規タブ遷移。nicknameが無い部屋は tiktokHandle のみ。
 function RoomLabel({
   roomId,
-  tiktokId,
+  tiktokHandle,
   nickname,
 }: {
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   nickname: string | null | undefined;
 }) {
   return (
@@ -157,7 +157,7 @@ function RoomLabel({
       className="hover:underline"
     >
       {nickname && <span className="text-strong">{nickname}</span>}{" "}
-      <span className={nickname ? "text-muted" : "text-strong"}>@{tiktokId}</span>
+      <span className={nickname ? "text-muted" : "text-strong"}>@{tiktokHandle}</span>
     </a>
   );
 }
@@ -177,7 +177,7 @@ function IssueRow({ issue }: { issue: WorkerIssue }) {
       {issue.workerIndex != null && (
         <span className="whitespace-nowrap">worker {issue.workerIndex}</span>
       )}
-      {issue.tiktokId && <span className="break-all">@{issue.tiktokId}</span>}
+      {issue.tiktokHandle && <span className="break-all">@{issue.tiktokHandle}</span>}
       <span className="min-w-0 break-words">{issue.detail}</span>
     </div>
   );
@@ -186,7 +186,7 @@ function IssueRow({ issue }: { issue: WorkerIssue }) {
 // 新しい監視対象TikTok IDを追加するフォーム。Streamer登録・AgencyWatch追加と同じ
 // fail-closedな実在確認をAPI側で通す(存在しないIDは400で拒否される)。
 function AddWatchForm({ onAdded }: { onAdded: () => void }) {
-  const [tiktokId, setTiktokId] = useState("");
+  const [tiktokHandle, setTiktokHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
@@ -194,7 +194,7 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
   const [confirming, setConfirming] = useState(false);
 
   const handleAdd = async () => {
-    const trimmed = tiktokId.trim();
+    const trimmed = tiktokHandle.trim();
     if (!trimmed) return;
     setBusy(true);
     setErr("");
@@ -203,7 +203,7 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
       const res = await fetch("/api/admin/workers/watch/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tiktokId: trimmed }),
+        body: JSON.stringify({ tiktokHandle: trimmed }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !(data as { ok?: boolean } | null)?.ok) {
@@ -211,7 +211,7 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
         return;
       }
       const preview = data as {
-        tiktokId: string;
+        tiktokHandle: string;
         nickname: string | null;
         avatarUrl: string | null;
         signature: string | null;
@@ -234,7 +234,7 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
       const res = await fetch("/api/admin/workers/watch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tiktokId: confirmPreview.tiktokId }),
+        body: JSON.stringify({ tiktokHandle: confirmPreview.tiktokHandle }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -242,8 +242,8 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
         setConfirmPreview(null);
         return;
       }
-      setDone(`@${(data as { tiktokId: string }).tiktokId} を追加しました（反映まで最大30秒）`);
-      setTiktokId("");
+      setDone(`@${(data as { tiktokHandle: string }).tiktokHandle} を追加しました（反映まで最大30秒）`);
+      setTiktokHandle("");
       setConfirmPreview(null);
       onAdded();
     } catch {
@@ -260,8 +260,8 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
       <div className="flex items-center gap-2 flex-wrap">
         <input
           type="text"
-          value={tiktokId}
-          onChange={(e) => setTiktokId(e.target.value)}
+          value={tiktokHandle}
+          onChange={(e) => setTiktokHandle(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleAdd();
           }}
@@ -271,7 +271,7 @@ function AddWatchForm({ onAdded }: { onAdded: () => void }) {
         />
         <button
           onClick={handleAdd}
-          disabled={busy || tiktokId.trim().length === 0}
+          disabled={busy || tiktokHandle.trim().length === 0}
           className="text-sm px-3 py-1 rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
         >
           {busy ? "確認中..." : "追加"}
@@ -373,12 +373,12 @@ export default function WorkersAdminPage() {
   // 遅れて届いた古いレスポンスで新しい表示を上書きしないための世代番号。
   const requestId = useRef(0);
 
-  const [sortKey, setSortKey] = useState<RoomSortKey>("tiktokId");
+  const [sortKey, setSortKey] = useState<RoomSortKey>("tiktokHandle");
   const [sortDir, setSortDir] = useState<RoomSortDir>("asc");
   // 完全削除・監視解除の二重クリック防止。実行中の roomId のみボタンを無効化する。
   const [actioningRoomId, setActioningRoomId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
-  // 監視対象一覧の自由入力フィルタ(tiktokId/プロフ名)。入力ごとに即時反映するのでdebounceしない。
+  // 監視対象一覧の自由入力フィルタ(tiktokHandle/プロフ名)。入力ごとに即時反映するのでdebounceしない。
   const [roomFilterText, setRoomFilterText] = useState("");
 
   const load = useCallback(async () => {
@@ -424,15 +424,15 @@ export default function WorkersAdminPage() {
     const q = roomFilterText.trim().toLowerCase();
     if (!q) return sortedRoomList;
     return sortedRoomList.filter(
-      (r) => r.tiktokId.toLowerCase().includes(q) || (r.nickname ?? "").toLowerCase().includes(q)
+      (r) => r.tiktokHandle.toLowerCase().includes(q) || (r.nickname ?? "").toLowerCase().includes(q)
     );
   }, [sortedRoomList, roomFilterText]);
 
   // w.listeners（ListenerSnapshot）はDBを介さないメモリ状態でnicknameを持たないため、
-  // adminRoomList から tiktokId → nickname を引けるようにしておく。
-  const nicknameByTiktokId = useMemo(() => {
+  // adminRoomList から tiktokHandle → nickname を引けるようにしておく。
+  const nicknameByTiktokHandle = useMemo(() => {
     const map = new Map<string, string | null>();
-    for (const r of report?.adminRoomList ?? []) map.set(r.tiktokId, r.nickname);
+    for (const r of report?.adminRoomList ?? []) map.set(r.tiktokHandle, r.nickname);
     return map;
   }, [report?.adminRoomList]);
 
@@ -447,7 +447,7 @@ export default function WorkersAdminPage() {
 
   const handleSuspend = useCallback(
     async (room: AssignedRoom) => {
-      const lines = [`@${room.tiktokId} の監視を一時停止しますか?`];
+      const lines = [`@${room.tiktokHandle} の監視を一時停止しますか?`];
       if (room.watchCount > 0 || room.eventMonitored) {
         lines.push("事務所監視(AgencyWatch)またはイベント監視が有効なため、接続が止まらない場合があります。");
       }
@@ -486,7 +486,7 @@ export default function WorkersAdminPage() {
 
   const handleDelete = useCallback(
     async (room: AssignedRoom) => {
-      const lines = [`@${room.tiktokId} を完全削除しますか? この操作は取り消せません。`];
+      const lines = [`@${room.tiktokHandle} を完全削除しますか? この操作は取り消せません。`];
       if (room.streamerCount > 0) {
         lines.push(
           `登録ユーザー${room.streamerCount}件はログイン・APIキーは維持されますが、この部屋との紐付け(roomId)が外れ、ギフト履歴・オーバーレイ表示は失われます。さらに、そのユーザーが次にアクセスすると同じTikTok IDの空の部屋が自動的に再作成され、監視も再開します。`
@@ -679,8 +679,8 @@ export default function WorkersAdminPage() {
                     <span className="text-sm">
                       <RoomLabel
                         roomId={l.roomId}
-                        tiktokId={l.tiktokId}
-                        nickname={nicknameByTiktokId.get(l.tiktokId)}
+                        tiktokHandle={l.tiktokHandle}
+                        nickname={nicknameByTiktokHandle.get(l.tiktokHandle)}
                       />
                     </span>
                     <span className={`text-xs ${statusColor(l.status)}`}>{l.status}</span>
@@ -714,7 +714,7 @@ export default function WorkersAdminPage() {
                   return (
                     <div key={r.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
                       <span className="text-sm">
-                        <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
+                        <RoomLabel roomId={r.roomId} tiktokHandle={r.tiktokHandle} nickname={r.nickname} />
                       </span>
                       {live ? (
                         <span className={`text-xs ${statusColor(live.status)}`}>{live.status}</span>
@@ -764,7 +764,7 @@ export default function WorkersAdminPage() {
                 </div>
                 {entry.assignments.length > 0 && (
                   <div className="mt-1 text-muted">
-                    {entry.assignments.map((a) => `@${a.tiktokId}→worker${a.toWorker}`).join(", ")}
+                    {entry.assignments.map((a) => `@${a.tiktokHandle}→worker${a.toWorker}`).join(", ")}
                   </div>
                 )}
               </div>
@@ -789,7 +789,7 @@ export default function WorkersAdminPage() {
               type="text"
               value={roomFilterText}
               onChange={(e) => setRoomFilterText(e.target.value)}
-              placeholder="tiktokId・プロフ名で絞り込み"
+              placeholder="tiktokHandle・プロフ名で絞り込み"
               className="ml-auto px-2 py-1 text-xs rounded border border-border bg-transparent text-strong placeholder:text-muted min-w-0"
             />
           </div>
@@ -797,8 +797,8 @@ export default function WorkersAdminPage() {
             <thead>
               <tr className="border-b border-border text-muted">
                 <th className="text-left px-4 py-2 font-normal">
-                  <button onClick={() => toggleSort("tiktokId")} className="hover:text-strong">
-                    tiktokId {sortKey === "tiktokId" && (sortDir === "asc" ? "▲" : "▼")}
+                  <button onClick={() => toggleSort("tiktokHandle")} className="hover:text-strong">
+                    tiktokHandle {sortKey === "tiktokHandle" && (sortDir === "asc" ? "▲" : "▼")}
                   </button>
                 </th>
                 <th className="text-left px-4 py-2 font-normal">
@@ -826,7 +826,7 @@ export default function WorkersAdminPage() {
               {filteredRoomList.map((r) => (
                 <tr key={r.roomId}>
                   <td className="px-4 py-2">
-                    <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
+                    <RoomLabel roomId={r.roomId} tiktokHandle={r.tiktokHandle} nickname={r.nickname} />
                   </td>
                   <td className="px-4 py-2 text-muted">
                     {formatDuration(ageMs(r.listenerUpdatedAt, nowMs))}前
@@ -887,7 +887,7 @@ export default function WorkersAdminPage() {
             {report.unassignedRooms.map((r) => (
               <div key={r.roomId} className="px-4 py-2 text-xs text-muted flex items-center gap-3 flex-wrap">
                 <span>
-                  <RoomLabel roomId={r.roomId} tiktokId={r.tiktokId} nickname={r.nickname} />
+                  <RoomLabel roomId={r.roomId} tiktokHandle={r.tiktokHandle} nickname={r.nickname} />
                 </span>
                 <span className="ml-auto">
                   <ReassignControl
@@ -913,7 +913,7 @@ export default function WorkersAdminPage() {
               <div key={i} className="px-4 py-2 text-xs text-muted flex items-center gap-2 flex-wrap">
                 <span className="text-strong">{new Date(entry.at).toLocaleString("ja-JP")}</span>
                 <span>
-                  @{entry.tiktokId} worker{entry.fromWorker ?? "未割当"} → worker{entry.toWorker}
+                  @{entry.tiktokHandle} worker{entry.fromWorker ?? "未割当"} → worker{entry.toWorker}
                 </span>
                 {entry.operator && <span className="text-muted">by {entry.operator}</span>}
               </div>

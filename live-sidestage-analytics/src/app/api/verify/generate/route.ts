@@ -4,10 +4,13 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
-import { isValidNormalizedTiktokId } from "@/lib/agency/params";
-import { upsertTiktokIdMergeJob } from "@/lib/tiktok-id-migration";
+import { isValidNormalizedTiktokHandle } from "@/lib/agency/params";
 import { requireExistingTiktokAccount, formatExistenceGateError } from "@/lib/tiktok-existence";
-import { checkTiktokIdChangeAllowed, formatTiktokIdLockError } from "@/lib/tiktok-id-lock";
+import {
+  checkTiktokHandleChangeAllowed,
+  formatTiktokHandleLockError,
+  formatTiktokUidMismatchError,
+} from "@/lib/tiktok-id-lock";
 import { isAdminEmail } from "@/lib/admin";
 
 // GET: return existing pending code for current user
@@ -16,18 +19,18 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
-    select: { tiktokId: true, verificationCode: true, verified: true },
+    where: { principalId: session.user.id },
+    select: { tiktokHandle: true, verificationCode: true, verified: true },
   });
 
   if (!streamer) return NextResponse.json({});
 
   if (streamer.verified) {
-    return NextResponse.json({ verified: true, tiktokId: streamer.tiktokId });
+    return NextResponse.json({ verified: true, tiktokHandle: streamer.tiktokHandle });
   }
 
   return NextResponse.json({
-    tiktokId: streamer.tiktokId,
+    tiktokHandle: streamer.tiktokHandle,
     code: streamer.verificationCode,
   });
 }
@@ -37,8 +40,8 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { tiktokId } = await req.json();
-  const clean = String(tiktokId || "")
+  const { tiktokHandle } = await req.json();
+  const clean = String(tiktokHandle || "")
     .replace(/^@/, "")
     .trim();
 
@@ -50,7 +53,7 @@ export async function POST(req: NextRequest) {
   // 打ち間違いが登録され、誰も配信しない room を無期限に監視し続ける実害を防ぐ。
   // フォーマット検証も含め、確認モーダル用の /api/verify/preview と同じ判定に揃える。
   const normalized = normalizeTiktokId(clean);
-  if (!isValidNormalizedTiktokId(normalized)) {
+  if (!isValidNormalizedTiktokHandle(normalized)) {
     const { error, status } = formatExistenceGateError("INVALID_FORMAT");
     return NextResponse.json({ error }, { status });
   }
@@ -58,29 +61,39 @@ export async function POST(req: NextRequest) {
   // 事前チェック: 7日ロック中なら外部照会(requireExistingTiktokAccount)を省いて即409で返す。
   // ロック中の利用者が異なるIDを繰り返し送るだけで共有の外部照会枠を消費するのを防ぐ。
   const existingPreCheck = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
-    select: { tiktokId: true, tiktokIdChangedAt: true },
+    where: { principalId: session.user.id },
+    select: { tiktokHandle: true, tiktokHandleChangedAt: true },
   });
   // デバッグ用アカウント(ADMIN_EMAIL)は7日ロックの対象外。
   const lockExempt = isAdminEmail(session.user.email);
 
   if (existingPreCheck && !lockExempt) {
-    const currentNormalized = normalizeTiktokId(existingPreCheck.tiktokId);
-    const preCheck = checkTiktokIdChangeAllowed(
-      { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: existingPreCheck.tiktokIdChangedAt },
+    const currentNormalized = normalizeTiktokId(existingPreCheck.tiktokHandle);
+    const preCheck = checkTiktokHandleChangeAllowed(
+      { normalizedTiktokHandle: currentNormalized, tiktokHandleChangedAt: existingPreCheck.tiktokHandleChangedAt },
       normalized
     );
     if (!preCheck.ok) {
-      const { error, code, retryAfter } = formatTiktokIdLockError(preCheck.retryAfter);
+      const { error, code, retryAfter } = formatTiktokHandleLockError(preCheck.retryAfter);
       return NextResponse.json({ error, code, retryAfter }, { status: 409 });
     }
   }
 
-  const existence = await requireExistingTiktokAccount(normalized);
+  // Streamer 登録は tiktokUid を所有の根拠として永続化するので positive キャッシュを読まない。
+  const existence = await requireExistingTiktokAccount(normalized, undefined, {
+    skipPositiveCache: true,
+  });
   if (!existence.ok) {
     const { error, status } = formatExistenceGateError(
       existence.reason === "MISSING" ? "USER_NOT_FOUND" : "CHECK_UNVERIFIED"
     );
+    return NextResponse.json({ error }, { status });
+  }
+
+  // 所有の根拠として tiktokUid を必ず保存する。取れなければ登録を通さない(fail-closed)。
+  const registerTiktokUid = existence.tiktokUid;
+  if (!registerTiktokUid) {
+    const { error, status } = formatExistenceGateError("CHECK_UNVERIFIED");
     return NextResponse.json({ error }, { status });
   }
 
@@ -91,42 +104,48 @@ export async function POST(req: NextRequest) {
   const code = generateVerificationCode();
   const now = new Date();
 
-  // tiktokIdの変更にはCAS(楽観的排他)を使う: read(現在のtiktokIdChangedAt)→判定→
+  // tiktokHandleの変更にはCAS(楽観的排他)を使う: read(現在のtiktokHandleChangedAt)→判定→
   // updateManyのwhereに読み取り時点の値を条件として含める。同時リクエストが同じ値を読んで
   // 両方ロック判定を通過しても、後勝ちのupdateManyは0件になり競合として検知できる。
   const result = await prisma.$transaction(async (tx) => {
     const current = await tx.streamer.findUnique({
-      where: { userId: session.user.id },
-      select: { id: true, tiktokId: true, tiktokIdChangedAt: true },
+      where: { principalId: session.user.id },
+      select: { id: true, tiktokUid: true, tiktokHandle: true, tiktokHandleChangedAt: true },
     });
 
     if (!current) {
       const created = await tx.streamer.create({
         data: {
-          userId: session.user.id,
-          tiktokId: clean,
+          principalId: session.user.id,
+          tiktokUid: registerTiktokUid,
+          tiktokHandle: clean,
           verificationCode: code,
-          tiktokIdChangedAt: now,
+          tiktokHandleChangedAt: now,
         },
       });
-      await upsertTiktokIdMergeJob(tx, created.id, normalized);
       return { kind: "ok" as const, streamer: created };
     }
 
-    const currentNormalized = normalizeTiktokId(current.tiktokId);
+    const currentNormalized = normalizeTiktokId(current.tiktokHandle);
     if (currentNormalized === normalized) {
-      // 冪等リトライ: tiktokIdは実質変わらない。ロック判定・tiktokIdChangedAt更新はしない。
+      // 冪等リトライ: tiktokHandleは実質変わらない。ロック判定・tiktokHandleChangedAt更新はしない。
       const updated = await tx.streamer.update({
         where: { id: current.id },
-        data: { tiktokId: clean, verificationCode: code, verified: false, verifiedAt: null },
+        data: { tiktokHandle: clean, verificationCode: code, verified: false, verifiedAt: null },
       });
-      await upsertTiktokIdMergeJob(tx, updated.id, normalized);
       return { kind: "ok" as const, streamer: updated };
     }
 
+    // 同一アカウントの改名だけを許す。tiktokUid は不変なので更新もしない。
+    // 別アカウントのハンドルへ付け替えると、所有の根拠(tiktokUid)と接続先(tiktokHandle)が
+    // 別人を指したまま既存のギフト・履歴がその配信に帰属する。
+    if (current.tiktokUid !== registerTiktokUid) {
+      return { kind: "uid_mismatch" as const };
+    }
+
     if (!lockExempt) {
-      const check = checkTiktokIdChangeAllowed(
-        { normalizedTiktokId: currentNormalized, tiktokIdChangedAt: current.tiktokIdChangedAt },
+      const check = checkTiktokHandleChangeAllowed(
+        { normalizedTiktokHandle: currentNormalized, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
         normalized,
         now
       );
@@ -136,25 +155,27 @@ export async function POST(req: NextRequest) {
     }
 
     const { count } = await tx.streamer.updateMany({
-      where: { id: current.id, tiktokIdChangedAt: current.tiktokIdChangedAt },
+      where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
       data: {
-        tiktokId: clean,
+        tiktokHandle: clean,
         verificationCode: code,
         verified: false,
         verifiedAt: null,
-        tiktokIdChangedAt: now,
+        tiktokHandleChangedAt: now,
       },
     });
     if (count === 0) {
       return { kind: "conflict" as const };
     }
     const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
-    await upsertTiktokIdMergeJob(tx, updated.id, normalized);
     return { kind: "ok" as const, streamer: updated };
   });
 
+  if (result.kind === "uid_mismatch") {
+    return NextResponse.json(formatTiktokUidMismatchError(), { status: 409 });
+  }
   if (result.kind === "locked") {
-    const { error, code: lockCode, retryAfter } = formatTiktokIdLockError(result.retryAfter);
+    const { error, code: lockCode, retryAfter } = formatTiktokHandleLockError(result.retryAfter);
     return NextResponse.json({ error, code: lockCode, retryAfter }, { status: 409 });
   }
   if (result.kind === "conflict") {
@@ -166,9 +187,9 @@ export async function POST(req: NextRequest) {
 
   const streamer = result.streamer;
 
-  // 同じtiktokIdを共有するTiktokRoomへ即座に紐付ける(Workerのensure loopを待たずに
+  // 同じtiktokHandleを共有するTiktokRoomへ即座に紐付ける(Workerのensure loopを待たずに
   // オーバーレイ/ギフトデータ共有を反映するため)。
   await resolveRoomForStreamer(streamer.id);
 
-  return NextResponse.json({ tiktokId: clean, code });
+  return NextResponse.json({ tiktokHandle: clean, code });
 }

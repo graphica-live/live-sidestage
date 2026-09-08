@@ -68,7 +68,7 @@ export async function ingestBattles(
       endedAt: row.endedAt,
       durationSec: row.durationSec,
       lastAction: row.action,
-      hostUserIds: row.hostUserIds,
+      hostTiktokUids: row.hostTiktokUids,
       hostDisplayIds: row.hostDisplayIds,
       hostScores: (row.hostScores ?? {}) as Prisma.InputJsonObject,
     };

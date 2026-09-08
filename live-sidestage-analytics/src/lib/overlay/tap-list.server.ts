@@ -8,7 +8,7 @@ import { normalizeOverlayAppearance, OVERLAY_APPEARANCE_DEFAULT, type OverlayApp
 
 export type TapListEntry = {
   rank: number;
-  uniqueId: string;
+  tiktokHandle: string;
   nickname: string;
   profileImageUrl: string | null;
   tapCount: number;
@@ -40,7 +40,7 @@ export async function buildTapListSnapshot(streamerId: string): Promise<TapListS
 
   const entries: TapListEntry[] = rows.map((r, i) => ({
     rank: i + 1,
-    uniqueId: r.uniqueId,
+    tiktokHandle: r.tiktokHandle,
     nickname: r.nickname,
     profileImageUrl: r.profileImageUrl,
     tapCount: r.totalLikes,

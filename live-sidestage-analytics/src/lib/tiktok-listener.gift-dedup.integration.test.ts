@@ -8,6 +8,7 @@
 // 両方が要る。ここでは 2 をlistenerの再起動(=キャッシュ空の新インスタンス)で代替検証する。
 import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { startListener, stopListener } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
@@ -17,7 +18,7 @@ const { MockConnection } = vi.hoisted(() => {
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -39,14 +40,14 @@ const { MockConnection } = vi.hoisted(() => {
 });
 
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null }),
   },
 }));
 
@@ -68,34 +69,38 @@ function newMsgId() {
 }
 
 async function setupRoom(label: string) {
-  const tiktokId = `itest_gdedup_${label}_${suffix()}`;
+  const tiktokHandle = `itest_gdedup_${label}_${suffix()}`;
   const user = await prisma.user.create({
     data: { email: `itest-gdedup-${label}-${suffix()}@local.test` },
   });
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId,
+      principalId: user.id,
+      // room の同一性は uid。ハンドルから決定的に導いて「同じハンドル = 同じ配信者」を保つ。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
       verificationCode: `itest-${suffix()}`,
       verified: true,
     },
   });
   const roomId = await resolveRoomForStreamer(streamer.id);
-  await startListener(roomId, tiktokId, [streamer.id]);
+  await startListener(roomId, tiktokHandle, [streamer.id]);
   const conn = MockConnection.instances[MockConnection.instances.length - 1];
   expect(conn).toBeDefined();
-  return { tiktokId, userId: user.id, streamerId: streamer.id, roomId, conn };
+  return { tiktokHandle, principalId: user.id, streamerId: streamer.id, roomId, conn };
 }
 
-async function teardownRoom(ctx: { roomId: string; userId: string }) {
+async function teardownRoom(ctx: { roomId: string; principalId: string }) {
   await stopListener(ctx.roomId);
-  await prisma.user.delete({ where: { id: ctx.userId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: ctx.principalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }
 
 // giftType=0(=combo無し)。non-comboの保存パスは無条件にinsertするので、dedupが無いと素通りする。
 function nonComboGift(msgId: string | null, createTime: number, overrides: Record<string, unknown> = {}) {
+  // TLC の生 payload。キー名は TikTok 側の仕様(userId / uniqueId)。
   return {
+    userId: makeTiktokUid("user_dedup"),
     uniqueId: "user_dedup",
     nickname: "重複テスト",
     giftType: 0,
@@ -158,7 +163,7 @@ describe("ギフトのmsgId dedup", () => {
       // listenerを張り直すとrecentGiftMsgIdsが空の新インスタンスになる。
       // デプロイ中に新Workerが同じ部屋へ接続した状況と同じ。
       await stopListener(ctx.roomId);
-      await startListener(ctx.roomId, ctx.tiktokId, [ctx.streamerId]);
+      await startListener(ctx.roomId, ctx.tiktokHandle, [ctx.streamerId]);
       const fresh = MockConnection.instances[MockConnection.instances.length - 1];
       expect(fresh).not.toBe(ctx.conn);
 
@@ -182,7 +187,7 @@ describe("ギフトのmsgId dedup", () => {
       });
 
       await stopListener(ctx.roomId);
-      await startListener(ctx.roomId, ctx.tiktokId, [ctx.streamerId]);
+      await startListener(ctx.roomId, ctx.tiktokHandle, [ctx.streamerId]);
       const fresh = MockConnection.instances[MockConnection.instances.length - 1];
 
       // 10分後の同一msgId。窓の外なので正当なギフトとして保存される。
@@ -222,6 +227,7 @@ describe("ギフトのmsgId dedup", () => {
       const groupId = `g_${suffix()}`;
       const createTime = Date.now();
       const combo = (msgId: string, repeatCount: number, repeatEnd: boolean) => ({
+        userId: makeTiktokUid("user_combo"),
         uniqueId: "user_combo",
         nickname: "コンボ",
         giftType: 1,

@@ -3,6 +3,7 @@
 // tiktok-live-connectorのWebcastPushConnectionをモックし、実際のTikTok接続は行わない。
 import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { startListener, stopListener } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
@@ -11,8 +12,22 @@ const { MockConnection } = vi.hoisted(() => {
     static instances: MockConnection[] = [];
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
+    // ハンドル → tiktokUid の導出。テストファイル側で makeTiktokUid を代入する
+    // (vi.hoisted の中では import できないため)。
+    static uidFor: (tiktokHandle: string) => string = () => "0";
+    // 接続前の hostTiktokUid 照合(precheckApiLive)が読む。既定は「オンライン かつ
+    // room の hostTiktokUid と一致する配信者」。
+    // createConnection() は `@` 付きで渡してくるので、uid 導出前に剥がす。
+    webClient = {
+      fetchRoomInfoFromApiLive: vi.fn(async () => ({
+        data: {
+          liveRoom: { status: 2 },
+          user: { id: MockConnection.uidFor(this.tiktokHandle.replace(/^@/, "")) },
+        },
+      })),
+    };
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -33,15 +48,17 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
+MockConnection.uidFor = makeTiktokUid;
+
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null }),
   },
 }));
 
@@ -51,18 +68,25 @@ vi.mock("./overlay", () => ({
   emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
 }));
 
-async function createStreamer(tiktokId: string, emailPrefix: string) {
+async function createStreamer(tiktokHandle: string, emailPrefix: string) {
   const user = await prisma.user.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return prisma.streamer.create({
-    data: { userId: user.id, tiktokId, verificationCode: "x", verified: true },
+    data: {
+      principalId: user.id,
+      // room の同一性は uid。ハンドルから決定的に導いて「同じハンドル = 同じ配信者」を保つ。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      verificationCode: "x",
+      verified: true,
+    },
   });
 }
 
 async function cleanupStreamer(streamerId: string) {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
-  if (streamer) await prisma.user.delete({ where: { id: streamer.userId } });
+  if (streamer) await prisma.user.delete({ where: { id: streamer.principalId } });
 }
 
 async function cleanupRoom(roomId: string) {
@@ -81,11 +105,11 @@ afterAll(async () => {
 
 describe("RoomConnectionInterval計装", () => {
   it("接続確立でopen、disconnectedイベントでcloseする(理由も残す)", async () => {
-    const tiktokId = `itest_connlog_basic_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-connlog-basic-a");
+    const tiktokHandle = `itest_connlog_basic_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-connlog-basic-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     await vi.waitFor(async () => {
       const rows = await prisma.roomConnectionInterval.findMany({ where: { roomId } });
       expect(rows).toHaveLength(1);
@@ -108,11 +132,11 @@ describe("RoomConnectionInterval計装", () => {
   });
 
   it("接続中にstopListenerで意図的に止めた場合もcloseする(updateStateを経由しない唯一の切断経路)", async () => {
-    const tiktokId = `itest_connlog_stop_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-connlog-stop-a");
+    const tiktokHandle = `itest_connlog_stop_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-connlog-stop-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     await vi.waitFor(async () => {
       const rows = await prisma.roomConnectionInterval.findMany({ where: { roomId } });
       expect(rows).toHaveLength(1);
@@ -131,11 +155,11 @@ describe("RoomConnectionInterval計装", () => {
   });
 
   it("disconnected後にstopListenerを呼んでも二重にcloseしない(冪等)", async () => {
-    const tiktokId = `itest_connlog_double_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-connlog-double-a");
+    const tiktokHandle = `itest_connlog_double_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-connlog-double-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     await vi.waitFor(async () => {
       expect(await prisma.roomConnectionInterval.count({ where: { roomId } })).toBe(1);
     });

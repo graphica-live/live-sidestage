@@ -54,26 +54,26 @@ model User {
 // 管理者画面(/admin/ambassadors)から招待URL経由の先着1名指定、または既存ユーザーへの
 // 直接指定のいずれかで作られる。
 model Ambassador {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  principalId String   @unique
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
 
 // アンバサダー招待URLの発行記録。token経由で新規登録した先着1名だけが
-// usedAt/usedByUserIdを埋めてAmbassadorへ確定する(claim-ambassador-invite.ts)。
+// usedAt/usedByPrincipalIdを埋めてAmbassadorへ確定する(claim-ambassador-invite.ts)。
 // 期限切れ(expiresAt超過)の行は ambassador-invite-retention.ts が定期削除する
 // (使用済み・未使用を問わない。Ambassador本体は別テーブルに残るため削除して問題ない)。
 model AmbassadorInvite {
-  id           String    @id @default(cuid())
-  token        String    @unique
-  createdAt    DateTime  @default(now())
-  expiresAt    DateTime
-  usedAt       DateTime?
-  usedByUserId String?
-  usedByUser   User?     @relation(fields: [usedByUserId], references: [id], onDelete: SetNull)
+  id                String    @id @default(cuid())
+  token             String    @unique
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  usedAt            DateTime?
+  usedByPrincipalId String?
+  usedByUser        User?     @relation(fields: [usedByPrincipalId], references: [id], onDelete: SetNull)
 
   @@index([expiresAt])
   @@schema("public")
@@ -98,37 +98,37 @@ enum SubscriptionProvider {
 // User単位の課金プラン。行が無いUser = FREE扱い(全Userに先回りして作らない)。
 // **1ユーザーが複数の有効な行を同時に持ちうる**(Web/Stripeとモバイル/Google Play・Appleは
 // 別契約として独立に成立する)。getUserPlan()は有効な全行から最上位プランを算出する。
-// event機能はUser.idへの生FKを張らない方針(Event.ownerUserId参照)なので、
-// event側からもこのモデルをuserIdの一致だけで参照する。
+// event機能はUser.idへの生FKを張らない方針(Event.ownerPrincipalId参照)なので、
+// event側からもこのモデルをprincipalIdの一致だけで参照する。
 //
 // フェーズA(拡張のみ)時点のスキーマ。provider/providerSubscriptionId等はnullable。
 // 旧列(stripeCustomerId/stripeSubscriptionId/status)はフェーズB(破壊的クリーンアップ、
 // 別コミット)まで残す。詳細は scripts/migrate-subscription-provider.ts。
-// **userIdに一意制約は無い(元から無い、フェーズBで消える予定の列でもない)。**
+// **principalIdに一意制約は無い(元から無い、フェーズBで消える予定の列でもない)。**
 // 1ユーザーが複数provider(Stripe/Google Play/Apple)で同時に有効な行を持つのが
-// 正しい状態のため。実装後レビューでコメント記載(旧版)が「userId一意制約はフェーズBまで
+// 正しい状態のため。実装後レビューでコメント記載(旧版)が「principalId一意制約はフェーズBまで
 // 残す」と誤っており、その前提でsync-subscription.tsのP2002 fallbackが書かれていたが、
 // スキーマ上そもそも存在しない制約だった。fallbackはprovider+providerSubscriptionId
 // 複合uniqueの衝突だけを扱うよう修正済み。
 model Subscription {
-  id     String                @id @default(cuid())
-  userId String
-  plan   PlanTier              @default(FREE)
+  id          String   @id @default(cuid())
+  principalId String
+  plan        PlanTier @default(FREE)
 
   // フェーズA以降の新列。バックフィル前はnull。
-  provider SubscriptionProvider?
+  provider               SubscriptionProvider?
   // providerごとの一意キー。STRIPE: Subscription ID。GOOGLE_PLAY: purchaseToken
   // (再購読で新token発行時は別行、旧行はentitlementActive=falseに)。
   // APPLE: originalTransactionId(更新をまたいで不変)。
   providerSubscriptionId String?
 
-  stripePriceId            String? // STRIPEのみ
+  stripePriceId             String? // STRIPEのみ
   googleProductId           String? // GOOGLE_PLAYのみ
   googleObfuscatedAccountId String? // GOOGLE_PLAYのみ、横流し防止用
-  appleProductId             String? // APPLEのみ
-  appleAppAccountToken       String? // APPLEのみ、横流し防止用
+  appleProductId            String? // APPLEのみ
+  appleAppAccountToken      String? // APPLEのみ、横流し防止用
 
-  rawStatus         String?   // providerの生status文字列
+  rawStatus         String? // providerの生status文字列
   entitlementActive Boolean   @default(false) // getUserPlan()が見るのはこれだけ
   lastVerifiedAt    DateTime? // sync系関数がre-fetchを開始した時刻。古いfetch結果による上書きを防ぐガードに使う
   currentPeriodEnd  DateTime?
@@ -150,50 +150,53 @@ model Subscription {
   // onDelete: Cascadeで行ごと消える。DELETE /api/mobile/account はこの削除より前に
   // stripe.customers.del()でStripe側のCustomer(=関連subscription全て)を先に消しており、
   // 課金が残ったままDB上の紐付けだけ失う、という状態にはならない。
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   // nullable列を含む複合unique。旧行はprovider=nullのまま共存でき、
   // 新規行だけが実質的な一意性チェックを受ける(Postgresの複合unique indexの仕様)。
   @@unique([provider, providerSubscriptionId])
-  @@index([userId, entitlementActive])
+  @@index([principalId, entitlementActive])
   @@schema("public")
 }
 
 // 購読成立前の「Stripe Customerは作ったが未購読」の置き場(旧Subscriptionの間借り先を分離)
 model StripeCustomerLink {
-  userId           String   @id
+  principalId      String   @id
   stripeCustomerId String   @unique
   createdAt        DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
 
-// 購入開始時に発行するobfuscatedAccountId/appAccountTokenとuserIdの対応表。
+// 購入開始時に発行するobfuscatedAccountId/appAccountTokenとprincipalIdの対応表。
 // Subscription行は購入成立後にしか存在しないため、webhook(RTDN/App Store Server Notifications)が
-// verify-purchaseより先に届いた場合、この表が無いとpurchaseToken/transactionIdからuserIdを解決できない
-// (Stripeはcheckout session作成時にsubscription.metadata.userIdを仕込めるが、Google/Appleの購入は
+// verify-purchaseより先に届いた場合、この表が無いとpurchaseToken/transactionIdからprincipalIdを解決できない
+// (Stripeはcheckout session作成時にsubscription.metadata.principalIdを仕込めるが、Google/Appleの購入は
 // クライアント発のapplicationUserNameしか経路が無いため、サーバー側で先に対応表を持つ必要がある)。
 model PendingPurchaseIntent {
-  id         String               @id @default(cuid())
-  userId     String
-  provider   SubscriptionProvider // GOOGLE_PLAY | APPLE のみ想定(STRIPEはmetadata.userIdで完結)
-  token      String               // GOOGLE_PLAY: googleObfuscatedAccountId、APPLE: appAccountToken。サーバーが発行する
-  expiresAt  DateTime             // 発行から1時間
-  consumedAt DateTime?            // Subscription行作成時に埋める。以後は解決対象から除外する
+  id          String               @id @default(cuid())
+  principalId String
+  provider    SubscriptionProvider // GOOGLE_PLAY | APPLE のみ想定(STRIPEはmetadata.principalIdで完結)
+  token       String // GOOGLE_PLAY: googleObfuscatedAccountId、APPLE: appAccountToken。サーバーが発行する
+  expiresAt   DateTime // 発行から1時間
+  consumedAt  DateTime? // Subscription行作成時に埋める。以後は解決対象から除外する
 
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@unique([provider, token])
   @@schema("public")
 }
 
+// **Account.userId と Session.userId は識別子命名規約(principalId)の唯一の例外。**
+// @next-auth/prisma-adapter が Prisma のフィールド名を直書きするため改名できない
+// (@map で DB 列名だけ変えても Prisma フィールド名は変わらない)。この2つ以外に userId は存在しない。
 model Account {
   id                String  @id @default(cuid())
-  userId            String
+  userId            String // 例外(NextAuth PrismaAdapter 制約)。実体は User.id = principalId
   type              String
   provider          String
   providerAccountId String
@@ -233,7 +236,7 @@ model Account {
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
-  userId       String
+  userId       String // 例外(NextAuth PrismaAdapter 制約)。実体は User.id = principalId
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -250,14 +253,37 @@ model VerificationToken {
   @@schema("public")
 }
 
-// 1つのTikTokアカウント(tiktokId)につき1本のTikTok Live接続を共有するための実体。
-// 複数のStreamer行(=複数ユーザー)が同じtiktokIdを登録した場合、全員がこのTiktokRoomを
+// TikTokアカウントの正本。主キーは不変の数値ID(TLC の anchorIdStr / data.userId)。
+// tiktokHandle と nickname は「最後に観測した表示用スナップショット」で、識別キーではない。
+//
+// **tiktokHandle → tiktokUid の逆引き表として使ってはならない。**
+// 改名で空いたハンドルは第三者が取得しうるため、ハンドルから引いた tiktokUid は信用できない。
+// よって tiktokHandle に unique を張らない(同一ハンドルを別時点で別 tiktokUid が持つのは正常)。
+//
+// 書き込みは src/lib/tiktok-user.ts の recordTikTokUser() だけ。更新は「非nullの値だけ反映する」
+// last-write-wins(後続イベントが表示名を欠いていても既知の値を潰さない)。
+model TikTokUser {
+  tiktokUid    String   @id
+  tiktokHandle String?
+  nickname     String?
+  firstSeenAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tiktokHandle]) // 運用調査専用(完全一致で引く psql 用)。b-treeなのでILIKE '%…%'には効かない
+  @@map("tiktok_users")
+  @@schema("public")
+}
+
+// 1つのTikTokアカウント(hostTiktokUid)につき1本のTikTok Live接続を共有するための実体。
+// 複数のStreamer行(=複数ユーザー)が同じTikTokアカウントを登録した場合、全員がこのTiktokRoomを
 // 経由して同じ接続・同じGiftデータを参照する(接続リソースの重複と、orderIdユニーク制約
 // 違反によるギフト取りこぼしを防ぐため)。
 model TiktokRoom {
   id                String    @id @default(cuid())
-  tiktokId          String    @unique // 正規化済み(小文字化・trim・先頭@除去)
-  nickname          String?   // TikTok表示名。実在確認(tiktok-existence.ts)取得時・配信接続時に更新。表示専用、一致判定には使わない
+  // 可変の@ハンドル。正規化済み(小文字化・trim・先頭@除去)。**同一性の判定キーではない**
+  // (room の同一性は hostTiktokUid で定義する)。改名で空いたハンドルを第三者が取得しうるので、
+  // 同じ tiktokHandle を持つ行が複数存在するのは正常。TikTok接続にはハンドルが要るので保持する。
+  tiktokHandle      String
   deviceId          String?
   workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定するが既定値にすぎない。worker-guardianの死亡移送・コラボ自己申告(ensureRoomWatchedForCollab)がhashと無関係な値を書くため、この列の値が常に正)
   proxyKey          String? // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
@@ -334,7 +360,7 @@ model TiktokRoom {
   // lastExistenceCheckAtと同じ理由(クールダウン+候補ローテーションの公平性)で持つ。
   // reviveSuspendedMonitoring()等の監視復帰処理からも現在時刻で書き込まれる——復帰直後
   // すぐ次の低価値判定サイクルの対象へ戻り再停止される事故を防ぐため(CHECK_COOLDOWN_MS)。
-  lastLowValueCheckAt DateTime?
+  lastLowValueCheckAt     DateTime?
   // --- 403/ブロック検知によるworker再割当(worker-guardian.ts)用 ---
   // TikTok側からの403応答(isBlockedError())が連続した回数。connectAndAttach()の
   // 接続失敗時・conn.on("error")時にrecordBlockedAttempt()がincrementし、
@@ -342,64 +368,43 @@ model TiktokRoom {
   // 同じCASE式パターン)。worker-guardian.tsがこの値の閾値超過を検知して別workerへの
   // 再割当を行う。全workerを試し尽くしても解消しなければmonitoringSuspended:trueにして
   // give-upし、以降はreviveSuspendedMonitoring()経由の復帰でこの値も0に戻る。
-  consecutiveBlockedCount Int @default(0)
+  consecutiveBlockedCount Int       @default(0)
   // true の間、watchedRoomFilter() はこのRoomの Streamer を「監視対象」から除外する
   // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/
   // overlayToken/apiKey/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/
   // 再アクセスすると markLastActive() が自動でfalseへ戻し、次のreconcileで監視が復活する。
-  monitoringSuspended Boolean   @default(false)
+  monitoringSuspended     Boolean   @default(false)
 
-  // TikTokの数値userId(api-live/user/room/ の data.user.id)。バトルpayloadのanchorIdStrと
-  // 同じ空間で、tiktok_battles.hostScoresのキーと突き合わせてバトルスコアを配信者へ帰属させる。
-  // avatar URLと違って**不変**なので保存してよい(署名付きURLのように失効しない)。
-  // 書き込みはsrc/lib/tiktok-host-id.tsの saveHostUserIdOnce() を必ず通す(呼び出し元は
-  // 補完ジョブとバトル逆引きの2つ)。一度入った値は上書きしない — where条件は
-  // HOST_USER_ID_WRITABLE_WHERE 1箇所に集約してあり、新しい経路を足しても
-  // 条件を書き写す必要がない(書き写すとドリフトで規律が抜ける)。
-  hostUserId String?
-  // hostUserIdを書いた時刻。「fill時点でそのハンドルを持っていた人」しか証明しないので、
-  // 誤ったfillを事後に洗うための監査用。判定ロジックからは参照しない。
-  hostUserIdFilledAt DateTime?
-  // hostUserIdの補完を**恒久的に諦めた**時刻(TikTokがNOT_FOUNDを返した)。
-  //
-  // **これはセキュリティ上の規律であって、単なる再試行制御ではない。**
-  // NOT_FOUNDのハンドルは削除済みか改名済み。改名の場合、空いたハンドルを第三者が
-  // 取得しうる。後日そのハンドルを引き直すと「第三者のuserId」がこのRoomへfill-onceされ、
-  // 以後上書き不能なまま「このRoomの持ち主は第三者だ」という誤った証明になる。
-  // TikTok IDの自動合流(tiktok-id-migration)はhostUserIdの一致を根拠にRoomを吸収するので、
-  // この汚染は他人の履歴が別人のRoomへ移る事故に直結する。
-  //
-  // したがって**一度NOT_FOUNDを観測したRoomには二度とhostUserIdを書かない**。
-  // 「NOT_FOUND → 後日EXISTS」は持ち主が入れ替わった強いシグナルであり、
-  // そこで得られる値は原理的に信用できない。
-  // notFoundStreak(listener由来・connectedで0に戻る)とは別系統の値なので流用しない。
-  hostUserIdBackfillGaveUpAt DateTime?
-  // hostUserIdの補完を最後に試みた時刻(結果を問わず)。候補抽出のローテーションに使う。
-  // これが無いと最古の候補から順に取り続け、解決しない先頭の数十件で詰まって
-  // それ以降のRoomへ永久に到達しない(lastExistenceCheckAtと同じ理由)。
-  hostUserIdAttemptedAt DateTime?
+  // TikTokの不変な数値ID(api-live/user/room/ の data.user.id、バトルpayloadのanchorIdStr)。
+  // **room の同一性はこの列で定義する**(ハンドルではない)。登録ゲート
+  // (requireExistingTiktokAccount)が実在確認の応答から得た値を room 作成時に必ず渡すので
+  // NOT NULL。後から埋める backfill(旧 tiktok-host-id.ts)は廃止した。
+  hostTiktokUid String    @unique
+  // 接続直前の uid 照合(tiktok-listener.ts)で「この room の tiktokHandle が別人のものになった」
+  // と判定した時刻。立っている間は接続せず、削除候補判定(suspendNotFoundRoom)からも外す。
+  // hostProfiles 観測または本人の再登録でハンドルが更新されたら null に戻す。
+  handleStaleAt DateTime?
 
-  streamers          Streamer[]
-  gifts              Gift[]
-  listenerComments   ListenerComment[]
-  battles            TiktokBattle[]
-  battleItemUses     TiktokBattleItemUse[]
-  battleBonusMissions TiktokBattleBonusMission[]
+  streamers             Streamer[]
+  gifts                 Gift[]
+  listenerComments      ListenerComment[]
+  battles               TiktokBattle[]
+  battleItemUses        TiktokBattleItemUse[]
+  battleBonusMissions   TiktokBattleBonusMission[]
   battleArmiesSnapshots TiktokBattleArmiesSnapshot[]
-  battleTapPoints    TiktokBattleTapPoint[]
-  battleHistories    BattleHistory[]
-  watches            AgencyWatch[]
-  monitorLeases      RoomMonitorLease[]
-  connectionIntervals RoomConnectionInterval[]
+  battleTapPoints       TiktokBattleTapPoint[]
+  battleHistories       BattleHistory[]
+  watches               AgencyWatch[]
+  monitorLeases         RoomMonitorLease[]
+  connectionIntervals   RoomConnectionInterval[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても30秒ごとのreconcileが重くならないようにする。
   @@index([workerId, monitorUntil])
   // tiktok-room-cleanup.tsの候補抽出クエリ用(listenerStatus + unhealthySince の複合条件)。
   @@index([listenerStatus, unhealthySince])
-  // 「同じhostUserIdを持つ別ハンドルのRoom」を探す検索用(tiktok-id-migration)。
-  // 改名の検知はこの引き当てが唯一の手段なので、全件スキャンにさせない。
-  @@index([hostUserId])
+  // 運用調査用(psqlからハンドルで引く)。**アプリコードの同一性判定には使わない**。
+  @@index([tiktokHandle])
   @@schema("public")
 }
 
@@ -409,11 +414,11 @@ model TiktokRoom {
 // ならない(不可逆操作の唯一の事後追跡手段のため)ので専用テーブルを新設する。
 model TiktokRoomAdminAuditLog {
   id            String   @id @default(cuid())
-  action        String   // "delete" | "suspend" | "toggle_special_watch"
-  roomId        String   // 削除後はTiktokRoom自体が無いのでFKは張らない(論理参照)
-  tiktokId      String   // 削除後にroomIdだけでは何のRoomか分からなくなるため必須保持
-  operatorEmail String   // getAdminSession()経由のセッションemail(ADMIN_EMAIL固定だが将来の複数管理者化に備え記録)
-  detail        Json?    // 削除時: { streamerCount, watchCount, agencyIds, giftCount, battleHistoryCount }
+  action        String // "delete" | "suspend" | "toggle_special_watch"
+  roomId        String // 削除後はTiktokRoom自体が無いのでFKは張らない(論理参照)
+  tiktokHandle  String // 削除後にroomIdだけでは何のRoomか分からなくなるため必須保持
+  operatorEmail String // getAdminSession()経由のセッションemail(ADMIN_EMAIL固定だが将来の複数管理者化に備え記録)
+  detail        Json? // 削除時: { streamerCount, watchCount, agencyIds, giftCount, battleHistoryCount }
   createdAt     DateTime @default(now())
 
   @@index([roomId])
@@ -429,7 +434,7 @@ model TiktokRoomAdminAuditLog {
 // 他reasonのleaseを誤って消してしまう。
 //
 // referenceIdはEVENT用途では既存Event.id。COLLAB用途は**決定的な値**にする
-// (例: `${selfRoomId}:${counterpartTiktokUserId}`)。内部採番の乱数idにしない —
+// (例: `${selfRoomId}:${counterpartTiktokUid}`)。内部採番の乱数idにしない —
 // 別Workerが同一コラボを両側から検知した場合でも、upsertが同じキーへ収束するようにするため。
 //
 // 移行期間中はTiktokRoom.monitorUntilへのデュアルライトを維持する(euler-usage.ts /
@@ -483,14 +488,14 @@ model RoomConnectionInterval {
 // 署名取得前に終わることがあり、そちらまで1行にすると「オフライン配信者への
 // 30秒ごとの再試行」が大量に紛れ込み、実際のトークン消費と一致しなくなる。
 model EulerSignUsage {
-  id  String @id @default(cuid())
+  id          String   @id @default(cuid())
   // 署名リクエストを開始した時刻。fire-and-forgetでDB書き込みが遅延すると
   // createdAt(INSERT完了時刻)とずれるため分けて持つ。
   requestedAt DateTime
   createdAt   DateTime @default(now())
 
-  roomId   String
-  tiktokId String
+  roomId       String
+  tiktokHandle String
 
   outcome      String // "success" | "error"
   errorMessage String? @db.Text // outcome="error"のときだけ
@@ -502,8 +507,8 @@ model EulerSignUsage {
   // ("disconnected" | "stream_end" | "error" | "rate_limited" | "connect_failed" | "user_offline")
   reason  String?
 
-  role        String // "web" | "worker"
-  workerIndex Int?
+  role             String // "web" | "worker"
+  workerIndex      Int?
   // fencing用のプロセス世代(ListenerEpoch.id)。ゼロダウンタイムデプロイ中に
   // 新旧Workerが同じ部屋へ並走したことを見分けるため。
   listenerEpoch    BigInt?
@@ -512,17 +517,19 @@ model EulerSignUsage {
   // 接続していることが分かる。
   assignedWorkerId Int?
   // EulerAPIキーが設定されていたか。匿名取得は別のトークン消費経路として扱うため区別する。
-  credentialMode String // "configured" | "anonymous"
+  credentialMode   String // "configured" | "anonymous"
 
   // 記録時点のスナップショット。FK無し(部屋やイベントが後で消えても履歴は残す)。
   // 表示名は現在のテーブルからしか解決できない — 削除・改名後は当時と異なりうる。
-  streamerUserIds  String[]
-  agencyIds        String[]
-  eventIds         String[]
-  roomMonitorUntil DateTime? // 記録時点のTiktokRoom.monitorUntil
+  streamerPrincipalIds String[]
+  agencyIds            String[]
+  eventIds             String[]
+  roomMonitorUntil     DateTime? // 記録時点のTiktokRoom.monitorUntil
 
   @@index([roomId, createdAt])
-  @@index([tiktokId, createdAt])
+  // 署名を実際に要求したハンドルの記録(観測事実のログ)。改名後は過去分が引けなくなるが、
+  // それがこのログの正しい意味。
+  @@index([tiktokHandle, createdAt])
   @@index([createdAt])
   @@schema("public")
 }
@@ -544,57 +551,16 @@ model ListenerEpoch {
   @@schema("public")
 }
 
-// TikTok ID変更(改名)の自動合流(src/lib/tiktok-id-migration.ts)を実行するジョブキュー。
-//
-// Streamer.tiktokIdを書く3経路(mobile POST/PATCH, verify/generate)は合流の可否判定を一切行わず、
-// この行を1件upsertするだけ。実際の判定・TikTok照会・合流実行はevent-workerのmergeTick()が
-// 非同期で行う(登録APIの同期パスにTikTok照会を置くと、TikTokの不調が新規登録の失敗として
-// 表面化するため。合流は遅延して構わない — 旧データは削除されないので何度でもやり直せる)。
-// (2026-09時点で mobile PATCH と verify/generate は別途 tiktokIdChangedAt による7日間の
-// 再変更ロック判定を行うが、これは合流可否とは無関係の独立したレート制限)
-model TiktokIdMergeJob {
-  id            String   @id @default(cuid())
-  streamerId    String   @unique // pendingの二重積みを構造的に防ぐ
-  tiktokId      String // 積んだ時点のハンドル(正規化前の表示値)
-  status        String   @default("pending") // "pending" | "done" | "failed"
-  attempts      Int      @default(0)
-  lastError     String?
-  nextAttemptAt DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([status, nextAttemptAt])
-  @@schema("public")
-}
-
-// TikTok ID変更の自動合流の実行結果ログ。FKは張らない(EventStanding.subjectIdと同じ扱い)。
-// NO_CANDIDATE以外は全て記録する — サポート問い合わせの唯一の説明手段になるため。
-model TiktokIdMergeLog {
-  id                 String    @id @default(cuid())
-  streamerId         String
-  userId             String // TikTokの数値userId(判定の鍵)
-  outcome            String // MERGED | NO_CANDIDATE | BLOCKED_OLD_HANDLE_ALIVE |
-  //   BLOCKED_HOST_MISMATCH | EVENT_ACTIVE | SELF_NOT_FOUND | DEFERRED
-  oldTiktokId        String?
-  newTiktokId        String
-  oldRoomId          String?
-  survivingRoomId    String?
-  hostUserId         String?
-  hostUserIdFilledAt DateTime?
-  stats              Json? // 移動件数・重複破棄件数等(過去の行には廃止済みの giftEditsDiscarded も残る)
-  acknowledgedAt     DateTime? // 事後通知バナーを閉じた時刻。nullなら未読
-  createdAt          DateTime  @default(now())
-
-  @@index([streamerId, createdAt])
-  @@schema("public")
-}
+// TiktokIdMergeJob / TiktokIdMergeLog は 2026-09 の識別子統一リファクタリングで削除した。
+// room の一意キーがハンドルから hostTiktokUid へ移り、改名しても room が割れなくなったため
+// 「事後にroomを合流させる」機構(src/lib/tiktok-id-migration.ts)そのものが不要になった。
 
 // 事務所・企業向けのアカウント。配信者本人(Streamer)とは独立していて、
 // 自分ではTikTok IDを持たず、監視対象(AgencyWatch)を通してのみデータを参照する。
 //
 // Userではなくemailを識別子にしている。管理者が相手のGoogleアカウントのメールアドレスを
 // 先に登録し、本人がそのアカウントでログインした時点で使えるようにするため
-// (ログイン前はUser行が存在しないので、userIdでは紐づけられない)。
+// (ログイン前はUser行が存在しないので、principalIdでは紐づけられない)。
 // 事務所が存在すること自体が利用許可であり、別途の承認フラグは持たない。
 model Agency {
   id              String   @id @default(cuid())
@@ -612,16 +578,18 @@ model Agency {
 }
 
 // 事務所が監視対象に指定したライバー。ギフトデータはTiktokRoom単位で共有されるため
-// roomIdで紐づける(Streamerと同じ設計)。tiktokIdは事務所の入力値そのままを表示用に保持し、
+// roomIdで紐づける(Streamerと同じ設計)。tiktokHandleは事務所の入力値そのままを表示用に保持し、
 // 正規化済みの値はTiktokRoom側だけが単一の正として持つ。
 // 配信者本人の登録(Streamer)は必要なく、Streamerが0人でもwatchがあればWorkerが接続する。
 model AgencyWatch {
-  id        String   @id @default(cuid())
-  agencyId  String
-  roomId    String
-  tiktokId  String // 表示用。ユーザー入力値そのまま
-  label     String? // 事務所側の管理名(本名・所属チームなど)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  agencyId     String
+  roomId       String
+  // 登録ゲート(requireExistingTiktokAccount)が実在確認の応答から得た不変ID。監視対象の指定はこれで行う
+  tiktokUid    String
+  tiktokHandle String // 表示用。ユーザー入力値そのまま
+  label        String? // 事務所側の管理名(本名・所属チームなど)
+  createdAt    DateTime @default(now())
 
   agency Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   room   TiktokRoom @relation(fields: [roomId], references: [id])
@@ -632,19 +600,21 @@ model AgencyWatch {
 }
 
 model Streamer {
-  id               String    @id @default(cuid())
-  userId           String    @unique
-  tiktokId         String // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
-  verificationCode String
-  verified         Boolean   @default(false)
-  verifiedAt       DateTime?
-  apiKey           String?   @unique
-  createdAt        DateTime  @default(now())
-  // ユーザー操作(web /api/verify/generate, mobile PATCH /api/mobile/streamer)によるtiktokId
-  // 設定・変更の最終時刻。7日間の再変更ロックの起点に使う。absorbRooms()による自動ID合流は
-  // ユーザー操作ではないため更新しない(合流でtiktokIdが書き換わってもロック期限は動かさない)。
-  tiktokIdChangedAt DateTime?
-  roomId           String? // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
+  id                    String    @id @default(cuid())
+  principalId           String    @unique // sidestage の User.id
+  // 登録ゲートが実在確認の応答から得た不変ID。room を消しても resolveRoomForStreamer() が
+  // これを使って再作成できるようにするため、TiktokRoom とは別にここでも保持する(NOT NULL)。
+  tiktokUid             String
+  tiktokHandle          String // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
+  verificationCode      String
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime?
+  apiKey                String?   @unique
+  createdAt             DateTime  @default(now())
+  // ユーザー操作(web /api/verify/generate, mobile PATCH /api/mobile/streamer)による
+  // tiktokHandle 設定・変更の最終時刻。7日間の再変更ロックの起点に使う。
+  tiktokHandleChangedAt DateTime?
+  roomId                String? // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
 
   overlayToken             String? @unique
   overlayDisplayReference  String  @default("today") // "today" | "fixed"
@@ -657,8 +627,8 @@ model Streamer {
   overlayHeadingBackground String  @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
   overlayDisplaySpeed      Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
 
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  room      TiktokRoom? @relation(fields: [roomId], references: [id])
+  user User        @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  room TiktokRoom? @relation(fields: [roomId], references: [id])
 
   // desktopの5ウィジェット移植で追加。既存のoverlay*列(contribution専用)とは分離し、
   // 種類ごとに1テーブルへ寄せてある(Streamerへ列を積み増し続けると肥大化するため)。
@@ -675,7 +645,7 @@ model Streamer {
 
 // TikTokの「いいね」日次累計。単発イベントのログは保持しない方針
 // (like-contribution/tap-listウィジェットの要件: 累積カウンタのみで十分)。
-// GiftとおなじくroomId単位で共有される(同じtiktokIdを複数Streamerが登録していれば
+// GiftとおなじくroomId単位で共有される(同じTikTokアカウントを複数Streamerが登録していれば
 // 同じ行を参照する)。likeイベント自体には金銭的価値がなく再送/重複の実害が
 // Giftより小さいため、Giftのような(roomId, orderId)unique制約やmsgId時間窓dedupまでは持たない
 // — 増分はWorker側の秒単位コアレッシング+プロセス内msgId FIFOでのみ弾く。
@@ -827,10 +797,10 @@ model AppSetting {
 
 model Gift {
   id              String   @id @default(cuid())
-  roomId          String // TikTokアカウント単位で共有(同じtiktokIdを登録した全ユーザーが同じ行を参照)
-  uniqueId        String
-  nickname        String
-  profileImageUrl String?
+  roomId          String // TikTokアカウント単位で共有(同じ配信者を登録した全ユーザーが同じ行を参照)
+  // 送信者の不変ID。表示名(ハンドル・ニックネーム・アイコン)はここから TikTokUser を順引きする
+  // ので、この行には保存しない(改名しても集計が割れない)。
+  tiktokUid       String
   giftId          Int
   giftName        String
   giftPictureUrl  String?
@@ -859,12 +829,12 @@ model Gift {
   multiplierType  Int?
   multiplierValue Int?
 
-  room  TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, orderId])
   @@index([roomId, dayKey])
   @@index([roomId, receivedAt])
-  @@index([roomId, uniqueId])
+  @@index([roomId, tiktokUid])
   @@index([roomId, groupId])
   @@index([roomId, msgId])
   // 90日retentionの削除バッチは dayKey 単体で絞る(gift-retention.ts)。既存のindexは
@@ -890,8 +860,8 @@ model Gift {
 model ListenerComment {
   id         String   @id @default(cuid())
   roomId     String
-  uniqueId   String
-  nickname   String
+  // 投稿者の不変ID。表示名は TikTokUser から順引きする(§2.1)。
+  tiktokUid  String
   comment    String
   receivedAt DateTime @default(now())
   timeSource String   @default("tiktok") // "tiktok" | "fallback"。Gift同様、TikTok createTime欠落/不正時はサーバー受信時刻を使う
@@ -913,7 +883,7 @@ model ListenerComment {
   @@schema("public")
 }
 
-// ギフト明細(Gift)の日次ロールアップ。(roomId, dayKey, uniqueId) 単位。
+// ギフト明細(Gift)の日次ロールアップ。(roomId, dayKey, tiktokUid) 単位。
 //
 // **Gift は受信後90日で削除される**(gift-retention.ts)。削除しても期間ランキング・
 // 事務所APIの長期集計が壊れないよう、削除の前にこのテーブルへ集計を落としておく。
@@ -928,14 +898,10 @@ model ListenerComment {
 // login-stats が現行どおり行数ベースの数字を出せるよう GiftLifetimeStat.rowCount を
 // ここから再集計するために必要。
 model GiftDailyListenerStat {
-  id       String @id @default(cuid())
-  roomId   String
-  dayKey   String
-  uniqueId String
-
-  // その日の最新の Gift 行から採ったスナップショット(表示用)。
-  nickname        String
-  profileImageUrl String?
+  id        String @id @default(cuid())
+  roomId    String
+  dayKey    String
+  tiktokUid String
 
   rowCount      Int @default(0) // Gift の行数
   giftCount     Int @default(0) // Gift.repeatCount の合計
@@ -944,19 +910,19 @@ model GiftDailyListenerStat {
   firstReceivedAt DateTime
   lastReceivedAt  DateTime
 
-  @@unique([roomId, dayKey, uniqueId])
+  @@unique([roomId, dayKey, tiktokUid])
   @@index([roomId, dayKey])
   @@index([dayKey])
   @@map("gift_daily_listener_stats")
   @@schema("public")
 }
 
-// uniqueId 単位(room横断)の全期間累計。GiftDailyListenerStat 全体から毎回再集計する。
+// tiktokUid 単位(room横断)の全期間累計。GiftDailyListenerStat 全体から毎回再集計する。
 // /api/public/login-stats の gifts フルスキャンを置き換えるためだけに存在する。
 //
 // totalDiamonds は全期間・全room の合計なので Int を超えうる。BigInt で持つ。
 model GiftLifetimeStat {
-  uniqueId String @id
+  tiktokUid String @id
 
   rowCount      Int    @default(0) // Gift の行数(prisma.gift.count() 相当)
   giftCount     Int    @default(0) // Gift.repeatCount の合計
@@ -968,7 +934,6 @@ model GiftLifetimeStat {
   @@map("gift_lifetime_stats")
   @@schema("public")
 }
-
 
 // TikTokの全ギフトカタログ(webcastの `gift/list/` の結果)。全部屋で共有する1枚のテーブル。
 // ギフトはほぼグローバルなので部屋ごとには持たない(部屋限定ギフトは和集合として混ざる)。
@@ -1009,7 +974,7 @@ model TiktokGiftCatalog {
 // **1つのバトルについて、参加した両サイドのroomからそれぞれ同じbattleIdのイベントが届く。**
 // (両方をこちらが監視している場合)。したがってbattleIdでグループ化すれば
 // 「そのバトルに誰が参加したか」がpayloadの解釈精度に依存せず分かる。
-// 相手のTikTokハンドル(uniqueId)はpayloadに含まれないため、この照合が唯一の確実な手段。
+// 相手のTikTokハンドルはpayloadに含まれないため、この照合が唯一の確実な手段。
 model TiktokBattle {
   id       String @id @default(cuid())
   roomId   String
@@ -1024,12 +989,14 @@ model TiktokBattle {
 
   endedAt        DateTime?
   durationSec    Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
-  hostUserIds    String[]  @default([]) // anchorIdStr(数値文字列)
-  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・実データで検証済み。ただしhostUserIdsとインデックス対応しない)
-  hostScores     Json      @default("{}") // anchorIdStr -> hostScore(stringのまま)
-  hostProfiles   Json      @default("{}") // anchorIdStr -> {displayId, nickName, avatarUrl}。tiktok-battle.tsのHostProfiles
-  hostTeams      Json      @default("{}") // anchorIdStr -> teamId(teamArmies由来。1vs1等チーム情報が無いバトルは{})
-  // anchorIdStr -> OpponentWatchEntry(tiktok-battle.tsのOpponentWatch)。相手roomの監視が
+  hostTiktokUids String[]  @default([]) // tiktokUid(TLC raw の anchorIdStr。数値文字列)
+  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・実データで検証済み。ただしhostTiktokUidsとインデックス対応しない)
+  hostScores     Json      @default("{}") // tiktokUid -> hostScore(stringのまま)
+  // tiktokUid -> {displayId, avatarUrl}。tiktok-battle.tsのHostProfiles。
+  // **nickName は持たない** — 表示名の正本は TikTokUser で、hostProfiles 観測時に recordTikTokUser() が記録する。
+  hostProfiles   Json      @default("{}")
+  hostTeams      Json      @default("{}") // tiktokUid -> teamId(teamArmies由来。1vs1等チーム情報が無いバトルは{})
+  // tiktokUid -> OpponentWatchEntry(tiktok-battle.tsのOpponentWatch)。相手roomの監視が
   // どの経路(コラボ承諾/バトル開始補助/元々監視中/失敗)で始まったかの記録。表示には使わず、
   // コラボ承諾トリガー(recordCollabGroupChange)の取りこぼし率を事後検証するためだけの記録。
   opponentWatch  Json      @default("{}")
@@ -1045,8 +1012,8 @@ model TiktokBattle {
   // 後から走るtrueが上書きしうる。
   tapPointsTracked Boolean @default(false)
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
@@ -1063,8 +1030,8 @@ model TiktokBattle {
 // **battleIdへFK制約は張らない。** TiktokBattle行の作成前(バトル開始検知の取りこぼし・受信順序)
 // にアイテム使用イベントが先着することがあり、Giftと同じ「roomId経由の緩い関連付け」思想を踏襲する。
 model TiktokBattleItemUse {
-  id     String @id @default(cuid())
-  roomId String
+  id       String @id @default(cuid())
+  roomId   String
   battleId String // TikTokのbattleId。TiktokBattle.battleIdと同じ文字列だが直接のFKは張らない
 
   // WebcastLinkMicBattleItemCard.cardType(shared/tiktok-live-connectorのBattleItemCardType)
@@ -1072,11 +1039,10 @@ model TiktokBattleItemUse {
   // POWER_UP_SUMMARY(4、周期通知でsenderなし)は保存対象外(ハンドラ側でスキップ)。
   cardType Int
 
-  senderUserId            String // sender.userId(安定ID)。targetHostUserIdと同じ系列で突合できるようにする
-  senderUniqueId          String // 可変ハンドル。空になりうる(proto既定値)
-  senderNickname          String
+  // 送信者の不変ID。表示名は TikTokUser から順引きする(§2.1)。
+  senderTiktokUid         String
   senderProfilePictureUrl String?
-  targetHostUserId        String // 使用対象の配信者anchorId
+  targetHostTiktokUid     String // 使用対象の配信者のtiktokUid
 
   // TikTok common.msgId。resolveMsgId()が既定値"0"等を弾いてnullにする。
   // dedupは(roomId, msgId)の5分window方式(Gift/saveGiftと同じ思想。理由はtiktok-listener.tsのGIFT_DEDUP_WINDOW_MS参照)。
@@ -1100,20 +1066,20 @@ model TiktokBattleItemUse {
 // rewardSumは**observing roomごとの値**(BATTLE-EVENTS.mdに明記の通り「そのルームが区間中に
 // 獲得したボーナスpt合計」)。TiktokBattleと同じく、両サイドを監視している場合は別行として届く。
 model TiktokBattleBonusMission {
-  id     String @id @default(cuid())
-  roomId String
+  id       String @id @default(cuid())
+  roomId   String
   battleId String
 
   targetType     Int // 1=人数系 / 2=実弾pt系 / 8=チーム戦pt系(taskPeriodConfig.targetType)
   progressTarget Int
   rewardMultiple Int // 2 or 3
 
-  startedAt       DateTime  // taskStart受信時刻
+  startedAt       DateTime // taskStart受信時刻
   settledAt       DateTime? // taskSettle受信時刻
-  taskResult      Int?      // 0=中間settle / 1=未達成 / 2=達成
+  taskResult      Int? // 0=中間settle / 1=未達成 / 2=達成
   rewardStartedAt DateTime? // 報酬区間開始目安
   rewardEndedAt   DateTime? // rewardSettle受信時刻(区間終了の正)
-  rewardSum       Int?      // rewardSettle.sum相当。observing roomごとの値
+  rewardSum       Int? // rewardSettle.sum相当。observing roomごとの値
 
   room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
@@ -1135,7 +1101,7 @@ model TiktokBattleArmiesSnapshot {
   roomId     String
   battleId   String
   occurredAt DateTime @default(now())
-  anchorId   String // スコア主体。1vs1はbattleItems[].userArmy[]単位、チーム戦はteamArmies[].teamUsers[]単位
+  tiktokUid  String // スコア主体。1vs1はbattleItems[].userArmy[]単位、チーム戦はteamArmies[].teamUsers[]単位
   score      String // 累積スコア。桁数が大きいためString(BattleHistoryParticipant.scoreと同じ理由)
 
   room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
@@ -1159,25 +1125,23 @@ model TiktokBattleTapPoint {
   roomId   String
   battleId String
 
-  // このroomの配信者のanchorId(= TikTokの数値userId文字列。DBのUUIDではない)。
-  // **読み出し時に room -> anchor を解決しないための列。** BattleHistoryParticipant.roomId は
-  // absorbRooms(TikTok ID改名の合流)の移送対象に入っていないので、participant 由来の旧 roomId で
-  // 引くと合流後に一致しなくなる。
-  anchorId String
+  // このroomの配信者のtiktokUid(TikTokの数値ID文字列。DBのUUIDではない)。
+  // **読み出し時に room -> host を解決しないための列。**
+  hostTiktokUid String
 
   // 10タップ目のlikeを受信した時刻。**@default(now()) にしない** — insertはfire-and-forgetなので
   // now()は挿入時刻になり、write queueの詰まりの分だけ後ろへずれる。区間割当の精度が
   // そのまま逆算の正しさになる。
   occurredAt DateTime
 
-  uniqueId String // 10タップに到達したリスナー
-  points   Int // 現行仕様では常に3。仕様が違っていたと後で判るよう定数で埋めずに保存する
+  tiktokUid String // 10タップに到達したリスナー(不変ID。表示名は TikTokUser から順引き)
+  points    Int // 現行仕様では常に3。仕様が違っていたと後で判るよう定数で埋めずに保存する
 
   room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   // **「1リスナー1バトル1回」の仕様そのもの。** 再接続でメモリ上の重複防止(reached Set)が
   // 消えても二重計上できない。書き込みは createMany({ skipDuplicates: true })。
-  @@unique([roomId, battleId, uniqueId])
+  @@unique([roomId, battleId, tiktokUid])
   // 先頭はroomIdではなくbattleId。loadTapPointsForBattleは1つのbattleIdに対して
   // 自room・相手roomを横断して引く(armies snapshotが自roomだけを引くのと条件が違う)。
   @@index([battleId, roomId, occurredAt])
@@ -1197,7 +1161,7 @@ model TiktokBattleTapPoint {
 // 確定できなかったバトルの表示は従来どおりライブ集計で正しく出る。
 //
 // **avatarUrl 列は持たない。** resolveAvatarUrls が返すのは24時間で失効する署名付きURLなので、
-// 文字列としてスナップショットすると翌日リンク切れになる。anchorId/uniqueId だけを保存し、
+// 文字列としてスナップショットすると翌日リンク切れになる。tiktokUid だけを保存し、
 // 読み出し時に TiktokAvatarAsset から都度署名する(このテーブルは Gift 非依存の恒久キャッシュ)。
 model BattleHistory {
   id       String @id @default(cuid())
@@ -1206,7 +1170,7 @@ model BattleHistory {
 
   windowStart DateTime // resolveBattleWindowが確定したstart
   windowEnd   DateTime // 同end(materializeはend!==nullの場合のみ実行するのでNOT NULL)
-  status      String   // "finished" | "cut_short"(resolveBattleWindowのstatus。liveは作らない)
+  status      String // "finished" | "cut_short"(resolveBattleWindowのstatus。liveは作らない)
 
   selfScore         String?
   opponentScore     String?
@@ -1239,7 +1203,7 @@ model BattleHistory {
 
   // 公開シェアリンクのトークン。Streamer.overlayTokenと同じ「平文・ハッシュ化なし・遅延発行」。
   // crypto.randomBytes(24)で生成する(cuid等の推測可能な識別子は使わない)。
-  shareToken       String?   @unique
+  shareToken         String?   @unique
   shareTokenIssuedAt DateTime?
 
   room          TiktokRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
@@ -1285,31 +1249,31 @@ model BattleHistoryParticipant {
   side            String // "self" | "opponent"(後方互換。正は teamIndex)
   teamIndex       Int     @default(0) // 陣営番号。0が自分の陣営
   position        Int // 陣営内の表示順(生成順をそのまま保存)
-  anchorId        String
-  tiktokId        String?
-  displayId       String?
-  nickName        String?
+  tiktokUid       String
   score           String? // 確定時に観測できていたこのメンバーのスコア(最大30桁なのでString)。未観測ならnull
 
   // --- 2026-09-03拡張: コラボ相手roomごとの個別貢献者記録に対応するための列 ---
   // Expand段階につきすべてnullable。Backfillで埋め、Cutoverで読み出し側を切り替える。
-  battleTeamId String? // → BattleTeam.id。旧データはPhase1バックフィルでself/opponent 2チームを生成し紐付ける
-  roomId       String? // 1配信枠(room)=1participant。旧データはbattleHistory.roomId(自room)またはanchorId解決先(相手room)から埋める
-  isSelf       Boolean? // 旧side("self"|"opponent")から導出。正はこちら、sideは後方互換のため書き続ける
-  uniqueIdSnapshot String? // displayIdの後継。avatarUrlと違いTikTokハンドルは失効しないためそのままコピー
-  nicknameSnapshot String? // nickNameの後継
+  battleTeamId         String? // → BattleTeam.id。旧データはPhase1バックフィルでself/opponent 2チームを生成し紐付ける
+  roomId               String? // 1配信枠(room)=1participant。旧データはbattleHistory.roomId(自room)またはtiktokUid解決先(相手room)から埋める
+  isSelf               Boolean? // 旧side("self"|"opponent")から導出。正はこちら、sideは後方互換のため書き続ける
+  // ハンドル・ニックネームはバトル時点で凍結するスナップショット(TikTokUserからは引かない)。
+  // 2026-09の識別子統一で tiktokId / displayId / uniqueIdSnapshot の3列と nickName / nicknameSnapshot の
+  // 2列をそれぞれ1列へ集約した(Expand/Cutover移行の後片付け)。
+  tiktokHandleSnapshot String?
+  nicknameSnapshot     String?
 
-  officialScore    String? // teamArmies由来の公式スコア(既存scoreと役割重複だが新構造の正として保持)
-  observedGiftTotal Int?    // Sidestage観測Gift合計(room単位)
+  officialScore     String? // teamArmies由来の公式スコア(既存scoreと役割重複だが新構造の正として保持)
+  observedGiftTotal Int? // Sidestage観測Gift合計(room単位)
 
-  captureStatus         String? // "complete" | "partial" | "unavailable"
-  captureCoverage       Float?  // 0.0〜1.0
-  captureStartedLateMs  Int?
-  captureEndedEarlyMs   Int?
-  captureGapMs          Int?
-  monitoringStartedAt   DateTime?
-  firstConnectedAt      DateTime?
-  lastDisconnectedAt    DateTime?
+  captureStatus        String? // "complete" | "partial" | "unavailable"
+  captureCoverage      Float? // 0.0〜1.0
+  captureStartedLateMs Int?
+  captureEndedEarlyMs  Int?
+  captureGapMs         Int?
+  monitoringStartedAt  DateTime?
+  firstConnectedAt     DateTime?
+  lastDisconnectedAt   DateTime?
 
   battleHistory BattleHistory @relation(fields: [battleHistoryId], references: [id], onDelete: Cascade)
   battleTeam    BattleTeam?   @relation(fields: [battleTeamId], references: [id], onDelete: SetNull)
@@ -1318,7 +1282,7 @@ model BattleHistoryParticipant {
   itemCardEvents BattleHistoryItemCardEvent[]
   bonusMissions  BattleHistoryBonusMission[]
 
-  @@unique([battleHistoryId, anchorId])
+  @@unique([battleHistoryId, tiktokUid])
   @@index([battleTeamId])
   @@map("battle_history_participants")
   @@schema("public")
@@ -1335,16 +1299,18 @@ model BattleHistoryGiftEvent {
 
   participantId String
 
-  occurredAt             DateTime // Gift.receivedAtのコピー
-  senderUniqueIdSnapshot String   // Gift.uniqueIdのコピー
-  senderNicknameSnapshot String   // Gift.nicknameのコピー
-  senderTiktokUserId     String?  // 将来拡張、当面null(Gift側にuserId列が無いため)
+  occurredAt                 DateTime // Gift.receivedAtのコピー
+  senderTiktokUid            String // Gift.tiktokUidのコピー(不変ID)
+  // ハンドル・ニックネームは確定時点の TikTokUser から解決して凍結する
+  // (Giftは90日で消えるので履歴側は自己完結が要件)。
+  senderTiktokHandleSnapshot String?
+  senderNicknameSnapshot     String?
 
-  giftId           Int    // TikTok側ギフト種別ID(Gift.giftIdのコピー)
+  giftId           Int // TikTok側ギフト種別ID(Gift.giftIdのコピー)
   giftNameSnapshot String // Gift.giftNameのコピー(英語名)
-  repeatCount      Int    // Gift.repeatCountのコピー
-  diamondCount     Int    // Gift.diamondCountのコピー
-  totalDiamonds    Int    // Gift.totalDiamondsのコピー
+  repeatCount      Int // Gift.repeatCountのコピー
+  diamondCount     Int // Gift.diamondCountのコピー
+  totalDiamonds    Int // Gift.totalDiamondsのコピー
 
   multiplierType  Int? // Gift.multiplierTypeのコピー
   multiplierValue Int? // Gift.multiplierValueのコピー
@@ -1362,7 +1328,7 @@ model BattleHistoryGiftEvent {
   participant BattleHistoryParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([participantId, occurredAt])
-  @@index([participantId, senderUniqueIdSnapshot])
+  @@index([participantId, senderTiktokUid])
   @@map("battle_history_gift_events")
   @@schema("public")
 }
@@ -1374,11 +1340,12 @@ model BattleHistoryItemCardEvent {
 
   participantId String
 
-  occurredAt              DateTime // TiktokBattleItemUse.receivedAtのコピー
-  cardType                Int
-  senderUniqueIdSnapshot  String?
-  senderNicknameSnapshot  String?
-  senderTiktokUserId      String? // TiktokBattleItemUse.senderUserIdのコピー
+  occurredAt                 DateTime // TiktokBattleItemUse.receivedAtのコピー
+  cardType                   Int
+  senderTiktokHandleSnapshot String?
+  senderNicknameSnapshot     String?
+  // TiktokBattleItemUse.senderTiktokUidのコピー。「送信者不明」を表現するため nullable のまま
+  senderTiktokUid            String?
 
   participant BattleHistoryParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
@@ -1390,7 +1357,7 @@ model BattleHistoryItemCardEvent {
 // 確定済みバトルのボーナスミッション区間。ミッション設定はバトル全体で共有だが、
 // rewardSumはroom別のためparticipant単位で複数行になりうる(TiktokBattleBonusMissionと同じ理由)。
 model BattleHistoryBonusMission {
-  id              String   @id @default(cuid())
+  id              String @id @default(cuid())
   battleHistoryId String
   participantId   String
 
@@ -1416,7 +1383,7 @@ model BattleHistoryBonusMission {
 // 確定済みバトルのスコア曲線(バトル再生のスコアバー用)。確定時に自room・window内の
 // TiktokBattleArmiesSnapshot を複製する。
 //
-// **participantId ではなく anchorId で持つ。** commitBattleSnapshot は participant を毎回削除・
+// **participantId ではなく tiktokUid で持つ。** commitBattleSnapshot は participant を毎回削除・
 // 再生成するため、participantId を持つと再確定のたびに全点を張り替えることになる。
 //
 // **offsetMs(windowStartからの経過ミリ秒)を持つのは再生側に時刻演算をさせないため。**
@@ -1426,7 +1393,7 @@ model BattleHistoryBonusMission {
 model BattleHistoryScorePoint {
   id              String   @id @default(cuid())
   battleHistoryId String
-  anchorId        String
+  tiktokUid       String
   offsetMs        Int
   occurredAt      DateTime
   score           String
@@ -1440,19 +1407,21 @@ model BattleHistoryScorePoint {
 
 // TikTok(バトル参加者・ギフト送信者)のアバター画像を自前ストレージへ恒久保存したキャッシュ。
 // TikTokの署名付きURL(数十時間で失効)への依存を切るため、圧縮のうえ1回だけダウンロードして
-// Railway Bucketへ置く。roomIdを持たない(uniqueId/anchorIdはグローバルに一意なので、
+// Railway Bucketへ置く。roomIdを持たない(tiktokUidはグローバルに一意なので、
 // 同じ人物が複数配信者に登場しても1回のダウンロードで済む)。
+//
+// **kindは持たない。** 2026-09の識別子統一で主体が tiktokUid(数値ID)1種類になり、
+// ホスト・ギフト送信者・イベント参加者のどれで現れても1行・1オブジェクトになった。
 model TiktokAvatarAsset {
   id          String   @id @default(cuid())
-  kind        String // "battle_host" | "gift_sender"
-  subjectId   String // anchorId(battle_host) または uniqueId(gift_sender)
+  tiktokUid   String
   storageKey  String
   contentType String
   byteSize    Int
-  fetchedAt   DateTime @default(now()) // 30日超で再取得(avatar-storage.ts)
+  fetchedAt   DateTime @default(now()) // 7日超で再取得(avatar-storage.ts)
   updatedAt   DateTime @updatedAt
 
-  @@unique([kind, subjectId])
+  @@unique([tiktokUid])
   @@map("tiktok_avatar_assets")
   @@schema("public")
 }
@@ -1483,16 +1452,16 @@ model DbStatsSnapshot {
 // ============================================================================
 
 model Event {
-  id            String  @id @default(cuid())
-  slug          String  @unique // 公開URL /e/{slug}
-  title         String
-  description   String? @db.Text
+  id               String  @id @default(cuid())
+  slug             String  @unique // 公開URL /e/{slug}
+  title            String
+  description      String? @db.Text
   // Railway Bucket(S3互換)上のオブジェクトキー。生のURLは保存しない
   // — 読み出しのたびに src/lib/media-storage.ts が presigned GET を発行する(media-storage.ts参照)。
-  coverImageKey String?
-  prizeText     String? @db.Text // 優勝賞品。公開ページでは空なら賞品セクション自体を出さない
-  noticeText    String? @db.Text // 注意事項+FAQ(軽量Markdownサブセット。src/event/notice-blocks.ts が解釈する)
-  ownerUserId   String // User.id。FKは張らない(将来 auth サービスへ切り出すため)
+  coverImageKey    String?
+  prizeText        String? @db.Text // 優勝賞品。公開ページでは空なら賞品セクション自体を出さない
+  noticeText       String? @db.Text // 注意事項+FAQ(軽量Markdownサブセット。src/event/notice-blocks.ts が解釈する)
+  ownerPrincipalId String // User.id。FKは張らない(将来 auth サービスへ切り出すため)
 
   format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
   entryMode  String // "SOLO" | "TEAM"
@@ -1514,20 +1483,20 @@ model Event {
   // 名前空間の追加・更新は既存キーを潰さないよう必ず `{ ...existing, <namespace>: ... }` で書く。
   rules   Json     @default("{}")
 
-  lastAggregatedAt  DateTime?
-  aggregateMs       Int? // 直近の再集計にかかった時間(SLO監視用)
+  lastAggregatedAt     DateTime?
+  aggregateMs          Int? // 直近の再集計にかかった時間(SLO監視用)
   // スナップショット(EventContribution / EventStanding)を作った集計方式。
   // "FULL_PERIOD" = 開催日程の全ギフト / "BATTLE_ONLY" = 検知したバトル区間のギフトだけ。
   // null は方式を記録し始める前に最終集計を終えたイベント(FULL_PERIOD 相当)。
   // **主催者が設定する項目ではない。** aggregateEvent() が毎回書く。
   // finalizedAt が立ったイベントは再集計されないので、公開ページは format ではなく
   // この列を見て見出し・注記を決める(過去のスナップショットへ新しい説明を付けないため)。
-  aggregationPolicy String?
+  aggregationPolicy    String?
   // 締切(endAt + 猶予)を過ぎてからの最終集計が1回成功した時刻。
   // これが入るまでは status を FINISHED にしても集計を続ける(遅れて保存された
   // ギフトを取り込むため)。逆にこれが入ったら以後は集計しない。
   // 主催者が endAt を延ばしたら null に戻して再開させる。
-  finalizedAt       DateTime?
+  finalizedAt          DateTime?
   // startAt到来時点で参加者アイコンを自前ストレージへ1回だけスナップショットした時刻。
   // null は未到来または未実行。書き込みは avatar-snapshot.ts の1箇所だけ。
   // 個々の参加者の取得に失敗してもここは立てる(以後はライブ取得へ永続的にフォールバックする
@@ -1535,8 +1504,8 @@ model Event {
   // 意図して行う操作であり、延長後も旧開始時刻のスナップショットで揃える(finalizedAtの
   // ような「再開して当然」の項目ではない)。
   avatarsSnapshottedAt DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   sessions      EventSession[]
   teams         EventTeam[]
@@ -1550,7 +1519,7 @@ model Event {
   roomLeases    EventRoomLease[]
 
   @@index([status, endAt])
-  @@index([ownerUserId])
+  @@index([ownerPrincipalId])
   @@schema("event")
 }
 
@@ -1616,15 +1585,16 @@ model EventTeam {
 }
 
 model EventParticipant {
-  id          String   @id @default(cuid())
-  eventId     String
-  tiktokId    String // 正規化済み(小文字・trim・先頭@除去)
-  roomId      String // TiktokRoom.id(論理参照)
-  teamId      String?
-  displayName String // イベント内の表示名。登録時の初期値は TikTok ID で、主催者があとから編集できる
-  userId      String? // 会員登録済みならリンク
-  status      String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
-  joinedAt    DateTime @default(now())
+  id           String   @id @default(cuid())
+  eventId      String
+  tiktokUid    String // TikTokの不変な数値ID。登録ゲートの実在確認応答から得る(src/event/participants.ts)
+  tiktokHandle String // 可変の@ハンドル。正規化済み(小文字・trim・先頭@除去)。表示・接続用のスナップショット
+  roomId       String // TiktokRoom.id(論理参照)
+  teamId       String?
+  displayName  String // イベント内の表示名。登録時の初期値は TikTok ID で、主催者があとから編集できる
+  principalId  String? // 会員登録済みなら User.id へリンク
+  status       String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
+  joinedAt     DateTime @default(now())
 
   // 対戦カードに表示するアバターの切り出し位置・ズーム。null = 現状のデフォルト表示
   // (object-position: 50% 30%, zoom: 1)。解決は src/event/avatar-frame.ts に閉じる。
@@ -1636,9 +1606,9 @@ model EventParticipant {
   team  EventTeam?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
   sides EventMatchSideParticipant[]
 
-  @@unique([eventId, tiktokId])
+  @@unique([eventId, tiktokUid])
   // 同じ room を別表記で二重登録させない = 同じギフトの二重計上を防ぐ。
-  // TiktokRoom は複数 Streamer に共有されるため、tiktokId の unique だけでは足りない。
+  // TiktokRoom は複数 Streamer に共有されるため、tiktokUid の unique だけでは足りない。
   @@unique([eventId, roomId])
   @@schema("event")
 }
@@ -1649,7 +1619,8 @@ model EventRoomLease {
   id              String    @id @default(cuid())
   eventId         String
   roomId          String
-  tiktokId        String
+  tiktokUid       String
+  tiktokHandle    String
   createdBySystem Boolean   @default(false) // イベントが room を新規作成したか
   monitorUntil    DateTime // 通常は event.endAt + 猶予
   releasedAt      DateTime?
@@ -1845,32 +1816,34 @@ model EventLifeLedger {
 
 // リスナー貢献の集計スナップショット。3種のランキングをこの1テーブルで賄う。
 model EventContribution {
-  id               String   @id @default(cuid())
-  eventId          String
-  scope            String // "EVENT" | "PARTICIPANT" | "TEAM" | "MATCH"
-  scopeId          String   @default("") // participantId / teamId / matchId(EVENT のときは "")
-  listenerUniqueId String // gifts.uniqueId
-  nickname         String
-  profileImageUrl  String?
-  diamonds         BigInt   @default(0) // 実弾(素のダイヤ)
-  points           Decimal  @default(0) @db.Decimal(18, 2) // 倍率適用後
-  giftCount        Int      @default(0)
+  id                   String   @id @default(cuid())
+  eventId              String
+  scope                String // "EVENT" | "PARTICIPANT" | "TEAM" | "MATCH"
+  scopeId              String   @default("") // participantId / teamId / matchId(EVENT のときは "")
+  listenerTiktokUid    String // gifts.tiktokUid(不変ID)
+  // 表示用スナップショット。null 許容(TikTokUser 行が無い / ハンドル未観測)。
+  // **ニックネームとアバターURLは持たない** — 表示は resolveTikTokUserDisplay() と
+  // resolveAvatarUrls() で読み取り時に解決する(改名前のハンドルをDBへ焼き付けない)。
+  listenerTiktokHandle String?
+  diamonds             BigInt   @default(0) // 実弾(素のダイヤ)
+  points               Decimal  @default(0) @db.Decimal(18, 2) // 倍率適用後
+  giftCount            Int      @default(0)
   // そのリスナーが最も多くポイントを入れた参加者。scope="EVENT" のときだけ入る
   // (PARTICIPANT / TEAM は scope 自体が答えなので null)。
   // EventStanding.subjectId と同じく **FK を張らない** — 参加者が消えても集計を壊さず、
   // 次の再集計で消える/付け替わるのに任せる。読み側は解決できなければ表示しない。
-  topParticipantId String?
+  topParticipantId     String?
   // そのリスナーがギフトを入れた参加者の人数。scope="EVENT" のときだけ意味を持つ
-  participantCount Int      @default(0)
+  participantCount     Int      @default(0)
   // 参加者ごとの内訳。scope="EVENT" のときだけ入る(形式は src/event/contribution-breakdown.ts)。
   // **null は「集計が内訳に未対応だった頃の行」**で、読み側は従来表示へフォールバックする。
   // finalizedAt が立ったイベントは再集計されないので、過去イベントの行は永久に null のまま残る。
-  breakdown        Json?
-  updatedAt        DateTime @updatedAt
+  breakdown            Json?
+  updatedAt            DateTime @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  @@unique([eventId, scope, scopeId, listenerUniqueId])
+  @@unique([eventId, scope, scopeId, listenerTiktokUid])
   @@index([eventId, scope, scopeId, points])
   @@index([eventId, scope, scopeId, diamonds])
   @@schema("event")
@@ -1898,7 +1871,7 @@ model EventStanding {
 //
 // **1つのバトルにつき、両サイドの room ぶんの行ができる**(両方をイベントが監視している場合)。
 // `battleId` でグループ化した roomId の集合が「そのバトルの参加者」になる。
-// 相手の TikTok ハンドルは payload に含まれない(anchorInfo に uniqueId が無い)ので、
+// 相手の TikTok ハンドルは payload に含まれない(anchorInfo にハンドル列が無い)ので、
 // この roomId 集合による照合が唯一の確実な手段。`src/event/match-detect.ts` を参照。
 model DetectedBattle {
   id       String @id @default(cuid())
@@ -1913,9 +1886,9 @@ model DetectedBattle {
   durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの推定に使う
   lastAction  Int // 最後に観測した BattleAction(4=OPEN, 5=FINISH, 6=CUT_SHORT)
 
-  hostUserIds    String[] @default([]) // anchorIdStr(数値文字列)
+  hostTiktokUids String[] @default([]) // anchorIdStr(数値文字列)
   hostDisplayIds String[] @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
-  hostScores     Json     @default("{}") // anchorIdStr -> hostScore。TikTok 側の集計値、参考のみ
+  hostScores     Json     @default("{}") // tiktokUid -> hostScore。TikTok 側の集計値、参考のみ
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

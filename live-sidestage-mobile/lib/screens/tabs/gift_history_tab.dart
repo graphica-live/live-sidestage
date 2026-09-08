@@ -260,8 +260,12 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
             ListPanel(
               children: [
                 for (final event in events)
+                  // ハンドルが無い行(TikTokUser 未登録)はプロフィール導線を出さない。
+                  // uid では tiktok.com のURLを組み立てられない。
                   InkWell(
-                    onTap: () => openTiktokProfile(context, event.uniqueId),
+                    onTap: event.tiktokHandle == null
+                        ? null
+                        : () => openTiktokProfile(context, event.tiktokHandle!),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       child: Row(

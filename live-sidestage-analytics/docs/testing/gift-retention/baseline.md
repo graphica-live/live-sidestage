@@ -8,6 +8,11 @@ last_reviewers: Qwen(独立) + fable-expert(Codex/Gemini quota枯渇のため代
 
 # テストベースライン: gift-retention
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `Gift`(生ギフト明細)の90日自動削除と、日次/全期間ロールアップ(`GiftDailyListenerStat` /
 `GiftLifetimeStat`)への集約。エントリポイントは `gift-retention.ts`(Railway Cron)、
 本体は `src/lib/gift-retention.ts`。watermark方式で「ロールアップ済みの上限dayKey」と

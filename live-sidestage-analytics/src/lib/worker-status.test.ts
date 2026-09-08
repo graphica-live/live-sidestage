@@ -15,7 +15,7 @@ const NOW = new Date("2026-08-22T12:00:00.000Z");
 function listener(overrides: Partial<ListenerSnapshot> = {}): ListenerSnapshot {
   return {
     roomId: "room-a",
-    tiktokId: "alice",
+    tiktokHandle: "alice",
     status: "connected",
     message: "接続中",
     updatedAt: NOW.toISOString(),
@@ -30,7 +30,7 @@ function listener(overrides: Partial<ListenerSnapshot> = {}): ListenerSnapshot {
 function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
   return {
     roomId: "room-a",
-    tiktokId: "alice",
+    tiktokHandle: "alice",
     nickname: null,
     workerId: 0,
     listenerStatus: "connected",
@@ -355,7 +355,7 @@ describe("buildWorkerReport", () => {
 
   it("担当外の listener が動いていれば running_not_assigned", () => {
     const r = report({
-      probes: [okProbe(0, payload({ listeners: [listener({ roomId: "room-x", tiktokId: "x" })] }))],
+      probes: [okProbe(0, payload({ listeners: [listener({ roomId: "room-x", tiktokHandle: "x" })] }))],
       rooms: [],
     });
     expect(issueTypes(r)).toContain("running_not_assigned");
@@ -376,7 +376,7 @@ describe("buildWorkerReport", () => {
   it("WORKER_COUNT の範囲外に割り当てられた部屋は room_out_of_range", () => {
     const r = report({
       workerCount: 1,
-      rooms: [room(), room({ roomId: "room-b", tiktokId: "bob", workerId: 5 })],
+      rooms: [room(), room({ roomId: "room-b", tiktokHandle: "bob", workerId: 5 })],
     });
     expect(issueTypes(r)).toContain("room_out_of_range");
     expect(r.outOfRangeRooms).toHaveLength(1);
@@ -384,7 +384,7 @@ describe("buildWorkerReport", () => {
 
   it("workerId 未割当の部屋は room_unassigned(warn)として別枠で返す", () => {
     const r = report({
-      rooms: [room(), room({ roomId: "room-b", tiktokId: "bob", workerId: null })],
+      rooms: [room(), room({ roomId: "room-b", tiktokHandle: "bob", workerId: null })],
     });
     expect(r.issues.find((i) => i.type === "room_unassigned")?.severity).toBe("warn");
     expect(r.unassignedRooms).toHaveLength(1);
@@ -396,7 +396,7 @@ describe("buildWorkerReport", () => {
     });
     const issue = r.issues.find((i) => i.type === "listener_not_connected");
     expect(issue?.severity).toBe("warn");
-    expect(issue?.tiktokId).toBe("alice");
+    expect(issue?.tiktokHandle).toBe("alice");
   });
 
   it("縮退後に残った範囲外 index の Worker が応答しても枠として表示する", () => {
@@ -419,14 +419,14 @@ describe("buildWorkerReport", () => {
           payload({
             workerIndex: 1,
             workerCount: 2,
-            listeners: [listener({ roomId: "room-b", tiktokId: "bob" })],
+            listeners: [listener({ roomId: "room-b", tiktokHandle: "bob" })],
           })
         ),
       ],
-      rooms: [room(), room({ roomId: "room-b", tiktokId: "bob", workerId: 1 })],
+      rooms: [room(), room({ roomId: "room-b", tiktokHandle: "bob", workerId: 1 })],
     });
-    expect(r.workers[0].assignedRooms.map((x) => x.tiktokId)).toEqual(["alice"]);
-    expect(r.workers[1].assignedRooms.map((x) => x.tiktokId)).toEqual(["bob"]);
+    expect(r.workers[0].assignedRooms.map((x) => x.tiktokHandle)).toEqual(["alice"]);
+    expect(r.workers[1].assignedRooms.map((x) => x.tiktokHandle)).toEqual(["bob"]);
     expect(r.issues).toEqual([]);
   });
 });

@@ -9,7 +9,7 @@ import { AvatarFrameEditor } from "./AvatarFrameEditor";
 
 export type ParticipantRow = {
   id: string;
-  tiktokId: string;
+  tiktokHandle: string;
   displayName: string;
   status: string;
   teamId: string | null;
@@ -46,7 +46,7 @@ export function ParticipantManager({
   isTeamEvent: boolean;
 }) {
   const router = useRouter();
-  const [tiktokId, setTiktokId] = useState("");
+  const [tiktokHandle, setTiktokHandle] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -60,7 +60,7 @@ export function ParticipantManager({
 
   // TikTok ID の訂正(登録ミスの後追い専用)。表示名編集とは独立させる
   // (同時に別の行を開いても互いの保存を妨げないように)。
-  const [editingTiktokIdFor, setEditingTiktokIdFor] = useState<string | null>(null);
+  const [editingTiktokHandleFor, setEditingTiktokHandleFor] = useState<string | null>(null);
   const [tiktokDraft, setTiktokDraft] = useState("");
   const savingTiktokRef = useRef(false);
 
@@ -73,7 +73,7 @@ export function ParticipantManager({
       const res = await fetch(`/api/events/${eventId}/participants`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tiktokId, displayName: displayName || null }),
+        body: JSON.stringify({ tiktokHandle, displayName: displayName || null }),
       });
       const body = await res.json().catch(() => null);
 
@@ -86,8 +86,8 @@ export function ParticipantManager({
         {
           kind: "info",
           text: body.createdRoom
-            ? `@${body.tiktokId} を登録した。この配信者は当サービスに未登録なので、イベント用に配信の監視を始める(反映まで最大30秒)。`
-            : `@${body.tiktokId} を登録した。すでに監視中の配信者なので、既存の受信データをそのまま使う。`,
+            ? `@${body.tiktokHandle} を登録した。この配信者は当サービスに未登録なので、イベント用に配信の監視を始める(反映まで最大30秒)。`
+            : `@${body.tiktokHandle} を登録した。すでに監視中の配信者なので、既存の受信データをそのまま使う。`,
         },
       ];
       if (body.existence === "UNVERIFIED") {
@@ -103,7 +103,7 @@ export function ParticipantManager({
         });
       }
       setNotices(next);
-      setTiktokId("");
+      setTiktokHandle("");
       setDisplayName("");
       router.refresh();
     } catch {
@@ -158,7 +158,7 @@ export function ParticipantManager({
 
     const next = draft.trim();
     // 空欄は「TikTok ID へ戻す」指示。サーバー側と同じ規則で解決してから差分を見る。
-    if ((next || p.tiktokId) === p.displayName) {
+    if ((next || p.tiktokHandle) === p.displayName) {
       cancelEdit();
       return;
     }
@@ -192,12 +192,12 @@ export function ParticipantManager({
 
   function startEditTiktok(p: ParticipantRow) {
     setNotices([]);
-    setEditingTiktokIdFor(p.id);
-    setTiktokDraft(p.tiktokId);
+    setEditingTiktokHandleFor(p.id);
+    setTiktokDraft(p.tiktokHandle);
   }
 
   function cancelEditTiktok() {
-    setEditingTiktokIdFor(null);
+    setEditingTiktokHandleFor(null);
     setTiktokDraft("");
   }
 
@@ -209,7 +209,7 @@ export function ParticipantManager({
    * 切り替わる操作なので、`remove()` と同じく常に確認ダイアログを挟む
    * (表示名編集と違い集計対象は status に関わらず変わりうるため、開催中限定にしない)。
    */
-  async function commitTiktokId(p: ParticipantRow) {
+  async function commitTiktokHandle(p: ParticipantRow) {
     if (savingTiktokRef.current) return;
 
     const normalized = normalizeTiktokId(tiktokDraft);
@@ -217,14 +217,14 @@ export function ParticipantManager({
       setNotices([{ kind: "error", text: "TikTok ID の形式が正しくない。" }]);
       return;
     }
-    if (normalized === p.tiktokId) {
+    if (normalized === p.tiktokHandle) {
       cancelEditTiktok();
       return;
     }
 
     if (
       !window.confirm(
-        `@${p.tiktokId} を @${normalized} へ訂正する。イベント期間の全ギフトが新しいIDの実績で計算し直される(対戦カード・トーナメント表の枠はそのまま維持される)。よろしいか?`
+        `@${p.tiktokHandle} を @${normalized} へ訂正する。イベント期間の全ギフトが新しいIDの実績で計算し直される(対戦カード・トーナメント表の枠はそのまま維持される)。よろしいか?`
       )
     ) {
       return;
@@ -238,7 +238,7 @@ export function ParticipantManager({
       const res = await fetch(`/api/events/${eventId}/participants/${p.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tiktokId: tiktokDraft }),
+        body: JSON.stringify({ tiktokHandle: tiktokDraft }),
       });
       const body = await res.json().catch(() => null);
 
@@ -250,7 +250,7 @@ export function ParticipantManager({
       const next: Notice[] = [
         {
           kind: "info",
-          text: `TikTok ID を @${body.tiktokId} へ訂正した。対戦カード・トーナメント表の枠はそのまま維持される。`,
+          text: `TikTok ID を @${body.tiktokHandle} へ訂正した。対戦カード・トーナメント表の枠はそのまま維持される。`,
         },
       ];
       if (body.existence === "UNVERIFIED") {
@@ -277,7 +277,7 @@ export function ParticipantManager({
   }
 
   async function remove(p: ParticipantRow) {
-    if (!window.confirm(`@${p.tiktokId} を参加者から外す。集計対象からも外れる。`)) return;
+    if (!window.confirm(`@${p.tiktokHandle} を参加者から外す。集計対象からも外れる。`)) return;
     setBusy(true);
     setNotices([]);
 
@@ -314,13 +314,13 @@ export function ParticipantManager({
       <form onSubmit={add} className="card">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1">
-            <label htmlFor="tiktokId" className="label">
+            <label htmlFor="tiktokHandle" className="label">
               TikTok ID
             </label>
             <input
-              id="tiktokId"
-              value={tiktokId}
-              onChange={(e) => setTiktokId(e.target.value)}
+              id="tiktokHandle"
+              value={tiktokHandle}
+              onChange={(e) => setTiktokHandle(e.target.value)}
               placeholder="@username"
               required
               className="input-field"
@@ -402,8 +402,8 @@ export function ParticipantManager({
                         }
                       }}
                       maxLength={MAX_DISPLAY_NAME_LENGTH}
-                      placeholder={`未入力なら @${p.tiktokId} に戻る`}
-                      aria-label={`@${p.tiktokId} の表示名`}
+                      placeholder={`未入力なら @${p.tiktokHandle} に戻る`}
+                      aria-label={`@${p.tiktokHandle} の表示名`}
                       disabled={busy}
                       className="input-field min-w-0 flex-1 py-1 text-sm"
                     />
@@ -435,7 +435,7 @@ export function ParticipantManager({
                       onClick={() => startEdit(p)}
                       disabled={busy}
                       title="クリックで表示名を編集"
-                      aria-label={`@${p.tiktokId} の表示名を編集`}
+                      aria-label={`@${p.tiktokHandle} の表示名を編集`}
                       className="group flex min-w-0 items-center gap-1.5 text-left font-medium"
                     >
                       <span className="truncate group-hover:underline">{p.displayName}</span>
@@ -458,11 +458,11 @@ export function ParticipantManager({
                     )}
                   </div>
                 )}
-                {editingTiktokIdFor === p.id ? (
+                {editingTiktokHandleFor === p.id ? (
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void commitTiktokId(p);
+                      void commitTiktokHandle(p);
                     }}
                     className="mt-1 flex items-center gap-2"
                   >
@@ -481,7 +481,7 @@ export function ParticipantManager({
                         }
                       }}
                       placeholder="@username"
-                      aria-label={`@${p.tiktokId} の TikTok ID を訂正`}
+                      aria-label={`@${p.tiktokHandle} の TikTok ID を訂正`}
                       disabled={busy}
                       className="input-field min-w-0 flex-1 py-1 font-mono text-xs"
                     />
@@ -507,11 +507,11 @@ export function ParticipantManager({
                     onClick={() => startEditTiktok(p)}
                     disabled={busy}
                     title="クリックで TikTok ID を訂正(登録ミスの訂正専用)"
-                    aria-label={`@${p.tiktokId} の TikTok ID を訂正`}
+                    aria-label={`@${p.tiktokHandle} の TikTok ID を訂正`}
                     className="group flex min-w-0 items-center gap-1 text-left"
                   >
                     <span className="truncate font-mono text-xs text-muted group-hover:underline">
-                      @{p.tiktokId}
+                      @{p.tiktokHandle}
                     </span>
                     <PencilIcon />
                   </button>

@@ -38,17 +38,17 @@ let tokenB: string;
 beforeAll(async () => {
   const userA = await prisma.user.create({ data: { email: `itest-verify-purchase-a-${Date.now()}@local.test` } });
   userAId = userA.id;
-  tokenA = signMobileToken({ userId: userAId });
+  tokenA = signMobileToken({ principalId: userAId });
 
   const userB = await prisma.user.create({ data: { email: `itest-verify-purchase-b-${Date.now()}@local.test` } });
   userBId = userB.id;
-  tokenB = signMobileToken({ userId: userBId });
+  tokenB = signMobileToken({ principalId: userBId });
 });
 
 afterEach(async () => {
   mockedGetSubscriptionV2.mockReset();
-  await prisma.subscription.deleteMany({ where: { userId: { in: [userAId, userBId] } } }).catch(() => {});
-  await prisma.pendingPurchaseIntent.deleteMany({ where: { userId: { in: [userAId, userBId] } } }).catch(() => {});
+  await prisma.subscription.deleteMany({ where: { principalId: { in: [userAId, userBId] } } }).catch(() => {});
+  await prisma.pendingPurchaseIntent.deleteMany({ where: { principalId: { in: [userAId, userBId] } } }).catch(() => {});
 });
 
 afterAll(async () => {
@@ -85,7 +85,7 @@ describe("POST /api/mobile/billing/google/verify-purchase", () => {
       data: {
         provider: "GOOGLE_PLAY",
         token: obfuscatedAccountId,
-        userId: userAId,
+        principalId: userAId,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       },
     });
@@ -98,7 +98,7 @@ describe("POST /api/mobile/billing/google/verify-purchase", () => {
     const sub = await prisma.subscription.findUnique({
       where: { provider_providerSubscriptionId: { provider: "GOOGLE_PLAY", providerSubscriptionId: purchaseToken } },
     });
-    expect(sub?.userId).toBe(userAId);
+    expect(sub?.principalId).toBe(userAId);
     expect(sub?.entitlementActive).toBe(true);
   });
 
@@ -113,7 +113,7 @@ describe("POST /api/mobile/billing/google/verify-purchase", () => {
     const purchaseToken = "itest-purchase-token-existing-self";
     await prisma.subscription.create({
       data: {
-        userId: userAId,
+        principalId: userAId,
         provider: "GOOGLE_PLAY",
         providerSubscriptionId: purchaseToken,
         plan: "PRO",
@@ -132,7 +132,7 @@ describe("POST /api/mobile/billing/google/verify-purchase", () => {
     const purchaseToken = "itest-purchase-token-existing-other";
     await prisma.subscription.create({
       data: {
-        userId: userBId,
+        principalId: userBId,
         provider: "GOOGLE_PLAY",
         providerSubscriptionId: purchaseToken,
         plan: "PRO",

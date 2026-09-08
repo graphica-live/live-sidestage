@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
     where: {
       provider_providerSubscriptionId: { provider: "GOOGLE_PLAY", providerSubscriptionId: purchaseToken },
     },
-    select: { userId: true },
+    select: { principalId: true },
   });
-  if (existing && existing.userId !== auth.userId) {
+  if (existing && existing.principalId !== auth.principalId) {
     return NextResponse.json({ error: "この購入は別のアカウントで開始されました" }, { status: 403 });
   }
 
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
       where: {
         provider: "GOOGLE_PLAY",
         token: obfuscatedAccountId,
-        userId: auth.userId,
+        principalId: auth.principalId,
         consumedAt: null,
       },
       select: { id: true },

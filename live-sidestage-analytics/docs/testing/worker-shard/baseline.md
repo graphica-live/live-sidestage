@@ -8,6 +8,11 @@ last_reviewers: Qwen(TestCase Mode、canary検証で検出確認済み)
 
 # テストベースライン: worker-shard
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `worker.ts` が担う TikTok Webcast 接続 shard プロセス(worker1〜3)の運用面。room 単位のハッシュ分散、`GET /healthz`・`GET /status`、reconcile ループ、スキーマ未反映時の待ち復帰を対象とする。TikTok 接続自体の再接続・切断・イベント処理は `tiktok-listener` 機能側の baseline で扱う。
 
 ## テストケース

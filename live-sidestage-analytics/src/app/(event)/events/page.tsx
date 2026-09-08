@@ -21,7 +21,7 @@ export default async function EventsPage() {
   const session = await getServerSession(authOptions);
   const [events, publicEvents] = await Promise.all([
     prisma.event.findMany({
-      where: { ownerUserId: session!.user.id },
+      where: { ownerPrincipalId: session!.user.id },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

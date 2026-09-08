@@ -16,7 +16,8 @@ Widget wrap(Widget child) {
 }
 
 const _entry = GiftRankingEntry(
-  uniqueId: 'u1',
+  tiktokUid: '7000000000000000001',
+  tiktokHandle: 'u1',
   nickname: 'テストユーザー',
   giftCount: 3,
   totalDiamonds: 1000,

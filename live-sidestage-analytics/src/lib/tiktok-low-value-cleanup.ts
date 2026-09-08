@@ -37,7 +37,7 @@ export function isLowValueCleanupDisabled(settingValue: string | null): boolean 
   return settingValue === "true";
 }
 
-export type LowValueCandidate = { id: string; tiktokId: string; userIds: string[] };
+export type LowValueCandidate = { id: string; tiktokHandle: string; principalIds: string[] };
 
 /**
  * 監視停止判定の対象候補を抽出する。Streamerが0人の部屋(情報プール目的で
@@ -60,10 +60,10 @@ export async function selectLowValueCandidates(now: Date, limit: number): Promis
     },
     orderBy: { lastLowValueCheckAt: { sort: "asc", nulls: "first" } },
     take: limit,
-    select: { id: true, tiktokId: true, streamers: { select: { userId: true } } },
+    select: { id: true, tiktokHandle: true, streamers: { select: { principalId: true } } },
   });
 
-  return rooms.map((r) => ({ id: r.id, tiktokId: r.tiktokId, userIds: r.streamers.map((s) => s.userId) }));
+  return rooms.map((r) => ({ id: r.id, tiktokHandle: r.tiktokHandle, principalIds: r.streamers.map((s) => s.principalId) }));
 }
 
 /** アクティブな無課金ユーザーがいるか判定する。純粋関数。lastActiveAtがnull(未記録)は保護扱い。 */
@@ -75,7 +75,7 @@ export function hasProtectedActiveWatcher(users: Array<{ lastActiveAt: Date | nu
 export type LowValueAuditEntry = {
   at: string;
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   dryRun: boolean;
   outcome: "suspended" | "dry_run";
   monthlyDiamonds: number;
@@ -105,7 +105,7 @@ async function appendLowValueAuditLog(tx: Prisma.TransactionClient, entry: LowVa
 /**
  * 1件のRoomの監視を停止する(dryRun時は監査ログのみ記録、実際には停止しない)。
  *
- * TOCTOU再確認: 選定時のuserIds配列を使い回さず、この場でStreamerを再取得して
+ * TOCTOU再確認: 選定時のprincipalIds配列を使い回さず、この場でStreamerを再取得して
  * 課金・アクティブ判定をやり直す(選定〜ここまでの間に新規登録・ログインがあり
  * うるため)。ダイヤ合計もこの1Room分だけ再計算する(インデックス済みなので軽い)。
  *
@@ -117,25 +117,25 @@ async function appendLowValueAuditLog(tx: Prisma.TransactionClient, entry: LowVa
  * 再ログインで自動復活する)ため、tiktok-room-cleanup.tsほど厳密な排他は要求しない。
  */
 export async function suspendLowValueRoom(
-  room: { id: string; tiktokId: string },
+  room: { id: string; tiktokHandle: string },
   dryRun: boolean,
   now: Date = new Date()
 ): Promise<LowValueAuditEntry | null> {
   return prisma.$transaction(async (tx) => {
     // Streamerが0人(情報プール目的で監視継続中の部屋)でもここで弾かない。
-    // userIds=[]ならroomHasPaidWatcher/hasProtectedActiveWatcherは両方falseを返し、
+    // principalIds=[]ならroomHasPaidWatcher/hasProtectedActiveWatcherは両方falseを返し、
     // ダイヤ閾値だけで判定される(課金者もアクティブwatcherもいないのと同じ扱い)。
     const streamers = await tx.streamer.findMany({
       where: { roomId: room.id },
-      select: { userId: true },
+      select: { principalId: true },
     });
 
-    const userIds = streamers.map((s) => s.userId);
+    const principalIds = streamers.map((s) => s.principalId);
 
-    if (await roomHasPaidWatcher(userIds, tx)) return null;
+    if (await roomHasPaidWatcher(principalIds, tx)) return null;
 
     const users = await tx.user.findMany({
-      where: { id: { in: userIds } },
+      where: { id: { in: principalIds } },
       select: { lastActiveAt: true },
     });
     if (hasProtectedActiveWatcher(users, now)) return null;
@@ -150,11 +150,11 @@ export async function suspendLowValueRoom(
     const entry: LowValueAuditEntry = {
       at: now.toISOString(),
       roomId: room.id,
-      tiktokId: room.tiktokId,
+      tiktokHandle: room.tiktokHandle,
       dryRun,
       outcome: dryRun ? "dry_run" : "suspended",
       monthlyDiamonds,
-      watcherCount: userIds.length,
+      watcherCount: principalIds.length,
     };
 
     if (!dryRun) {
@@ -226,7 +226,7 @@ export async function runLowValueCleanupCycle(opts: {
     if (entry) {
       suspended++;
       console.warn(
-        `[tiktok-low-value-cleanup] ${opts.dryRun ? "[DRY-RUN] " : ""}@${room.tiktokId} の監視を` +
+        `[tiktok-low-value-cleanup] ${opts.dryRun ? "[DRY-RUN] " : ""}@${room.tiktokHandle} の監視を` +
           `${opts.dryRun ? "停止対象として記録" : "停止"} (直近${DIAMOND_LOOKBACK_MS / 86_400_000}日ダイヤ:${entry.monthlyDiamonds}, 視聴者:${entry.watcherCount}名)`
       );
     }

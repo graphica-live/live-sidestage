@@ -5,15 +5,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { fetchAdminRoomList, fetchAssignedRooms } from "./worker-status";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
 const roomIds: string[] = [];
-const userIds: string[] = [];
+const principalIds: string[] = [];
 const agencyIds: string[] = [];
 
 // TikTok IDとして通る文字だけで一意な値を作る(ハイフンは許可されていない)。
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestws${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
@@ -24,15 +25,18 @@ async function makeRoom(data: {
   listenerStatus?: string | null;
   monitoringSuspended?: boolean;
 }) {
+  const handle = tiktokHandle(data.tag);
   const room = await prisma.tiktokRoom.create({
     data: {
-      tiktokId: tiktokId(data.tag),
+      tiktokHandle: handle,
+      // @unique(NOT NULL)。部屋ごとに一意な数値文字列にする。
+      hostTiktokUid: makeTiktokUid(handle),
       workerId: data.workerId ?? null,
       monitorUntil: data.monitorUntil ?? null,
       listenerStatus: data.listenerStatus ?? null,
       monitoringSuspended: data.monitoringSuspended ?? false,
     },
-    select: { id: true, tiktokId: true },
+    select: { id: true, tiktokHandle: true },
   });
   roomIds.push(room.id);
   return room;
@@ -43,39 +47,46 @@ async function attachStreamer(roomId: string) {
     data: { email: `itest-ws-${suffix()}@local.test`, name: "itest" },
     select: { id: true },
   });
-  userIds.push(user.id);
+  principalIds.push(user.id);
+  const streamerHandle = tiktokHandle("s");
   await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId: tiktokId("s"),
+      principalId: user.id,
+      tiktokUid: makeTiktokUid(streamerHandle),
+      tiktokHandle: streamerHandle,
       roomId,
       verificationCode: `itest-${suffix()}`,
     },
   });
 }
 
-async function attachWatch(roomId: string, watchedTiktokId: string) {
+async function attachWatch(roomId: string, watchedTiktokHandle: string) {
   const agency = await prisma.agency.create({
     data: { email: `itest-ws-agency-${suffix()}@local.test`, name: "itest事務所" },
     select: { id: true },
   });
   agencyIds.push(agency.id);
   await prisma.agencyWatch.create({
-    data: { agencyId: agency.id, roomId, tiktokId: watchedTiktokId },
+    data: {
+      agencyId: agency.id,
+      roomId,
+      tiktokUid: makeTiktokUid(watchedTiktokHandle),
+      tiktokHandle: watchedTiktokHandle,
+    },
   });
 }
 
-let streamerRoom: { id: string; tiktokId: string };
-let watchRoom: { id: string; tiktokId: string };
-let eventRoom: { id: string; tiktokId: string };
-let idleRoom: { id: string; tiktokId: string };
+let streamerRoom: { id: string; tiktokHandle: string };
+let watchRoom: { id: string; tiktokHandle: string };
+let eventRoom: { id: string; tiktokHandle: string };
+let idleRoom: { id: string; tiktokHandle: string };
 
 beforeAll(async () => {
   streamerRoom = await makeRoom({ tag: "str", workerId: 0, listenerStatus: "connected" });
   await attachStreamer(streamerRoom.id);
 
   watchRoom = await makeRoom({ tag: "wat", workerId: 1 });
-  await attachWatch(watchRoom.id, watchRoom.tiktokId);
+  await attachWatch(watchRoom.id, watchRoom.tiktokHandle);
 
   // イベントの期限付き監視だけがある部屋(Streamer も AgencyWatch も無い)。
   // monitoringSuspended:true にしておくことで、「monitorUntil が唯一の監視理由」に
@@ -102,7 +113,7 @@ afterAll(async () => {
   await prisma.agencyWatch.deleteMany({ where: { roomId: { in: roomIds } } });
   await prisma.agency.deleteMany({ where: { id: { in: agencyIds } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 
@@ -140,7 +151,7 @@ describe("fetchAssignedRooms", () => {
 
   it("AgencyWatchがある部屋はmonitoringSuspended:trueでも一覧に残る(監視解除が事務所監視で無効化される既存仕様)", async () => {
     const room = await makeRoom({ tag: "susw", workerId: 0, monitoringSuspended: true });
-    await attachWatch(room.id, room.tiktokId);
+    await attachWatch(room.id, room.tiktokHandle);
     const rooms = await fetchAssignedRooms();
     expect(rooms.find((r) => r.roomId === room.id)).toBeDefined();
   });
@@ -193,14 +204,14 @@ describe("fetchAdminRoomList", () => {
     const outside = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000);
     const base = {
       roomId: streamerRoom.id,
-      tiktokId: streamerRoom.tiktokId,
+      tiktokHandle: streamerRoom.tiktokHandle,
       trigger: "start" as const,
       reason: null,
       role: "worker" as const,
       workerIndex: 0,
       listenerEpoch: null,
       credentialMode: "anonymous" as const,
-      streamerUserIds: [] as string[],
+      streamerPrincipalIds: [] as string[],
       agencyIds: [] as string[],
       eventIds: [] as string[],
     };

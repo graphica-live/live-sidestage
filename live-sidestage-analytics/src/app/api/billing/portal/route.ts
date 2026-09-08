@@ -12,7 +12,7 @@ export async function POST() {
   const baseUrl = canonicalOrigin("analytics");
 
   const link = await prisma.stripeCustomerLink.findUnique({
-    where: { userId: session.user.id },
+    where: { principalId: session.user.id },
     select: { stripeCustomerId: true },
   });
 

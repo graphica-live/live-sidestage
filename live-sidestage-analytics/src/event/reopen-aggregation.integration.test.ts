@@ -23,7 +23,7 @@ async function createEvent(params: { endAt: Date; finalizedAt: Date | null }) {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 締切ガード`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "DIAMOND_RACE",
       entryMode: "SOLO",
       status: "FINISHED",

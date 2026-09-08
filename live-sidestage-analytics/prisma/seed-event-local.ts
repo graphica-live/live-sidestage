@@ -26,7 +26,7 @@ async function main() {
     create: { name: "dev", email: SEED_OWNER_EMAIL },
     select: { id: true },
   });
-  const ownerUserId = owner.id;
+  const ownerPrincipalId = owner.id;
 
   const now = Date.now();
 
@@ -37,7 +37,7 @@ async function main() {
       slug: "seed-diamond-race",
       title: "シード用 獲得ダイヤレース",
       description: "ローカル確認用のイベント。",
-      ownerUserId,
+      ownerPrincipalId,
       format: "DIAMOND_RACE",
       entryMode: "TEAM",
       teamPreset: "PREFECTURE",
@@ -60,7 +60,7 @@ async function main() {
     create: {
       slug: "seed-tournament-private",
       title: "シード用 バトルトーナメント(非公開)",
-      ownerUserId,
+      ownerPrincipalId,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       visibility: "PRIVATE",
@@ -88,7 +88,7 @@ async function main() {
 
   await seedRaceEntries(race.id, race.startAt, race.endAt);
 
-  console.log("seeded:", { ownerUserId, race: race.slug, unpublished: unpublished.slug });
+  console.log("seeded:", { ownerPrincipalId, race: race.slug, unpublished: unpublished.slug });
   console.log("集計を流すには: npm run event-worker:local");
 }
 
@@ -123,21 +123,41 @@ async function seedRaceEntries(eventId: string, startAt: Date, endAt: Date) {
     },
   });
 
-  const listeners = ["hikari_fan", "aoi_supporter", "kenta1234", "momo_love", "yuki_no_hana"];
+  const listeners = [
+    { tiktokUid: "7000000000000000201", tiktokHandle: "hikari_fan", nickname: "ひかり" },
+    { tiktokUid: "7000000000000000202", tiktokHandle: "aoi_supporter", nickname: "あおい" },
+    { tiktokUid: "7000000000000000203", tiktokHandle: "kenta1234", nickname: "けんた" },
+    { tiktokUid: "7000000000000000204", tiktokHandle: "momo_love", nickname: "もも" },
+    { tiktokUid: "7000000000000000205", tiktokHandle: "yuki_no_hana", nickname: "ゆき" },
+  ];
+  for (const l of listeners) {
+    await prisma.tikTokUser.upsert({
+      where: { tiktokUid: l.tiktokUid },
+      update: { tiktokHandle: l.tiktokHandle, nickname: l.nickname },
+      create: l,
+    });
+  }
 
   for (let i = 0; i < 6; i++) {
-    const tiktokId = `seed_liver_${i + 1}`;
+    const tiktokHandle = `seed_liver_${i + 1}`;
+    const hostTiktokUid = `70000000000000003${String(i + 1).padStart(2, "0")}`;
+    await prisma.tikTokUser.upsert({
+      where: { tiktokUid: hostTiktokUid },
+      update: { tiktokHandle, nickname: `シード配信者${i + 1}` },
+      create: { tiktokUid: hostTiktokUid, tiktokHandle, nickname: `シード配信者${i + 1}` },
+    });
     const room = await prisma.tiktokRoom.upsert({
-      where: { tiktokId },
+      where: { hostTiktokUid },
       update: {},
-      create: { tiktokId },
+      create: { hostTiktokUid, tiktokHandle },
       select: { id: true },
     });
 
     await prisma.eventParticipant.create({
       data: {
         eventId,
-        tiktokId,
+        tiktokUid: hostTiktokUid,
+        tiktokHandle,
         roomId: room.id,
         displayName: `シード配信者${i + 1}`,
         teamId: teamIds[i % teamIds.length],
@@ -156,8 +176,7 @@ async function seedRaceEntries(eventId: string, startAt: Date, endAt: Date) {
         update: { receivedAt: at, dayKey: jstDateKey(at) },
         create: {
           roomId: room.id,
-          uniqueId: listener,
-          nickname: listener,
+          tiktokUid: listener.tiktokUid,
           giftId: 5655,
           giftName: "Rose",
           repeatCount: g + 1,

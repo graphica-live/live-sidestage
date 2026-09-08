@@ -10,10 +10,10 @@ import { describe, it, expect, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 // next-auth をモックしてから読む(authz.ts が import 時に束縛するため)。
@@ -36,7 +36,7 @@ async function newDeathmatchWithMatch(reviewReason: string | null) {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} デスマッチ`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "DEATHMATCH",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -92,7 +92,7 @@ afterAll(async () => {
 
 describe("引き分け確定と検知情報", () => {
   it("AMBIGUOUS の対戦を引き分けにしたら検知情報を捨てる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newDeathmatchWithMatch("AMBIGUOUS");
 
     const res = await drawMatch(eventId, matchId);
@@ -112,7 +112,7 @@ describe("引き分け確定と検知情報", () => {
   });
 
   it("END_UNKNOWN の対戦を引き分けにしたら検知情報を捨てる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, matchId } = await newDeathmatchWithMatch("END_UNKNOWN");
 
     expect((await drawMatch(eventId, matchId)).status).toBe(200);
@@ -123,7 +123,7 @@ describe("引き分け確定と検知情報", () => {
   });
 
   it("特定できている検知は引き分けにしても残す(バトル区間は集計対象のまま)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     // reviewReason 無し = どのバトルかは確定している。同点だから引き分けにしただけ。
     const { eventId, matchId } = await newDeathmatchWithMatch(null);
 

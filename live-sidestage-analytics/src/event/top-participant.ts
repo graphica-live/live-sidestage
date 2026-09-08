@@ -41,18 +41,18 @@ export function resolveListenerAttribution(
   const entries = new Map<string, ListenerBreakdownEntry[]>();
 
   for (const [participantId, listeners] of byParticipant) {
-    for (const [uniqueId, amount] of listeners) {
+    for (const [tiktokHandle, amount] of listeners) {
       const row = { participantId, diamonds: amount.diamonds, points: amount.points };
-      const cur = entries.get(uniqueId);
+      const cur = entries.get(tiktokHandle);
       if (cur) cur.push(row);
-      else entries.set(uniqueId, [row]);
+      else entries.set(tiktokHandle, [row]);
     }
   }
 
   const result = new Map<string, ListenerAttribution>();
-  for (const [uniqueId, rows] of entries) {
+  for (const [tiktokHandle, rows] of entries) {
     rows.sort(compareEntries);
-    result.set(uniqueId, {
+    result.set(tiktokHandle, {
       topParticipantId: rows[0].participantId,
       participantCount: rows.length,
       // 参加者数自体が MAX_PARTICIPANTS で頭打ちなので実質は全件。

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 export type TiktokAccountConfirmPreview = {
-  tiktokId: string;
+  tiktokHandle: string;
   nickname: string | null;
   avatarUrl: string | null;
   signature: string | null;
@@ -16,7 +16,7 @@ type Props = {
   busy?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  /** setup画面(Streamer.tiktokId登録用)からのみ渡す。admin-workers(AgencyWatch追加)では表示しない */
+  /** setup画面(Streamer.tiktokHandle登録用)からのみ渡す。admin-workers(AgencyWatch追加)では表示しない */
   lockNoticeText?: string;
 };
 
@@ -55,15 +55,15 @@ export function TiktokAccountConfirmModal({ preview, busy, onCancel, onConfirm, 
           {preview.avatarUrl ? (
             <img
               src={preview.avatarUrl}
-              alt={preview.nickname ?? preview.tiktokId}
+              alt={preview.nickname ?? preview.tiktokHandle}
               className="h-16 w-16 rounded-full object-cover"
             />
           ) : (
             <div className="h-16 w-16 rounded-full bg-[#2a2a2a]" />
           )}
           <div>
-            <div className="text-sm font-semibold text-white">{preview.nickname ?? preview.tiktokId}</div>
-            <div className="mt-0.5 text-xs text-[#8b90a0]">@{preview.tiktokId}</div>
+            <div className="text-sm font-semibold text-white">{preview.nickname ?? preview.tiktokHandle}</div>
+            <div className="mt-0.5 text-xs text-[#8b90a0]">@{preview.tiktokHandle}</div>
           </div>
         </div>
 

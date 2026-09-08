@@ -168,7 +168,7 @@ export type MatchRow = {
    * バトルスコアが出るはずの対戦か(`detectedBattleId` があり `canShowTiktokScore` を通る)。
    *
    * **`side.tiktokScore` が null の理由を2つに分けるために要る。** 帰属できなかった
-   * (hostUserId 未取得など)のか、そもそも出さない状態(検知前・要確認など)なのか。
+   * (hostTiktokUid 未取得など)のか、そもそも出さない状態(検知前・要確認など)なのか。
    * 前者だけ「—」を出す。後者にまで出すと「未取得」の意味が薄まる。
    */
   battleScoreExpected: boolean;
@@ -2326,7 +2326,7 @@ function MatchCard({
         </p>
       )}
 
-      {/* 配信者の TikTok userId は event-worker が後追いで埋めるので、待てば出ることがある。 */}
+      {/* 配信者の TikTok principalId は event-worker が後追いで埋めるので、待てば出ることがある。 */}
       {match.battleScoreExpected && match.sides.every((s) => s.tiktokScore === null) && (
         <p className="text-xs leading-relaxed text-muted">
           バトルスコアは TikTok 側から配信者を特定できたときだけ出る。まだ特定できていないので、

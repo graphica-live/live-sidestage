@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 interface Ambassador {
   id: string;
-  userId: string;
+  principalId: string;
   userEmail: string | null;
   userName: string | null;
   createdAt: string;
@@ -121,7 +121,7 @@ export default function AmbassadorsAdminPage() {
   }
 
   async function handleRemoveAmbassador(a: Ambassador) {
-    const ok = confirm(`${a.userEmail ?? a.userId} のアンバサダー資格を解除しますか?`);
+    const ok = confirm(`${a.userEmail ?? a.principalId} のアンバサダー資格を解除しますか?`);
     if (!ok) return;
     setBusyId(a.id);
     setError("");

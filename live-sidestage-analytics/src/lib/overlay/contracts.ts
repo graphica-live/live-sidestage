@@ -9,8 +9,11 @@ export const OVERLAY_HEADING_BACKGROUNDS = ["clear", "crystal-blue", "sakura-pin
 export type OverlayHeadingBackground = (typeof OVERLAY_HEADING_BACKGROUNDS)[number];
 
 export type OverlayContributor = {
-  uniqueId: string;
-  nickname: string;
+  // 同一性キーは不変のtiktokUid。tiktokHandle / nickname は TikTokUser から読み出し時に
+  // 解決した表示用スナップショットで、行が無ければ null になる。
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   totalDiamonds: number;
 };

@@ -6,10 +6,10 @@ import { describe, it, expect, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 // next-auth をモックしてから読む(authz.ts が import 時に束縛するため)。
@@ -29,7 +29,7 @@ async function newTournament(winCondition: string) {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} イベント`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "SCHEDULED",
@@ -80,7 +80,7 @@ afterAll(async () => {
 
 describe("開催後のwinCondition変更禁止", () => {
   it("対戦カードが1件も無ければ勝利条件を変更できる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const event = await newTournament("SINGLE");
 
     const res = await patchEvent(
@@ -96,7 +96,7 @@ describe("開催後のwinCondition変更禁止", () => {
   });
 
   it("対戦カードが1件でもあれば勝利条件の変更は409で拒否される", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const event = await newTournament("SINGLE");
     await addMatch(event.id);
 
@@ -116,7 +116,7 @@ describe("開催後のwinCondition変更禁止", () => {
   });
 
   it("対戦カードがあってもwinCondition以外(グローブ等)の変更は通る", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const event = await newTournament("SINGLE");
     await addMatch(event.id);
 

@@ -92,20 +92,20 @@ const REPLAY_SELECT = {
   participants: {
     select: {
       id: true,
-      anchorId: true,
+      tiktokUid: true,
       teamIndex: true,
       position: true,
       side: true,
       isSelf: true,
-      nickName: true,
-      displayId: true,
-      tiktokId: true,
+      tiktokHandleSnapshot: true,
+      nicknameSnapshot: true,
       score: true,
       officialScore: true,
       battleTeamId: true,
       giftEvents: {
         select: {
-          senderUniqueIdSnapshot: true,
+          senderTiktokUid: true,
+          senderTiktokHandleSnapshot: true,
           senderNicknameSnapshot: true,
           repeatCount: true,
           totalDiamonds: true,
@@ -121,8 +121,8 @@ const REPLAY_SELECT = {
     orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
   },
   scorePoints: {
-    select: { anchorId: true, offsetMs: true, score: true },
-    orderBy: [{ offsetMs: "asc" }, { anchorId: "asc" }],
+    select: { tiktokUid: true, offsetMs: true, score: true },
+    orderBy: [{ offsetMs: "asc" }, { tiktokUid: "asc" }],
   },
   bonusMissions: {
     select: {
@@ -151,21 +151,21 @@ export type ReplayRow = {
   openingWindowEndedAt: Date | null;
   participants: {
     id: string;
-    anchorId: string;
+    tiktokUid: string;
     teamIndex: number;
     position: number;
     side: string;
     /** 確定処理が解決できなかった古い行では null。判定は `=== true` で行う。 */
     isSelf: boolean | null;
-    nickName: string | null;
-    displayId: string | null;
-    tiktokId: string | null;
+    tiktokHandleSnapshot: string | null;
+    nicknameSnapshot: string | null;
     score: string | null;
     officialScore: string | null;
     battleTeamId: string | null;
     giftEvents: {
-      senderUniqueIdSnapshot: string;
-      senderNicknameSnapshot: string;
+      senderTiktokUid: string;
+      senderTiktokHandleSnapshot: string | null;
+      senderNicknameSnapshot: string | null;
       repeatCount: number;
       totalDiamonds: number;
       occurredAt: Date;
@@ -175,7 +175,7 @@ export type ReplayRow = {
       multiplierValue: number | null;
     }[];
   }[];
-  scorePoints: { anchorId: string; offsetMs: number; score: string }[];
+  scorePoints: { tiktokUid: string; offsetMs: number; score: string }[];
   bonusMissions: {
     rewardMultiple: number;
     startedAt: Date;
@@ -189,14 +189,19 @@ export type ReplayRow = {
 const ANONYMOUS_DISPLAY_NAME = "配信者";
 
 /**
- * **公開バリアントは `nickName` だけを使う。** `displayId` / `tiktokId` は TikTokハンドルなので、
+ * **公開バリアントは `nicknameSnapshot` だけを使う。** `tiktokHandleSnapshot` は TikTokハンドルなので、
  * 名前が無いからといってフォールバックすると公開リンクからハンドルが漏れる
- * (`hostProfiles` に anchor が無い確定行では `nickName` が null になりうる)。
+ * (`hostProfiles` に anchor が無い確定行では nickname が null になりうる)。
  */
 function displayNameOf(p: ReplayRow["participants"][number], variant: ReplayVariant): string {
-  if (variant === "public") return p.nickName ?? ANONYMOUS_DISPLAY_NAME;
-  return p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokId ?? "?";
+  if (variant === "public") return p.nicknameSnapshot ?? ANONYMOUS_DISPLAY_NAME;
+  return (
+    p.nicknameSnapshot ??
+    (p.tiktokHandleSnapshot ? `@${p.tiktokHandleSnapshot}` : null) ??
+    ANONYMOUS_DISPLAY_NAME
+  );
 }
+
 
 /**
  * 件数列ではなく**実際に読めたスコア点の数**で判定する。ネストした select は1トランザクションに
@@ -316,12 +321,12 @@ export function buildPayload(
       (a, b) => Number(b.isSelf === true) - Number(a.isSelf === true) || a.position - b.position
     );
     const participants: ReplayParticipant[] = members.map((p) => ({
-      anchorId: p.anchorId,
+      tiktokUid: p.tiktokUid,
       isSelf: p.isSelf === true,
       displayName: displayNameOf(p, variant),
-      // 配信者のハンドルは私的バリアントのみ。公開ではニックネームとアイコンだけで足りる。
-      uniqueId: isPublic ? null : p.displayId ?? p.tiktokId,
-      avatarUrl: anchorAvatarUrls.get(p.anchorId) ?? null,
+      // **公開バリアントではハンドルを落とす。** 個人のプロフィールへ直リンクできるため。
+      tiktokHandle: isPublic ? null : p.tiktokHandleSnapshot,
+      avatarUrl: anchorAvatarUrls.get(p.tiktokUid) ?? null,
     }));
     return {
       index: teamIndex,
@@ -332,13 +337,13 @@ export function buildPayload(
   });
 
   // 添字の正本。scorePoints / giftEvents はこの配列の位置で anchor を指す。
-  const anchors = teams.flatMap((t) => t.participants.map((p) => p.anchorId));
+  const anchors = teams.flatMap((t) => t.participants.map((p) => p.tiktokUid));
   const anchorIndex = new Map(anchors.map((a, i) => [a, i]));
 
   const scorePoints: ReplayScorePoint[] = [];
   for (const point of row.scorePoints) {
-    const index = anchorIndex.get(point.anchorId);
-    // participant として確定していない anchorId は確定時に捨てているが、
+    const index = anchorIndex.get(point.tiktokUid);
+    // participant として確定していない tiktokUid は確定時に捨てているが、
     // 後から participants だけが作り直された場合に備えて読み出し側でも落とす。
     if (index === undefined) continue;
     scorePoints.push({ t: point.offsetMs, a: index, s: point.score });
@@ -359,13 +364,13 @@ export function buildPayload(
   const rawEvents: RawEvent[] = [];
 
   for (const participant of row.participants) {
-    const anchorPos = anchorIndex.get(participant.anchorId);
+    const anchorPos = anchorIndex.get(participant.tiktokUid);
     if (anchorPos === undefined) continue;
     for (const event of participant.giftEvents) {
       rawEvents.push({
         t: Math.min(windowLengthMs, Math.max(0, event.occurredAt.getTime() - windowStartMs)),
         a: anchorPos,
-        sender: event.senderUniqueIdSnapshot,
+        sender: event.senderTiktokUid,
         giftId: event.giftId,
         c: event.repeatCount,
         d: event.totalDiamonds,
@@ -380,12 +385,14 @@ export function buildPayload(
   // 上限を超えたら**時系列の先頭から**残す(バトル序盤が欠けると再生の意味が薄いため)。
   const keptEvents = truncated ? rawEvents.slice(0, MAX_REPLAY_EVENTS) : rawEvents;
 
-  const nicknameBySender = new Map<string, string>();
+  const nicknameBySender = new Map<string, string | null>();
+  const handleBySender = new Map<string, string | null>();
   const giftNameById = new Map<number, string>();
   for (const participant of row.participants) {
     for (const event of participant.giftEvents) {
-      if (!nicknameBySender.has(event.senderUniqueIdSnapshot)) {
-        nicknameBySender.set(event.senderUniqueIdSnapshot, event.senderNicknameSnapshot);
+      if (!nicknameBySender.has(event.senderTiktokUid)) {
+        nicknameBySender.set(event.senderTiktokUid, event.senderNicknameSnapshot);
+        handleBySender.set(event.senderTiktokUid, event.senderTiktokHandleSnapshot);
       }
       if (!giftNameById.has(event.giftId)) giftNameById.set(event.giftId, event.giftNameSnapshot);
     }
@@ -416,8 +423,9 @@ export function buildPayload(
       senderPos = senders.length;
       senderIndex.set(event.sender, senderPos);
       senders.push({
-        // **公開バリアントは uniqueId を落とす。** リスナー個人のプロフィールへ直リンクできる識別子。
-        u: isPublic ? null : event.sender,
+        uid: event.sender,
+        // **公開バリアントではハンドルを落とす**(リスナー個人のプロフィールへ直リンクできるため)。
+        u: isPublic ? null : handleBySender.get(event.sender) ?? null,
         n: nicknameBySender.get(event.sender) ?? "",
         // アバターは公開でも出す(2026-09-08、配信者の明示判断で解禁)。
         a: senderAvatarUrls.get(event.sender) ?? null,
@@ -450,11 +458,11 @@ export function buildPayload(
     };
   });
 
-  const selfAnchorIds = new Set(
-    row.participants.filter((p) => p.teamIndex === 0).map((p) => p.anchorId)
+  const selfTiktokUids = new Set(
+    row.participants.filter((p) => p.teamIndex === 0).map((p) => p.tiktokUid)
   );
   const opponentGiftsMissing = !row.participants.some(
-    (p) => !selfAnchorIds.has(p.anchorId) && p.giftEvents.length > 0
+    (p) => !selfTiktokUids.has(p.tiktokUid) && p.giftEvents.length > 0
   );
 
   return {
@@ -476,18 +484,15 @@ export function buildPayload(
 }
 
 async function buildFromRow(row: ReplayRow, variant: ReplayVariant): Promise<BattleReplayPayload> {
-  const senderUniqueIds = [
-    ...new Set(row.participants.flatMap((p) => p.giftEvents.map((g) => g.senderUniqueIdSnapshot))),
+  const senderTiktokUids = [
+    ...new Set(row.participants.flatMap((p) => p.giftEvents.map((g) => g.senderTiktokUid))),
   ];
   const giftIds = [...new Set(row.participants.flatMap((p) => p.giftEvents.map((g) => g.giftId)))];
 
   // アバターは署名付きURLで数時間で失効するため保存せず都度解決する。
   const [anchorAvatarUrls, senderAvatarUrls, giftCatalog] = await Promise.all([
-    resolveAvatarUrls(
-      "battle_host",
-      row.participants.map((p) => p.anchorId)
-    ),
-    resolveAvatarUrls("gift_sender", senderUniqueIds),
+    resolveAvatarUrls(row.participants.map((p) => p.tiktokUid)),
+    resolveAvatarUrls(senderTiktokUids),
     loadGiftCatalog(giftIds),
   ]);
 

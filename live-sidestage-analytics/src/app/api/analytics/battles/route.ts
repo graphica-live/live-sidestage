@@ -3,25 +3,18 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { queryBattles, jstDateRangeToUtc } from "@/lib/battle-history";
-import { backfillHostUserIds } from "@/lib/tiktok-host-id";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const streamer = await prisma.streamer.findUnique({
-    where: { userId: session.user.id },
-    select: { id: true, roomId: true, verified: true, room: { select: { tiktokId: true, hostUserId: true } } },
+    where: { principalId: session.user.id },
+    select: { id: true, roomId: true, verified: true, room: { select: { tiktokHandle: true, hostTiktokUid: true } } },
   });
 
   if (!streamer || !streamer.roomId) {
     return NextResponse.json({ battles: [], dateRange: { start: "", end: "" }, verified: false });
-  }
-
-  // hostUserId(TikTokの数値userId)はfill-onceの不変値で、スコア表示の消去法に要る。
-  // avatarキャッシュと同じ「閲覧契機で引く」パターン: レスポンスはブロックしない。
-  if (streamer.room && streamer.room.hostUserId === null) {
-    void backfillHostUserIds([streamer.room.tiktokId], { maxPerRun: 1 }).catch(() => {});
   }
 
   const { searchParams } = new URL(req.url);

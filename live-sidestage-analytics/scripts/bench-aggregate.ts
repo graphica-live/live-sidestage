@@ -17,6 +17,12 @@ const LISTENERS = Number(process.env.BENCH_LISTENERS ?? 500);
 const GIFTS = Number(process.env.BENCH_GIFTS ?? 100_000);
 const PREFIX = "bench_agg";
 
+/** ベンチ用の tiktokUid 空間。format ごとに分ける(下の hostTiktokUid のコメント参照)。 */
+const FORMAT_UID_PREFIX: Record<"DIAMOND_RACE" | "TOURNAMENT", string> = {
+  DIAMOND_RACE: "80",
+  TOURNAMENT: "81",
+};
+
 // **now からの相対で組む。** バトル検知は現在時刻との前後関係で決まるので、固定日付だと
 // トーナメントのシナリオが「まだ終わっていないバトル」になって新しい集計経路を通らない。
 // 終了を未来に置くのは、締切(endAt + 猶予1時間)を過ぎて finalizedAt が立つと
@@ -37,7 +43,7 @@ function assertLocal() {
 async function cleanup() {
   await prisma.$executeRaw`DELETE FROM public.tiktok_battles WHERE "battleId" LIKE ${`${PREFIX}%`}`;
   await prisma.detectedBattle.deleteMany({ where: { battleId: { startsWith: PREFIX } } });
-  await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE "tiktokId" LIKE ${`${PREFIX}%`}`;
+  await prisma.$executeRaw`DELETE FROM public."TiktokRoom" WHERE "tiktokHandle" LIKE ${`${PREFIX}%`}`;
   await prisma.event.deleteMany({ where: { slug: { startsWith: PREFIX } } });
 }
 
@@ -47,7 +53,7 @@ async function seedEvent(format: "DIAMOND_RACE" | "TOURNAMENT") {
     data: {
       slug: `${PREFIX}-${format}-${Date.now()}`,
       title: `集計ベンチ(${format})`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format,
       entryMode: "SOLO",
       status: "RUNNING",
@@ -61,15 +67,25 @@ async function seedEvent(format: "DIAMOND_RACE" | "TOURNAMENT") {
   const roomIds: string[] = [];
   const participantIds: string[] = [];
   for (let i = 0; i < PARTICIPANTS; i++) {
-    const tiktokId = `${PREFIX}_${format.toLowerCase()}_liver_${i}`;
+    const tiktokHandle = `${PREFIX}_${format.toLowerCase()}_liver_${i}`;
+    // **format ごとに別の uid 空間にする。** `TiktokRoom.hostTiktokUid` は @unique なので、
+    // 2つ目のシナリオが同じ uid を使うと1本目の room に当たって 23505 で落ちる
+    // (room の一意キーがハンドルだった頃はハンドルに format が入っていて衝突しなかった)。
+    const hostTiktokUid = `${FORMAT_UID_PREFIX[format]}${String(i).padStart(17, "0")}`;
     const rows = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt")
-      VALUES (gen_random_uuid()::text, ${tiktokId}, NOW())
+      INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt")
+      VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${hostTiktokUid}, NOW())
       RETURNING id
     `;
     roomIds.push(rows[0].id);
     const p = await prisma.eventParticipant.create({
-      data: { eventId: event.id, tiktokId, roomId: rows[0].id, displayName: tiktokId },
+      data: {
+        eventId: event.id,
+        tiktokUid: hostTiktokUid,
+        tiktokHandle,
+        roomId: rows[0].id,
+        displayName: tiktokHandle,
+      },
       select: { id: true },
     });
     participantIds.push(p.id);
@@ -81,12 +97,11 @@ async function seedEvent(format: "DIAMOND_RACE" | "TOURNAMENT") {
   for (const roomId of roomIds) {
     await prisma.$executeRaw`
       INSERT INTO public.gifts
-        (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+        (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
          "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
       SELECT gen_random_uuid()::text,
              ${roomId},
-             'bench_listener_' || (g % ${LISTENERS}),
-             'ベンチリスナー' || (g % ${LISTENERS}),
+             '9' || lpad((g % ${LISTENERS})::text, 18, '0'),
              5, 'Rose', 1, 10, 10,
              ${START} + (random() * (${END}::timestamp - ${START}::timestamp)),
              '2026-09-01',
@@ -139,7 +154,7 @@ async function seedBattles(eventId: string, participantIds: string[]) {
       await prisma.$executeRaw`
         INSERT INTO public.tiktok_battles
           (id, "roomId", "battleId", action, "startedAt", "startedAtEstimated", "endedAt",
-           "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", "updatedAt")
+           "durationSec", "hostTiktokUids", "hostDisplayIds", "hostScores", "updatedAt")
         VALUES
           (gen_random_uuid()::text, ${roomId}, ${battleId}, 5, ${startedAt}, false, ${endedAt},
            600, ARRAY[]::text[], ARRAY[]::text[], '{}'::jsonb, NOW())
@@ -179,10 +194,10 @@ async function main() {
   // EXPLAIN で索引が使われていることを確認する。
   const plan = await prisma.$queryRaw<{ "QUERY PLAN": string }[]>`
     EXPLAIN (ANALYZE, BUFFERS)
-    SELECT "roomId", "uniqueId", SUM("totalDiamonds")::bigint AS diamonds, SUM("repeatCount")::int AS "giftCount"
+    SELECT "roomId", "tiktokUid", SUM("totalDiamonds")::bigint AS diamonds, SUM("repeatCount")::int AS "giftCount"
     FROM public.gifts
     WHERE "roomId" = ANY(${race.roomIds}::text[]) AND "receivedAt" >= ${START} AND "receivedAt" < ${END}
-    GROUP BY "roomId", "uniqueId"
+    GROUP BY "roomId", "tiktokUid"
   `;
   console.log("\n--- EXPLAIN (ANALYZE, BUFFERS) ---");
   for (const line of plan) console.log(line["QUERY PLAN"]);

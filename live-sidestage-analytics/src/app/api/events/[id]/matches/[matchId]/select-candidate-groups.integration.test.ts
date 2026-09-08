@@ -5,6 +5,7 @@
 // 欠陥(A: フラグOFF期間のフォールバック, B: games分断, C: 低ダイヤ計算)への対応も
 // select-candidate-groups側で検証できる範囲は含める。
 import { createHash } from "crypto";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -13,10 +14,10 @@ import {
   buildSelectionFingerprintInput,
 } from "@/event/candidates-fingerprint";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 const { PATCH } = await import("./route");
@@ -52,26 +53,30 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。このファイルは表示名を検証しないので、
+// TikTokUser 行は作らず uid だけを固定で使う。
+const LISTENER_TIKTOK_UID = makeTiktokUid(`${PREFIX}_listener1`);
+
 async function insertGift(params: { roomId: string; diamonds: number; receivedAt: Date }) {
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, 'listener1', 'listener1',
+      (gen_random_uuid()::text, ${params.roomId}, ${LISTENER_TIKTOK_UID},
        5, 'Rose', 1, ${params.diamonds}, ${params.diamonds}, ${params.receivedAt},
        '2026-09-01', ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -82,7 +87,7 @@ async function newEvent(winCondition: "SINGLE" | "BEST_OF_THREE") {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} イベント`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -103,14 +108,17 @@ async function newMatchWithSides(
   sessionId: string,
   overrides: { status?: string; rules?: unknown } = {}
 ) {
-  const roomA = await createRoom(`${PREFIX}_a_${uniqueSuffix()}`);
-  const roomB = await createRoom(`${PREFIX}_b_${uniqueSuffix()}`);
+  // 参加者の tiktokUid は、その参加者が出場する room の hostTiktokUid と揃える。
+  const handleA = `${PREFIX}_a_${uniqueSuffix()}`;
+  const handleB = `${PREFIX}_b_${uniqueSuffix()}`;
+  const roomA = await createRoom(handleA);
+  const roomB = await createRoom(handleB);
   const pa = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId: `${PREFIX}_a_${uniqueSuffix()}`, roomId: roomA, displayName: "a" },
+    data: { eventId, tiktokUid: makeTiktokUid(handleA), tiktokHandle: handleA, roomId: roomA, displayName: "a" },
     select: { id: true },
   });
   const pb = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId: `${PREFIX}_b_${uniqueSuffix()}`, roomId: roomB, displayName: "b" },
+    data: { eventId, tiktokUid: makeTiktokUid(handleB), tiktokHandle: handleB, roomId: roomB, displayName: "b" },
     select: { id: true },
   });
 
@@ -196,7 +204,7 @@ afterAll(async () => {
 describe("selectCandidateGroups", () => {
   it("フラグ未設定時は400になる(段階的デプロイの固定)", async () => {
     delete process.env.EVENT_CANDIDATE_GROUPING;
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("SINGLE");
     const { matchId } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -214,7 +222,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("BO3で生候補ちょうど3件(CANDIDATES_EXCEEDEDを経由しない)から、候補調整モードでA+B合算・C単独が実行できる(指摘1の直接固定)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("BEST_OF_THREE");
     // status=FINISHED・winnerDecidedBy=AGGREGATEの「自動確定済み」状態を模擬する
     // (超過判定に一度も引っかからず3ゲームとして確定済みのケース)。
@@ -254,7 +262,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("SINGLE(maxGames=1)で2件をチェックして合算できる(指摘2の直接固定)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("SINGLE");
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -290,7 +298,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("未来終了(未終了含む)の候補をcandidateIdsに含めると400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("BEST_OF_THREE");
     const { matchId } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -314,7 +322,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("groups内で重複IDがあると400(GROUP_DUPLICATE_ID)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("BEST_OF_THREE");
     const { matchId } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -338,7 +346,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("非連続なグループ(a,cを合算しbを挟む)はGROUP_NOT_CONTIGUOUSで400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("BEST_OF_THREE");
     const { matchId } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -362,7 +370,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("startedAt変更後(検知ワーカーの再検知を模擬)、古いcandidatesFingerprintでは409", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("BEST_OF_THREE");
     const { matchId } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -389,7 +397,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("既にcurated済みの対戦への再selectCandidateGroupsは、古いselectionFingerprintで409(SELECTION_CHANGED)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("BEST_OF_THREE");
     const { matchId } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -424,7 +432,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("合算グループのdecidedAtはグループ内最終endedAtになる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("SINGLE");
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -449,7 +457,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("合算後のEventMatchSide.diamondsが2候補の合算値と一致し、両メンバーがselected=trueになる", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("SINGLE");
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",
@@ -478,7 +486,7 @@ describe("selectCandidateGroups", () => {
   });
 
   it("旧selectCandidates(groups無し)は従来どおり動作する(回帰確認)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newEvent("SINGLE");
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId, {
       status: "NEEDS_REVIEW",

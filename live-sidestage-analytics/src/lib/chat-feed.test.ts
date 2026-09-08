@@ -36,7 +36,8 @@ function removeIo(): void {
 function makeComment(overrides: Partial<ChatCommentPayload> = {}): ChatCommentPayload {
   return {
     streamerId: "streamer_1",
-    uniqueId: "user_x",
+    tiktokUid: "7100000000000000001",
+    tiktokHandle: "user_x",
     nickname: "ユーザーX",
     profilePictureUrl: null,
     comment: "こんにちは",
@@ -49,7 +50,8 @@ function makeComment(overrides: Partial<ChatCommentPayload> = {}): ChatCommentPa
 function makeGift(overrides: Partial<ChatGiftInput> = {}): ChatGiftInput {
   return {
     streamerId: "streamer_1",
-    uniqueId: "user_x",
+    tiktokUid: "7100000000000000001",
+    tiktokHandle: "user_x",
     nickname: "ユーザーX",
     profilePictureUrl: null,
     giftName: "rose",
@@ -114,7 +116,8 @@ describe("dedupのnamespace分離", () => {
     await emitChatComment(makeComment({ msgId: shared }));
     await emitChatFollow({
       streamerId: "streamer_1",
-      uniqueId: "u",
+      tiktokUid: "7100000000000000002",
+      tiktokHandle: "u",
       nickname: "n",
       profilePictureUrl: null,
       occurredAt: new Date().toISOString(),
@@ -311,7 +314,8 @@ describe("socket.ioサーバー未初期化時", () => {
     expect(
       await emitChatFollow({
         streamerId: "streamer_1",
-        uniqueId: "u",
+        tiktokUid: "7100000000000000002",
+        tiktokHandle: "u",
         nickname: "n",
         profilePictureUrl: null,
         occurredAt: new Date().toISOString(),
@@ -340,7 +344,8 @@ describe("emitChatFollow", () => {
   function follow(msgId: string | null) {
     return {
       streamerId: "streamer_1",
-      uniqueId: "follower",
+      tiktokUid: "7100000000000000003",
+      tiktokHandle: "follower",
       nickname: "フォロワー",
       profilePictureUrl: null,
       occurredAt: new Date().toISOString(),

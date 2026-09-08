@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 export default async function EventDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
   const event = await prisma.event.findFirst({
-    where: { id: params.id, ownerUserId: session!.user.id },
+    where: { id: params.id, ownerPrincipalId: session!.user.id },
     include: {
       sessions: { orderBy: { startAt: "asc" } },
       _count: { select: { participants: true, matches: true } },

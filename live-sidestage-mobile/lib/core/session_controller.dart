@@ -299,26 +299,27 @@ class SessionController extends ChangeNotifier {
     return base64UrlEncode(bytes).replaceAll('=', '');
   }
 
-  Future<bool> completeOnboarding({required String tiktokId}) {
+  Future<bool> completeOnboarding({required String tiktokHandle}) {
     final current = session;
     if (current == null) return Future.value(false);
 
     return _run(() async {
       final (token, streamer) = await _api.registerStreamer(
         token: current.token,
-        tiktokId: tiktokId,
+        tiktokHandle: tiktokHandle,
       );
       return current.withStreamer(token: token, streamer: streamer);
     });
   }
 
-  Future<bool> changeTiktokId(String tiktokId) {
+  Future<bool> changeTiktokHandle(String tiktokHandle) {
     final current = session;
     if (current == null) return Future.value(false);
 
     return _run(() async {
       try {
-        final streamer = await _api.updateTiktokId(token: current.token, tiktokId: tiktokId);
+        final streamer =
+            await _api.updateTiktokHandle(token: current.token, tiktokHandle: tiktokHandle);
         return current.withStreamer(token: current.token, streamer: streamer);
       } on ApiException catch (e) {
         if (!e.isUnauthorized) rethrow;
@@ -328,7 +329,7 @@ class SessionController extends ChangeNotifier {
         // [current] を戻り値の基底にすると、成功したのに失効トークンを
         // 保存し直してしまう。
         final refreshed = session ?? current;
-        final streamer = await _api.updateTiktokId(token: token, tiktokId: tiktokId);
+        final streamer = await _api.updateTiktokHandle(token: token, tiktokHandle: tiktokHandle);
         return refreshed.withStreamer(token: token, streamer: streamer);
       }
     });

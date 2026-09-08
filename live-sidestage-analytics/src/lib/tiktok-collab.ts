@@ -13,7 +13,7 @@
 // listChangeBizContent.userInfos`は受信時点のスナップショットだが、**参加確定した人(LINKED)だけでなく
 // 招待送信済みでまだ返事の無い人(WAITING)も含む**。probeログ169件の実測で、`userInfos`の要素数は
 // `groupChangeContent.groupUser.userList`のstatus:3(LINKED)+status:1(WAITING)の件数と167件で一致した。
-// **`userList`のエントリは`channelId`キーで`userInfos`のuserIdと対応付けられない**ため、
+// **`userList`のエントリは`channelId`キーで`userInfos`のtiktokUidと対応付けられない**ため、
 // 「誰がLINKEDか」を個人単位で判別する手段はこのメッセージ単体には無い。使えるのは件数の一致だけ。
 //
 // したがって`userInfos`を無条件に監視対象へ入れると、招待を送っただけの相手(承諾していない、
@@ -39,18 +39,40 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+/**
+ * `userInfos`のキー(tiktokUid)の正規化。`src/lib/tiktok-user.ts`の`normalizeTikTokUserId()`と
+ * 同一の判定だが、このファイルはprismaを引かないpureなパーサとして保つためインライン化してある
+ * (`"0"`はprotobuf proto3の既定値なので欠落と同義)。
+ */
+function normalizeUidKey(value: string): string | null {
+  if (!/^\d{1,32}$/.test(value)) return null;
+  if (value === "0") return null;
+  return value;
+}
+
 /** `source`に参加確定(招待への承諾)を示す値が含まれるか。 */
 export function isCollabJoinSource(source: unknown): boolean {
   return typeof source === "string" && source.includes("REPLY_STATUS_AGREE");
 }
 
+/**
+ * `userInfos`の1エントリ。キーがtiktokUid(不変の数値ID)、値に`displayId`(= tiktokHandle)と
+ * `nickname`が入っている。uidとハンドルが同じオブジェクトに揃っているので、対応付けのずれは
+ * 構造的に起きない。
+ */
+export type CollabSubject = {
+  tiktokUid: string;
+  tiktokHandle: string;
+  nickname: string | null;
+};
+
 export type CollabGroupChange = {
   source: string;
   /**
-   * `userInfos`に載っていたTikTokハンドル一覧(配信主own含む)。取れなかった要素は含めない。
-   * **参加確定した人だけでなく招待中の人も混ざる**(冒頭コメント参照)。
+   * `userInfos`に載っていた参加者一覧(配信主own含む)。uidまたはdisplayIdが取れなかった要素は
+   * 含めない。**参加確定した人だけでなく招待中の人も混ざる**(冒頭コメント参照)。
    */
-  displayIds: string[];
+  subjects: CollabSubject[];
   /** `userList`のstatus:3(LINKED = 参加確定)の件数。`userList`が取れなければ0。 */
   linkedCount: number;
   /** `userList`のstatus:1(WAITING = 招待送信済みで返事待ち)の件数。`userList`が取れなければ0。 */
@@ -78,12 +100,12 @@ export type CollabGroupChange = {
  * **fail-closed**。構造・値が変わったときに資源の暴走側へ倒れないことを優先する。
  */
 export function shouldWatchCollabSnapshot(parsed: CollabGroupChange): boolean {
-  if (parsed.displayIds.length === 0) return false;
+  if (parsed.subjects.length === 0) return false;
   const allLinked =
     parsed.linkedCount > 0 &&
     parsed.waitingCount === 0 &&
     parsed.otherCount === 0 &&
-    parsed.displayIds.length <= parsed.linkedCount;
+    parsed.subjects.length <= parsed.linkedCount;
   if (allLinked) return true;
   return isCollabJoinSource(parsed.source);
 }
@@ -104,12 +126,20 @@ export function parseCollabGroupChange(data: unknown): CollabGroupChange | null 
   const listChangeBizContent = asRecord(cohostContent?.listChangeBizContent);
   const userInfos = asRecord(listChangeBizContent?.userInfos);
 
-  const displayIds: string[] = [];
+  const subjects: CollabSubject[] = [];
   if (userInfos) {
-    for (const info of Object.values(userInfos)) {
+    for (const [key, info] of Object.entries(userInfos)) {
+      const tiktokUid = normalizeUidKey(key);
+      if (tiktokUid === null) continue;
       const user = asRecord(info);
-      const displayId = user ? nonEmptyString(user.displayId) : null;
-      if (displayId !== null && !displayIds.includes(displayId)) displayIds.push(displayId);
+      const tiktokHandle = user ? nonEmptyString(user.displayId) : null;
+      if (tiktokHandle === null) continue;
+      if (subjects.some((s) => s.tiktokUid === tiktokUid)) continue;
+      subjects.push({
+        tiktokUid,
+        tiktokHandle,
+        nickname: user ? nonEmptyString(user.nickname) : null,
+      });
     }
   }
 
@@ -126,5 +156,5 @@ export function parseCollabGroupChange(data: unknown): CollabGroupChange | null 
     else otherCount += 1;
   }
 
-  return { source, displayIds, linkedCount, waitingCount, otherCount };
+  return { source, subjects, linkedCount, waitingCount, otherCount };
 }

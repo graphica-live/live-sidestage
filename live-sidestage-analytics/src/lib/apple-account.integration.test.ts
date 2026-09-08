@@ -70,6 +70,7 @@ describe("resolveAppleUser", () => {
     expect(user.streamer).toBeNull();
 
     const account = await appleAccountOf(`${PREFIX}sub-new`);
+    // Account.userId だけは NextAuth の PrismaAdapter が名前を固定するため principalId へ改名しない。
     expect(account?.userId).toBe(user.id);
   });
 

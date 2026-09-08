@@ -103,7 +103,7 @@ async function main() {
 
     console.log(
       `${TAG} 進捗: 走査${scanned}件 / 対象${targets}件 / 付加${attached}(うちスコア点あり${withScorePoints}) ` +
-        `hostUserId未解決でスキップ${skippedSelfHostUnresolved} 行消失${skippedNotFound} 失敗${failed}`
+        `hostTiktokUid未解決でスキップ${skippedSelfHostUnresolved} 行消失${skippedNotFound} 失敗${failed}`
     );
 
     if (batch.length < BATCH_SIZE) break;
@@ -112,7 +112,7 @@ async function main() {
 
   console.log(
     `${TAG} 完了${dryRun ? "(ドライラン: 書き込みなし)" : ""} — 走査${scanned}件 / 対象${targets}件 / ` +
-      `付加${attached}(うちスコア点あり${withScorePoints}) hostUserId未解決でスキップ${skippedSelfHostUnresolved} ` +
+      `付加${attached}(うちスコア点あり${withScorePoints}) hostTiktokUid未解決でスキップ${skippedSelfHostUnresolved} ` +
       `行消失${skippedNotFound} 失敗${failed}`
   );
 

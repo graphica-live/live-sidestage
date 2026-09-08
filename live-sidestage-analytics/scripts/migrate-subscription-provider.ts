@@ -25,11 +25,11 @@ async function main() {
 
       // 1. stripeCustomerId を持つ行を StripeCustomerLink へコピーする(冪等: 既存なら skip)。
       await tx.$executeRawUnsafe(`
-        INSERT INTO public."StripeCustomerLink" ("userId", "stripeCustomerId", "createdAt")
-        SELECT s."userId", s."stripeCustomerId", NOW()
+        INSERT INTO public."StripeCustomerLink" ("principalId", "stripeCustomerId", "createdAt")
+        SELECT s."principalId", s."stripeCustomerId", NOW()
         FROM public."Subscription" s
         WHERE s."stripeCustomerId" IS NOT NULL
-        ON CONFLICT ("userId") DO NOTHING
+        ON CONFLICT ("principalId") DO NOTHING
       `);
 
       // 2. stripeSubscriptionId を持つ行に provider/providerSubscriptionId/entitlementActive を書く。

@@ -304,7 +304,7 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
       const byTeam = new Map<string, Map<string, Bucket>>();
       const byEvent = new Map<string, Bucket>();
 
-      const consume = (row: { roomId: string; uniqueId: string; diamonds: bigint; giftCount: number }, segment: RateSegment) => {
+      const consume = (row: { roomId: string; tiktokUid: string; diamonds: bigint; giftCount: number }, segment: RateSegment) => {
         const participant = roomToParticipant.get(row.roomId);
         if (!participant) return; // 集計中に参加者が外れた場合
 
@@ -319,8 +319,8 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
           perParticipant = new Map();
           byParticipant.set(participant.id, perParticipant);
         }
-        addTo(perParticipant, row.uniqueId, bucket);
-        addTo(byEvent, row.uniqueId, bucket);
+        addTo(perParticipant, row.tiktokUid, bucket);
+        addTo(byEvent, row.tiktokUid, bucket);
 
         if (participant.teamId) {
           let perTeam = byTeam.get(participant.teamId);
@@ -328,7 +328,7 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
             perTeam = new Map();
             byTeam.set(participant.teamId, perTeam);
           }
-          addTo(perTeam, row.uniqueId, bucket);
+          addTo(perTeam, row.tiktokUid, bucket);
         }
       };
 
@@ -395,19 +395,11 @@ export async function aggregateEvent(eventId: string): Promise<AggregateResult> 
         for (const row of rows) consume(row, segment);
       }
 
-      // 表示名は日程ごとに引いて後勝ちでまとめる(最後に観測したものが残る)。
-      // **バトル中のみ集計する種目でもここは絞らない。** 余分に引いた行は下の
-      // buildContributionRows が bucket に無い uniqueId を捨てるだけで結果に影響せず、
-      // 絞るとバトル外でも投げたリスナーの表示名が古いものへ変わりうる。
-      const profiles = new Map<string, ListenerProfile>();
-      for (const window of windows) {
-        const found = await fetchListenerProfiles(tx as DbClient, {
-          roomIds,
-          start: window.start,
-          end: window.end,
-        });
-        for (const [uniqueId, profile] of found) profiles.set(uniqueId, profile);
-      }
+      // 表示名は TikTokUser から tiktokUid で順引きする(gifts に表示列が無い)。
+      // uid キーなので「期間で絞ると古い名前になる」問題が消え、観測した uid 集合だけ引けばよい。
+      const profiles = await fetchListenerProfiles(tx as DbClient, {
+        tiktokUids: [...byEvent.keys()],
+      });
 
       // イベント全体の行だけ「どの参加者のリスナーか」と「枠ごとの内訳」を持たせる。
       // 打ち切り前の byParticipant 全量から出す(打ち切り後だと上位に入らない分が拾えない)。
@@ -496,15 +488,14 @@ function buildContributionRows(
   profiles: Map<string, ListenerProfile>,
   attribution?: Map<string, ListenerAttribution>
 ) {
-  return topRows(map).map(([uniqueId, bucket]) => {
-    const found = attribution?.get(uniqueId);
+  return topRows(map).map(([tiktokUid, bucket]) => {
+    const found = attribution?.get(tiktokUid);
     return {
       eventId,
       scope,
       scopeId,
-      listenerUniqueId: uniqueId,
-      nickname: profiles.get(uniqueId)?.nickname ?? uniqueId,
-      profileImageUrl: profiles.get(uniqueId)?.profileImageUrl ?? null,
+      listenerTiktokUid: tiktokUid,
+      listenerTiktokHandle: profiles.get(tiktokUid)?.tiktokHandle ?? null,
       diamonds: bucket.diamonds,
       points: formatScaledPoints(bucket.points),
       giftCount: bucket.giftCount,

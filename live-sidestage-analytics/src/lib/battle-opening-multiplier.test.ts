@@ -21,8 +21,8 @@ function at(offsetMs: number): Date {
 /** 起点(0点)から始まり、指定した増分を順に足したスコア列を作る。 */
 function scoreSeries(steps: { offsetMs: number; score: number }[]): OpeningScorePoint[] {
   return [
-    { anchorId: ANCHOR, occurredAt: at(0), score: "0" },
-    ...steps.map((s) => ({ anchorId: ANCHOR, occurredAt: at(s.offsetMs), score: String(s.score) })),
+    { tiktokUid: ANCHOR, occurredAt: at(0), score: "0" },
+    ...steps.map((s) => ({ tiktokUid: ANCHOR, occurredAt: at(s.offsetMs), score: String(s.score) })),
   ];
 }
 
@@ -30,7 +30,7 @@ function gift(overrides: Partial<OpeningGift> & { offsetMs: number }): OpeningGi
   const { offsetMs, ...rest } = overrides;
   return {
     id: `gift-${offsetMs}`,
-    anchorId: ANCHOR,
+    tiktokUid: ANCHOR,
     occurredAt: at(offsetMs),
     totalDiamonds: 1000,
     multiplierType: 0,
@@ -43,7 +43,7 @@ function infer(
   gifts: OpeningGift[],
   bonusIntervals: OpeningBonusInterval[] = [],
   tapPoints: OpeningTapPoint[] = [],
-  tapTrackedAnchorIds: Set<string> = new Set()
+  tapTrackedTiktokUids: Set<string> = new Set()
 ) {
   return inferOpeningMultiplier({
     windowStart: WINDOW_START,
@@ -52,13 +52,13 @@ function infer(
     gifts,
     bonusIntervals,
     tapPoints,
-    tapTrackedAnchorIds,
+    tapTrackedTiktokUids,
   });
 }
 
 /** 10タップ到達リスナー1人ぶんのタップ点。 */
-function tap(offsetMs: number, points = 3, anchorId = ANCHOR): OpeningTapPoint {
-  return { anchorId, occurredAt: at(offsetMs), points };
+function tap(offsetMs: number, points = 3, tiktokUid = ANCHOR): OpeningTapPoint {
+  return { tiktokUid, occurredAt: at(offsetMs), points };
 }
 
 describe("inferOpeningMultiplier", () => {
@@ -153,7 +153,7 @@ describe("inferOpeningMultiplier", () => {
 
   it("別 anchor 宛のギフトを他人のスコア増分の原因にしない", () => {
     const result = infer(scoreSeries([{ offsetMs: 5_000, score: 2000 }]), [
-      gift({ offsetMs: 3_000, anchorId: "anchor-rival" }),
+      gift({ offsetMs: 3_000, tiktokUid: "anchor-rival" }),
     ]);
     expect(result.confidence).toBe("unknown");
   });
@@ -204,8 +204,8 @@ describe("inferOpeningMultiplier", () => {
   it("候補区間(60秒)より後のギフトは見ない", () => {
     const result = infer(
       [
-        { anchorId: ANCHOR, occurredAt: at(0), score: "0" },
-        { anchorId: ANCHOR, occurredAt: at(90_000), score: "2000" },
+        { tiktokUid: ANCHOR, occurredAt: at(0), score: "0" },
+        { tiktokUid: ANCHOR, occurredAt: at(90_000), score: "2000" },
       ],
       [gift({ offsetMs: 88_000 })]
     );
@@ -226,9 +226,9 @@ describe("inferOpeningMultiplier", () => {
     const gap = GIFT_TO_SCORE_LAG_MS / 2;
     const result = infer(
       [
-        { anchorId: ANCHOR, occurredAt: at(0), score: "0" },
-        { anchorId: ANCHOR, occurredAt: at(5_000), score: "2000" },
-        { anchorId: ANCHOR, occurredAt: at(5_000 + gap), score: "4000" },
+        { tiktokUid: ANCHOR, occurredAt: at(0), score: "0" },
+        { tiktokUid: ANCHOR, occurredAt: at(5_000), score: "2000" },
+        { tiktokUid: ANCHOR, occurredAt: at(5_000 + gap), score: "4000" },
       ],
       [gift({ offsetMs: 3_000 })]
     );
@@ -262,7 +262,7 @@ describe("inferOpeningMultiplier", () => {
       gifts: [gift({ offsetMs: 3_000 }), gift({ offsetMs: 13_000 })],
       bonusIntervals: [],
       tapPoints: [],
-      tapTrackedAnchorIds: new Set(),
+      tapTrackedTiktokUids: new Set(),
     });
     expect(result.confidence).toBe("unknown");
     expect(result.multiplier).toBeNull();

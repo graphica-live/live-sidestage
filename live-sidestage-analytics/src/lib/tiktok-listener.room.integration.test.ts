@@ -12,6 +12,7 @@ import {
 } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 import { existenceChecker } from "./tiktok-existence";
+import { makeGiftRow, makeTiktokUid } from "./__fixtures__/gift";
 
 // vi.mockのfactoryはファイル先頭へホイストされるため、参照するオブジェクトは
 // vi.hoisted()で明示的にホイストしておく必要がある。
@@ -22,8 +23,22 @@ const { MockConnection } = vi.hoisted(() => {
     clientParams: Record<string, string> = {};
     connectCalls = 0;
     disconnectCalls = 0;
+    // ハンドル → tiktokUid の導出。テストファイル側で makeTiktokUid を代入する
+    // (vi.hoisted の中では import できないため)。
+    static uidFor: (tiktokHandle: string) => string = () => "0";
+    // 接続前の hostTiktokUid 照合(precheckApiLive)が読む。既定は「オンライン かつ
+    // room の hostTiktokUid と一致する配信者」。
+    webClient = {
+      fetchRoomInfoFromApiLive: vi.fn(async () => ({
+        // createConnection() は `@` 付きで渡してくるので、uid 導出前に剥がす。
+        data: {
+          liveRoom: { status: 2 },
+          user: { id: MockConnection.uidFor(this.tiktokHandle.replace(/^@/, "")) },
+        },
+      })),
+    };
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -49,15 +64,17 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
+MockConnection.uidFor = makeTiktokUid;
+
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null }),
   },
 }));
 
@@ -70,18 +87,26 @@ vi.mock("./overlay", () => ({
   emitGiftDrivenOverlayUpdates: emitOverlaySnapshotMock,
 }));
 
-async function createStreamer(tiktokId: string, emailPrefix: string) {
+// room の同一性は hostTiktokUid で決まる。テストの「同じ配信者」はハンドルで書かれているので、
+// ハンドルから決定的に uid を導いて同一性を保つ(別ハンドル = 別 uid = 別 room)。
+async function createStreamer(tiktokHandle: string, emailPrefix: string) {
   const user = await prisma.user.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return prisma.streamer.create({
-    data: { userId: user.id, tiktokId, verificationCode: "x", verified: true },
+    data: {
+      principalId: user.id,
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      verificationCode: "x",
+      verified: true,
+    },
   });
 }
 
 async function cleanupStreamer(streamerId: string) {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
-  if (streamer) await prisma.user.delete({ where: { id: streamer.userId } });
+  if (streamer) await prisma.user.delete({ where: { id: streamer.principalId } });
 }
 
 async function cleanupRoom(roomId: string) {
@@ -98,17 +123,17 @@ afterAll(async () => {
 });
 
 describe("TiktokRoomによる接続共有", () => {
-  it("同じtiktokIdを2人が登録しても、実際のTikTok接続は1本だけ張られる", async () => {
-    const tiktokId = `itest_dedup_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-dedup-a");
-    const b = await createStreamer(tiktokId, "itest-dedup-b");
+  it("同じtiktokHandleを2人が登録しても、実際のTikTok接続は1本だけ張られる", async () => {
+    const tiktokHandle = `itest_dedup_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-dedup-a");
+    const b = await createStreamer(tiktokHandle, "itest-dedup-b");
 
     const roomIdA = await resolveRoomForStreamer(a.id);
     const roomIdB = await resolveRoomForStreamer(b.id);
     expect(roomIdA).toBe(roomIdB); // 同じ部屋に解決される
 
-    await startListener(roomIdA, tiktokId, [a.id]);
-    await startListener(roomIdB, tiktokId, [a.id, b.id]); // 2人目が追加購読
+    await startListener(roomIdA, tiktokHandle, [a.id]);
+    await startListener(roomIdB, tiktokHandle, [a.id, b.id]); // 2人目が追加購読
 
     expect(MockConnection.instances).toHaveLength(1);
 
@@ -119,17 +144,19 @@ describe("TiktokRoomによる接続共有", () => {
   });
 
   it("1件のgiftイベントでGift行は1件だけ作られ、購読者全員のオーバーレイに通知される", async () => {
-    const tiktokId = `itest_dedup_gift_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-dedup-gift-a");
-    const b = await createStreamer(tiktokId, "itest-dedup-gift-b");
+    const tiktokHandle = `itest_dedup_gift_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-dedup-gift-a");
+    const b = await createStreamer(tiktokHandle, "itest-dedup-gift-b");
     const roomId = await resolveRoomForStreamer(a.id);
     await resolveRoomForStreamer(b.id);
 
-    await startListener(roomId, tiktokId, [a.id, b.id]);
+    await startListener(roomId, tiktokHandle, [a.id, b.id]);
     const conn = MockConnection.instances[0];
     expect(conn).toBeDefined();
 
+    // TLC の生 payload。キー名は TikTok 側の仕様(userId / uniqueId)。
     conn.fire("gift", {
+      userId: makeTiktokUid("user_x"),
       uniqueId: "user_x",
       nickname: "ユーザーX",
       giftType: 0,
@@ -163,11 +190,11 @@ describe("TiktokRoomによる接続共有", () => {
   });
 
   it("最後の購読者が離脱すると接続が切断され、getListenerStatusはnullになる", async () => {
-    const tiktokId = `itest_dedup_stop_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-dedup-stop-a");
+    const tiktokHandle = `itest_dedup_stop_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-dedup-stop-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     const conn = MockConnection.instances[0];
     expect(getListenerStatus(roomId)).not.toBeNull();
 
@@ -180,16 +207,41 @@ describe("TiktokRoomによる接続共有", () => {
     await cleanupRoom(roomId);
   });
 
-  it("tiktokId変更(再登録)で旧roomと新roomが別々に解決される", async () => {
-    const oldTiktokId = `itest_dedup_old_${Date.now()}`;
-    const newTiktokId = `itest_dedup_new_${Date.now()}`;
-    const a = await createStreamer(oldTiktokId, "itest-dedup-move-a");
+  // 改名(ハンドルだけ変わる)で room を割らないことが、識別子統一の主目的。
+  it("ハンドルだけ変わっても(改名)同じroomに解決され、roomのハンドルが追随する", async () => {
+    const oldTiktokHandle = `itest_rename_old_${Date.now()}`;
+    const newTiktokHandle = `itest_rename_new_${Date.now()}`;
+    const a = await createStreamer(oldTiktokHandle, "itest-rename-a");
 
-    const oldRoomId = await resolveRoomForStreamer(a.id);
-    await startListener(oldRoomId, oldTiktokId, [a.id]);
+    const roomId = await resolveRoomForStreamer(a.id);
+    await startListener(roomId, oldTiktokHandle, [a.id]);
     expect(MockConnection.instances).toHaveLength(1);
 
-    await prisma.streamer.update({ where: { id: a.id }, data: { tiktokId: newTiktokId } });
+    await prisma.streamer.update({ where: { id: a.id }, data: { tiktokHandle: newTiktokHandle } });
+    const afterRename = await resolveRoomForStreamer(a.id);
+
+    expect(afterRename).toBe(roomId);
+    const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: roomId } });
+    expect(room.tiktokHandle).toBe(newTiktokHandle);
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+  });
+
+  it("別のTikTokアカウント(別tiktokUid)へ再登録すると旧roomと新roomが別々に解決される", async () => {
+    const oldTiktokHandle = `itest_dedup_old_${Date.now()}`;
+    const newTiktokHandle = `itest_dedup_new_${Date.now()}`;
+    const a = await createStreamer(oldTiktokHandle, "itest-dedup-move-a");
+
+    const oldRoomId = await resolveRoomForStreamer(a.id);
+    await startListener(oldRoomId, oldTiktokHandle, [a.id]);
+    expect(MockConnection.instances).toHaveLength(1);
+
+    await prisma.streamer.update({
+      where: { id: a.id },
+      data: { tiktokUid: makeTiktokUid(newTiktokHandle), tiktokHandle: newTiktokHandle },
+    });
     const newRoomId = await resolveRoomForStreamer(a.id);
 
     expect(newRoomId).not.toBe(oldRoomId);
@@ -213,16 +265,21 @@ describe("monitorUntilによる期限付き監視", () => {
   // monitoringSuspended:true で作る。新仕様ではStreamer0人のRoomも既定で監視対象になる
   // (情報プール方針)ため、trueにしないと「monitorUntilが唯一の監視理由」というこの
   // describeの検証意図が成立しない。
-  async function createRoom(tiktokId: string, monitorUntil: Date | null) {
+  async function createRoom(tiktokHandle: string, monitorUntil: Date | null) {
     return prisma.tiktokRoom.create({
-      data: { tiktokId, monitorUntil, monitoringSuspended: true },
+      data: {
+        hostTiktokUid: makeTiktokUid(tiktokHandle),
+        tiktokHandle,
+        monitorUntil,
+        monitoringSuspended: true,
+      },
       select: { id: true },
     });
   }
 
   it("Streamerが1人もいなくても、monitorUntilが未来なら担当部屋に含まれ接続される", async () => {
-    const tiktokId = `itest_lease_active_${Date.now()}`;
-    const room = await createRoom(tiktokId, FUTURE());
+    const tiktokHandle = `itest_lease_active_${Date.now()}`;
+    const room = await createRoom(tiktokHandle, FUTURE());
 
     await resumeAllListeners();
 
@@ -233,8 +290,8 @@ describe("monitorUntilによる期限付き監視", () => {
   });
 
   it("StreamerがおらずmonitorUntilも過去なら担当部屋に含まれない", async () => {
-    const tiktokId = `itest_lease_expired_${Date.now()}`;
-    const room = await createRoom(tiktokId, PAST());
+    const tiktokHandle = `itest_lease_expired_${Date.now()}`;
+    const room = await createRoom(tiktokHandle, PAST());
 
     await resumeAllListeners();
 
@@ -244,17 +301,16 @@ describe("monitorUntilによる期限付き監視", () => {
   });
 
   it("monitorUntilが切れるとreconcileで切断されるが、部屋と受信済みGiftは残る", async () => {
-    const tiktokId = `itest_lease_teardown_${Date.now()}`;
-    const room = await createRoom(tiktokId, FUTURE());
+    const tiktokHandle = `itest_lease_teardown_${Date.now()}`;
+    const room = await createRoom(tiktokHandle, FUTURE());
 
     await resumeAllListeners();
     expect(getListenerStatus(room.id)).not.toBeNull();
 
     await prisma.gift.create({
-      data: {
+      data: makeGiftRow({
         roomId: room.id,
-        uniqueId: "listener_x",
-        nickname: "リスナーX",
+        tiktokUid: makeTiktokUid("listener_x"),
         giftId: 5,
         giftName: "Finger Heart",
         repeatCount: 1,
@@ -262,7 +318,7 @@ describe("monitorUntilによる期限付き監視", () => {
         totalDiamonds: 5,
         dayKey: "2026-08-21",
         orderId: `itest_lease_order_${Date.now()}`,
-      },
+      }),
     });
 
     // イベント終了 = 監視要求の期限切れ
@@ -282,13 +338,13 @@ describe("monitorUntilによる期限付き監視", () => {
   });
 
   it("期限切れ後でも、その部屋を指定したStreamer登録があれば監視が再開される", async () => {
-    const tiktokId = `itest_lease_resume_${Date.now()}`;
-    const room = await createRoom(tiktokId, PAST());
+    const tiktokHandle = `itest_lease_resume_${Date.now()}`;
+    const room = await createRoom(tiktokHandle, PAST());
 
     await resumeAllListeners();
     expect(getListenerStatus(room.id)).toBeNull();
 
-    const a = await createStreamer(tiktokId, "itest-lease-resume-a");
+    const a = await createStreamer(tiktokHandle, "itest-lease-resume-a");
     const resolved = await resolveRoomForStreamer(a.id);
     expect(resolved).toBe(room.id); // 新規作成ではなく既存の部屋に紐づく
 
@@ -307,13 +363,13 @@ describe("monitorUntilによる期限付き監視", () => {
 // unique 制約はまだ張らない — 実データで一意性と充足率を確かめてから昇格させる。
 describe("giftのmsgId/giftType保存", () => {
   async function fireGiftAndRead(
-    tiktokId: string,
+    tiktokHandle: string,
     emailPrefix: string,
     payload: Record<string, unknown>
   ) {
-    const a = await createStreamer(tiktokId, emailPrefix);
+    const a = await createStreamer(tiktokHandle, emailPrefix);
     const roomId = await resolveRoomForStreamer(a.id);
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     const conn = MockConnection.instances[0];
     expect(conn).toBeDefined();
 
@@ -336,6 +392,7 @@ describe("giftのmsgId/giftType保存", () => {
       `itest_msgid_ok_${Date.now()}`,
       "itest-msgid-ok",
       {
+        userId: makeTiktokUid("user_msgid"),
         uniqueId: "user_msgid",
         nickname: "msgIdユーザー",
         giftType: 1,
@@ -359,6 +416,7 @@ describe("giftのmsgId/giftType保存", () => {
       `itest_msgid_zero_${Date.now()}`,
       "itest-msgid-zero",
       {
+        userId: makeTiktokUid("user_zero"),
         uniqueId: "user_zero",
         nickname: "ゼロユーザー",
         giftType: 0,
@@ -380,6 +438,7 @@ describe("giftのmsgId/giftType保存", () => {
       `itest_msgid_none_${Date.now()}`,
       "itest-msgid-none",
       {
+        userId: makeTiktokUid("user_none"),
         uniqueId: "user_none",
         nickname: "msgId無しユーザー",
         giftId: 7,
@@ -411,52 +470,61 @@ describe("readinessの前提: DB起因の失敗はstartListenerから伝播す�
   });
 });
 
-// 配信開始(初回connected)のたびにTikTok表示名(nickname)をTiktokRoomへ反映する
-// (admin/workers画面でのnickname併記機能の土台)。
+// 配信開始(初回connected)のたびにTikTok表示名(nickname)を記録する。
+// 表示名の正本は TiktokRoom ではなく TikTokUser(tiktokUid 主キー)へ移った。
 describe("初回connected時のnickname更新", () => {
-  it("existenceCheckerがEXISTS+nicknameを返すとTiktokRoom.nicknameが更新される", async () => {
-    const tiktokId = `itest_nickname_ok_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-nickname-ok");
+  // existenceChecker のモックが返す uid。数値文字列でなければ recordTikTokUser まで届かない。
+  const HOST_UID = "7000000000000000901";
+
+  async function readTikTokUser(tiktokUid: string) {
+    return prisma.tikTokUser.findUnique({ where: { tiktokUid } });
+  }
+
+  it("existenceCheckerがEXISTS+nicknameを返すとTikTokUser.nicknameが記録される", async () => {
+    const tiktokHandle = `itest_nickname_ok_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-nickname-ok");
     const roomId = await resolveRoomForStreamer(a.id);
 
     vi.mocked(existenceChecker.check).mockResolvedValueOnce({
       verdict: "EXISTS",
       nickname: "テスト表示名",
-      userId: "123456",
+      tiktokUid: HOST_UID,
     });
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
 
     await vi.waitFor(async () => {
-      const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId } });
-      expect(room?.nickname).toBe("テスト表示名");
+      const user = await readTikTokUser(HOST_UID);
+      expect(user?.nickname).toBe("テスト表示名");
     });
+    const user = await readTikTokUser(HOST_UID);
+    expect(user?.tiktokHandle).toBe(tiktokHandle);
 
     await stopListener(roomId);
     await cleanupStreamer(a.id);
     await cleanupRoom(roomId);
+    await prisma.tikTokUser.deleteMany({ where: { tiktokUid: HOST_UID } });
   });
 
-  it("existenceCheckerがEXISTSでもnicknameが無ければTiktokRoom.nicknameは更新されない", async () => {
-    const tiktokId = `itest_nickname_none_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-nickname-none");
+  it("existenceCheckerがEXISTSでもnicknameが無ければTikTokUserを書かない", async () => {
+    const tiktokHandle = `itest_nickname_none_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-nickname-none");
     const roomId = await resolveRoomForStreamer(a.id);
 
     vi.mocked(existenceChecker.check).mockResolvedValueOnce({
       verdict: "EXISTS",
       nickname: null,
-      userId: "123456",
+      tiktokUid: HOST_UID,
     });
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     // fire-and-forgetの完了を待つため、実害のない別クエリの完了を挟んでから確認する。
     await vi.waitFor(async () => {
       expect(getListenerStatus(roomId)).not.toBeNull();
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId } });
-    expect(room?.nickname).toBeNull();
+    expect(await readTikTokUser(HOST_UID)).toBeNull();
 
     await stopListener(roomId);
     await cleanupStreamer(a.id);
@@ -464,21 +532,20 @@ describe("初回connected時のnickname更新", () => {
   });
 
   it("existenceCheckerがMISSINGを返してもstartListener自体は失敗しない", async () => {
-    const tiktokId = `itest_nickname_missing_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-nickname-missing");
+    const tiktokHandle = `itest_nickname_missing_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-nickname-missing");
     const roomId = await resolveRoomForStreamer(a.id);
 
     vi.mocked(existenceChecker.check).mockResolvedValueOnce({
       verdict: "MISSING",
       nickname: null,
-      userId: null,
+      tiktokUid: null,
     });
 
-    await expect(startListener(roomId, tiktokId, [a.id])).resolves.not.toThrow();
+    await expect(startListener(roomId, tiktokHandle, [a.id])).resolves.not.toThrow();
     expect(getListenerStatus(roomId)).not.toBeNull();
 
-    const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId } });
-    expect(room?.nickname).toBeNull();
+    expect(await readTikTokUser(HOST_UID)).toBeNull();
 
     await stopListener(roomId);
     await cleanupStreamer(a.id);

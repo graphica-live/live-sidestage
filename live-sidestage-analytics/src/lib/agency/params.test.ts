@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   MAX_RANGE_DAYS,
-  isValidNormalizedTiktokId,
+  isValidNormalizedTiktokHandle,
   parseDateRange,
-  parseTiktokIdsParam,
+  parseTiktokHandlesParam,
   selectWatchedRooms,
 } from "./params";
 
@@ -51,73 +51,73 @@ describe("parseDateRange", () => {
   });
 });
 
-describe("isValidNormalizedTiktokId", () => {
+describe("isValidNormalizedTiktokHandle", () => {
   it("英数字・アンダースコア・ドットの2〜24文字を受け入れる", () => {
-    expect(isValidNormalizedTiktokId("ab")).toBe(true);
-    expect(isValidNormalizedTiktokId("some.liver_01")).toBe(true);
-    expect(isValidNormalizedTiktokId("a".repeat(24))).toBe(true);
+    expect(isValidNormalizedTiktokHandle("ab")).toBe(true);
+    expect(isValidNormalizedTiktokHandle("some.liver_01")).toBe(true);
+    expect(isValidNormalizedTiktokHandle("a".repeat(24))).toBe(true);
   });
 
   it("Workerが永久に再接続を試みるようなゴミ入力を弾く", () => {
-    expect(isValidNormalizedTiktokId("")).toBe(false); // "@" だけの入力の正規化結果
-    expect(isValidNormalizedTiktokId("a")).toBe(false);
-    expect(isValidNormalizedTiktokId("a".repeat(25))).toBe(false);
-    expect(isValidNormalizedTiktokId("https://tiktok.com/@x")).toBe(false);
-    expect(isValidNormalizedTiktokId("some liver")).toBe(false);
-    expect(isValidNormalizedTiktokId("ユーザー")).toBe(false);
+    expect(isValidNormalizedTiktokHandle("")).toBe(false); // "@" だけの入力の正規化結果
+    expect(isValidNormalizedTiktokHandle("a")).toBe(false);
+    expect(isValidNormalizedTiktokHandle("a".repeat(25))).toBe(false);
+    expect(isValidNormalizedTiktokHandle("https://tiktok.com/@x")).toBe(false);
+    expect(isValidNormalizedTiktokHandle("some liver")).toBe(false);
+    expect(isValidNormalizedTiktokHandle("ユーザー")).toBe(false);
   });
 });
 
-describe("parseTiktokIdsParam", () => {
+describe("parseTiktokHandlesParam", () => {
   it("パラメータ自体が無い場合だけnull(=全監視対象)を返す", () => {
-    expect(parseTiktokIdsParam(null)).toEqual({ ok: true, value: null });
+    expect(parseTiktokHandlesParam(null)).toEqual({ ok: true, value: null });
   });
 
   it("明示された空値は拒否する(全監視対象へすり替わらない)", () => {
-    expect(parseTiktokIdsParam("").ok).toBe(false);
-    expect(parseTiktokIdsParam("   ").ok).toBe(false);
-    expect(parseTiktokIdsParam(",,").ok).toBe(false);
+    expect(parseTiktokHandlesParam("").ok).toBe(false);
+    expect(parseTiktokHandlesParam("   ").ok).toBe(false);
+    expect(parseTiktokHandlesParam(",,").ok).toBe(false);
   });
 
   it("正規化して重複を除く", () => {
-    expect(parseTiktokIdsParam("@Alice, BOB ,alice")).toEqual({
+    expect(parseTiktokHandlesParam("@Alice, BOB ,alice")).toEqual({
       ok: true,
       value: ["alice", "bob"],
     });
   });
 
   it("空要素を落とす", () => {
-    expect(parseTiktokIdsParam("alice,,bob,")).toEqual({ ok: true, value: ["alice", "bob"] });
+    expect(parseTiktokHandlesParam("alice,,bob,")).toEqual({ ok: true, value: ["alice", "bob"] });
   });
 });
 
 describe("selectWatchedRooms", () => {
   const watched = [
-    { roomId: "room-a", normalizedTiktokId: "alice" },
-    { roomId: "room-b", normalizedTiktokId: "bob" },
+    { roomId: "room-a", normalizedTiktokHandle: "alice" },
+    { roomId: "room-b", normalizedTiktokHandle: "bob" },
   ];
 
   it("未指定なら監視対象全件を返す", () => {
     const r = selectWatchedRooms(watched, null);
     expect(r.selected).toEqual(watched);
-    expect(r.unknownTiktokIds).toEqual([]);
+    expect(r.unknownTiktokHandles).toEqual([]);
   });
 
   it("監視対象に含まれるものだけを選ぶ", () => {
     const r = selectWatchedRooms(watched, ["bob"]);
-    expect(r.selected).toEqual([{ roomId: "room-b", normalizedTiktokId: "bob" }]);
-    expect(r.unknownTiktokIds).toEqual([]);
+    expect(r.selected).toEqual([{ roomId: "room-b", normalizedTiktokHandle: "bob" }]);
+    expect(r.unknownTiktokHandles).toEqual([]);
   });
 
   it("監視対象外のIDはunknownへ隔離し、集計対象に含めない", () => {
     const r = selectWatchedRooms(watched, ["alice", "carol"]);
-    expect(r.selected).toEqual([{ roomId: "room-a", normalizedTiktokId: "alice" }]);
-    expect(r.unknownTiktokIds).toEqual(["carol"]);
+    expect(r.selected).toEqual([{ roomId: "room-a", normalizedTiktokHandle: "alice" }]);
+    expect(r.unknownTiktokHandles).toEqual(["carol"]);
   });
 
   it("監視対象が空なら全てunknownになる", () => {
     const r = selectWatchedRooms([], ["alice"]);
     expect(r.selected).toEqual([]);
-    expect(r.unknownTiktokIds).toEqual(["alice"]);
+    expect(r.unknownTiktokHandles).toEqual(["alice"]);
   });
 });

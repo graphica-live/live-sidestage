@@ -99,7 +99,7 @@ export default function ProxyAdminPage() {
                   </span>
                   {outcomeBadge(entry)}
                   <span>locale={entry.locale}</span>
-                  <span>@{entry.tiktokId}</span>
+                  <span>@{entry.tiktokHandle}</span>
                   <span>{entry.usedJpProxy ? "日本プロキシ経由" : "フォールバック(部屋プロキシ)"}</span>
                   {entry.outcome === "success" && entry.giftCount != null && (
                     <span className="text-green-300">{entry.giftCount}件取得</span>

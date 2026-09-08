@@ -190,21 +190,21 @@ export function escapeLikePattern(value: string): string {
 
 // 貢献/ギフト履歴/バトル履歴の3ルート共通のプラン判定。month/year/カスタム範囲と
 // リスナー名フィルタはPRO/ULTRA限定機能なので、パース成功後にここでrequireFeatureへ渡す。
-// resolveMobileAnalyticsContext()のstreamer.userIdをそのまま渡せる(userIdはStreamerが
-// 1:1で持つ列なのでJWTのuserIdと同一)。
+// resolveMobileAnalyticsContext()のstreamer.principalIdをそのまま渡せる(principalIdはStreamerが
+// 1:1で持つ列なのでJWTのprincipalIdと同一)。
 export async function requireHistoryPlan(
-  userId: string,
+  principalId: string,
   params: { range: RangeQuery; listenerQuery: string | null }
 ): Promise<NextResponse | null> {
   const usesExtendedRange =
     params.range.mode === "custom" || params.range.period === "month" || params.range.period === "year";
   if (usesExtendedRange) {
-    const denied = await requireFeature(userId, "mobile.history.extendedRange");
+    const denied = await requireFeature(principalId, "mobile.history.extendedRange");
     if (denied) return denied;
   }
 
   if (params.listenerQuery !== null) {
-    const denied = await requireFeature(userId, "mobile.history.listenerFilter");
+    const denied = await requireFeature(principalId, "mobile.history.listenerFilter");
     if (denied) return denied;
   }
 

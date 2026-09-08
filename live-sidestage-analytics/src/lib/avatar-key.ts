@@ -1,26 +1,21 @@
 // TikTokアバターキャッシュ(Railway Bucket上のオブジェクトキー)の命名規則。
 //
 // 保存前に必ずWebPへ圧縮するので、拡張子は常にwebp固定。
-// subjectId(anchorId または uniqueId)は外部由来の文字列なので、キーに埋め込む前に
-// 許可文字だけに絞る(パストラバーサル・意図しないキー衝突を防ぐ)。
+// **kind は持たない。** 2026-09の識別子統一で主体が tiktokUid(不変の数値ID)1種類になり、
+// ホスト・ギフト送信者・イベント参加者のどれで現れても1行・1オブジェクトになった。
+// 数値以外を弾くのでパストラバーサル・キー衝突も構造的に起きない。
 
-const SUBJECT_ID_PATTERN = /^[A-Za-z0-9_.-]{1,100}$/;
+const TIKTOK_UID_PATTERN = /^\d{1,32}$/;
 
-export type AvatarKind = "battle_host" | "gift_sender" | "event_participant";
+const KEY_PREFIX = "avatars/tiktok-user";
 
-const KIND_PREFIX: Record<AvatarKind, string> = {
-  battle_host: "avatars/battle-host",
-  gift_sender: "avatars/gift-sender",
-  event_participant: "avatars/event-participant",
-};
-
-/** subjectIdがキーに埋め込んでよい形か。外れる場合は呼び出し側でキャッシュ自体をスキップする。 */
-export function isValidAvatarSubjectId(subjectId: string): boolean {
-  return SUBJECT_ID_PATTERN.test(subjectId);
+/** tiktokUidがキーに埋め込んでよい形か。外れる場合は呼び出し側でキャッシュ自体をスキップする。 */
+export function isValidAvatarSubjectId(tiktokUid: string): boolean {
+  return TIKTOK_UID_PATTERN.test(tiktokUid);
 }
 
-/** 保存先のオブジェクトキーを組み立てる。subjectIdが不正な形式ならnull。 */
-export function buildAvatarKey(kind: AvatarKind, subjectId: string): string | null {
-  if (!isValidAvatarSubjectId(subjectId)) return null;
-  return `${KIND_PREFIX[kind]}/${subjectId}.webp`;
+/** 保存先のオブジェクトキーを組み立てる。tiktokUidが不正な形式ならnull。 */
+export function buildAvatarKey(tiktokUid: string): string | null {
+  if (!isValidAvatarSubjectId(tiktokUid)) return null;
+  return `${KEY_PREFIX}/${tiktokUid}.webp`;
 }

@@ -19,24 +19,25 @@ enum BattleStatus {
   }
 }
 
-/// 対戦相手の情報。**tiktokId は null になりうる**(相手roomが未登録、または
-/// anchorIdベースで相手を特定できなかった場合)。
+/// 対戦相手の情報。**tiktokHandle は null になりうる**(相手roomが未登録、または
+/// tiktokUidベースで相手を特定できなかった場合)。
 class BattleOpponent {
-  final String? tiktokId;
+  /// 本人が変更できる @ハンドル。表示とプロフィール導線専用。
+  final String? tiktokHandle;
   final String? avatarUrl;
 
   /// 3人以上のバトルでの自分以外の参加者数。1v1なら常に1。
   final int count;
 
-  const BattleOpponent({this.tiktokId, this.avatarUrl, required this.count});
+  const BattleOpponent({this.tiktokHandle, this.avatarUrl, required this.count});
 
   static BattleOpponent? tryParse(Object? value) {
     if (value is! Map) return null;
     final count = value['count'];
-    final tiktokId = value['tiktokId'];
+    final tiktokHandle = value['tiktokHandle'];
     final avatarUrl = value['avatarUrl'];
     return BattleOpponent(
-      tiktokId: tiktokId is String && tiktokId.isNotEmpty ? tiktokId : null,
+      tiktokHandle: tiktokHandle is String && tiktokHandle.isNotEmpty ? tiktokHandle : null,
       avatarUrl: avatarUrl is String && avatarUrl.isNotEmpty ? avatarUrl : null,
       count: count is int && count > 0 ? count : 1,
     );
@@ -45,28 +46,34 @@ class BattleOpponent {
 
 /// 陣営1メンバー分。サーバーの`BattleParticipant`と対応する。
 class BattleParticipant {
-  final String anchorId;
+  /// TikTokの不変な数値ID。同一性・選択状態のキーはこれ。
+  final String tiktokUid;
   final String? avatarUrl;
 
-  /// 相手が登録済みならそのtiktokId。未登録ならnull。3陣営以上のとき、陣営ラベルに使う
-  /// (2陣営までは従来どおり[BattleSummary.opponent]側のtiktokIdを使う)。
-  final String? tiktokId;
-  final String? nickName;
+  /// 本人が変更できる @ハンドル。取れなければnull。3陣営以上のとき、陣営ラベルに使う
+  /// (2陣営までは従来どおり[BattleSummary.opponent]側のtiktokHandleを使う)。
+  final String? tiktokHandle;
+  final String? nickname;
 
-  const BattleParticipant({required this.anchorId, this.avatarUrl, this.tiktokId, this.nickName});
+  const BattleParticipant({
+    required this.tiktokUid,
+    this.avatarUrl,
+    this.tiktokHandle,
+    this.nickname,
+  });
 
   static BattleParticipant? tryParse(Object? value) {
     if (value is! Map) return null;
-    final anchorId = value['anchorId'];
-    if (anchorId is! String || anchorId.isEmpty) return null;
+    final tiktokUid = value['tiktokUid'];
+    if (tiktokUid is! String || tiktokUid.isEmpty) return null;
     final avatarUrl = value['avatarUrl'];
-    final tiktokId = value['tiktokId'];
-    final nickName = value['nickName'];
+    final tiktokHandle = value['tiktokHandle'];
+    final nickname = value['nickname'];
     return BattleParticipant(
-      anchorId: anchorId,
+      tiktokUid: tiktokUid,
       avatarUrl: avatarUrl is String && avatarUrl.isNotEmpty ? avatarUrl : null,
-      tiktokId: tiktokId is String && tiktokId.isNotEmpty ? tiktokId : null,
-      nickName: nickName is String && nickName.isNotEmpty ? nickName : null,
+      tiktokHandle: tiktokHandle is String && tiktokHandle.isNotEmpty ? tiktokHandle : null,
+      nickname: nickname is String && nickname.isNotEmpty ? nickname : null,
     );
   }
 

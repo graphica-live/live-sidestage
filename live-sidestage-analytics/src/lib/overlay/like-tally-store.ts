@@ -15,13 +15,14 @@ import { jstDateKey } from "./day-key";
 
 type Entry = {
   dayKey: string;
+  tiktokHandle: string;
   nickname: string;
   profileImageUrl: string | null;
   totalLikes: number;
 };
 
 // roomごとに「最後にstaleエントリを掃除した日」を持ち、日付が変わった後の最初のアクセスで
-// 前日以前のエントリを一括削除する。これが無いと、二度と来ないリスナー(uniqueId)のエントリが
+// 前日以前のエントリを一括削除する。これが無いと、二度と来ないリスナー(tiktokHandle)のエントリが
 // プロセス寿命いっぱい溜まり続ける(再訪時の上書き以外に消える経路が無いため)。
 type RoomState = {
   entries: Map<string, Entry>;
@@ -42,8 +43,8 @@ function getRoomState(roomId: string, today: string): RoomState {
     return state;
   }
   if (state.lastPrunedDayKey !== today) {
-    for (const [uniqueId, entry] of state.entries) {
-      if (entry.dayKey !== today) state.entries.delete(uniqueId);
+    for (const [tiktokUid, entry] of state.entries) {
+      if (entry.dayKey !== today) state.entries.delete(tiktokUid);
     }
     state.lastPrunedDayKey = today;
   }
@@ -52,18 +53,20 @@ function getRoomState(roomId: string, today: string): RoomState {
 
 export function incrementLike(
   roomId: string,
-  uniqueId: string,
+  tiktokUid: string,
+  tiktokHandle: string,
   nickname: string,
   profileImageUrl: string | null,
   likeCount: number
 ): { dayKey: string; previousTotal: number; newTotal: number } {
   const dayKey = jstDateKey();
   const { entries } = getRoomState(roomId, dayKey);
-  const existing = entries.get(uniqueId);
+  const existing = entries.get(tiktokUid);
   const previousTotal = existing?.dayKey === dayKey ? existing.totalLikes : 0;
   const newTotal = previousTotal + likeCount;
-  entries.set(uniqueId, {
+  entries.set(tiktokUid, {
     dayKey,
+    tiktokHandle: tiktokHandle || existing?.tiktokHandle || "",
     // nickname/profileImageUrlが空文字のイベントで既存の良い値を上書きしないよう、非空のときだけ更新。
     nickname: nickname || existing?.nickname || "",
     profileImageUrl: profileImageUrl || existing?.profileImageUrl || null,
@@ -75,13 +78,13 @@ export function incrementLike(
 export function getTopEntries(
   roomId: string,
   maxEntries: number
-): { uniqueId: string; nickname: string; profileImageUrl: string | null; totalLikes: number }[] {
+): { tiktokUid: string; tiktokHandle: string; nickname: string; profileImageUrl: string | null; totalLikes: number }[] {
   const today = jstDateKey();
   const { entries } = getRoomState(roomId, today);
-  const rows: { uniqueId: string; nickname: string; profileImageUrl: string | null; totalLikes: number }[] = [];
-  for (const [uniqueId, entry] of entries) {
+  const rows: { tiktokUid: string; tiktokHandle: string; nickname: string; profileImageUrl: string | null; totalLikes: number }[] = [];
+  for (const [tiktokUid, entry] of entries) {
     if (entry.dayKey !== today || entry.totalLikes <= 0) continue;
-    rows.push({ uniqueId, nickname: entry.nickname, profileImageUrl: entry.profileImageUrl, totalLikes: entry.totalLikes });
+    rows.push({ tiktokUid, tiktokHandle: entry.tiktokHandle, nickname: entry.nickname, profileImageUrl: entry.profileImageUrl, totalLikes: entry.totalLikes });
   }
   rows.sort((a, b) => b.totalLikes - a.totalLikes);
   return rows.slice(0, maxEntries);
@@ -91,8 +94,8 @@ export function getTopEntries(
 export function resetRoomToday(roomId: string): void {
   const today = jstDateKey();
   const { entries } = getRoomState(roomId, today);
-  for (const [uniqueId, entry] of entries) {
-    if (entry.dayKey === today) entries.delete(uniqueId);
+  for (const [tiktokUid, entry] of entries) {
+    if (entry.dayKey === today) entries.delete(tiktokUid);
   }
 }
 

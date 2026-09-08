@@ -50,7 +50,7 @@ export const BLOCKED_KILL_SWITCH_SETTING_KEY = "workerGuardianBlockedReassignDis
 
 export type HealthClassification = "healthy" | "unhealthy" | "inconclusive";
 
-export type MigrationAssignment = { roomId: string; tiktokId: string; toWorker: number };
+export type MigrationAssignment = { roomId: string; tiktokHandle: string; toWorker: number };
 
 export type MigrationAuditEntry = {
   at: string;
@@ -76,7 +76,7 @@ export type BlockedRoomState = {
 export type BlockedRoomAuditEntry = {
   at: string;
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   reason: "reassigned" | "given_up";
   fromWorker: number;
   toWorker: number | null;
@@ -242,17 +242,17 @@ export function updateHealthStreaks(
  * 純粋関数。候補0件なら全件unassignableにする(他の弱ってるworkerへ押し付けない)。
  */
 export function planReassignment(input: {
-  rooms: { id: string; tiktokId: string }[];
+  rooms: { id: string; tiktokHandle: string }[];
   eligibleTargets: number[];
   currentLoad: Map<number, number>;
 }): {
   assignments: MigrationAssignment[];
-  unassignable: { roomId: string; tiktokId: string }[];
+  unassignable: { roomId: string; tiktokHandle: string }[];
 } {
   const { rooms, eligibleTargets, currentLoad } = input;
 
   if (eligibleTargets.length === 0) {
-    return { assignments: [], unassignable: rooms.map((r) => ({ roomId: r.id, tiktokId: r.tiktokId })) };
+    return { assignments: [], unassignable: rooms.map((r) => ({ roomId: r.id, tiktokHandle: r.tiktokHandle })) };
   }
 
   const load = new Map(currentLoad);
@@ -271,7 +271,7 @@ export function planReassignment(input: {
         bestLoad = l;
       }
     }
-    assignments.push({ roomId: room.id, tiktokId: room.tiktokId, toWorker: best });
+    assignments.push({ roomId: room.id, tiktokHandle: room.tiktokHandle, toWorker: best });
     load.set(best, bestLoad + 1);
   }
 
@@ -330,7 +330,7 @@ async function migrateDeadWorker(
     // ロック取得後に再読込。死亡確定からここまでの間に別途動いた部屋を除外する。
     const freshRooms = await tx.tiktokRoom.findMany({
       where: { id: { in: orphanedRoomIds }, workerId: deadWorkerIndex },
-      select: { id: true, tiktokId: true },
+      select: { id: true, tiktokHandle: true },
     });
 
     if (freshRooms.length === 0) {
@@ -339,7 +339,7 @@ async function migrateDeadWorker(
     }
 
     const plan = planReassignment({
-      rooms: freshRooms.map((r) => ({ id: r.id, tiktokId: r.tiktokId })),
+      rooms: freshRooms.map((r) => ({ id: r.id, tiktokHandle: r.tiktokHandle })),
       eligibleTargets,
       currentLoad,
     });
@@ -379,7 +379,7 @@ async function migrateDeadWorker(
     };
     console.error(
       `[worker-guardian] worker${deadWorkerIndex}の部屋${plan.assignments.length}件を移送した: ` +
-        plan.assignments.map((a) => `@${a.tiktokId}→worker${a.toWorker}`).join(", ")
+        plan.assignments.map((a) => `@${a.tiktokHandle}→worker${a.toWorker}`).join(", ")
     );
     await appendAuditLog(tx, entry);
     return entry;
@@ -416,7 +416,7 @@ async function appendBlockedAuditLog(tx: Prisma.TransactionClient, entry: Blocke
  */
 async function migrateBlockedRoom(
   roomId: string,
-  tiktokId: string,
+  tiktokHandle: string,
   fromWorker: number,
   toWorker: number
 ): Promise<boolean> {
@@ -438,7 +438,7 @@ async function migrateBlockedRoom(
     await appendBlockedAuditLog(tx, {
       at: new Date().toISOString(),
       roomId,
-      tiktokId,
+      tiktokHandle,
       reason: "reassigned",
       fromWorker,
       toWorker,
@@ -447,7 +447,7 @@ async function migrateBlockedRoom(
   });
 
   if (migrated) {
-    console.error(`[worker-guardian] @${tiktokId}(403連続) をworker${fromWorker}→worker${toWorker}へ再割当した`);
+    console.error(`[worker-guardian] @${tiktokHandle}(403連続) をworker${fromWorker}→worker${toWorker}へ再割当した`);
   }
   return migrated;
 }
@@ -458,7 +458,7 @@ async function migrateBlockedRoom(
  * のみに委ねる——6時間ごとの自動再一巡等は行わない(アカウント自体がブロックされている
  * 可能性が高い状況で移送を繰り返しても解消しない上、EulerStream署名を浪費し続けるため)。
  */
-async function giveUpBlockedRoom(roomId: string, tiktokId: string, fromWorker: number): Promise<boolean> {
+async function giveUpBlockedRoom(roomId: string, tiktokHandle: string, fromWorker: number): Promise<boolean> {
   const gaveUp = await prisma.$transaction(async (tx) => {
     const updated = await tx.tiktokRoom.updateMany({
       where: { id: roomId, workerId: fromWorker },
@@ -469,7 +469,7 @@ async function giveUpBlockedRoom(roomId: string, tiktokId: string, fromWorker: n
     await appendBlockedAuditLog(tx, {
       at: new Date().toISOString(),
       roomId,
-      tiktokId,
+      tiktokHandle,
       reason: "given_up",
       fromWorker,
       toWorker: null,
@@ -479,7 +479,7 @@ async function giveUpBlockedRoom(roomId: string, tiktokId: string, fromWorker: n
 
   if (gaveUp) {
     console.error(
-      `[worker-guardian] @${tiktokId} は生存worker全台で403が継続 — monitoringSuspended:trueにして復帰経路へ委譲した`
+      `[worker-guardian] @${tiktokHandle} は生存worker全台で403が継続 — monitoringSuspended:trueにして復帰経路へ委譲した`
     );
   }
   return gaveUp;
@@ -637,11 +637,11 @@ export async function runGuardianCycle(state: GuardianState): Promise<GuardianSt
         if (decision.action === "reassign") {
           const migrated = await migrateBlockedRoom(
             room.roomId,
-            room.tiktokId,
+            room.tiktokHandle,
             room.workerId,
             decision.toWorker
           ).catch((err) => {
-            console.error(`[worker-guardian] @${room.tiktokId}の403フェイルオーバーで例外:`, err);
+            console.error(`[worker-guardian] @${room.tiktokHandle}の403フェイルオーバーで例外:`, err);
             return false;
           });
           // 移送が実際に成功した場合だけtriedWorkers/lastReassignedAtを進める。
@@ -661,9 +661,9 @@ export async function runGuardianCycle(state: GuardianState): Promise<GuardianSt
             });
           }
         } else if (decision.action === "give_up") {
-          const gaveUp = await giveUpBlockedRoom(room.roomId, room.tiktokId, room.workerId).catch(
+          const gaveUp = await giveUpBlockedRoom(room.roomId, room.tiktokHandle, room.workerId).catch(
             (err) => {
-              console.error(`[worker-guardian] @${room.tiktokId}のgive-up処理で例外:`, err);
+              console.error(`[worker-guardian] @${room.tiktokHandle}のgive-up処理で例外:`, err);
               return false;
             }
           );

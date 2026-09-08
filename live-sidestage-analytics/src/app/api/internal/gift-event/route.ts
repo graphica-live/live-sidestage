@@ -14,6 +14,7 @@ import {
   type ChatGiftInput,
   type ChatListenerInput,
 } from "@/lib/chat-feed";
+import { normalizeTikTokUserId } from "@/lib/tiktok-user";
 
 // Worker(worker.js)からWeb(server.js/global.__io)へgift/chatイベントを転送するための内部API。
 // Railway private networking経由でのみ叩かれる想定 — INTERNAL_API_SECRET必須。
@@ -54,7 +55,11 @@ function parseGiftEvent(value: unknown): Omit<ChatGiftInput, "streamerId"> | nul
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
 
-  if (!isNonEmptyString(v.uniqueId)) return null;
+  // tiktokUid は必須。旧Workerの POST はここで 400 になるが、この経路は socket 配信専用で
+  // DB 保存を伴わないためデータ損失は無い(デプロイ手順上、旧Workerは停止済み)。
+  const tiktokUid = normalizeTikTokUserId(v.tiktokUid);
+  if (!tiktokUid) return null;
+  if (!isNonEmptyString(v.tiktokHandle)) return null;
   if (typeof v.nickname !== "string" || v.nickname.length > MAX_STRING_LENGTH) return null;
   if (!isOptionalString(v.profilePictureUrl)) return null;
   if (typeof v.giftName !== "string" || v.giftName.length > MAX_STRING_LENGTH) return null;
@@ -66,7 +71,8 @@ function parseGiftEvent(value: unknown): Omit<ChatGiftInput, "streamerId"> | nul
   if (!isNonEmptyString(v.occurredAt) || !isNonEmptyString(v.receivedAt)) return null;
 
   return {
-    uniqueId: v.uniqueId,
+    tiktokUid,
+    tiktokHandle: v.tiktokHandle,
     nickname: v.nickname,
     profilePictureUrl: v.profilePictureUrl,
     giftName: v.giftName,
@@ -87,14 +93,17 @@ function parseFollowEvent(value: unknown): Omit<ChatFollowInput, "streamerId"> |
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
 
-  if (!isNonEmptyString(v.uniqueId)) return null;
+  const tiktokUid = normalizeTikTokUserId(v.tiktokUid);
+  if (!tiktokUid) return null;
+  if (!isNonEmptyString(v.tiktokHandle)) return null;
   if (typeof v.nickname !== "string" || v.nickname.length > MAX_STRING_LENGTH) return null;
   if (!isOptionalString(v.profilePictureUrl)) return null;
   if (!isNonEmptyString(v.occurredAt) || !isNonEmptyString(v.receivedAt)) return null;
   if (!isOptionalString(v.msgId)) return null;
 
   return {
-    uniqueId: v.uniqueId,
+    tiktokUid,
+    tiktokHandle: v.tiktokHandle,
     nickname: v.nickname,
     profilePictureUrl: v.profilePictureUrl,
     occurredAt: v.occurredAt,
@@ -105,7 +114,8 @@ function parseFollowEvent(value: unknown): Omit<ChatFollowInput, "streamerId"> |
 
 function parseLikeEvent(value: unknown): {
   roomId: string;
-  uniqueId: string;
+  tiktokUid: string;
+  tiktokHandle: string;
   nickname: string;
   profilePictureUrl: string | null;
   likeCount: number;
@@ -114,14 +124,16 @@ function parseLikeEvent(value: unknown): {
   const v = value as Record<string, unknown>;
 
   if (!isNonEmptyString(v.roomId)) return null;
-  if (!isNonEmptyString(v.uniqueId)) return null;
+  if (!isNonEmptyString(v.tiktokUid)) return null;
+  if (!isNonEmptyString(v.tiktokHandle)) return null;
   if (typeof v.nickname !== "string" || v.nickname.length > MAX_STRING_LENGTH) return null;
   if (!isOptionalString(v.profilePictureUrl)) return null;
   if (!isBoundedInt(v.likeCount, MAX_LIKE_COUNT)) return null;
 
   return {
     roomId: v.roomId,
-    uniqueId: v.uniqueId,
+    tiktokUid: v.tiktokUid,
+    tiktokHandle: v.tiktokHandle,
     nickname: v.nickname,
     profilePictureUrl: v.profilePictureUrl,
     likeCount: v.likeCount,

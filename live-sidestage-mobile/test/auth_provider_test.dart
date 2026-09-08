@@ -154,7 +154,7 @@ void main() {
     test('オンボーディング完了(withStreamer)後も provider を引き継ぐ', () {
       final session = _session(provider: AuthProvider.apple).withStreamer(
         token: 'tok2',
-        streamer: StreamerInfo(id: 's1', tiktokId: 'tt', apiKey: 'k', verified: true),
+        streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
       );
       expect(session.provider, AuthProvider.apple);
     });

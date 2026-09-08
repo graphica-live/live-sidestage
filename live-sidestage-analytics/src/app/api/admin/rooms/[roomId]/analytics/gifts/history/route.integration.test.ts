@@ -2,6 +2,7 @@
 // queryGiftHistory自体のロジックは既存カバレッジ対象外。ここではgetAdminSession()による認可と
 // レスポンス契約のみ固定する。
 import { describe, it, expect, afterAll, vi } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ADMIN_EMAIL } from "@/lib/admin";
@@ -17,13 +18,15 @@ const { GET } = await import("./route");
 
 const roomIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestagapih${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
 async function makeRoom() {
+  // hostTiktokUid は @unique。room ごとに別の値でないと2部屋目の作成が落ちる。
+  const handle = tiktokHandle("r");
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: tiktokId("r") },
+    data: { tiktokHandle: handle, hostTiktokUid: makeTiktokUid(handle) },
     select: { id: true },
   });
   roomIds.push(room.id);

@@ -10,7 +10,7 @@ class SessionStorage {
   /// `provider` は **必須キーにしない**。必須にすると、この機能より前に
   /// ログインした端末は読み込み時に null 判定でセッションごと消える。
   /// 欠落時の扱いは [AuthSession.fromStorageMap] 側で google に寄せている。
-  static const _optionalKeys = ['streamerId', 'tiktokId', 'apiKey', 'verified', 'provider'];
+  static const _optionalKeys = ['streamerId', 'tiktokHandle', 'apiKey', 'verified', 'provider'];
 
   Future<void> save(AuthSession session) async {
     final map = session.toStorageMap();

@@ -19,14 +19,14 @@ export type DbClient = PrismaClient | Prisma.TransactionClient;
 // Account の access/refresh token は、イベント機能には一切必要ない。
 
 export type StreamerLink = {
-  /** 共通 public."User".id。この tiktokId を登録している会員がいれば入る */
-  userId: string;
+  /** 共通 public."User".id。この tiktokHandle を登録している会員がいれば入る */
+  principalId: string;
 };
 
 /**
  * roomId から「その配信者が当サービスに会員登録しているか」を引く。
  *
- * 1つの room は複数の Streamer に共有されうる(同じ tiktokId を複数人が登録できる)ので、
+ * 1つの room は複数の Streamer に共有されうる(同じ tiktokHandle を複数人が登録できる)ので、
  * 1件に畳む。参加者一覧の「会員登録あり」バッジ用。
  *
  * **Streamer.verified は読まない。** BIO 認証はどの機能の前提にもしない方針で、
@@ -36,18 +36,18 @@ export type StreamerLink = {
 export async function findStreamerLinks(roomIds: string[]): Promise<Map<string, StreamerLink>> {
   if (roomIds.length === 0) return new Map();
 
-  const rows = await prisma.$queryRaw<{ roomId: string; userId: string }[]>`
-    SELECT DISTINCT ON ("roomId") "roomId", "userId"
+  const rows = await prisma.$queryRaw<{ roomId: string; principalId: string }[]>`
+    SELECT DISTINCT ON ("roomId") "roomId", "principalId"
     FROM public."Streamer"
     WHERE "roomId" = ANY(${roomIds}::text[])
-    ORDER BY "roomId", "userId"
+    ORDER BY "roomId", "principalId"
   `;
 
-  return new Map(rows.map((r) => [r.roomId, { userId: r.userId }]));
+  return new Map(rows.map((r) => [r.roomId, { principalId: r.principalId }]));
 }
 
 export type RoomStatus = {
-  tiktokId: string;
+  tiktokHandle: string;
   /** analytics の TikTok 接続状態。"connected" 等。未接続なら null */
   listenerStatus: string | null;
   listenerUpdatedAt: Date | null;
@@ -63,9 +63,9 @@ export async function findRoomStatuses(roomIds: string[]): Promise<Map<string, R
   if (roomIds.length === 0) return new Map();
 
   const rows = await prisma.$queryRaw<
-    { id: string; tiktokId: string; listenerStatus: string | null; listenerUpdatedAt: Date | null }[]
+    { id: string; tiktokHandle: string; listenerStatus: string | null; listenerUpdatedAt: Date | null }[]
   >`
-    SELECT id, "tiktokId", "listenerStatus", "listenerUpdatedAt"
+    SELECT id, "tiktokHandle", "listenerStatus", "listenerUpdatedAt"
     FROM public."TiktokRoom"
     WHERE id = ANY(${roomIds}::text[])
   `;
@@ -74,7 +74,7 @@ export async function findRoomStatuses(roomIds: string[]): Promise<Map<string, R
     rows.map((r) => [
       r.id,
       {
-        tiktokId: r.tiktokId,
+        tiktokHandle: r.tiktokHandle,
         listenerStatus: r.listenerStatus,
         listenerUpdatedAt: r.listenerUpdatedAt,
       },
@@ -104,7 +104,7 @@ export async function findLiveRoomIds(roomIds: string[]): Promise<Set<string>> {
 
 export type GiftAggregateRow = {
   roomId: string;
-  uniqueId: string;
+  tiktokUid: string;
   diamonds: bigint;
   giftCount: number;
 };
@@ -128,14 +128,14 @@ export async function aggregateGiftsBySegment(
   // 1レコードになるため、レコード数だと「投げた回数」とずれる。
   return client.$queryRaw<GiftAggregateRow[]>`
     SELECT "roomId",
-           "uniqueId",
+           "tiktokUid",
            SUM("totalDiamonds")::bigint AS diamonds,
            SUM("repeatCount")::int AS "giftCount"
     FROM public.gifts
     WHERE "roomId" = ANY(${params.roomIds}::text[])
       AND "receivedAt" >= ${params.start}
       AND "receivedAt" < ${params.end}
-    GROUP BY "roomId", "uniqueId"
+    GROUP BY "roomId", "tiktokUid"
   `;
 }
 
@@ -147,7 +147,7 @@ export type BattleRow = {
   startedAtEstimated: boolean;
   endedAt: Date | null;
   durationSec: number | null;
-  hostUserIds: string[];
+  hostTiktokUids: string[];
   hostDisplayIds: string[];
   hostScores: Record<string, string> | null;
   updatedAt: Date;
@@ -176,7 +176,7 @@ export async function fetchBattles(
            "startedAtEstimated",
            "endedAt",
            "durationSec",
-           "hostUserIds",
+           "hostTiktokUids",
            "hostDisplayIds",
            "hostScores",
            "updatedAt"
@@ -189,56 +189,52 @@ export async function fetchBattles(
 }
 
 /**
- * room の配信者の TikTok 数値 userId を引く。**取れていない room は Map に入らない。**
+ * room の配信者の TikTok 数値ID を引く。
  *
- * バトル payload の `hostScores` は `anchorIdStr`(数値 userId)をキーに持つので、
+ * バトル payload の `hostScores` は `anchorIdStr`(数値ID)をキーに持つので、
  * これがないと観測したスコアをどちらのサイドのものか決められない。
- * 埋めるのは `src/lib/tiktok-host-id.ts` の補完ジョブで、未取得の room は null のまま。
+ * `TiktokRoom.hostTiktokUid` は NOT NULL(room 作成時に登録ゲートから受け取る)なので、
+ * 存在する room は必ず Map に入る。
  */
-export async function fetchRoomHostUserIds(
+export async function fetchRoomHostTiktokUids(
   client: DbClient,
   roomIds: string[]
 ): Promise<Map<string, string>> {
   if (roomIds.length === 0) return new Map();
 
-  const rows = await client.$queryRaw<{ id: string; hostUserId: string | null }[]>`
-    SELECT id, "hostUserId"
+  const rows = await client.$queryRaw<{ id: string; hostTiktokUid: string }[]>`
+    SELECT id, "hostTiktokUid"
     FROM public."TiktokRoom"
     WHERE id = ANY(${roomIds}::text[])
-      AND "hostUserId" IS NOT NULL
   `;
 
-  return new Map(
-    rows.flatMap((row) => (row.hostUserId === null ? [] : [[row.id, row.hostUserId] as const]))
-  );
+  return new Map(rows.map((row) => [row.id, row.hostTiktokUid] as const));
 }
 
-export type ListenerProfile = { nickname: string; profileImageUrl: string | null };
+export type ListenerProfile = { tiktokHandle: string | null; nickname: string | null };
 
 /**
- * リスナーの表示名とアイコン。期間中で最後に観測したものを採る。
+ * リスナーの表示名。**TikTokUser(tiktokUid が主キー)から順引きする。**
  *
- * 区間ごとの集約とは別に1回だけ引く(倍率と無関係なので分ける必要がない)。
- * TikTok のハンドル変更で表示名が変わることがあるため、最新のものを出す。
+ * gifts から DISTINCT ON で最新スナップショットを採る旧実装は、gifts が表示用の列を
+ * 持たなくなったので成立しない。1 tiktokUid = 1行なので DISTINCT ON も期間指定も要らない。
+ * アイコンは TiktokAvatarAsset(resolveAvatarUrls)が正本なのでここでは返さない。
  */
 export async function fetchListenerProfiles(
   client: DbClient,
-  params: { roomIds: string[]; start: Date; end: Date }
+  params: { tiktokUids: string[] }
 ): Promise<Map<string, ListenerProfile>> {
-  if (params.roomIds.length === 0) return new Map();
+  if (params.tiktokUids.length === 0) return new Map();
 
   const rows = await client.$queryRaw<
-    { uniqueId: string; nickname: string; profileImageUrl: string | null }[]
+    { tiktokUid: string; tiktokHandle: string | null; nickname: string | null }[]
   >`
-    SELECT DISTINCT ON ("uniqueId") "uniqueId", nickname, "profileImageUrl"
-    FROM public.gifts
-    WHERE "roomId" = ANY(${params.roomIds}::text[])
-      AND "receivedAt" >= ${params.start}
-      AND "receivedAt" < ${params.end}
-    ORDER BY "uniqueId", "receivedAt" DESC
+    SELECT "tiktokUid", "tiktokHandle", nickname
+    FROM public.tiktok_users
+    WHERE "tiktokUid" = ANY(${params.tiktokUids}::text[])
   `;
 
   return new Map(
-    rows.map((r) => [r.uniqueId, { nickname: r.nickname, profileImageUrl: r.profileImageUrl }])
+    rows.map((r) => [r.tiktokUid, { tiktokHandle: r.tiktokHandle, nickname: r.nickname }])
   );
 }

@@ -44,7 +44,7 @@ export default function TopGiftOverlayPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={gift.giftPictureUrl} alt={gift.giftName} className="w-10 h-10 object-contain" />
               )}
-              <OverlayAvatar src={gift.profileImageUrl} alt={gift.nickname} size={28} />
+              <OverlayAvatar src={gift.profileImageUrl} alt={gift.nickname ?? ""} size={28} />
               <span className="text-white font-semibold truncate max-w-[160px]">
                 {snapshot.senderDisplayMode === "all" ? gift.senders.join(", ") : gift.latestSender}
               </span>

@@ -29,7 +29,7 @@ describe("Subscription旧列(stripeCustomerId/stripeSubscriptionId)にunique制�
     // 1件目: 解約済み(entitlementActive:false)でも行自体は残る。
     await prisma.subscription.create({
       data: {
-        userId: user.id,
+        principalId: user.id,
         plan: "FREE",
         provider: "STRIPE",
         providerSubscriptionId: "sub_old_canceled",
@@ -44,7 +44,7 @@ describe("Subscription旧列(stripeCustomerId/stripeSubscriptionId)にunique制�
     await expect(
       prisma.subscription.create({
         data: {
-          userId: user.id,
+          principalId: user.id,
           plan: "PRO",
           provider: "STRIPE",
           providerSubscriptionId: "sub_new_active",
@@ -55,7 +55,7 @@ describe("Subscription旧列(stripeCustomerId/stripeSubscriptionId)にunique制�
       }),
     ).resolves.toMatchObject({ providerSubscriptionId: "sub_new_active" });
 
-    const rows = await prisma.subscription.findMany({ where: { userId: user.id } });
+    const rows = await prisma.subscription.findMany({ where: { principalId: user.id } });
     expect(rows).toHaveLength(2);
   });
 });

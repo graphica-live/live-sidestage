@@ -11,8 +11,8 @@
 // **返ってくる avatar の URL は署名付きで、`x-expires` はおよそ47時間後。**
 // 永続化すると必ず腐るので、DB へ保存せずキャッシュとして扱う(src/lib/tiktok-avatar.ts)。
 //
-// 同じレスポンスの `data.user.id` は TikTok の数値 userId で、こちらは**不変**なので
-// TiktokRoom.hostUserId へ保存する(src/lib/tiktok-host-id.ts)。avatar URL とは扱いが逆になる。
+// 同じレスポンスの `data.user.id` は TikTok の数値 tiktokUid で、こちらは**不変**なので
+// TiktokRoom.hostTiktokUid へ保存する(src/lib/tiktok-host-id.ts)。avatar URL とは扱いが逆になる。
 
 /**
  * `data.user` が無く「そのハンドルのユーザーがいない」ことを TikTok が明示するときの `statusCode`。
@@ -38,7 +38,7 @@ export type TiktokProfile = {
   avatarUrl: string;
   nickname: string | null;
   /**
-   * TikTok の数値 userId(`data.user.id`)。バトル payload の `anchorIdStr` と同じ空間で、
+   * TikTok の数値 tiktokUid(`data.user.id`)。バトル payload の `anchorIdStr` と同じ空間で、
    * `tiktok_battles.hostScores` のキーと突き合わせるのに使う。**不変**なので保存してよい。
    *
    * **avatar が取れないと null ではなくプロフィール全体が取れない**(parseProfileResponse は
@@ -46,21 +46,21 @@ export type TiktokProfile = {
    * アイコンとこの id が同時に取れなくなるが、avatarUrl を nullable にすると
    * tiktok-avatar.ts まで波及するため、この結合は意図的に受け入れている。
    */
-  userId: string | null;
+  tiktokUid: string | null;
 };
 
-/** 数値 userId として保存してよい形か。 */
+/** 数値 tiktokUid として保存してよい形か。 */
 const USER_ID_PATTERN = /^\d{1,32}$/;
 
 /**
  * `data.user.id` を保存できる形へ寄せる。取れなければ null(付随情報なので取得失敗にはしない)。
  *
  * 実測(2026-08)では `"id":"5831967"` のように**クォートされた JSON 文字列**で返るため、
- * 19桁の新しい userId でも `JSON.parse` の精度落ちは起きない。ただし将来クォートが外れると
+ * 19桁の新しい tiktokUid でも `JSON.parse` の精度落ちは起きない。ただし将来クォートが外れると
  * 16桁以上は Number.MAX_SAFE_INTEGER を超えて**既に壊れた値**になっているので、
  * 誤った id を保存するより捨てる。
  */
-export function parseUserId(value: unknown): string | null {
+export function parseTiktokUid(value: unknown): string | null {
   if (typeof value === "string") {
     return USER_ID_PATTERN.test(value) ? value : null;
   }
@@ -191,14 +191,14 @@ export function sanitizeAvatarUrl(value: string | null): string | null {
  * 解像度の高いものから順に見て、検証を通った最初の URL を採る。
  * どれも通らなければ null(呼び出し側は「取れなかった」として扱う)。
  *
- * `expectedUniqueId` を渡すと、レスポンスの `data.user.uniqueId` と突き合わせて
- * 別人のアイコンを掴まないようにする。**uniqueId が入っていない場合は照合しない** —
+ * `expectedTiktokHandle` を渡すと、レスポンスの `data.user.uniqueId` と突き合わせて
+ * 別人のアイコンを掴まないようにする。**tiktokHandle が入っていない場合は照合しない** —
  * 実測(2026-08)では必ず入っているが、無くなったときに全員のアイコンが消えるより、
  * 照合を諦めるほうが被害が小さい。
  */
 export function parseProfileResponse(
   body: unknown,
-  expectedUniqueId?: string
+  expectedTiktokHandle?: string
 ): TiktokProfile | null {
   if (typeof body !== "object" || body === null) return null;
 
@@ -217,14 +217,15 @@ export function parseProfileResponse(
     avatarMedium?: unknown;
     avatarThumb?: unknown;
     nickname?: unknown;
+    /** TikTok 側の応答キー。**改名しない**(値の意味は tiktokHandle)。 */
     uniqueId?: unknown;
     id?: unknown;
   };
 
   if (
-    expectedUniqueId !== undefined &&
+    expectedTiktokHandle !== undefined &&
     typeof u.uniqueId === "string" &&
-    u.uniqueId.toLowerCase() !== expectedUniqueId.toLowerCase()
+    u.uniqueId.toLowerCase() !== expectedTiktokHandle.toLowerCase()
   ) {
     return null;
   }
@@ -235,7 +236,7 @@ export function parseProfileResponse(
   const nickname =
     typeof u.nickname === "string" && u.nickname.trim().length > 0 ? u.nickname.trim() : null;
 
-  return { avatarUrl, nickname, userId: parseUserId(u.id) };
+  return { avatarUrl, nickname, tiktokUid: parseTiktokUid(u.id) };
 }
 
 /**
@@ -250,8 +251,9 @@ type UserRoomResponse =
   | { kind: "rate-limited" }
   | { kind: "error" };
 
-async function requestUserRoom(tiktokId: string, timeoutMs: number): Promise<UserRoomResponse> {
-  const url = `${ENDPOINT}?aid=1988&sourceType=54&uniqueId=${encodeURIComponent(tiktokId)}`;
+async function requestUserRoom(tiktokHandle: string, timeoutMs: number): Promise<UserRoomResponse> {
+  // `uniqueId` は TikTok 側のクエリパラメータ名。**改名しない**(sidestage の語彙ではない)。
+  const url = `${ENDPOINT}?aid=1988&sourceType=54&uniqueId=${encodeURIComponent(tiktokHandle)}`;
 
   let response: Response;
   try {
@@ -261,7 +263,7 @@ async function requestUserRoom(tiktokId: string, timeoutMs: number): Promise<Use
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         Accept: "application/json, text/plain, */*",
         "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-        Referer: `https://www.tiktok.com/@${encodeURIComponent(tiktokId)}/live`,
+        Referer: `https://www.tiktok.com/@${encodeURIComponent(tiktokHandle)}/live`,
       },
       // 想定外のリダイレクト(ログイン画面・地域ブロック)を追いかけない。
       redirect: "error",
@@ -300,14 +302,14 @@ export type AccountExistenceCheck = {
    */
   nickname: string | null;
   /**
-   * 実在確認(`EXISTS`)と同じ応答から取れたTikTokの数値userId。取れなければ null。
+   * 実在確認(`EXISTS`)と同じ応答から取れたTikTokの数値tiktokUid。取れなければ null。
    *
    * TikTok ID変更の自動合流(tiktok-id-migration.ts)の入口ガードが使う。
    * `fetchTiktokProfile()`は非0 statusCodeを全部NOT_FOUNDに丸めるため拒否の根拠にできず、
    * かといって実在確認とは別にプロフィールをもう一度引くと問い合わせが2回になる。
    * ここで同じ応答から抽出することで、実在確認1回で両方を賄う。
    */
-  userId: string | null;
+  tiktokUid: string | null;
   /**
    * 実在確認(`EXISTS`)と同じ応答から取れた確認モーダル表示用の付随情報。
    * TikTok ID登録の確認モーダル(アイコン・BIO・フォロー数/フォロワー数)が使う。
@@ -325,11 +327,11 @@ export type AccountExistenceCheck = {
  *
  * **`parseProfileResponse` を経由しない。** あちらは avatar URL の allowlist 検証に落ちると
  * nickname ごと null を返す(TikTok が画像 CDN のホストを変えると起きる、5.5 と同じ結合の罠)。
- * ここは呼び出し側で既に `classifyAccountExistence` が `data.user` の存在と uniqueId 照合を
+ * ここは呼び出し側で既に `classifyAccountExistence` が `data.user` の存在と tiktokHandle 照合を
  * 済ませている前提で、avatar 抜きに nickname だけ読む。
  */
-export function extractVerifiedNickname(body: unknown, expectedUniqueId: string): string | null {
-  const user = readVerifiedUser(body, expectedUniqueId);
+export function extractVerifiedNickname(body: unknown, expectedTiktokHandle: string): string | null {
+  const user = readVerifiedUser(body, expectedTiktokHandle);
   if (user === null) return null;
 
   const nickname = (user as { nickname?: unknown }).nickname;
@@ -337,14 +339,14 @@ export function extractVerifiedNickname(body: unknown, expectedUniqueId: string)
 }
 
 /**
- * `EXISTS` と判定された応答から数値userIdだけを取り出す。`extractVerifiedNickname`と同じ流儀
- * (`parseProfileResponse`を経由せず、avatar URLのallowlist検証に落ちてもuserIdまで消えないようにする)。
+ * `EXISTS` と判定された応答から数値tiktokUidだけを取り出す。`extractVerifiedNickname`と同じ流儀
+ * (`parseProfileResponse`を経由せず、avatar URLのallowlist検証に落ちてもtiktokUidまで消えないようにする)。
  */
-export function extractVerifiedUserId(body: unknown, expectedUniqueId: string): string | null {
-  const user = readVerifiedUser(body, expectedUniqueId);
+export function extractVerifiedTiktokUid(body: unknown, expectedTiktokHandle: string): string | null {
+  const user = readVerifiedUser(body, expectedTiktokHandle);
   if (user === null) return null;
 
-  return parseUserId((user as { id?: unknown }).id);
+  return parseTiktokUid((user as { id?: unknown }).id);
 }
 
 /**
@@ -360,12 +362,12 @@ export type TiktokAccountPreview = {
 
 /**
  * `EXISTS` と判定された応答から確認モーダル表示用の付随情報を取り出す。
- * `extractVerifiedNickname` / `extractVerifiedUserId` と同じ流儀(`parseProfileResponse` を
+ * `extractVerifiedNickname` / `extractVerifiedTiktokUid` と同じ流儀(`parseProfileResponse` を
  * 経由しない。avatar URL の allowlist 検証に落ちても signature/stats まで消えないようにする)。
  */
 export function extractVerifiedAccountPreview(
   body: unknown,
-  expectedUniqueId: string
+  expectedTiktokHandle: string
 ): TiktokAccountPreview {
   const empty: TiktokAccountPreview = {
     avatarUrl: null,
@@ -374,7 +376,7 @@ export function extractVerifiedAccountPreview(
     followerCount: null,
   };
 
-  const user = readVerifiedUser(body, expectedUniqueId);
+  const user = readVerifiedUser(body, expectedTiktokHandle);
   if (user === null) return empty;
 
   const u = user as {
@@ -403,10 +405,10 @@ function parseStatCount(value: unknown): number | null {
 }
 
 /**
- * `statusCode===0` かつ `uniqueId` が一致する`data.user`を取り出す。
- * `extractVerifiedNickname` / `extractVerifiedUserId` の共通部分。
+ * `statusCode===0` かつ `tiktokHandle` が一致する`data.user`を取り出す。
+ * `extractVerifiedNickname` / `extractVerifiedTiktokUid` の共通部分。
  */
-function readVerifiedUser(body: unknown, expectedUniqueId: string): object | null {
+function readVerifiedUser(body: unknown, expectedTiktokHandle: string): object | null {
   if (typeof body !== "object" || body === null) return null;
   const root = body as { statusCode?: unknown; data?: unknown };
   if (root.statusCode !== 0) return null;
@@ -414,8 +416,8 @@ function readVerifiedUser(body: unknown, expectedUniqueId: string): object | nul
   const user = readUser(root.data);
   if (user === null) return null;
 
-  const uniqueId = (user as { uniqueId?: unknown }).uniqueId;
-  if (typeof uniqueId === "string" && uniqueId.toLowerCase() !== expectedUniqueId.toLowerCase()) {
+  const tiktokHandle = (user as { tiktokHandle?: unknown }).tiktokHandle;
+  if (typeof tiktokHandle === "string" && tiktokHandle.toLowerCase() !== expectedTiktokHandle.toLowerCase()) {
     return null;
   }
 
@@ -430,12 +432,12 @@ function readVerifiedUser(body: unknown, expectedUniqueId: string): object | nul
  * 拒否の根拠にしてよいのは TikTok が明示した `user_not_found` だけで、
  * それ以外は**判定不能**として扱う(呼び出し側が通す)。
  *
- * `expectedUniqueId` が一致しないレスポンスも「別人を掴んでいる」ので判定不能にする
- * (`parseProfileResponse` と同じく、`uniqueId` がそもそも入っていなければ照合しない)。
+ * `expectedTiktokHandle` が一致しないレスポンスも「別人を掴んでいる」ので判定不能にする
+ * (`parseProfileResponse` と同じく、`tiktokHandle` がそもそも入っていなければ照合しない)。
  */
 export function classifyAccountExistence(
   body: unknown,
-  expectedUniqueId: string
+  expectedTiktokHandle: string
 ): AccountExistence {
   if (typeof body !== "object" || body === null) return "UNVERIFIED";
 
@@ -447,8 +449,8 @@ export function classifyAccountExistence(
   if (root.statusCode === 0) {
     if (user === null) return "UNVERIFIED";
 
-    const uniqueId = (user as { uniqueId?: unknown }).uniqueId;
-    if (typeof uniqueId === "string" && uniqueId.toLowerCase() !== expectedUniqueId.toLowerCase()) {
+    const tiktokHandle = (user as { tiktokHandle?: unknown }).tiktokHandle;
+    if (typeof tiktokHandle === "string" && tiktokHandle.toLowerCase() !== expectedTiktokHandle.toLowerCase()) {
       return "UNVERIFIED";
     }
     return "EXISTS";
@@ -484,7 +486,7 @@ function readUser(data: unknown): object | null {
  * `src/lib/tiktok-existence.ts` が持つ。ここは1回の問い合わせと判定だけ。
  */
 export async function checkAccountExistence(
-  tiktokId: string,
+  tiktokHandle: string,
   options: { timeoutMs?: number } = {}
 ): Promise<AccountExistenceCheck> {
   const emptyPreview: TiktokAccountPreview = {
@@ -493,16 +495,16 @@ export async function checkAccountExistence(
     followingCount: null,
     followerCount: null,
   };
-  const response = await requestUserRoom(tiktokId, options.timeoutMs ?? TIMEOUT_MS);
+  const response = await requestUserRoom(tiktokHandle, options.timeoutMs ?? TIMEOUT_MS);
   if (response.kind !== "json")
-    return { verdict: "UNVERIFIED", nickname: null, userId: null, preview: emptyPreview };
+    return { verdict: "UNVERIFIED", nickname: null, tiktokUid: null, preview: emptyPreview };
 
-  const verdict = classifyAccountExistence(response.body, tiktokId);
-  const nickname = verdict === "EXISTS" ? extractVerifiedNickname(response.body, tiktokId) : null;
-  const userId = verdict === "EXISTS" ? extractVerifiedUserId(response.body, tiktokId) : null;
+  const verdict = classifyAccountExistence(response.body, tiktokHandle);
+  const nickname = verdict === "EXISTS" ? extractVerifiedNickname(response.body, tiktokHandle) : null;
+  const tiktokUid = verdict === "EXISTS" ? extractVerifiedTiktokUid(response.body, tiktokHandle) : null;
   const preview =
-    verdict === "EXISTS" ? extractVerifiedAccountPreview(response.body, tiktokId) : emptyPreview;
-  return { verdict, nickname, userId, preview };
+    verdict === "EXISTS" ? extractVerifiedAccountPreview(response.body, tiktokHandle) : emptyPreview;
+  return { verdict, nickname, tiktokUid, preview };
 }
 
 /**
@@ -511,13 +513,13 @@ export async function checkAccountExistence(
  * 呼び出し元にとってアイコンは付随情報でしかなく、TikTok 側の仕様変更やレート制限で
  * 本来の処理を止めてはならない。
  */
-export async function fetchTiktokProfile(tiktokId: string): Promise<TiktokProfileResult> {
-  const response = await requestUserRoom(tiktokId, TIMEOUT_MS);
+export async function fetchTiktokProfile(tiktokHandle: string): Promise<TiktokProfileResult> {
+  const response = await requestUserRoom(tiktokHandle, TIMEOUT_MS);
   if (response.kind === "rate-limited") return { ok: false, reason: "RATE_LIMITED" };
   if (response.kind === "error") return { ok: false, reason: "ERROR" };
 
   const body = response.body;
-  const profile = parseProfileResponse(body, tiktokId);
+  const profile = parseProfileResponse(body, tiktokHandle);
   if (profile) return { ok: true, profile };
 
   // statusCode がエラーなら「そのユーザーがいない」とみなす。avatar だけ取れないケースも
@@ -530,7 +532,7 @@ export async function fetchTiktokProfile(tiktokId: string): Promise<TiktokProfil
     return {
       ok: false,
       reason: "NOT_FOUND",
-      explicitNotFound: classifyAccountExistence(body, tiktokId) === "MISSING",
+      explicitNotFound: classifyAccountExistence(body, tiktokHandle) === "MISSING",
     };
   }
   return { ok: false, reason: "ERROR" };

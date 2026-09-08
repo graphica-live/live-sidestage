@@ -13,7 +13,7 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string
 // 監視対象の追加時点で弾く。
 const TIKTOK_ID_PATTERN = /^[a-z0-9._]{2,24}$/;
 
-export function isValidNormalizedTiktokId(normalized: string): boolean {
+export function isValidNormalizedTiktokHandle(normalized: string): boolean {
   return TIKTOK_ID_PATTERN.test(normalized);
 }
 
@@ -59,16 +59,16 @@ export function parseDateRange(
   return { ok: true, value: { from, to } };
 }
 
-// カンマ区切りのtiktokIdsを正規化して重複を除く。
+// カンマ区切りのtiktokHandlesを正規化して重複を除く。
 //
-// パラメータ自体が無い場合だけ「全監視対象」を意味するnullを返す。`tiktokIds=` のように
+// パラメータ自体が無い場合だけ「全監視対象」を意味するnullを返す。`tiktokHandles=` のように
 // 明示されていて中身が空のときは400にする — 呼び出し側の変数が空だっただけのつもりが
 // 全監視対象の取得にすり替わる(スコープの意図しない拡大)のを防ぐため。
-export function parseTiktokIdsParam(raw: string | null): ParseResult<string[] | null> {
+export function parseTiktokHandlesParam(raw: string | null): ParseResult<string[] | null> {
   if (raw === null) return { ok: true, value: null };
 
   // 不正な形のIDもここでは落とさない。監視対象は追加時に検証済みなので必ずマッチせず、
-  // selectWatchedRooms() が unknownTiktokIds に入れて呼び出し元へ知らせる。
+  // selectWatchedRooms() が unknownTiktokHandles に入れて呼び出し元へ知らせる。
   const normalized = raw
     .split(",")
     .map((v) => normalizeTiktokId(v))
@@ -77,40 +77,40 @@ export function parseTiktokIdsParam(raw: string | null): ParseResult<string[] | 
   if (normalized.length === 0) {
     return {
       ok: false,
-      error: "tiktokIdsが空です。全監視対象を集計する場合はパラメータ自体を省略してください。",
+      error: "tiktokHandlesが空です。全監視対象を集計する場合はパラメータ自体を省略してください。",
     };
   }
 
   return { ok: true, value: Array.from(new Set(normalized)) };
 }
 
-export type WatchedRoom = { roomId: string; normalizedTiktokId: string };
+export type WatchedRoom = { roomId: string; normalizedTiktokHandle: string };
 
-export type TiktokIdSelection<T extends WatchedRoom> = {
+export type TiktokHandleSelection<T extends WatchedRoom> = {
   selected: T[];
-  unknownTiktokIds: string[];
+  unknownTiktokHandles: string[];
 };
 
-// リクエストされたtiktokIdsを、その事務所の監視対象だけに絞り込む。
-// 監視対象に無いIDは unknownTiktokIds として隔離し、他事務所のデータは決して返さない。
+// リクエストされたtiktokHandlesを、その事務所の監視対象だけに絞り込む。
+// 監視対象に無いIDは unknownTiktokHandles として隔離し、他事務所のデータは決して返さない。
 // requested が null(未指定)なら監視対象全件を返す。
 export function selectWatchedRooms<T extends WatchedRoom>(
   watched: T[],
   requested: string[] | null
-): TiktokIdSelection<T> {
+): TiktokHandleSelection<T> {
   if (requested === null) {
-    return { selected: watched, unknownTiktokIds: [] };
+    return { selected: watched, unknownTiktokHandles: [] };
   }
 
-  const byTiktokId = new Map(watched.map((w) => [w.normalizedTiktokId, w]));
+  const byTiktokHandle = new Map(watched.map((w) => [w.normalizedTiktokHandle, w]));
   const selected: T[] = [];
-  const unknownTiktokIds: string[] = [];
+  const unknownTiktokHandles: string[] = [];
 
   for (const id of requested) {
-    const hit = byTiktokId.get(id);
+    const hit = byTiktokHandle.get(id);
     if (hit) selected.push(hit);
-    else unknownTiktokIds.push(id);
+    else unknownTiktokHandles.push(id);
   }
 
-  return { selected, unknownTiktokIds };
+  return { selected, unknownTiktokHandles };
 }

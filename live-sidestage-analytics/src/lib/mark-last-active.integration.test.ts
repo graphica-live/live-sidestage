@@ -3,20 +3,24 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { markLastActive, reviveSuspendedMonitoringForRoom } from "./mark-last-active";
+import { makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
 
 const roomIds: string[] = [];
-const userIds: string[] = [];
+const principalIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestmla${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
 async function makeRoom(data: { tag: string; monitoringSuspended: boolean }) {
+  const handle = tiktokHandle(data.tag);
   const room = await prisma.tiktokRoom.create({
     data: {
-      tiktokId: tiktokId(data.tag),
+      tiktokHandle: handle,
+      // @unique(NOT NULL)。部屋ごとに一意な数値文字列にする。
+      hostTiktokUid: makeTiktokUid(handle),
       monitoringSuspended: data.monitoringSuspended,
       unhealthySince: new Date(),
       notFoundStreak: 2,
@@ -36,24 +40,26 @@ async function attachStreamer(roomId: string) {
     data: { email: `itest-mla-${suffix()}@local.test`, name: "itest" },
     select: { id: true },
   });
-  userIds.push(user.id);
+  principalIds.push(user.id);
+  const streamerHandle = tiktokHandle("s");
   const streamer = await prisma.streamer.create({
     data: {
-      userId: user.id,
-      tiktokId: tiktokId("s"),
+      principalId: user.id,
+      tiktokUid: makeTiktokUid(streamerHandle),
+      tiktokHandle: streamerHandle,
       roomId,
       verificationCode: `itest-${suffix()}`,
       apiKey: `itest-key-${suffix()}`,
       overlayToken: `itest-overlay-${suffix()}`,
     },
-    select: { id: true, userId: true },
+    select: { id: true, principalId: true },
   });
   return streamer;
 }
 
 afterAll(async () => {
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 
@@ -123,17 +129,17 @@ describe("reviveSuspendedMonitoringForRoom", () => {
 });
 
 describe("markLastActive", () => {
-  it("Streamer(userId経由)に紐づく監視停止Roomも復活させる", async () => {
+  it("Streamer(principalId経由)に紐づく監視停止Roomも復活させる", async () => {
     const room = await makeRoom({ tag: "via-user", monitoringSuspended: true });
     const streamer = await attachStreamer(room.id);
 
-    await markLastActive(streamer.userId);
+    await markLastActive(streamer.principalId);
 
     const roomAfter = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
     expect(roomAfter.monitoringSuspended).toBe(false);
   });
 
-  it("存在しないuserIdを渡しても例外にならない", async () => {
+  it("存在しないprincipalIdを渡しても例外にならない", async () => {
     await expect(markLastActive("nonexistent-user-id")).resolves.toBeUndefined();
   });
 });

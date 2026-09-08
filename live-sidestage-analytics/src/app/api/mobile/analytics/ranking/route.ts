@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
 
-  const planDenied = await requireHistoryPlan(ctx.streamer.userId, {
+  const planDenied = await requireHistoryPlan(ctx.streamer.principalId, {
     range: query.value,
     listenerQuery: listenerQuery.value,
   });
@@ -48,7 +48,9 @@ export async function GET(req: NextRequest) {
   const sorted = [...users].sort((a, b) => {
     if (a.totalDiamonds !== b.totalDiamonds) return b.totalDiamonds - a.totalDiamonds;
     if (a.giftCount !== b.giftCount) return b.giftCount - a.giftCount;
-    return a.uniqueId < b.uniqueId ? -1 : a.uniqueId > b.uniqueId ? 1 : 0;
+    const ah = a.tiktokHandle ?? "";
+    const bh = b.tiktokHandle ?? "";
+    return ah < bh ? -1 : ah > bh ? 1 : 0;
   });
 
   return NextResponse.json(

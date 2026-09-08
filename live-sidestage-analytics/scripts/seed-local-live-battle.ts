@@ -1,19 +1,17 @@
 ﻿import { prisma } from "../src/lib/prisma";
 
 async function main() {
-  const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokId: "local_test_streamer" } });
+  const selfRoom = await prisma.tiktokRoom.findFirst({ where: { tiktokHandle: "local_test_streamer" } });
   if (!selfRoom) throw new Error("local_test_streamer room not found. run seed:local first");
 
-  const selfHostUserId = selfRoom.hostUserId ?? "seed_self_host_user";
-  if (!selfRoom.hostUserId) {
-    await prisma.tiktokRoom.update({ where: { id: selfRoom.id }, data: { hostUserId: selfHostUserId } });
-  }
+  const selfHostTiktokUid = selfRoom.hostTiktokUid;
 
-  const opponentHostUserId = "seed_live_rival_host_user_unresolved";
+  // room を解決できない相手(= TikTokUser 行も作らない)を意図的に残す。
+  const opponentHostTiktokUid = "7000000000000000921";
   const now = new Date();
   const startedAt = new Date(now.getTime() - 60 * 1000);
   const battleId = `scratch-live-battle-${now.getTime()}`;
-  const hostScores = { [selfHostUserId]: "450", [opponentHostUserId]: "300" };
+  const hostScores = { [selfHostTiktokUid]: "450", [opponentHostTiktokUid]: "300" };
 
   await prisma.tiktokBattle.create({
     data: {
@@ -24,23 +22,26 @@ async function main() {
       startedAtEstimated: false,
       endedAt: null,
       durationSec: null,
-      hostUserIds: [selfHostUserId, opponentHostUserId],
+      hostTiktokUids: [selfHostTiktokUid, opponentHostTiktokUid],
       hostScores,
     },
   });
 
   const dayKey = now.toISOString().slice(0, 10);
   const contributors = [
-    { uniqueId: "scratch_fan_1", nickname: "スクラッチ太郎", totalDiamonds: 500 },
-    { uniqueId: "scratch_fan_2", nickname: "スクラッチ花子", totalDiamonds: 120 },
+    { tiktokUid: "7000000000000000931", tiktokHandle: "scratch_fan_1", nickname: "スクラッチ太郎", totalDiamonds: 500 },
+    { tiktokUid: "7000000000000000932", tiktokHandle: "scratch_fan_2", nickname: "スクラッチ花子", totalDiamonds: 120 },
   ];
   for (const c of contributors) {
+    await prisma.tikTokUser.upsert({
+      where: { tiktokUid: c.tiktokUid },
+      update: { tiktokHandle: c.tiktokHandle, nickname: c.nickname },
+      create: { tiktokUid: c.tiktokUid, tiktokHandle: c.tiktokHandle, nickname: c.nickname },
+    });
     await prisma.gift.create({
       data: {
         roomId: selfRoom.id,
-        uniqueId: c.uniqueId,
-        nickname: c.nickname,
-        profileImageUrl: null,
+        tiktokUid: c.tiktokUid,
         giftId: 1,
         giftName: "Rose",
         repeatCount: 1,
@@ -55,7 +56,7 @@ async function main() {
   console.log(
     JSON.stringify({
       selfRoomId: selfRoom.id,
-      selfHostUserId,
+      selfHostTiktokUid,
       battleId,
       startedAt,
     })

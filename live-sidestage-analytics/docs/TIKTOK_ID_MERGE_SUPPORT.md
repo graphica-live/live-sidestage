@@ -1,4 +1,17 @@
-# TikTok ID自動合流 サポート手順書
+# TikTok ID自動合流 サポート手順書（2026-09 廃止。以下は履歴）
+
+> ## ⚠ この手順書は無効
+>
+> 2026-09 の識別子統一リファクタリングで、**`TiktokRoom` の一意キーがハンドルから
+> 不変の `tiktokUid` へ移った**。改名しても room は割れないので合流という操作自体が
+> 発生しない。`src/lib/tiktok-id-migration.ts` / `TiktokIdMergeJob` / `mergeTick()` は
+> 削除済みで、`TiktokIdMergeLog` にも新規行は書かれない。
+>
+> ハンドル再利用による第三者取り違えも構造的に起きない（別人は必ず別 room）ため、
+> `BLOCKED_OLD_HANDLE_ALIVE` の切り分けもサポート対応も不要。
+>
+> **以下は当時の運用の記録**。同種の問い合わせが来たら「room は uid で同一性を保つので
+> 合流は不要」と答えれば足りる。
 
 配信者がTikTokのハンドル(表示ID)を変更すると、`TiktokIdMergeJob` → `mergeTick()`(`event-worker.ts`)が
 数値userIdを鍵に旧ハンドルのroomを自動で現ハンドルへ合流させる。実装は

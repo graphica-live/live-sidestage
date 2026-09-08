@@ -43,7 +43,7 @@ if touched live-sidestage-analytics; then
     fi
 
     echo "[pre-commit] live-sidestage-analytics: ローカルテストDBへスキーマ反映..."
-    npm run db:push:local -- --skip-generate
+    npm run db:push:local -- --skip-generate --accept-data-loss
 
     # イベント機能(src/event, src/app/**/events, src/app/(public)/e)のテストも
     # このプロジェクトに統合済みなので、npm test で一緒に走る。

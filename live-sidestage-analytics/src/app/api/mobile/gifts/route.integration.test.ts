@@ -10,15 +10,19 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_gifts";
+const HOST_UID = makeTiktokUid(TIKTOK_ID);
+/** ギフト送信者の不変ID。表示名は Gift ではなく TikTokUser 側が持つ。 */
+const SENDER_UID = makeTiktokUid("itest_mobile_gifts_user_a");
 
-let userId: string;
+let principalId: string;
 let streamerId: string;
 let roomId: string;
-let otherUserId: string;
-let noRoomUserId: string;
+let otherPrincipalId: string;
+let noRoomPrincipalId: string;
 let token: string;
 let otherToken: string;
 let noRoomToken: string;
@@ -28,40 +32,54 @@ process.env.MOBILE_JWT_SECRET ||= "itest-mobile-gifts-secret";
 beforeAll(async () => {
   await prisma.tiktokGiftCatalog.deleteMany();
 
-  const room = await prisma.tiktokRoom.create({ data: { tiktokId: TIKTOK_ID } });
+  const room = await prisma.tiktokRoom.create({
+    data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: HOST_UID },
+  });
   roomId = room.id;
 
   const user = await prisma.user.create({ data: { email: `itest-mobile-gifts-${Date.now()}@local.test` } });
-  userId = user.id;
+  principalId = user.id;
   const streamer = await prisma.streamer.create({
-    data: { userId, tiktokId: TIKTOK_ID, verificationCode: "x", verified: true, roomId },
+    data: {
+      principalId,
+      tiktokUid: HOST_UID,
+      tiktokHandle: TIKTOK_ID,
+      verificationCode: "x",
+      verified: true,
+      roomId,
+    },
   });
   streamerId = streamer.id;
-  token = signMobileToken({ userId, streamerId });
+  token = signMobileToken({ principalId, streamerId });
 
   // Streamerを持たないユーザー。404になることの確認用。
   const other = await prisma.user.create({
     data: { email: `itest-mobile-gifts-other-${Date.now()}@local.test` },
   });
-  otherUserId = other.id;
-  otherToken = signMobileToken({ userId: otherUserId });
+  otherPrincipalId = other.id;
+  otherToken = signMobileToken({ principalId: otherPrincipalId });
 
   // Streamerはあるが部屋がまだ割り当たっていないユーザー。カタログだけ返る確認用。
   const noRoom = await prisma.user.create({
     data: { email: `itest-mobile-gifts-noroom-${Date.now()}@local.test` },
   });
-  noRoomUserId = noRoom.id;
+  noRoomPrincipalId = noRoom.id;
   const noRoomStreamer = await prisma.streamer.create({
-    data: { userId: noRoomUserId, tiktokId: `${TIKTOK_ID}_noroom`, verificationCode: "x" },
+    data: {
+      principalId: noRoomPrincipalId,
+      tiktokUid: makeTiktokUid(`${TIKTOK_ID}_noroom`),
+      tiktokHandle: `${TIKTOK_ID}_noroom`,
+      verificationCode: "x",
+    },
   });
-  noRoomToken = signMobileToken({ userId: noRoomUserId, streamerId: noRoomStreamer.id });
+  noRoomToken = signMobileToken({ principalId: noRoomPrincipalId, streamerId: noRoomStreamer.id });
 });
 
 afterAll(async () => {
   await prisma.tiktokGiftCatalog.deleteMany();
-  await prisma.user.delete({ where: { id: userId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: otherUserId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomUserId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: otherPrincipalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
   await prisma.$disconnect();
 });
@@ -78,8 +96,7 @@ async function addGift(
   return prisma.gift.create({
     data: {
       roomId,
-      uniqueId: "user_a",
-      nickname: "ユーザーA",
+      tiktokUid: SENDER_UID,
       giftId: 1,
       giftName,
       giftPictureUrl: giftPictureUrl ?? null,

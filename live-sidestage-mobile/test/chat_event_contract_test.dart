@@ -34,7 +34,8 @@ void main() {
 
     expect(event, isNotNull);
     expect(event!.streamerId, 'streamer-1');
-    expect(event.uniqueId, 'viewer_a');
+    expect(event.tiktokUid, '7000000000000000101');
+    expect(event.tiktokHandle, 'viewer_a');
     expect(event.nickname, 'Viewer A');
     expect(event.profilePictureUrl, 'https://example.invalid/a.png');
     expect(event.giftName, 'rose');
@@ -72,7 +73,8 @@ void main() {
 
     expect(event, isNotNull);
     expect(event!.streamerId, 'streamer-1');
-    expect(event.uniqueId, 'viewer_c');
+    expect(event.tiktokUid, '7000000000000000103');
+    expect(event.tiktokHandle, 'viewer_c');
     expect(event.nickname, 'Viewer C');
     expect(event.profilePictureUrl, 'https://example.invalid/c.png');
     expect(event.occurredAt.toUtc().toIso8601String(), '2026-08-21T12:36:00.000Z');
@@ -84,7 +86,8 @@ void main() {
 
     final comment = Comment.tryParse(json);
     expect(comment, isNotNull);
-    expect(comment!.uniqueId, 'viewer_d');
+    expect(comment!.tiktokUid, '7000000000000000104');
+    expect(comment.tiktokHandle, 'viewer_d');
     expect(comment.comment, 'こんばんは');
     expect(comment.profilePictureUrl, isNull);
     expect(comment.receivedAt.toUtc().toIso8601String(), '2026-08-21T12:37:00.000Z');
@@ -102,10 +105,33 @@ void main() {
   });
 
   test('必須フィールドが欠けたペイロードは null になる(購読を殺さない)', () {
-    expect(GiftEvent.tryParse({'uniqueId': 'x'}), isNull);
+    expect(GiftEvent.tryParse({'tiktokUid': 'x'}), isNull);
     expect(FollowEvent.tryParse({'streamerId': 'x'}), isNull);
-    expect(Comment.tryParse({'streamerId': 123, 'uniqueId': 'x'}), isNull);
+    expect(Comment.tryParse({'streamerId': 123, 'tiktokUid': 'x'}), isNull);
     expect(BattleEvent.tryParse({'streamerId': 'x'}), isNull);
     expect(BattleEvent.tryParse({'streamerId': 'x', 'battleId': 'y'}), isNull);
+  });
+
+  /// **tiktokUid は必須。旧サーバー形式(tiktokHandle だけ)へフォールバックしない。**
+  /// 空文字も弾く — 空文字が [VoicePool] の割当キーに入ると全投稿者が1人へ畳まれ、
+  /// 全員が同じボイスで読み上げられる(例外もログも出ない)。
+  test('tiktokUid が欠落・空文字のペイロードは捨てる(旧サーバー互換は持たない)', () {
+    Map<String, dynamic> withoutUid(String key) {
+      final json = _load(key)..remove('tiktokUid');
+      return json;
+    }
+
+    Map<String, dynamic> emptyUid(String key) {
+      final json = _load(key);
+      json['tiktokUid'] = '';
+      return json;
+    }
+
+    expect(GiftEvent.tryParse(withoutUid('gift')), isNull);
+    expect(GiftEvent.tryParse(emptyUid('gift')), isNull);
+    expect(FollowEvent.tryParse(withoutUid('follow')), isNull);
+    expect(FollowEvent.tryParse(emptyUid('follow')), isNull);
+    expect(Comment.tryParse(withoutUid('comment')), isNull);
+    expect(Comment.tryParse(emptyUid('comment')), isNull);
   });
 }

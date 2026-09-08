@@ -6,6 +6,11 @@ last_reviewers: [Code Mode]DeepSeek単独、2026-09-08 終了時点滅+演出の
 
 # バトル再生UI
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 対象: `src/components/analytics/battle-replay/`（`BattleReplayView` / `ReplayStage` / `ReplayCell` /
 `ReplayGiftCard` / `ReplayOdometer` / `ReplayScoreBar` / `ReplayBand` / `ReplayContributorBoard` /
 `ReplayControls` / `useReplayClock` / 純関数 `replay-select` `replay-layout` `replay-format` `replay-color`）、

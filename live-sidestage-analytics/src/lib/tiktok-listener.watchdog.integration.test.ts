@@ -3,6 +3,7 @@
 // tiktok-live-connectorのWebcastPushConnectionをモックし、実際のTikTok接続は行わない。
 import { describe, it, expect, afterAll, afterEach, vi, beforeEach } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { startListener, stopListener, checkWatchdogs } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
@@ -15,8 +16,22 @@ const { MockConnection } = vi.hoisted(() => {
     clientParams: Record<string, string> = {};
     connectCalls = 0;
     disconnectCalls = 0;
+    // ハンドル → tiktokUid の導出。テストファイル側で makeTiktokUid を代入する
+    // (vi.hoisted の中では import できないため)。
+    static uidFor: (tiktokHandle: string) => string = () => "0";
+    // 接続前の hostTiktokUid 照合(precheckApiLive)が読む。既定は「オンライン かつ
+    // room の hostTiktokUid と一致する配信者」。
+    webClient = {
+      fetchRoomInfoFromApiLive: vi.fn(async () => ({
+        // createConnection() は `@` 付きで渡してくるので、uid 導出前に剥がす。
+        data: {
+          liveRoom: { status: 2 },
+          user: { id: MockConnection.uidFor(this.tiktokHandle.replace(/^@/, "")) },
+        },
+      })),
+    };
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -42,15 +57,17 @@ const { MockConnection } = vi.hoisted(() => {
   return { MockConnection };
 });
 
+MockConnection.uidFor = makeTiktokUid;
+
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null }),
   },
 }));
 
@@ -63,18 +80,25 @@ vi.mock("./overlay", () => ({
 // 無応答検知の閾値(WATCHDOG_SILENCE_MS = 60_000)より確実に大きい経過時間。
 const SILENCE_MS = 60_000;
 
-async function createStreamer(tiktokId: string, emailPrefix: string) {
+async function createStreamer(tiktokHandle: string, emailPrefix: string) {
   const user = await prisma.user.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return prisma.streamer.create({
-    data: { userId: user.id, tiktokId, verificationCode: "x", verified: true },
+    data: {
+      principalId: user.id,
+      // room の同一性は uid。ハンドルから決定的に導いて「同じハンドル = 同じ配信者」を保つ。
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      verificationCode: "x",
+      verified: true,
+    },
   });
 }
 
 async function cleanupStreamer(streamerId: string) {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
-  if (streamer) await prisma.user.delete({ where: { id: streamer.userId } });
+  if (streamer) await prisma.user.delete({ where: { id: streamer.principalId } });
 }
 
 async function cleanupRoom(roomId: string) {
@@ -96,11 +120,11 @@ afterAll(async () => {
 
 describe("checkWatchdogs()の無応答検知バックオフ", () => {
   it("初回のwatchdog強制再接続は即座に発火する", async () => {
-    const tiktokId = `itest_wd_first_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-wd-first-a");
+    const tiktokHandle = `itest_wd_first_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-wd-first-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     expect(MockConnection.instances).toHaveLength(1);
 
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -118,11 +142,11 @@ describe("checkWatchdogs()の無応答検知バックオフ", () => {
   });
 
   it("実イベントが来ないまま無応答検知・発動が連続すると、次の強制再接続までの間隔が指数的に伸びる", async () => {
-    const tiktokId = `itest_wd_backoff_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-wd-backoff-a");
+    const tiktokHandle = `itest_wd_backoff_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-wd-backoff-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     const start = Date.now();
 
     // 1回目の発動: SILENCE_MS超過直後 → instances 1→2
@@ -161,11 +185,11 @@ describe("checkWatchdogs()の無応答検知バックオフ", () => {
   });
 
   it("実イベントを受信するとバックオフが即リセットされる", async () => {
-    const tiktokId = `itest_wd_reset_${Date.now()}`;
-    const a = await createStreamer(tiktokId, "itest-wd-reset-a");
+    const tiktokHandle = `itest_wd_reset_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-wd-reset-a");
     const roomId = await resolveRoomForStreamer(a.id);
 
-    await startListener(roomId, tiktokId, [a.id]);
+    await startListener(roomId, tiktokHandle, [a.id]);
     const start = Date.now();
 
     // 1回目の発動でwatchdogTriggerCountを1にする → instances 1→2

@@ -12,7 +12,7 @@ import { roomHasPaidWatcher } from "./plan/room-has-paid-watcher";
 // Streamer/overlayToken/apiKey/Gift/BattleHistoryは全て残る
 // (tiktok-low-value-cleanup.ts と同じ仕組み)。ユーザーが再ログイン・再アクセスすると
 // markLastActive() が自動でフラグを戻し、次のreconcile(30秒間隔)で監視が復活する。
-// 以前はStreamerごと削除する設計だったが、TikTok改名(uniqueId変更)は「打ち間違いで
+// 以前はStreamerごと削除する設計だったが、TikTok改名(tiktokHandle変更)は「打ち間違いで
 // 最初から存在しないID」と同じNOT_FOUND応答になり、TikTok側での逆引きは無認証では
 // 不可能なため、確定的な削除は取り返しがつかないリスクを持つと判断し撤回した。
 // 監視停止であれば、判定が誤りだったとしても実害は無く(再ログインで即復活)、
@@ -70,7 +70,7 @@ export function isCleanupDisabled(settingValue: string | null): boolean {
 
 export type CleanupCandidate = {
   id: string;
-  tiktokId: string;
+  tiktokHandle: string;
   notFoundStreak: number;
   notFoundFirstAt: Date | null;
 };
@@ -91,11 +91,17 @@ export async function selectCleanupCandidates(now: Date, limit: number): Promise
       listenerStatus: { in: ["retrying", "error"] },
       unhealthySince: { lte: unhealthyCutoff },
       monitoringSuspended: false,
+      // ハンドルが別人のものになった room は候補にしない(schema.prisma の handleStaleAt)。
+      // 接続側(`getMyRooms()`)が既に除外しているので retrying/error のまま滞留し続けるが、
+      // ここで拾うと (a) 旧ハンドルが消えていれば NOT_FOUND が積み上がって**本人の room が
+      // 監視停止にされる** (b) 第三者が取得済みなら EXISTS が返るだけで、どちらも
+      // fetchTiktokProfile の共有枠を無駄に食う。
+      handleStaleAt: null,
       OR: [{ lastExistenceCheckAt: null }, { lastExistenceCheckAt: { lte: cooldownCutoff } }],
     },
     orderBy: { lastExistenceCheckAt: { sort: "asc", nulls: "first" } },
     take: limit,
-    select: { id: true, tiktokId: true, notFoundStreak: true, notFoundFirstAt: true },
+    select: { id: true, tiktokHandle: true, notFoundStreak: true, notFoundFirstAt: true },
   });
 }
 
@@ -106,16 +112,11 @@ export type ExistenceClassification = {
   notFoundFirstAt: Date | null;
   outcome: ExistenceOutcome;
   shouldSuspend: boolean;
-  /**
-   * TikTok が `user_not_found` を明示したか。hostUserId の補完を恒久的に諦める判断に使う。
-   *
-   * **`outcome === "not_found"` とは別物。** そちらは非 0 statusCode をまとめた粗い値で、
-   * bot 判定や一時的な異常応答も含む(tiktok-profile.ts の `TiktokProfileResult` 参照)。
-   * 監視停止はストリークと継続時間で守られているのでその粗さを許容できるが、
-   * hostUserId の give-up は不可逆なので明示シグナルだけを根拠にする。
-   */
-  explicitNotFound: boolean;
 };
+
+// `TiktokProfileResult.explicitNotFound`(TikTok が `user_not_found` を明示したか)はここでは持ち回らない。
+// 唯一の消費者だった hostTiktokUid の補完 give-up は、room の同一性が uid になったことで廃止した
+// (`tiktok-host-id.ts` と give-up 列ごと削除済み)。監視停止はストリークと継続時間で守る。
 
 /** fetchTiktokProfile()の結果からストリークを更新し、監視停止確定すべきかを判定する。純粋関数。 */
 export function classifyExistenceResult(
@@ -129,7 +130,6 @@ export function classifyExistenceResult(
       notFoundFirstAt: null,
       outcome: "exists",
       shouldSuspend: false,
-      explicitNotFound: false,
     };
   }
 
@@ -143,7 +143,6 @@ export function classifyExistenceResult(
       notFoundFirstAt,
       outcome: "not_found",
       shouldSuspend,
-      explicitNotFound: result.explicitNotFound === true,
     };
   }
 
@@ -153,7 +152,6 @@ export function classifyExistenceResult(
     notFoundFirstAt: current.notFoundFirstAt,
     outcome: "inconclusive",
     shouldSuspend: false,
-    explicitNotFound: false,
   };
 }
 
@@ -174,17 +172,6 @@ async function recordExistenceCheck(
       notFoundStreak: classification.notFoundStreak,
       notFoundFirstAt: classification.notFoundFirstAt,
       lastExistenceCheckAt: checkedAt,
-      // TikTokが「そのユーザーはいない」と明示したなら、hostUserIdの補完も恒久的に諦める。
-      //
-      // **notFoundStreakと違って一方向で、connected復帰でも戻さない。** 改名で空いた
-      // ハンドルを第三者が取得するとRoomは再びEXISTSになりstreakは0へ戻るが、そこで
-      // 引ける数値userIdは第三者のもの。fill-onceなので一度入ると訂正できず、
-      // 「このRoomの持ち主は第三者だ」という誤った証明として残り続ける
-      // (詳細はschema.prismaのhostUserIdBackfillGaveUpAtのコメント)。
-      //
-      // 補完ジョブ(tiktok-host-id.ts)は自分が観測したNOT_FOUNDしか記録できないので、
-      // 先にcleanupが観測したケースはここで拾わないと規律に穴が残る。
-      ...(classification.explicitNotFound ? { hostUserIdBackfillGaveUpAt: checkedAt } : {}),
     },
   });
 }
@@ -192,7 +179,7 @@ async function recordExistenceCheck(
 export type CleanupAuditEntry = {
   at: string;
   roomId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   dryRun: boolean;
   outcome: "suspended" | "dry_run";
   notFoundStreak: number;
@@ -228,7 +215,7 @@ async function appendCleanupAuditLog(tx: Prisma.TransactionClient, entry: Cleanu
  * TOCTOU再確認: 選定〜ここまでの間にlistenerがconnected復帰していないか確認する。
  */
 export async function suspendNotFoundRoom(
-  room: { id: string; tiktokId: string },
+  room: { id: string; tiktokHandle: string },
   dryRun: boolean
 ): Promise<CleanupAuditEntry | null> {
   return prisma.$transaction(async (tx) => {
@@ -243,23 +230,23 @@ export async function suspendNotFoundRoom(
     const giftCount = await tx.gift.count({ where: { roomId: room.id } });
 
     // Streamerが0人(情報プール目的で監視継続中の部屋)でもここで弾かない。tiktok-low-value-cleanup.ts
-    // と同じ扱い: userIds=[]ならroomHasPaidWatcherは常にfalseを返すので、課金ユーザー無しとして
+    // と同じ扱い: principalIds=[]ならroomHasPaidWatcherは常にfalseを返すので、課金ユーザー無しとして
     // 停止判定を続行する。
     const streamers = await tx.streamer.findMany({
       where: { roomId: room.id },
-      select: { userId: true },
+      select: { principalId: true },
     });
 
     // 課金ユーザーが1人でも監視しているRoomは、TikTok上NOT_FOUND確定でも自動停止しない。
-    if (await roomHasPaidWatcher(streamers.map((s) => s.userId), tx)) {
-      console.warn(`[tiktok-cleanup] @${room.tiktokId} はNOT_FOUND確定だが課金ユーザーが監視中 — 自動停止せず要手動確認`);
+    if (await roomHasPaidWatcher(streamers.map((s) => s.principalId), tx)) {
+      console.warn(`[tiktok-cleanup] @${room.tiktokHandle} はNOT_FOUND確定だが課金ユーザーが監視中 — 自動停止せず要手動確認`);
       return null;
     }
 
     const entry: CleanupAuditEntry = {
       at: new Date().toISOString(),
       roomId: room.id,
-      tiktokId: room.tiktokId,
+      tiktokHandle: room.tiktokHandle,
       dryRun,
       outcome: dryRun ? "dry_run" : "suspended",
       notFoundStreak: fresh.notFoundStreak,
@@ -340,7 +327,7 @@ export async function runCleanupCycle(opts: { dryRun: boolean; now?: Date }): Pr
     const batch = candidates.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(
       batch.map(async (room) => {
-        const result = await fetchTiktokProfile(room.tiktokId);
+        const result = await fetchTiktokProfile(room.tiktokHandle);
         const checkedAt = new Date();
         const classification = classifyExistenceResult(room, result, checkedAt);
         await recordExistenceCheck(room.id, classification, checkedAt);
@@ -397,7 +384,7 @@ export async function runCleanupCycle(opts: { dryRun: boolean; now?: Date }): Pr
 
       suspended++;
       console.warn(
-        `[tiktok-cleanup] ${opts.dryRun ? "[DRY-RUN] " : ""}@${room.tiktokId} を非実在と確定 — ` +
+        `[tiktok-cleanup] ${opts.dryRun ? "[DRY-RUN] " : ""}@${room.tiktokHandle} を非実在と確定 — ` +
           `監視${entry.watcherCount}件を${opts.dryRun ? "停止対象として記録" : "停止"} (giftCount: ${entry.giftCount})`
       );
     }

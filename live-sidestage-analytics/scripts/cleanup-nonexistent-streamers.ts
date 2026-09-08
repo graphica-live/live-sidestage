@@ -1,4 +1,4 @@
-// TikTok上に存在しないtiktokId(打ち間違い等)で登録されたStreamerを見つけて削除する
+// TikTok上に存在しないtiktokHandle(打ち間違い等)で登録されたStreamerを見つけて削除する
 // 手動メンテナンススクリプト。rebalance-workers.js と同じ dry-run / --apply 方式。
 //
 // 存在しないIDのStreamerは、部屋(TiktokRoom)がgetMyRooms()の
@@ -14,20 +14,20 @@
 // 手動確認が要る一覧として出す(そのIDが過去に配信できていた=一時的な削除/凍結の可能性があり、
 // 「打ち間違いで一度も繋がったことがない」ケースだけを機械的に消すため)。
 //
-// **配信者がTikTokで改名(uniqueId変更)した場合、この判定だけでは「打ち間違いで最初から
-// 存在しない」と区別できない — 改名後は旧uniqueIdへの問い合わせが同じNOT_FOUNDになる。**
+// **配信者がTikTokで改名(tiktokHandle変更)した場合、この判定だけでは「打ち間違いで最初から
+// 存在しない」と区別できない — 改名後は旧tiktokHandleへの問い合わせが同じNOT_FOUNDになる。**
 // 上のGift件数チェックが、既にギフトを受けていた改名済みアカウントの誤削除は防ぐ。
 //
 // TikTokのレスポンス(api-live/user/room/のdata.user)には永続的な安定ID `secUid` / `id`
-// (数値userId)が含まれるが、どちらを鍵にした逆引き(→現在のuniqueId)も無認証では不可能と
+// (数値tiktokUid)が含まれるが、どちらを鍵にした逆引き(→現在のtiktokHandle)も無認証では不可能と
 // 実測済み(2026-08確認)。`id`(user_id)側もsecUidと全く同じ失敗パターンだった:
 //   - api/user/detail/?secUid=... / ?user_id=... → いずれもHTTP 200だが本文が完全に空
 //     (msToken等の署名必須API)
-//   - api-live/user/room/?secUid=... / ?user_id=...(uniqueIdなし) → params_error。
-//     uniqueIdが必須パラメータ
-//   - 正しいsecUid/user_id + 存在しないuniqueId → user_not_found(どちらも検索条件に
+//   - api-live/user/room/?secUid=... / ?user_id=...(tiktokHandleなし) → params_error。
+//     tiktokHandleが必須パラメータ
+//   - 正しいsecUid/user_id + 存在しないtiktokHandle → user_not_found(どちらも検索条件に
 //     一切使われない)
-//   - node/share/user/@<uniqueId> / node/share/user/<数値id> → いずれも403 Forbidden(即ブロック)
+//   - node/share/user/@<tiktokHandle> / node/share/user/<数値id> → いずれも403 Forbidden(即ブロック)
 // EulerStream等の署名サービス経由でapi/user/detailを叩けば理論上は可能だが、追加コスト・
 // 複雑性が見合わないため見送っている。同じ調査を繰り返さないための記録。
 //
@@ -52,13 +52,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resolveWithRetry(tiktokId: string): Promise<TiktokProfileResult> {
+async function resolveWithRetry(tiktokHandle: string): Promise<TiktokProfileResult> {
   for (let attempt = 0; ; attempt++) {
-    const result = await fetchTiktokProfile(tiktokId);
+    const result = await fetchTiktokProfile(tiktokHandle);
     if (result.ok || result.reason !== "RATE_LIMITED" || attempt >= MAX_RATE_LIMIT_RETRIES) {
       return result;
     }
-    console.log(`  @${tiktokId}: レート制限。${RATE_LIMIT_RETRY_MS / 1000}秒待って再試行...`);
+    console.log(`  @${tiktokHandle}: レート制限。${RATE_LIMIT_RETRY_MS / 1000}秒待って再試行...`);
     await sleep(RATE_LIMIT_RETRY_MS);
   }
 }
@@ -69,7 +69,7 @@ async function main() {
 
   try {
     const streamers = await prisma.streamer.findMany({
-      select: { id: true, tiktokId: true, userId: true, roomId: true, createdAt: true },
+      select: { id: true, tiktokHandle: true, principalId: true, roomId: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     });
     console.log(`Streamer ${streamers.length}件をTikTokへ照会します(1件あたり最短${REQUEST_INTERVAL_MS}ms間隔)。`);
@@ -79,7 +79,7 @@ async function main() {
     const inconclusive: Array<{ streamer: (typeof streamers)[number]; reason: string }> = [];
 
     for (const streamer of streamers) {
-      const normalized = normalizeTiktokId(streamer.tiktokId);
+      const normalized = normalizeTiktokId(streamer.tiktokHandle);
       const result = await resolveWithRetry(normalized);
 
       if (result.ok) {
@@ -102,20 +102,20 @@ async function main() {
 
     console.log(`\n=== 削除候補(TikTok上に存在せず、受信ギフト0件): ${deleteCandidates.length}件 ===`);
     for (const s of deleteCandidates) {
-      console.log(`  ${s.id} @${s.tiktokId} (userId=${s.userId}, 登録=${s.createdAt.toISOString()})`);
+      console.log(`  ${s.id} @${s.tiktokHandle} (principalId=${s.principalId}, 登録=${s.createdAt.toISOString()})`);
     }
 
     if (needsReview.length > 0) {
       console.log(`\n=== 要手動確認(TikTok上に存在しないが受信ギフトあり、自動削除しない): ${needsReview.length}件 ===`);
       for (const { streamer: s, giftCount } of needsReview) {
-        console.log(`  ${s.id} @${s.tiktokId} (userId=${s.userId}, ギフト${giftCount}件)`);
+        console.log(`  ${s.id} @${s.tiktokHandle} (principalId=${s.principalId}, ギフト${giftCount}件)`);
       }
     }
 
     if (inconclusive.length > 0) {
       console.log(`\n=== 判定不能(レート制限/エラー、削除しない): ${inconclusive.length}件 ===`);
       for (const { streamer: s, reason } of inconclusive) {
-        console.log(`  ${s.id} @${s.tiktokId} (${reason})`);
+        console.log(`  ${s.id} @${s.tiktokHandle} (${reason})`);
       }
     }
 
@@ -136,7 +136,7 @@ async function main() {
         await prisma.streamer.delete({ where: { id: s.id } });
         deleted++;
       } catch (err) {
-        console.error(`  @${s.tiktokId} の削除に失敗:`, err);
+        console.error(`  @${s.tiktokHandle} の削除に失敗:`, err);
       }
     }
     console.log(

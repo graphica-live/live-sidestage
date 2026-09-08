@@ -3,10 +3,13 @@ import { snapshotDueEventAvatars, type DueEvent } from "./avatar-snapshot";
 import type { TiktokProfileResult } from "@/lib/tiktok-profile";
 
 function ok(): TiktokProfileResult {
-  return { ok: true, profile: { avatarUrl: "https://p16.tiktokcdn.com/x.webp", nickname: null, userId: null } };
+  return { ok: true, profile: { avatarUrl: "https://p16.tiktokcdn.com/x.webp", nickname: null, tiktokUid: null } };
 }
 
 const NOT_FOUND: TiktokProfileResult = { ok: false, reason: "NOT_FOUND" };
+
+const AIKO = { tiktokUid: "7200000000000000001", tiktokHandle: "aiko" };
+const BEKO = { tiktokUid: "7200000000000000002", tiktokHandle: "beko" };
 
 function dueEvents(...events: DueEvent[]) {
   return async () => events;
@@ -22,15 +25,15 @@ const baseDeps = (over: Parameters<typeof snapshotDueEventAvatars>[0] = {}) => (
 
 describe("snapshotDueEventAvatars", () => {
   it("対象イベントの全参加者を保存し、成否に関わらず avatarsSnapshottedAt を立てる", async () => {
-    const cached: [string, string, string | null][] = [];
+    const cached: [string, string | null][] = [];
     const marked: string[] = [];
 
     const result = await snapshotDueEventAvatars(
       baseDeps({
-        listDueEvents: dueEvents({ id: "ev1", tiktokIds: ["aiko", "beko"] }),
-        fetchProfile: async (tiktokId) => (tiktokId === "aiko" ? ok() : NOT_FOUND),
-        cacheAvatar: async (kind, subjectId, sourceUrl) => {
-          cached.push([kind, subjectId, sourceUrl]);
+        listDueEvents: dueEvents({ id: "ev1", participants: [AIKO, BEKO] }),
+        fetchProfile: async (tiktokHandle) => (tiktokHandle === "aiko" ? ok() : NOT_FOUND),
+        cacheAvatar: async (tiktokUid, sourceUrl) => {
+          cached.push([tiktokUid, sourceUrl]);
         },
         markSnapshotted: async (eventId) => {
           marked.push(eventId);
@@ -38,7 +41,8 @@ describe("snapshotDueEventAvatars", () => {
       })
     );
 
-    expect(cached).toEqual([["event_participant", "aiko", "https://p16.tiktokcdn.com/x.webp"]]);
+    // 保存キーはハンドルではなく不変の tiktokUid。
+    expect(cached).toEqual([[AIKO.tiktokUid, "https://p16.tiktokcdn.com/x.webp"]]);
     expect(marked).toEqual(["ev1"]);
     expect(result).toEqual({ eventsProcessed: 1, succeeded: 1, failed: 1 });
   });
@@ -48,7 +52,7 @@ describe("snapshotDueEventAvatars", () => {
 
     const result = await snapshotDueEventAvatars(
       baseDeps({
-        listDueEvents: dueEvents({ id: "ev-empty", tiktokIds: [] }),
+        listDueEvents: dueEvents({ id: "ev-empty", participants: [] }),
         markSnapshotted: async (eventId) => {
           marked.push(eventId);
         },
@@ -65,11 +69,11 @@ describe("snapshotDueEventAvatars", () => {
 
     const result = await snapshotDueEventAvatars(
       baseDeps({
-        listDueEvents: dueEvents({ id: "ev1", tiktokIds: ["aiko", "beko"] }),
+        listDueEvents: dueEvents({ id: "ev1", participants: [AIKO, BEKO] }),
         fetchProfile: async () => ok(),
-        cacheAvatar: async (_kind, subjectId) => {
-          if (subjectId === "aiko") throw new Error("bucket down");
-          cached.push(subjectId);
+        cacheAvatar: async (tiktokUid) => {
+          if (tiktokUid === AIKO.tiktokUid) throw new Error("bucket down");
+          cached.push(tiktokUid);
         },
         markSnapshotted: async (eventId) => {
           marked.push(eventId);
@@ -77,7 +81,7 @@ describe("snapshotDueEventAvatars", () => {
       })
     );
 
-    expect(cached).toEqual(["beko"]);
+    expect(cached).toEqual([BEKO.tiktokUid]);
     expect(marked).toEqual(["ev1"]);
     expect(result).toEqual({ eventsProcessed: 1, succeeded: 1, failed: 1 });
   });

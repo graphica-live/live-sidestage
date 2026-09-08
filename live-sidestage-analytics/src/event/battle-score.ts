@@ -1,4 +1,4 @@
-import { fetchRoomHostUserIds, type DbClient } from "./analytics-db";
+import { fetchRoomHostTiktokUids, type DbClient } from "./analytics-db";
 
 // TikTok 側が配信するバトルスコア(`hostScore`)を、対戦カードのサイドへ帰属させる。
 //
@@ -6,8 +6,8 @@ import { fetchRoomHostUserIds, type DbClient } from "./analytics-db";
 // (match-results.ts)。ここで扱うのは表示専用の参考値で、解決できなければ何も出さない。
 //
 // 帰属の仕組み:
-//   hostScores のキー = anchorIdStr(TikTok の数値 userId)
-//   TiktokRoom.hostUserId = 同じ数値 userId(src/lib/tiktok-host-id.ts が補完する)
+//   hostScores のキー = anchorIdStr(TikTok の数値ID)
+//   TiktokRoom.hostTiktokUid = 同じ数値ID(登録ゲートで解決して保存する)
 //   EventMatchSideParticipant -> EventParticipant.roomId -> TiktokRoom
 // この鎖が1箇所でも切れているサイドは**出さない**。誤った数字を出すより出さないほうがよい。
 //
@@ -21,7 +21,7 @@ const SCORE_PATTERN = /^\d{1,30}$/;
 
 /** `DetectedBattle` 1行分。room ごとに1行あり、**1行に両サイド全員分のスコアが入る**。 */
 export type BattleScoreRow = {
-  hostUserIds: string[];
+  hostTiktokUids: string[];
   hostScores: unknown;
 };
 
@@ -33,15 +33,15 @@ export type ScoreSideInput = {
 
 function asScoreEntries(value: unknown): [string, string][] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
-  return Object.entries(value as Record<string, unknown>).flatMap(([anchorId, score]) =>
-    typeof score === "string" && SCORE_PATTERN.test(score) ? [[anchorId, score] as [string, string]] : []
+  return Object.entries(value as Record<string, unknown>).flatMap(([tiktokUid, score]) =>
+    typeof score === "string" && SCORE_PATTERN.test(score) ? [[tiktokUid, score] as [string, string]] : []
   );
 }
 
 /**
  * 同じ battleId の行から、サイドごとのバトルスコアを決める。純粋関数。
  *
- * 行のマージは **anchorId ごとに最大値**を採る。理由:
+ * 行のマージは **tiktokUid ごとに最大値**を採る。理由:
  * バトル中のスコアは単調増加で、片側の room の接続が落ちるとその行だけ古い値で凍る。
  * `DetectedBattle.updatedAt` は `ingestBattles` が毎周 upsert するので鮮度の判定に使えない。
  * 単純な上書きマージだと行の返却順しだいで古い値が新しい値を潰す。
@@ -51,7 +51,7 @@ function asScoreEntries(value: unknown): [string, string][] {
 export function resolveSideTiktokScores(input: {
   rows: BattleScoreRow[];
   sides: ScoreSideInput[];
-  hostUserIdByRoomId: Map<string, string>;
+  hostTiktokUidByRoomId: Map<string, string>;
 }): Map<string, string> {
   const resolved = new Map<string, string>();
   if (input.rows.length === 0) return resolved;
@@ -59,15 +59,15 @@ export function resolveSideTiktokScores(input: {
   const merged = new Map<string, bigint>();
   const observedHosts = new Set<string>();
   for (const row of input.rows) {
-    for (const anchorId of row.hostUserIds) observedHosts.add(anchorId);
-    for (const [anchorId, score] of asScoreEntries(row.hostScores)) {
+    for (const tiktokUid of row.hostTiktokUids) observedHosts.add(tiktokUid);
+    for (const [tiktokUid, score] of asScoreEntries(row.hostScores)) {
       const value = BigInt(score);
-      const current = merged.get(anchorId);
-      if (current === undefined || value > current) merged.set(anchorId, value);
+      const current = merged.get(tiktokUid);
+      if (current === undefined || value > current) merged.set(tiktokUid, value);
     }
   }
 
-  // サイドごとに出場者の hostUserId を集める。1人でも欠けたらそのサイドは出さない(部分和にしない)。
+  // サイドごとに出場者の hostTiktokUid を集める。1人でも欠けたらそのサイドは出さない(部分和にしない)。
   const hostsBySide = new Map<string, string[]>();
   for (const side of input.sides) {
     if (side.roomIds.length === 0) continue;
@@ -75,34 +75,34 @@ export function resolveSideTiktokScores(input: {
     const hosts: string[] = [];
     let complete = true;
     for (const roomId of side.roomIds) {
-      const hostUserId = input.hostUserIdByRoomId.get(roomId);
-      // 「解決できない」= hostUserId が未取得 / そのバトルに出ていない / スコアが観測できていない。
+      const hostTiktokUid = input.hostTiktokUidByRoomId.get(roomId);
+      // 「解決できない」= hostTiktokUid が未取得 / そのバトルに出ていない / スコアが観測できていない。
       if (
-        hostUserId === undefined ||
-        !observedHosts.has(hostUserId) ||
-        !merged.has(hostUserId)
+        hostTiktokUid === undefined ||
+        !observedHosts.has(hostTiktokUid) ||
+        !merged.has(hostTiktokUid)
       ) {
         complete = false;
         break;
       }
-      hosts.push(hostUserId);
+      hosts.push(hostTiktokUid);
     }
     if (complete) hostsBySide.set(side.sideId, hosts);
   }
 
-  // 同じ hostUserId が複数のサイド/room から出るのは、ハンドル改名で旧 room と新 room が
+  // 同じ hostTiktokUid が複数のサイド/room から出るのは、ハンドル改名で旧 room と新 room が
   // 同じ配信者を指している場合など。二重加算・誤帰属になるのでマッチごと出さない。
   const seen = new Set<string>();
   for (const hosts of hostsBySide.values()) {
-    for (const hostUserId of hosts) {
-      if (seen.has(hostUserId)) return new Map();
-      seen.add(hostUserId);
+    for (const hostTiktokUid of hosts) {
+      if (seen.has(hostTiktokUid)) return new Map();
+      seen.add(hostTiktokUid);
     }
   }
 
   for (const [sideId, hosts] of hostsBySide) {
     let total = 0n;
-    for (const hostUserId of hosts) total += merged.get(hostUserId) ?? 0n;
+    for (const hostTiktokUid of hosts) total += merged.get(hostTiktokUid) ?? 0n;
     resolved.set(sideId, total.toString());
   }
 
@@ -131,12 +131,12 @@ export async function loadMatchTiktokScores(
 
   const roomIds = [...new Set(matches.flatMap((m) => m.sides.flatMap((s) => s.roomIds)))];
 
-  const [rows, hostUserIdByRoomId] = await Promise.all([
+  const [rows, hostTiktokUidByRoomId] = await Promise.all([
     client.detectedBattle.findMany({
       where: { battleId: { in: battleIds } },
-      select: { battleId: true, hostUserIds: true, hostScores: true },
+      select: { battleId: true, hostTiktokUids: true, hostScores: true },
     }),
-    fetchRoomHostUserIds(client, roomIds),
+    fetchRoomHostTiktokUids(client, roomIds),
   ]);
 
   const rowsByBattleId = new Map<string, BattleScoreRow[]>();
@@ -155,7 +155,7 @@ export async function loadMatchTiktokScores(
     const scores = resolveSideTiktokScores({
       rows: matchRows,
       sides: match.sides,
-      hostUserIdByRoomId,
+      hostTiktokUidByRoomId,
     });
     for (const [sideId, score] of scores) resolved.set(sideId, score);
   }

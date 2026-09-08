@@ -20,7 +20,7 @@ async function createEvent(
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} 自動終了テスト`,
-      ownerUserId: `${PREFIX}_owner_${uniqueSuffix()}`,
+      ownerPrincipalId: `${PREFIX}_owner_${uniqueSuffix()}`,
       format: "DIAMOND_RACE",
       entryMode: "SOLO",
       visibility: "PRIVATE",

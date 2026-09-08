@@ -1,8 +1,8 @@
 export async function verifyTikTokProfile(
-  tiktokId: string,
+  tiktokHandle: string,
   code: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const url = `https://www.tiktok.com/@${tiktokId}`;
+  const url = `https://www.tiktok.com/@${tiktokHandle}`;
 
   try {
     const response = await fetch(url, {

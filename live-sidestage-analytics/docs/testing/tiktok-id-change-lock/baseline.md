@@ -8,6 +8,11 @@ last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code M
 
 # テストベースライン: tiktok-id-change-lock
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `Streamer.tiktokId`(TikTok ID)をユーザー操作で変更すると、直近の変更から7日間(`TIKTOK_ID_CHANGE_LOCK_DAYS`)
 は再変更できない機能。対象は `src/lib/tiktok-id-lock.ts`(判定ロジック)、
 `POST /api/verify/generate`(web)、`POST`/`PATCH /api/mobile/streamer`(mobile)。

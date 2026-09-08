@@ -28,10 +28,10 @@ async function main() {
       windowStart: true,
       openingMultiplier: true,
       openingMultiplierConfidence: true,
-      scorePoints: { select: { anchorId: true, occurredAt: true, score: true } },
+      scorePoints: { select: { tiktokUid: true, occurredAt: true, score: true } },
       participants: {
         select: {
-          anchorId: true,
+          tiktokUid: true,
           captureStatus: true,
           giftEvents: {
             select: {
@@ -58,8 +58,8 @@ async function main() {
     // (あちらは `@/lib/prisma` のシングルトンを使うので、本番URL指定のこのクライアントからは呼べない)
     const tapRows = await prisma.tiktokBattleTapPoint.findMany({
       where: { battleId: battle.battleId },
-      select: { roomId: true, anchorId: true, occurredAt: true, points: true },
-      orderBy: [{ occurredAt: "asc" }, { anchorId: "asc" }],
+      select: { roomId: true, tiktokUid: true, occurredAt: true, points: true },
+      orderBy: [{ occurredAt: "asc" }, { tiktokUid: "asc" }],
     });
     const trackedRoomIds = new Set(
       (
@@ -72,8 +72,8 @@ async function main() {
         .map((b) => b.roomId)
     );
     const tapInput = {
-      tapPoints: tapRows.map((r) => ({ anchorId: r.anchorId, occurredAt: r.occurredAt, points: r.points })),
-      tapTrackedAnchorIds: new Set(tapRows.filter((r) => trackedRoomIds.has(r.roomId)).map((r) => r.anchorId)),
+      tapPoints: tapRows.map((r) => ({ tiktokUid: r.tiktokUid, occurredAt: r.occurredAt, points: r.points })),
+      tapTrackedTiktokUids: new Set(tapRows.filter((r) => trackedRoomIds.has(r.roomId)).map((r) => r.tiktokUid)),
     };
 
     const result = inferOpeningMultiplier({
@@ -86,7 +86,7 @@ async function main() {
           ? []
           : p.giftEvents.map((g) => ({
               id: g.sourceGiftId,
-              anchorId: p.anchorId,
+              tiktokUid: p.tiktokUid,
               occurredAt: g.occurredAt,
               totalDiamonds: g.totalDiamonds,
               multiplierType: g.multiplierType,
@@ -102,7 +102,7 @@ async function main() {
     if (only) {
       for (const p of battle.participants) {
         console.log(
-          `  anchor=${p.anchorId} capture=${p.captureStatus} gifts=${p.giftEvents.length} diamonds=${p.giftEvents.reduce((s, g) => s + g.totalDiamonds, 0)}`
+          `  anchor=${p.tiktokUid} capture=${p.captureStatus} gifts=${p.giftEvents.length} diamonds=${p.giftEvents.reduce((s, g) => s + g.totalDiamonds, 0)}`
         );
       }
     }

@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveAgencyByApiKey } from "@/lib/api-auth";
 import { listWatchedRooms } from "@/lib/agency/agency";
-import { parseDateRange, parseTiktokIdsParam, selectWatchedRooms } from "@/lib/agency/params";
+import { parseDateRange, parseTiktokHandlesParam, selectWatchedRooms } from "@/lib/agency/params";
 import { emptySummary, queryRoomSummariesRaw } from "@/lib/agency/summary";
 
 // 企業向けBatch API。監視対象ライバーを複数まとめて期間集計する。
 //
-//   GET /api/agency/gifts/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&tiktokIds=a,b,c
+//   GET /api/agency/gifts/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&tiktokHandles=a,b,c
 //   Header: x-api-key: <Agency.apiKey>
 //
 // 数値はオリジナル生データ基準。レスポンスの basis: "raw" がその契約を示す。
@@ -19,20 +19,20 @@ export async function GET(req: NextRequest) {
   const range = parseDateRange(searchParams.get("from"), searchParams.get("to"));
   if (!range.ok) return NextResponse.json({ error: range.error }, { status: 400 });
 
-  const parsedIds = parseTiktokIdsParam(searchParams.get("tiktokIds"));
+  const parsedIds = parseTiktokHandlesParam(searchParams.get("tiktokHandles"));
   if (!parsedIds.ok) return NextResponse.json({ error: parsedIds.error }, { status: 400 });
 
   const requested = parsedIds.value;
   if (requested && requested.length > agency.maxWatchTargets) {
     return NextResponse.json(
-      { error: `tiktokIdsは最大${agency.maxWatchTargets}件までです。` },
+      { error: `tiktokHandlesは最大${agency.maxWatchTargets}件までです。` },
       { status: 400 }
     );
   }
 
   // 認可境界: 集計対象をこの事務所の監視対象だけに閉じる。
   const watched = await listWatchedRooms(agency.id);
-  const { selected, unknownTiktokIds } = selectWatchedRooms(watched, requested);
+  const { selected, unknownTiktokHandles } = selectWatchedRooms(watched, requested);
 
   const summaries = await queryRoomSummariesRaw(
     selected.map((w) => w.roomId),
@@ -46,10 +46,10 @@ export async function GET(req: NextRequest) {
   const livers = selected.map((w) => {
     const s = summaries.get(w.roomId) ?? emptySummary(w.roomId);
     return {
-      // 正規化済みの値を返す。そのまま tiktokIds パラメータへ渡せる形にしておくため、
+      // 正規化済みの値を返す。そのまま tiktokHandles パラメータへ渡せる形にしておくため、
       // 事務所が入力した表記(@付き・大文字混じり)は displayName 側に置く。
-      tiktokId: w.normalizedTiktokId,
-      displayName: w.tiktokId,
+      tiktokHandle: w.normalizedTiktokHandle,
+      displayName: w.tiktokHandle,
       label: w.label,
       watchStartedAt: w.watchStartedAt,
       listenerStatus: w.listenerStatus,
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
       basis: "raw",
       livers,
       total,
-      unknownTiktokIds,
+      unknownTiktokHandles,
     },
     // 企業の契約データなので中間キャッシュに残さない。
     { headers: { "Cache-Control": "no-store" } }

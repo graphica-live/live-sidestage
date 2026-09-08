@@ -13,11 +13,11 @@ import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { prisma } from "@/lib/prisma";
 import { getMediaBucketClient } from "./media-bucket";
-import { buildAvatarKey, type AvatarKind } from "./avatar-key";
+import { buildAvatarKey } from "./avatar-key";
 import { isAllowedAvatarUrl } from "./tiktok-profile";
 
 const READ_URL_TTL_SECONDS = 24 * 60 * 60; // 24時間。公開度の低い小画像で、バトルタブは非ライブ中ポーリングしないため長め
-const REFETCH_AFTER_MS = 30 * 24 * 60 * 60 * 1000; // 30日超で再取得(TikTokユーザーはアイコンを変更するため)
+const REFETCH_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7日超で再取得(TikTokユーザーはアイコンを変更するため)
 
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -41,7 +41,7 @@ let consecutiveFailures = 0;
 let circuitOpenUntil = 0;
 
 /**
- * 直近に試行済みのsubjectIdを24時間覚えておき、重複ダウンロードを避ける。
+ * 直近に試行済みのtiktokUidを24時間覚えておき、重複ダウンロードを避ける。
  * 記録するのは実際にfetchを実行した場合(成功・確定失敗いずれも)のみ。waitingキュー
  * 上限超過やサーキットブレーカーで実行自体を見送った場合は記録しない
  * (記録するとバズ配信で新規送信者のアイコンが24時間再試行されなくなる)。
@@ -49,10 +49,6 @@ let circuitOpenUntil = 0;
 const THROTTLE_TTL_MS = 24 * 60 * 60 * 1000;
 const THROTTLE_MAX_ENTRIES = 2000;
 const throttled = new Map<string, number /* expiresAt */>();
-
-function throttleKey(kind: AvatarKind, subjectId: string): string {
-  return `${kind}:${subjectId}`;
-}
 
 function isThrottled(key: string, now: number): boolean {
   const expiresAt = throttled.get(key);
@@ -139,12 +135,11 @@ async function downloadAndCompress(sourceUrl: string): Promise<Buffer | null> {
 }
 
 /**
- * subjectIdのアバターをRailway Bucketへキャッシュする。fire-and-forgetで呼ぶこと。
- * DBに新鮮な行(30日以内)が既にあれば何もしない。
+ * tiktokUidのアバターをRailway Bucketへキャッシュする。fire-and-forgetで呼ぶこと。
+ * DBに新鮮な行(7日以内)が既にあれば何もしない。
  */
 export async function ensureAvatarCached(
-  kind: AvatarKind,
-  subjectId: string,
+  tiktokUid: string,
   sourceUrl: string | null
 ): Promise<void> {
   if (!sourceUrl) return;
@@ -152,15 +147,14 @@ export async function ensureAvatarCached(
   // ここで弾かれたリクエストは「実行した」扱いにしない(スロットもスロットリングも消費しない)。
   if (!isAllowedAvatarUrl(sourceUrl)) return;
 
-  const key = buildAvatarKey(kind, subjectId);
-  if (!key) return; // subjectIdが不正な形式。キャッシュ自体をスキップ。
+  const key = buildAvatarKey(tiktokUid);
+  if (!key) return; // tiktokUidが不正な形式。キャッシュ自体をスキップ。
 
   const now = Date.now();
-  const tKey = throttleKey(kind, subjectId);
-  if (isThrottled(tKey, now)) return;
+  if (isThrottled(tiktokUid, now)) return;
 
   const existing = await prisma.tiktokAvatarAsset.findUnique({
-    where: { kind_subjectId: { kind, subjectId } },
+    where: { tiktokUid },
   });
   if (existing && now - existing.fetchedAt.getTime() < REFETCH_AFTER_MS) return;
 
@@ -170,7 +164,7 @@ export async function ensureAvatarCached(
   const result = await withSlot(() => downloadAndCompress(sourceUrl));
   if (!result.ran) return; // サーキットオープン or waiting上限超過。記録せず、次回の呼び出しに任せる。
 
-  markThrottled(tKey, now);
+  markThrottled(tiktokUid, now);
   const compressed = result.value;
   onFetchResult(compressed !== null);
   if (compressed === null) return;
@@ -189,26 +183,23 @@ export async function ensureAvatarCached(
   }
 
   await prisma.tiktokAvatarAsset.upsert({
-    where: { kind_subjectId: { kind, subjectId } },
-    create: { kind, subjectId, storageKey: key, contentType: OUTPUT_CONTENT_TYPE, byteSize: compressed.length },
+    where: { tiktokUid },
+    create: { tiktokUid, storageKey: key, contentType: OUTPUT_CONTENT_TYPE, byteSize: compressed.length },
     update: { storageKey: key, contentType: OUTPUT_CONTENT_TYPE, byteSize: compressed.length, fetchedAt: new Date() },
   });
 }
 
-/** 一覧表示用。distinct subjectIdをまとめて1回のfindManyで解決する(N+1回避)。 */
-export async function resolveAvatarUrls(
-  kind: AvatarKind,
-  subjectIds: string[]
-): Promise<Map<string, string>> {
+/** 一覧表示用。distinct tiktokUidをまとめて1回のfindManyで解決する(N+1回避)。 */
+export async function resolveAvatarUrls(tiktokUids: string[]): Promise<Map<string, string>> {
   const result = new Map<string, string>();
-  if (subjectIds.length === 0) return result;
+  if (tiktokUids.length === 0) return result;
 
   const storage = getMediaBucketClient();
   if (!storage) return result;
 
   const rows = await prisma.tiktokAvatarAsset.findMany({
-    where: { kind, subjectId: { in: subjectIds } },
-    select: { subjectId: true, storageKey: true },
+    where: { tiktokUid: { in: tiktokUids } },
+    select: { tiktokUid: true, storageKey: true },
   });
 
   for (const row of rows) {
@@ -217,7 +208,7 @@ export async function resolveAvatarUrls(
       new GetObjectCommand({ Bucket: storage.bucket, Key: row.storageKey }),
       { expiresIn: READ_URL_TTL_SECONDS }
     );
-    result.set(row.subjectId, url);
+    result.set(row.tiktokUid, url);
   }
 
   return result;

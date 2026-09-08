@@ -19,13 +19,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const tiktokId = (body as { tiktokId?: unknown } | null)?.tiktokId;
-  if (typeof tiktokId !== "string" || tiktokId.trim().length === 0) {
+  const tiktokHandle = (body as { tiktokHandle?: unknown } | null)?.tiktokHandle;
+  if (typeof tiktokHandle !== "string" || tiktokHandle.trim().length === 0) {
     return NextResponse.json({ error: "TikTok IDを入力してください。" }, { status: 400 });
   }
 
   try {
-    const result = await addWatchedRoom(tiktokId);
+    const result = await addWatchedRoom(tiktokHandle);
     if (result.status === "invalid") {
       const { error, status } = formatExistenceGateError("INVALID_FORMAT");
       return NextResponse.json({ error }, { status });
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       roomId: result.roomId,
-      tiktokId: result.tiktokId,
+      tiktokHandle: result.tiktokHandle,
       created: result.created,
       nickname: result.nickname,
     });

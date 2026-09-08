@@ -10,15 +10,15 @@ import { prisma } from "@/lib/prisma";
  */
 export async function requireEventOwner(
   eventId: string
-): Promise<{ id: string; ownerUserId: string } | null> {
+): Promise<{ id: string; ownerPrincipalId: string } | null> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return null;
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { id: true, ownerUserId: true },
+    select: { id: true, ownerPrincipalId: true },
   });
-  if (!event || event.ownerUserId !== session.user.id) return null;
+  if (!event || event.ownerPrincipalId !== session.user.id) return null;
 
   return event;
 }

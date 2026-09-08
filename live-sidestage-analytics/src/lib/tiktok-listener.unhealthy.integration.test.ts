@@ -12,11 +12,12 @@
 // "connected"復帰での全クリア)を確実に検証する。
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { persistState } from "./tiktok-listener";
 
 const roomIds: string[] = [];
 
-function tiktokId(tag: string) {
+function tiktokHandle(tag: string) {
   return `itestunh${tag}${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
 }
 
@@ -25,8 +26,10 @@ async function makeRoom() {
   // watchedRoomFilter() の監視対象になったため、これが無いと並行して走る listener 系
   // テストの getMyRooms() がこの部屋をグローバルに claim し、listenerStatus /
   // unhealthySince を上書きして検証を壊す。
+  const handle = tiktokHandle("r");
   const room = await prisma.tiktokRoom.create({
-    data: { tiktokId: tiktokId("r"), monitoringSuspended: true },
+    // hostTiktokUid は @unique。ハンドルが毎回ランダムなので uid も一意になる。
+    data: { hostTiktokUid: makeTiktokUid(handle), tiktokHandle: handle, monitoringSuspended: true },
     select: { id: true },
   });
   roomIds.push(room.id);

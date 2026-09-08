@@ -68,7 +68,7 @@ describe("メール登録 → 同一メールでのGoogleログイン競合", ()
     const registerBody = await (
       await registerPost(registerRequest({ email, password: "attacker-pass" }))
     ).json();
-    const attackerUserId = registerBody.user.id as string;
+    const attackerPrincipalId = registerBody.user.id as string;
 
     stubGooglePayload({
       sub: `${PREFIX}victim-google-sub`,
@@ -83,7 +83,7 @@ describe("メール登録 → 同一メールでのGoogleログイン競合", ()
     expect(googleBody.error).toBe("このメールアドレスは別のアカウントで使用されています");
 
     // 攻撃者のUserにGoogleのAccountが足されていない(乗っ取りが成立していない)こと。
-    const accounts = await prisma.account.findMany({ where: { userId: attackerUserId } });
+    const accounts = await prisma.account.findMany({ where: { userId: attackerPrincipalId } });
     expect(accounts).toHaveLength(1);
     expect(accounts[0]!.provider).toBe("email");
 

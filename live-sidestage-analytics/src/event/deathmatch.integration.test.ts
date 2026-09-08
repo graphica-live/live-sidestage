@@ -2,6 +2,7 @@
 // analytics の view を読むので、live-sidestage-analytics/sql/event-integration.sql を
 // 先に適用しておくこと。
 import { describe, it, expect, afterAll, beforeEach } from "vitest";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { prisma } from "@/lib/prisma";
 import { aggregateEvent } from "./aggregate";
 import { assertEventSession, createSingleMatch, SingleMatchError } from "./single-match";
@@ -19,31 +20,50 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。表示名(listenerTiktokHandle)は集計が
+// public.tiktok_users から順引きするので、リスナーの行を先に作っておく。
+// uid の種は PREFIX 付きにして、同じハンドル名を使う他ファイルと衝突させない。
+const listenerUid = (tiktokHandle: string) => makeTiktokUid(`${PREFIX}_${tiktokHandle}`);
+const createdListenerUids = new Set<string>();
+
+async function ensureListener(tiktokHandle: string): Promise<string> {
+  const tiktokUid = listenerUid(tiktokHandle);
+  const display = { tiktokHandle, nickname: `${tiktokHandle} nickname` };
+  await prisma.tikTokUser.upsert({
+    where: { tiktokUid },
+    create: { tiktokUid, ...display },
+    update: display,
+  });
+  createdListenerUids.add(tiktokUid);
+  return tiktokUid;
+}
+
 async function insertGift(params: {
   roomId: string;
-  uniqueId: string;
+  tiktokHandle: string;
   diamonds: number;
   receivedAt: Date;
 }) {
+  const tiktokUid = await ensureListener(params.tiktokHandle);
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, ${params.uniqueId}, ${params.uniqueId},
+      (gen_random_uuid()::text, ${params.roomId}, ${tiktokUid},
        5, 'Rose', 1, ${params.diamonds}, ${params.diamonds}, ${params.receivedAt},
        '2026-09-01', ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -58,7 +78,7 @@ async function insertBattle(params: {
   await prisma.$executeRaw`
     INSERT INTO public.tiktok_battles
       (id, "roomId", "battleId", action, "startedAt", "startedAtEstimated", "endedAt",
-       "durationSec", "hostUserIds", "hostDisplayIds", "hostScores", "updatedAt")
+       "durationSec", "hostTiktokUids", "hostDisplayIds", "hostScores", "updatedAt")
     VALUES
       (gen_random_uuid()::text, ${params.roomId}, ${params.battleId}, 5,
        ${params.startedAt}, false, ${params.endedAt}, 300,
@@ -71,7 +91,7 @@ async function newDeathmatch(rules?: Record<string, number>, entryMode: "SOLO" |
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} デスマッチ`,
-      ownerUserId: `${PREFIX}_owner`,
+      ownerPrincipalId: `${PREFIX}_owner`,
       format: "DEATHMATCH",
       entryMode,
       status: "RUNNING",
@@ -110,10 +130,17 @@ async function newTeam(eventId: string, name: string) {
 }
 
 async function newParticipant(eventId: string, name: string, teamId?: string) {
-  const tiktokId = `${PREFIX}_${name}_${uniqueSuffix()}`;
-  const roomId = await createRoom(tiktokId);
+  const tiktokHandle = `${PREFIX}_${name}_${uniqueSuffix()}`;
+  const roomId = await createRoom(tiktokHandle);
   const p = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId, roomId, displayName: name, teamId },
+    data: {
+      eventId,
+      tiktokUid: makeTiktokUid(tiktokHandle),
+      tiktokHandle,
+      roomId,
+      displayName: name,
+      teamId,
+    },
     select: { id: true },
   });
   return { id: p.id, roomId };
@@ -143,10 +170,10 @@ async function playMatch(params: {
 
   const at = new Date(params.slot.getTime() + 15 * 60_000);
   if (params.aDiamonds > 0) {
-    await insertGift({ roomId: params.a.roomId, uniqueId: "l1", diamonds: params.aDiamonds, receivedAt: at });
+    await insertGift({ roomId: params.a.roomId, tiktokHandle: "l1", diamonds: params.aDiamonds, receivedAt: at });
   }
   if (params.bDiamonds > 0) {
-    await insertGift({ roomId: params.b.roomId, uniqueId: "l2", diamonds: params.bDiamonds, receivedAt: at });
+    await insertGift({ roomId: params.b.roomId, tiktokHandle: "l2", diamonds: params.bDiamonds, receivedAt: at });
   }
 
   return matchId;
@@ -165,6 +192,9 @@ afterAll(async () => {
   }
   await prisma.detectedBattle
     .deleteMany({ where: { battleId: { startsWith: PREFIX } } })
+    .catch(() => {});
+  await prisma.tikTokUser
+    .deleteMany({ where: { tiktokUid: { in: [...createdListenerUids] } } })
     .catch(() => {});
   await prisma.$disconnect();
 });
@@ -580,7 +610,7 @@ describe("バトル中のみ集計する(デスマッチ)", () => {
     // バトル区間の外(対戦の前)に大きなギフト。旧仕様ならこれも計上されていた。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "outside",
+      tiktokHandle: "outside",
       diamonds: 9000,
       receivedAt: new Date(SLOT1.getTime() + 60_000),
     });
@@ -595,7 +625,7 @@ describe("バトル中のみ集計する(デスマッチ)", () => {
 
     // リスナー貢献にもバトル外の分は出ない。
     const outside = await prisma.eventContribution.findFirst({
-      where: { eventId: event.id, scope: "EVENT", listenerUniqueId: "outside" },
+      where: { eventId: event.id, scope: "EVENT", listenerTiktokHandle: "outside" },
     });
     expect(outside).toBeNull();
   });
@@ -613,7 +643,7 @@ describe("バトル中のみ集計する(デスマッチ)", () => {
     // a はバトル外で大量に受け取るが、これはタイブレークに効かない。
     await insertGift({
       roomId: a.roomId,
-      uniqueId: "outside",
+      tiktokHandle: "outside",
       diamonds: 9000,
       receivedAt: new Date(SLOT1.getTime() + 60_000),
     });

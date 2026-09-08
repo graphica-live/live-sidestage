@@ -25,7 +25,7 @@ AuthSession _session() => AuthSession(
       userEmail: 'me@example.com',
       onboardingRequired: false,
       provider: AuthProvider.google,
-      streamer: StreamerInfo(id: 's1', tiktokId: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
     );
 
 Future<void> _pumpSettings(WidgetTester tester) async {
@@ -45,7 +45,7 @@ Future<void> _pumpSettings(WidgetTester tester) async {
           body: SettingsTab(
             speech: const SpeechState(),
             busy: false,
-            onChangeTiktokId: () async {},
+            onChangeTiktokHandle: () async {},
             onBeforeLogout: () async {},
           ),
         ),

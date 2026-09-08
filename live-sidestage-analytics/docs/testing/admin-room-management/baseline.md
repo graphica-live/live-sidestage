@@ -8,6 +8,11 @@ last_reviewers: Qwen+Fable（Codex/Gemini quota切れ、review-auto Code Modeと
 
 # テストベースライン: admin-room-management
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 `/admin/workers` 管理画面の監視対象(TiktokRoom)一覧。完全削除(`deleteTiktokRoomPermanently`)・監視解除(`suspendRoomMonitoring`)・週間EulerStream署名消費数表示(`fetchAdminRoomList`)・tiktokId/最終接続時刻/週間署名消費数ソート(`sortAssignedRooms`)を提供する。削除は不可逆、監視解除は自動復活しうる一時停止。
 
 ## テストケース

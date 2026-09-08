@@ -11,7 +11,7 @@ const ENTITLED_STATES = new Set(["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STAT
 const CANCELED_STATE = "SUBSCRIPTION_STATE_CANCELED";
 
 // RTDN(webhook)は合図だけ、常にGoogle Play Developer APIへre-fetchして収束させる。
-// userId解決に失敗した場合はno-op(200)を返さず、呼び出し元(webhook route)へ例外を投げる
+// principalId解決に失敗した場合はno-op(200)を返さず、呼び出し元(webhook route)へ例外を投げる
 // (Pub/Sub Pushは非2xxを再送するため、verify-purchase未達の取りこぼしをリトライで拾える)。
 export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise<void> {
   const fetchStartedAt = new Date();
@@ -45,7 +45,7 @@ export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise
     where: {
       provider_providerSubscriptionId: { provider: "GOOGLE_PLAY", providerSubscriptionId: purchaseToken },
     },
-    select: { id: true, userId: true, lastVerifiedAt: true },
+    select: { id: true, principalId: true, lastVerifiedAt: true },
   });
 
   // 再購読・プラン変更で新purchaseTokenへ切り替わった場合、旧tokenの行をここで失効させる
@@ -79,7 +79,7 @@ export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise
     if (sub.acknowledgementState === "ACKNOWLEDGEMENT_STATE_PENDING" && productId) {
       await acknowledgeSubscription(purchaseToken, productId);
     }
-    await detectMultiProvider(existing.userId);
+    await detectMultiProvider(existing.principalId);
     return;
   }
 
@@ -90,7 +90,7 @@ export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise
 
   // expiresAtで絞らない: verify-purchase route側も元々expiresAtを見ておらず、TTLでは
   // 絞っていない。横流し防止の実体はTTLではなく「tokenがサーバー発行のrandomUUIDで
-  // init時点のuserIdに束縛される」点にあるため、期限切れでも他ユーザーへの付け替えは
+  // init時点のprincipalIdに束縛される」点にあるため、期限切れでも他ユーザーへの付け替えは
   // 構造的に起きない。webhook(RTDN)配信はユーザー操作から独立して遅延しうるため、
   // ここでTTLを掛けると正規の購入が期限超過だけで永久に紐付け不能になる
   // (実装後レビュー指摘、Fable H-4)。expiresAtは掃除用の目安としてのみ残す
@@ -101,7 +101,7 @@ export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise
       token: obfuscatedAccountId,
       consumedAt: null,
     },
-    select: { id: true, userId: true },
+    select: { id: true, principalId: true },
   });
   if (!intent) {
     // verify-purchase側の到達を待つ必要がある取りこぼし。リトライされるようエラーにする。
@@ -110,7 +110,7 @@ export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise
 
   await prisma.$transaction([
     prisma.subscription.create({
-      data: { userId: intent.userId, googleObfuscatedAccountId: obfuscatedAccountId, ...data },
+      data: { principalId: intent.principalId, googleObfuscatedAccountId: obfuscatedAccountId, ...data },
     }),
     prisma.pendingPurchaseIntent.update({
       where: { id: intent.id },
@@ -121,5 +121,5 @@ export async function syncSubscriptionFromGoogle(purchaseToken: string): Promise
   if (sub.acknowledgementState === "ACKNOWLEDGEMENT_STATE_PENDING" && productId) {
     await acknowledgeSubscription(purchaseToken, productId);
   }
-  await detectMultiProvider(intent.userId);
+  await detectMultiProvider(intent.principalId);
 }

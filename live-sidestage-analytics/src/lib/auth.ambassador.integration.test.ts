@@ -21,22 +21,22 @@ const PREFIX = "itest_auth_ambassador";
 let seq = 0;
 const unique = () => `${PREFIX}_${Date.now()}_${seq++}`;
 
-const userIds: string[] = [];
+const principalIds: string[] = [];
 const inviteIds: string[] = [];
 
 async function createUser(): Promise<{ id: string; email: string }> {
   const email = `${unique()}@example.test`;
   const user = await prisma.user.create({ data: { email }, select: { id: true, email: true } });
-  userIds.push(user.id);
+  principalIds.push(user.id);
   return { id: user.id, email: user.email! };
 }
 
 afterEach(async () => {
   mockCookieValue = undefined;
-  await prisma.ambassador.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.ambassador.deleteMany({ where: { principalId: { in: principalIds } } });
   await prisma.ambassadorInvite.deleteMany({ where: { id: { in: inviteIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-  userIds.length = 0;
+  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+  principalIds.length = 0;
   inviteIds.length = 0;
 });
 
@@ -49,7 +49,7 @@ describe("authOptions.events.createUser (アンバサダー付与)", () => {
 
     await authOptions.events!.createUser!({ user: { id: user.id, email: user.email } } as never);
 
-    const ambassador = await prisma.ambassador.findUnique({ where: { userId: user.id } });
+    const ambassador = await prisma.ambassador.findUnique({ where: { principalId: user.id } });
     expect(ambassador).not.toBeNull();
 
     const usedInvite = await prisma.ambassadorInvite.findUnique({ where: { id: invite.id } });
@@ -64,7 +64,7 @@ describe("authOptions.events.createUser (アンバサダー付与)", () => {
       authOptions.events!.createUser!({ user: { id: user.id, email: user.email } } as never),
     ).resolves.not.toThrow();
 
-    const ambassador = await prisma.ambassador.findUnique({ where: { userId: user.id } });
+    const ambassador = await prisma.ambassador.findUnique({ where: { principalId: user.id } });
     expect(ambassador).toBeNull();
   });
 
@@ -76,7 +76,7 @@ describe("authOptions.events.createUser (アンバサダー付与)", () => {
       authOptions.events!.createUser!({ user: { id: user.id, email: user.email } } as never),
     ).resolves.not.toThrow();
 
-    const ambassador = await prisma.ambassador.findUnique({ where: { userId: user.id } });
+    const ambassador = await prisma.ambassador.findUnique({ where: { principalId: user.id } });
     expect(ambassador).toBeNull();
   });
 });

@@ -4,7 +4,8 @@
 /// 実際の機能可否は毎回サーバー側(requireFeature)が判定する。ここでのfeaturesは
 /// 「ボタンを出すかどうか」の目安に過ぎず、これを信じて権限チェックを省略しないこと。
 class AccountStatus {
-  final String userId;
+  /// sidestage の User.id(認証・課金・所有の主体)。サーバーの `principalId` と同じ値。
+  final String principalId;
 
   /// 実プラン(FREE/PRO/ULTRA)。βの影響を受けず、課金状態をそのまま反映する。
   final String plan;
@@ -34,7 +35,7 @@ class AccountStatus {
   final RecentMergeNotice? recentMerge;
 
   const AccountStatus({
-    required this.userId,
+    required this.principalId,
     required this.plan,
     required this.mobileBetaActive,
     required this.planLabel,
@@ -50,7 +51,7 @@ class AccountStatus {
   /// 未取得中に誤って機能を制限しないよう、最も広く許可される側(FREE=通常利用可)に倒す。
   /// **minimumSupportedVersionだけは"0.0.0"(=常に通過)にし、取得失敗を強制アップデート扱いにしない。**
   static const fallback = AccountStatus(
-    userId: '',
+    principalId: '',
     plan: 'FREE',
     mobileBetaActive: false,
     planLabel: 'FREE',
@@ -65,7 +66,7 @@ class AccountStatus {
 
   /// 通知バナーを閉じた直後、次のサーバー再取得を待たずローカルで既読反映するためだけに使う。
   AccountStatus withoutRecentMerge() => AccountStatus(
-        userId: userId,
+        principalId: principalId,
         plan: plan,
         mobileBetaActive: mobileBetaActive,
         planLabel: planLabel,
@@ -81,7 +82,7 @@ class AccountStatus {
     final rawFeatures = json['features'];
     final plan = json['plan'] as String? ?? 'FREE';
     return AccountStatus(
-      userId: json['userId'] as String? ?? '',
+      principalId: json['principalId'] as String? ?? '',
       plan: plan,
       mobileBetaActive: json['mobileBetaActive'] == true,
       planLabel: json['planLabel'] as String? ?? plan,

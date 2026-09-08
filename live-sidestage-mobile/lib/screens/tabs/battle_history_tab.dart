@@ -278,7 +278,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
 
   static String _opponentLabel(BattleOpponent? opponent) {
     if (opponent == null) return '対戦相手不明';
-    return opponent.tiktokId != null ? '@${opponent.tiktokId}' : '対戦相手不明';
+    return opponent.tiktokHandle != null ? '@${opponent.tiktokHandle}' : '対戦相手不明';
   }
 
   static String _formatStartedAt(DateTime? utc) {
@@ -355,7 +355,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     final allBattles = result?.battles ?? const <BattleSummary>[];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
     final filter = context.watch<BattleFilterStore>();
-    final myTiktokId = context.watch<SessionController>().session?.streamer?.tiktokId;
+    final myTiktokId = context.watch<SessionController>().session?.streamer?.tiktokHandle;
 
     final battles = filter.hideSmall
         ? [
@@ -498,8 +498,8 @@ class _BattleCard extends StatelessWidget {
       base = '@${myTiktokId ?? ''}';
     } else {
       final head = team.participants.isEmpty ? null : team.participants.first;
-      final tiktokId = head?.tiktokId;
-      base = tiktokId != null ? '@$tiktokId' : (head?.nickName ?? '対戦相手不明');
+      final tiktokHandle = head?.tiktokHandle;
+      base = tiktokHandle != null ? '@$tiktokHandle' : (head?.nickname ?? '対戦相手不明');
     }
     return count > 1 ? '$base 他${count - 1}名' : base;
   }
@@ -958,12 +958,14 @@ class _TeamTabContent extends StatefulWidget {
 }
 
 class _TeamTabContentState extends State<_TeamTabContent> {
-  String? _selectedAnchorId;
+  /// 選択中の参加者。**キーは不変な tiktokUid**(表示名やハンドルは可変)。
+  String? _selectedTiktokUid;
 
   @override
   void initState() {
     super.initState();
-    _selectedAnchorId = widget.team.participants.isNotEmpty ? widget.team.participants.first.anchorId : null;
+    _selectedTiktokUid =
+        widget.team.participants.isNotEmpty ? widget.team.participants.first.tiktokUid : null;
   }
 
   @override
@@ -974,7 +976,7 @@ class _TeamTabContentState extends State<_TeamTabContent> {
     BattleTeamParticipantContributors? selected;
     if (team.isIndividual && team.participants.isNotEmpty) {
       selected = team.participants.firstWhere(
-        (p) => p.anchorId == _selectedAnchorId,
+        (p) => p.tiktokUid == _selectedTiktokUid,
         orElse: () => team.participants.first,
       );
     }
@@ -1003,8 +1005,8 @@ class _TeamTabContentState extends State<_TeamTabContent> {
                 for (final p in team.participants)
                   ChoiceChip(
                     label: Text(p.displayName),
-                    selected: p.anchorId == _selectedAnchorId,
-                    onSelected: (_) => setState(() => _selectedAnchorId = p.anchorId),
+                    selected: p.tiktokUid == _selectedTiktokUid,
+                    onSelected: (_) => setState(() => _selectedTiktokUid = p.tiktokUid),
                   ),
               ],
             ),

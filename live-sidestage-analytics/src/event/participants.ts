@@ -44,7 +44,7 @@ export type ExistenceOutcome = "VERIFIED" | "DISABLED";
 
 export type RegisterResult = {
   participantId: string;
-  tiktokId: string;
+  tiktokHandle: string;
   roomId: string;
   /** analytics 側で room を新規作成したか(false = 既存 room の再利用) */
   createdRoom: boolean;
@@ -69,14 +69,14 @@ export type RegisterResult = {
 export async function registerParticipant(
   input: {
     eventId: string;
-    rawTiktokId: string;
+    rawTiktokHandle: string;
     displayName?: string | null;
     teamId?: string | null;
   },
   deps: { checker?: ExistenceChecker; existenceDisabled?: boolean } = {}
 ): Promise<RegisterResult> {
-  const tiktokId = normalizeTiktokId(input.rawTiktokId);
-  if (!tiktokId) {
+  const tiktokHandle = normalizeTiktokId(input.rawTiktokHandle);
+  if (!tiktokHandle) {
     throw new ParticipantError("TikTok ID の形式が正しくない。", 400);
   }
 
@@ -98,13 +98,6 @@ export async function registerParticipant(
     throw new ParticipantError(`参加者は${MAX_PARTICIPANTS}人までです。`, 400);
   }
 
-  const duplicate = await prisma.eventParticipant.findUnique({
-    where: { eventId_tiktokId: { eventId: input.eventId, tiktokId } },
-    select: { id: true },
-  });
-  if (duplicate) {
-    throw new ParticipantError("この TikTok ID はすでに登録されている。", 409);
-  }
 
   if (input.teamId) {
     const team = await prisma.eventTeam.findFirst({
@@ -117,8 +110,11 @@ export async function registerParticipant(
   }
 
   // TikTok への問い合わせは、ローカルで弾ける検証を全部通してから1回だけ行う。
-  // (重複・上限・チーム不正で落ちる登録では外へ出さない)
-  const existence = await resolveExistence(tiktokId, deps);
+  // (上限・チーム不正・形式不正で落ちる登録では外へ出さない)
+  //
+  // **重複チェックはこの後**。判定キーが不変の uid になったので、重複を知るには先に
+  // 実在確認の応答が要る(ハンドルで引くと改名した同一人物を別人として通してしまう)。
+  const existence = await resolveExistence(tiktokHandle, deps);
   if (!existence.ok) {
     throw new ParticipantError(
       existence.reason === "MISSING"
@@ -128,17 +124,35 @@ export async function registerParticipant(
     );
   }
 
+  // 所有の根拠として保存するので、uid が取れない応答は通さない(§6 の登録ゲート)。
+  const registerTiktokUid = existence.tiktokUid;
+  if (!registerTiktokUid) {
+    throw new ParticipantError("TikTok 上の実在確認ができなかった。しばらくしてから再試行すること。", 503);
+  }
+
+  // 同一イベント内の重複チェックは不変の uid で行う(ハンドル改名で別人扱いにしない)。
+  const duplicate = await prisma.eventParticipant.findUnique({
+    where: { eventId_tiktokUid: { eventId: input.eventId, tiktokUid: registerTiktokUid } },
+    select: { id: true },
+  });
+  if (duplicate) {
+    throw new ParticipantError("この TikTok ID はすでに登録されている。", 409);
+  }
+
   // 主催者が未入力なら、実在確認と同じ問い合わせで取れたニックネームを使う
   // (取れない・長すぎる・制御文字を含む場合はさらに TikTok ID へ落とす)。
   const displayName =
-    explicitName.value ?? sanitizeNicknameFallback(existence.nickname) ?? tiktokId;
+    explicitName.value ?? sanitizeNicknameFallback(existence.nickname) ?? tiktokHandle;
 
   const lease = computeLeaseWindow(event.endAt);
 
   // 先に room を確保する。roomId が決まらないと参加者行を作れないため。
   let leased;
   try {
-    leased = await ensureRoomForEvent(tiktokId, lease.granted);
+    leased = await ensureRoomForEvent(
+      { tiktokUid: registerTiktokUid, tiktokHandle, nickname: existence.nickname },
+      lease.granted
+    );
   } catch (err) {
     if (err instanceof RoomMonitorError) {
       throw new ParticipantError(`監視の登録に失敗した: ${err.message}`, err.status);
@@ -151,7 +165,8 @@ export async function registerParticipant(
       const created = await tx.eventParticipant.create({
         data: {
           eventId: input.eventId,
-          tiktokId,
+          tiktokUid: registerTiktokUid,
+          tiktokHandle,
           roomId: leased.roomId,
           displayName,
           teamId: input.teamId ?? null,
@@ -165,7 +180,8 @@ export async function registerParticipant(
         create: {
           eventId: input.eventId,
           roomId: leased.roomId,
-          tiktokId,
+          tiktokUid: registerTiktokUid,
+          tiktokHandle,
           createdBySystem: leased.created,
           monitorUntil: lease.requested,
           releasedAt: null,
@@ -178,7 +194,7 @@ export async function registerParticipant(
 
     return {
       participantId: participant.id,
-      tiktokId,
+      tiktokHandle,
       roomId: leased.roomId,
       createdRoom: leased.created,
       leaseClamped: lease.clamped,
@@ -214,24 +230,26 @@ export async function registerParticipant(
  * 間引き(キャッシュ・同時実行上限・サーキットブレーカ)は `tiktok-existence.ts` が持つ。
  */
 async function resolveExistence(
-  tiktokId: string,
+  tiktokHandle: string,
   deps: { checker?: ExistenceChecker; existenceDisabled?: boolean }
 ): Promise<
-  | { ok: true; outcome: ExistenceOutcome; nickname: string | null }
+  | { ok: true; outcome: ExistenceOutcome; nickname: string | null; tiktokUid: string | null }
   | { ok: false; reason: "MISSING" | "UNVERIFIED" }
 > {
   const disabled = deps.existenceDisabled ?? isExistenceCheckDisabled();
-  if (disabled) return { ok: true, outcome: "DISABLED", nickname: null };
+  if (disabled) return { ok: true, outcome: "DISABLED", nickname: null, tiktokUid: null };
 
   const checker = deps.checker ?? existenceChecker;
   try {
-    const result = await checker.check(tiktokId);
+    // 参加者登録は tiktokUid を同一性キーとして永続化するので positive キャッシュを読まない
+    // (ハンドル再利用による第三者取り違えを防ぐ)。
+    const result = await checker.check(tiktokHandle, { skipPositiveCache: true });
     if (result.verdict === "EXISTS") {
-      return { ok: true, outcome: "VERIFIED", nickname: result.nickname };
+      return { ok: true, outcome: "VERIFIED", nickname: result.nickname, tiktokUid: result.tiktokUid };
     }
     return { ok: false, reason: result.verdict === "MISSING" ? "MISSING" : "UNVERIFIED" };
   } catch (err) {
-    console.error(`[participants] @${tiktokId} の実在確認に失敗:`, err);
+    console.error(`[participants] @${tiktokHandle} の実在確認に失敗:`, err);
     return { ok: false, reason: "UNVERIFIED" };
   }
 }
@@ -256,11 +274,11 @@ async function releaseIfNoLeaseRemains(roomId: string): Promise<void> {
 
 export type UpdateParticipantResult = {
   displayName: string;
-  tiktokId: string;
+  tiktokHandle: string;
   roomId: string;
-  /** tiktokId を実際に変更したか(未指定、または正規化後に現在値と同じなら false = no-op) */
-  tiktokIdChanged: boolean;
-  /** 以下は tiktokIdChanged === true のときだけ意味を持つ(RegisterResult と同じ意味) */
+  /** tiktokHandle を実際に変更したか(未指定、または正規化後に現在値と同じなら false = no-op) */
+  tiktokHandleChanged: boolean;
+  /** 以下は tiktokHandleChanged === true のときだけ意味を持つ(RegisterResult と同じ意味) */
   createdRoom?: boolean;
   leaseClamped?: boolean;
   existence?: ExistenceOutcome;
@@ -269,12 +287,12 @@ export type UpdateParticipantResult = {
 /**
  * 参加者の表示名・所属チーム・TikTok ID(登録ミスの訂正)を更新する。
  *
- * `tiktokId` を変えない場合は `room` も `lease` も動かない。表示名は `EventParticipant` に
+ * `tiktokHandle` を変えない場合は `room` も `lease` も動かない。表示名は `EventParticipant` に
  * しか無く、順位表・貢献・トーナメント表はすべて読み取り時に join して解決しているので、
  * その場合は再集計(`reopenAggregation`)も要らない。
  *
- * **`tiktokId` を変える場合は話が別。** トーナメント表の枠(`EventMatchSideParticipant`)は
- * `EventParticipant.id`(不変PK)を参照しているだけなので、この行の `tiktokId`/`roomId` を
+ * **`tiktokHandle` を変える場合は話が別。** トーナメント表の枠(`EventMatchSideParticipant`)は
+ * `EventParticipant.id`(不変PK)を参照しているだけなので、この行の `tiktokHandle`/`roomId` を
  * 書き換えれば表の位置は自動的に維持される(削除→再登録と違い、枠を作り直さずに済む)。
  * 一方で集計母集団(roomId)が変わる操作でもあるので、`registerParticipant` と同じ
  * 実在確認・room確保・lease台帳更新に加え、`reopenAggregation` を同じトランザクションで
@@ -294,30 +312,31 @@ export async function updateParticipant(
 ): Promise<UpdateParticipantResult> {
   const participant = await prisma.eventParticipant.findFirst({
     where: { id: input.participantId, eventId: input.eventId },
-    select: { id: true, tiktokId: true, displayName: true, roomId: true },
+    select: { id: true, tiktokHandle: true, displayName: true, roomId: true },
   });
   if (!participant) {
     throw new ParticipantError("参加者が見つからない。", 404);
   }
 
-  // tiktokId の正規化(ローカル、副作用なし)。訂正後の値を表示名フォールバックにも使う
+  // tiktokHandle の正規化(ローカル、副作用なし)。訂正後の値を表示名フォールバックにも使う
   // (打ち間違えた旧IDへ戻さないため)。
-  let newTiktokId: string | undefined;
+  let newTiktokHandle: string | undefined;
   let tiktokChanged = false;
-  if (input.patch.tiktokId !== undefined) {
-    const normalized = normalizeTiktokId(input.patch.tiktokId);
+  if (input.patch.tiktokHandle !== undefined) {
+    const normalized = normalizeTiktokId(input.patch.tiktokHandle);
     if (!normalized) {
       throw new ParticipantError("TikTok ID の形式が正しくない。", 400);
     }
-    newTiktokId = normalized;
-    tiktokChanged = normalized !== participant.tiktokId;
+    newTiktokHandle = normalized;
+    tiktokChanged = normalized !== participant.tiktokHandle;
   }
-  const effectiveTiktokId = tiktokChanged ? newTiktokId! : participant.tiktokId;
+  const effectiveTiktokHandle = tiktokChanged ? newTiktokHandle! : participant.tiktokHandle;
 
   const data: {
     displayName?: string;
     teamId?: string | null;
-    tiktokId?: string;
+    tiktokUid?: string;
+    tiktokHandle?: string;
     roomId?: string;
     avatarOffsetX?: number | null;
     avatarOffsetY?: number | null;
@@ -325,7 +344,7 @@ export async function updateParticipant(
   } = {};
 
   if (input.patch.displayName !== undefined) {
-    const name = resolveParticipantDisplayName(input.patch.displayName, effectiveTiktokId);
+    const name = resolveParticipantDisplayName(input.patch.displayName, effectiveTiktokHandle);
     if (!name.ok) {
       throw new ParticipantError(name.errors[0], 400);
     }
@@ -365,27 +384,19 @@ export async function updateParticipant(
   ) {
     return {
       displayName: participant.displayName,
-      tiktokId: participant.tiktokId,
+      tiktokHandle: participant.tiktokHandle,
       roomId: participant.roomId,
-      tiktokIdChanged: false,
+      tiktokHandleChanged: false,
     };
   }
 
   let leased: Awaited<ReturnType<typeof ensureRoomForEvent>> | undefined;
   let lease: ReturnType<typeof computeLeaseWindow> | undefined;
   let existenceOutcome: ExistenceOutcome | undefined;
+  let newTiktokUid: string | null = null;
 
   if (tiktokChanged) {
-    // 同一イベント内の重複チェック(register と同じ)。
-    const duplicate = await prisma.eventParticipant.findUnique({
-      where: { eventId_tiktokId: { eventId: input.eventId, tiktokId: newTiktokId! } },
-      select: { id: true },
-    });
-    if (duplicate) {
-      throw new ParticipantError("この TikTok ID はすでに登録されている。", 409);
-    }
-
-    const existence = await resolveExistence(newTiktokId!, deps);
+    const existence = await resolveExistence(newTiktokHandle!, deps);
     if (!existence.ok) {
       throw new ParticipantError(
         existence.reason === "MISSING"
@@ -395,6 +406,21 @@ export async function updateParticipant(
       );
     }
     existenceOutcome = existence.outcome;
+
+    // 所有の根拠として保存するので、uid が取れない応答は通さない(§6 の登録ゲート)。
+    newTiktokUid = existence.tiktokUid;
+    if (!newTiktokUid) {
+      throw new ParticipantError("TikTok 上の実在確認ができなかった。しばらくしてから再試行すること。", 503);
+    }
+
+    // 同一イベント内の重複チェックは不変の uid で行う(register と同じ)。
+    const duplicate = await prisma.eventParticipant.findUnique({
+      where: { eventId_tiktokUid: { eventId: input.eventId, tiktokUid: newTiktokUid } },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new ParticipantError("この TikTok ID はすでに登録されている。", 409);
+    }
 
     const event = await prisma.event.findUnique({
       where: { id: input.eventId },
@@ -407,7 +433,10 @@ export async function updateParticipant(
 
     // 先に新しい room を確保する(register と同じ理由)。
     try {
-      leased = await ensureRoomForEvent(newTiktokId!, lease.granted);
+      leased = await ensureRoomForEvent(
+        { tiktokUid: newTiktokUid, tiktokHandle: newTiktokHandle!, nickname: existence.nickname },
+        lease.granted
+      );
     } catch (err) {
       if (err instanceof RoomMonitorError) {
         throw new ParticipantError(`監視の登録に失敗した: ${err.message}`, err.status);
@@ -415,7 +444,8 @@ export async function updateParticipant(
       throw err;
     }
 
-    data.tiktokId = newTiktokId!;
+    data.tiktokUid = newTiktokUid;
+    data.tiktokHandle = newTiktokHandle!;
     data.roomId = leased.roomId;
   }
 
@@ -433,7 +463,7 @@ export async function updateParticipant(
             id: input.participantId,
             eventId: input.eventId,
             // 楽観ガード: 読み取り時点の roomId と一致する場合だけ書き込む。
-            // 同一参加者への並行 tiktokId 訂正が、互いの確保した新 room の lease を
+            // 同一参加者への並行 tiktokHandle 訂正が、互いの確保した新 room の lease を
             // 孤児化させない(後勝ち側は count===0 で 404 になり、確保した room を補償で戻す)。
             roomId: participant.roomId,
           },
@@ -450,7 +480,8 @@ export async function updateParticipant(
             create: {
               eventId: input.eventId,
               roomId: leased!.roomId,
-              tiktokId: newTiktokId!,
+              tiktokUid: newTiktokUid!,
+              tiktokHandle: newTiktokHandle!,
               createdBySystem: leased!.created,
               monitorUntil: lease!.requested,
               releasedAt: null,
@@ -490,9 +521,9 @@ export async function updateParticipant(
 
   return {
     displayName: data.displayName ?? participant.displayName,
-    tiktokId: tiktokChanged ? newTiktokId! : participant.tiktokId,
+    tiktokHandle: tiktokChanged ? newTiktokHandle! : participant.tiktokHandle,
     roomId: tiktokChanged ? leased!.roomId : participant.roomId,
-    tiktokIdChanged: tiktokChanged,
+    tiktokHandleChanged: tiktokChanged,
     ...(tiktokChanged
       ? {
           createdRoom: leased!.created,
@@ -559,7 +590,7 @@ async function releaseIfUnused(eventId: string, roomId: string): Promise<void> {
 export async function refreshEventLeases(eventId: string, endAt: Date): Promise<void> {
   const leases = await prisma.eventRoomLease.findMany({
     where: { eventId, releasedAt: null },
-    select: { id: true, tiktokId: true },
+    select: { id: true, tiktokUid: true, tiktokHandle: true },
   });
   if (leases.length === 0) return;
 
@@ -567,7 +598,10 @@ export async function refreshEventLeases(eventId: string, endAt: Date): Promise<
 
   for (const lease of leases) {
     try {
-      await ensureRoomForEvent(lease.tiktokId, window.granted);
+      await ensureRoomForEvent(
+        { tiktokUid: lease.tiktokUid, tiktokHandle: lease.tiktokHandle, nickname: null },
+        window.granted
+      );
       await prisma.eventRoomLease.update({
         where: { id: lease.id },
         data: { monitorUntil: window.requested },
@@ -575,7 +609,7 @@ export async function refreshEventLeases(eventId: string, endAt: Date): Promise<
     } catch (err) {
       // 期限の取り直しに失敗しても、イベントの更新自体は成立させる。
       // 切り詰めが起きているならワーカーの renewClampedLeases が次の周回で拾う。
-      console.error(`[participants] @${lease.tiktokId} の監視期限の更新に失敗:`, err);
+      console.error(`[participants] @${lease.tiktokHandle} の監視期限の更新に失敗:`, err);
     }
   }
 }
@@ -584,20 +618,20 @@ export async function refreshEventLeases(eventId: string, endAt: Date): Promise<
  * いまイベント機能が監視を要求しているアカウントのハンドル一覧。
  *
  * 絞り込みは `renewClampedLeases()` と揃える(解放前・期限内・非 ARCHIVED)。
- * `TiktokRoom.hostUserId` の補完対象を決めるのに使う(`src/lib/tiktok-host-id.ts`)。
+ * `TiktokRoom.hostTiktokUid` の補完対象を決めるのに使う(`src/lib/tiktok-host-id.ts`)。
  * lease は開催前から立っているので、バトル本番までに埋まる。
  */
-export async function activeLeaseTiktokIds(now: Date = new Date()): Promise<string[]> {
+export async function activeLeaseTiktokHandles(now: Date = new Date()): Promise<string[]> {
   const leases = await prisma.eventRoomLease.findMany({
     where: {
       releasedAt: null,
       monitorUntil: { gt: now },
       event: { status: { notIn: ["ARCHIVED"] } },
     },
-    select: { tiktokId: true },
-    distinct: ["tiktokId"],
+    select: { tiktokHandle: true },
+    distinct: ["tiktokHandle"],
   });
-  return leases.map((lease) => lease.tiktokId);
+  return leases.map((lease) => lease.tiktokHandle);
 }
 
 /**
@@ -620,7 +654,7 @@ export async function renewClampedLeases(now: Date = new Date()): Promise<{
       // 保管済みのイベントは監視しない。
       event: { status: { notIn: ["ARCHIVED"] } },
     },
-    select: { id: true, tiktokId: true, event: { select: { endAt: true } } },
+    select: { id: true, tiktokUid: true, tiktokHandle: true, event: { select: { endAt: true } } },
   });
 
   let renewed = 0;
@@ -631,11 +665,15 @@ export async function renewClampedLeases(now: Date = new Date()): Promise<{
     if (!window.clamped) continue;
 
     try {
-      await ensureRoomForEvent(lease.tiktokId, window.granted, now);
+      await ensureRoomForEvent(
+        { tiktokUid: lease.tiktokUid, tiktokHandle: lease.tiktokHandle, nickname: null },
+        window.granted,
+        now
+      );
       renewed++;
     } catch (err) {
       failed++;
-      console.error(`[participants] @${lease.tiktokId} の監視期限の延長に失敗:`, err);
+      console.error(`[participants] @${lease.tiktokHandle} の監視期限の延長に失敗:`, err);
     }
   }
 

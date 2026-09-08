@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
+import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
 import {
   dayKeyOf,
@@ -53,8 +54,10 @@ export function getDateRange(
 }
 
 export type GiftAnalyticsUser = {
-  uniqueId: string;
-  nickname: string;
+  tiktokUid: string;
+  /** TikTokUser 行が無い / ハンドル未観測なら null。 */
+  tiktokHandle: string | null;
+  nickname: string | null;
   profileImageUrl: string | null;
   giftCount: number;
   totalDiamonds: number;
@@ -65,18 +68,16 @@ export type GiftAnalyticsUser = {
 export type GiftAggregateWhere = {
   roomId: string;
   id?: { notIn: string[] };
-  uniqueId?: { in: string[] };
+  tiktokUid?: { in: string[] };
   dayKey?: { gte: string; lte: string };
   receivedAt?: { gte: Date; lte: Date };
 };
 
-/** 集計の中間表現。Gift 側とロールアップ側をこの形へ揃えてから uniqueId でマージする。 */
+/** 集計の中間表現。Gift 側とロールアップ側をこの形へ揃えてから tiktokUid でマージする。 */
 type Accumulated = {
   giftCount: number;
   totalDiamonds: number;
   lastGiftAt: Date | null;
-  nickname: string | null;
-  profileImageUrl: string | null;
 };
 
 function dayKeyLowerBound(where: GiftAggregateWhere): string | null {
@@ -133,31 +134,18 @@ export function narrowToRawWindow(
 
 async function accumulateFromGifts(where: GiftAggregateWhere): Promise<Map<string, Accumulated>> {
   const grouped = await prisma.gift.groupBy({
-    by: ["uniqueId"],
+    by: ["tiktokUid"],
     where,
     _sum: { repeatCount: true, totalDiamonds: true },
     _max: { receivedAt: true },
   });
 
   const result = new Map<string, Accumulated>();
-  if (grouped.length === 0) return result;
-
-  const profiles = await prisma.gift.findMany({
-    where: { ...where, uniqueId: { in: grouped.map((g) => g.uniqueId) } },
-    orderBy: { receivedAt: "desc" },
-    distinct: ["uniqueId"],
-    select: { uniqueId: true, nickname: true, profileImageUrl: true },
-  });
-  const profileMap = new Map(profiles.map((p) => [p.uniqueId, p]));
-
   for (const g of grouped) {
-    const profile = profileMap.get(g.uniqueId);
-    result.set(g.uniqueId, {
-      giftCount: g._sum.repeatCount ?? 0,
-      totalDiamonds: g._sum.totalDiamonds ?? 0,
-      lastGiftAt: g._max.receivedAt ?? null,
-      nickname: profile?.nickname ?? null,
-      profileImageUrl: profile?.profileImageUrl ?? null,
+    result.set(g.tiktokUid, {
+      giftCount: g._sum?.repeatCount ?? 0,
+      totalDiamonds: g._sum?.totalDiamonds ?? 0,
+      lastGiftAt: g._max?.receivedAt ?? null,
     });
   }
   return result;
@@ -169,7 +157,7 @@ async function accumulateFromRollup(
 ): Promise<Map<string, Accumulated>> {
   const rollupWhere = {
     roomId: where.roomId,
-    ...(where.uniqueId ? { uniqueId: where.uniqueId } : {}),
+    ...(where.tiktokUid ? { tiktokUid: where.tiktokUid } : {}),
     dayKey: {
       ...(plan.rollupLower !== null ? { gte: plan.rollupLower } : {}),
       lte: plan.rollupUpper ?? shiftDayKey(plan.cutoffDayKey, -1),
@@ -177,57 +165,47 @@ async function accumulateFromRollup(
   };
 
   const grouped = await prisma.giftDailyListenerStat.groupBy({
-    by: ["uniqueId"],
+    by: ["tiktokUid"],
     where: rollupWhere,
     _sum: { giftCount: true, totalDiamonds: true },
     _max: { lastReceivedAt: true },
   });
 
   const result = new Map<string, Accumulated>();
-  if (grouped.length === 0) return result;
-
-  const profiles = await prisma.giftDailyListenerStat.findMany({
-    where: { ...rollupWhere, uniqueId: { in: grouped.map((g) => g.uniqueId) } },
-    orderBy: { lastReceivedAt: "desc" },
-    distinct: ["uniqueId"],
-    select: { uniqueId: true, nickname: true, profileImageUrl: true },
-  });
-  const profileMap = new Map(profiles.map((p) => [p.uniqueId, p]));
-
   for (const g of grouped) {
-    const profile = profileMap.get(g.uniqueId);
-    result.set(g.uniqueId, {
-      giftCount: g._sum.giftCount ?? 0,
-      totalDiamonds: g._sum.totalDiamonds ?? 0,
-      lastGiftAt: g._max.lastReceivedAt ?? null,
-      nickname: profile?.nickname ?? null,
-      profileImageUrl: profile?.profileImageUrl ?? null,
+    result.set(g.tiktokUid, {
+      giftCount: g._sum?.giftCount ?? 0,
+      totalDiamonds: g._sum?.totalDiamonds ?? 0,
+      lastGiftAt: g._max?.lastReceivedAt ?? null,
     });
   }
   return result;
 }
 
-/** 古い側(ロールアップ)へ新しい側(Gift)を重ねる。表示名は新しい側を優先する。 */
+/**
+ * 古い側(ロールアップ)へ新しい側(Gift)を重ねる。
+ *
+ * **突き合わせキーは tiktokUid**。ハンドルで突き合わせていた頃は、改名を跨いだ同一人物が
+ * 明細側とロールアップ側で別人として二重計上されていた。
+ */
 function mergeAccumulated(
   older: Map<string, Accumulated>,
   newer: Map<string, Accumulated>
 ): Map<string, Accumulated> {
   const merged = new Map(older);
-  for (const [uniqueId, add] of newer) {
-    const cur = merged.get(uniqueId);
+  for (const [tiktokUid, add] of newer) {
+    const cur = merged.get(tiktokUid);
     if (!cur) {
-      merged.set(uniqueId, { ...add });
+      merged.set(tiktokUid, { ...add });
       continue;
     }
-    merged.set(uniqueId, {
+    merged.set(tiktokUid, {
       giftCount: cur.giftCount + add.giftCount,
       totalDiamonds: cur.totalDiamonds + add.totalDiamonds,
       lastGiftAt:
         add.lastGiftAt && (!cur.lastGiftAt || add.lastGiftAt > cur.lastGiftAt)
           ? add.lastGiftAt
           : cur.lastGiftAt,
-      nickname: add.nickname ?? cur.nickname,
-      profileImageUrl: add.profileImageUrl ?? cur.profileImageUrl,
     });
   }
   return merged;
@@ -275,19 +253,22 @@ export async function aggregateGiftUsers(
 
   if (accumulated.size === 0) return { users: [], total: { giftCount: 0, totalDiamonds: 0 } };
 
-  const uniqueIds = [...accumulated.keys()];
-  // TikTokの署名付きprofileImageUrlは数十時間で失効する。自前ストレージにキャッシュ済みなら
-  // 恒久URLへ差し替える(未ヒットは従来どおり生のTikTok URLへフォールバック)。
-  const cachedAvatarUrls = resolveAvatars
-    ? await resolveAvatarUrls("gift_sender", uniqueIds)
-    : new Map<string, string>();
+  const tiktokUids = [...accumulated.keys()];
+  // 表示名は生観測行ではなく TikTokUser から読み取り時に解決する(改名前のハンドルを焼き付けない)。
+  // アバターも自前ストレージの署名付きURLだけを使う(TikTokの生URLは数十時間で失効するため保存しない)。
+  const [display, cachedAvatarUrls] = await Promise.all([
+    resolveTikTokUserDisplay(tiktokUids),
+    resolveAvatars ? resolveAvatarUrls(tiktokUids) : Promise.resolve(new Map<string, string>()),
+  ]);
 
-  const users = uniqueIds.map((uniqueId) => {
-    const acc = accumulated.get(uniqueId)!;
+  const users = tiktokUids.map((tiktokUid) => {
+    const acc = accumulated.get(tiktokUid)!;
+    const d = display.get(tiktokUid);
     return {
-      uniqueId,
-      nickname: acc.nickname || uniqueId,
-      profileImageUrl: cachedAvatarUrls.get(uniqueId) ?? acc.profileImageUrl ?? null,
+      tiktokUid,
+      tiktokHandle: d?.tiktokHandle ?? null,
+      nickname: d?.nickname ?? null,
+      profileImageUrl: cachedAvatarUrls.get(tiktokUid) ?? null,
       giftCount: acc.giftCount,
       totalDiamonds: acc.totalDiamonds,
       lastGiftAt: (acc.lastGiftAt ?? new Date()).toISOString(),
@@ -302,9 +283,58 @@ export async function aggregateGiftUsers(
   return { users, total };
 }
 
+type MatchedUid = { tiktokUid: string };
+
+/**
+ * 明細(gifts)側の名前一致。room + 期間で先に絞ってから tiktok_users へ JOIN する。
+ * `@@index([tiktokHandle])` は b-tree なので `ILIKE '%...%'` には効かない — 性能はこの先絞りで担保する。
+ */
+async function matchRawGiftSenders(where: GiftAggregateWhere, like: string): Promise<MatchedUid[]> {
+  const conditions: Prisma.Sql[] = [Prisma.sql`g."roomId" = ${where.roomId}`];
+  if (where.dayKey) {
+    conditions.push(Prisma.sql`g."dayKey" >= ${where.dayKey.gte} AND g."dayKey" <= ${where.dayKey.lte}`);
+  }
+  if (where.receivedAt) {
+    conditions.push(
+      Prisma.sql`g."receivedAt" >= ${where.receivedAt.gte} AND g."receivedAt" <= ${where.receivedAt.lte}`
+    );
+  }
+  if (where.id) {
+    conditions.push(Prisma.sql`g."id" <> ALL(${where.id.notIn})`);
+  }
+  return prisma.$queryRaw<MatchedUid[]>`
+    SELECT DISTINCT g."tiktokUid"
+      FROM public.gifts g
+      JOIN public.tiktok_users u ON u."tiktokUid" = g."tiktokUid"
+     WHERE ${Prisma.join(conditions, " AND ")}
+       AND (u."tiktokHandle" ILIKE ${like} OR u.nickname ILIKE ${like})
+  `;
+}
+
+/** ロールアップ(gift_daily_listener_stats)側の名前一致。dayKey 範囲で先に絞る。 */
+async function matchRollupSenders(
+  roomId: string,
+  lower: string | null,
+  upper: string,
+  like: string
+): Promise<MatchedUid[]> {
+  const conditions: Prisma.Sql[] = [
+    Prisma.sql`s."roomId" = ${roomId}`,
+    Prisma.sql`s."dayKey" <= ${upper}`,
+  ];
+  if (lower !== null) conditions.push(Prisma.sql`s."dayKey" >= ${lower}`);
+  return prisma.$queryRaw<MatchedUid[]>`
+    SELECT DISTINCT s."tiktokUid"
+      FROM public.gift_daily_listener_stats s
+      JOIN public.tiktok_users u ON u."tiktokUid" = s."tiktokUid"
+     WHERE ${Prisma.join(conditions, " AND ")}
+       AND (u."tiktokHandle" ILIKE ${like} OR u.nickname ILIKE ${like})
+  `;
+}
+
 // roomId: 集計対象のTikTokアカウント(TiktokRoom)。データは同じroomIdを持つ全登録者で共有される。
-// listenerQuery: リスナー名(uniqueId/nicknameの部分一致)による絞り込み。指定時は「一致する
-// uniqueIdの集合」を先に求め、その集合に対して(listenerQuery条件を外した)通常の集計を行う
+// listenerQuery: リスナー名(tiktokHandle/nicknameの部分一致)による絞り込み。指定時は「一致する
+// tiktokHandleの集合」を先に求め、その集合に対して(listenerQuery条件を外した)通常の集計を行う
 // 2段階クエリにする。表示名条件をgroupByのwhereへ直接混ぜると、対象ユーザーが期間中に
 // TikTok側の表示名を変えていた場合、一致した行だけが集計され合計コイン数が過少になるため。
 export async function queryGifts(
@@ -320,13 +350,13 @@ export async function queryGifts(
 
   let fullWhere: GiftAggregateWhere = baseWhere;
   if (listenerQuery) {
-    const pattern = escapeLikePattern(listenerQuery);
-    const nameFilter = {
-      OR: [
-        { uniqueId: { contains: pattern, mode: Prisma.QueryMode.insensitive } },
-        { nickname: { contains: pattern, mode: Prisma.QueryMode.insensitive } },
-      ],
-    };
+    // 表示名は TikTokUser 側にしか無いので JOIN する。**Prisma の nested filter は使えない**
+    // (Gift → TikTokUser のリレーションを張っていないため)。
+    //
+    // **TikTokUser を先に部分一致検索して in で絞る形にはしない。** TikTokUser は room スコープを
+    // 持たないグローバル表なので、短い検索語では全プラットフォームのユーザーがマッチし、
+    // バインドパラメータ上限(32,767)に触れる。room + 期間で先に絞ってから JOIN するのが要点。
+    const like = `%${escapeLikePattern(listenerQuery)}%`;
 
     const plan = await planSplit(baseWhere, new Date());
     const rawWhere = plan.kind === "raw" ? baseWhere : narrowToRawWindow(baseWhere, plan.cutoffDayKey);
@@ -334,32 +364,20 @@ export async function queryGifts(
     // 80日を超える範囲では、Giftが既に消えているリスナーを名前で引けない。
     // 同じ条件をロールアップ側(GiftDailyListenerStat)にも当てて union する。
     const [rawMatches, rollupMatches] = await Promise.all([
-      rawWhere
-        ? prisma.gift.findMany({
-            where: { ...rawWhere, ...nameFilter },
-            select: { uniqueId: true },
-            distinct: ["uniqueId"],
-          })
-        : Promise.resolve([] as { uniqueId: string }[]),
+      rawWhere ? matchRawGiftSenders(rawWhere, like) : Promise.resolve([] as MatchedUid[]),
       plan.kind === "split"
-        ? prisma.giftDailyListenerStat.findMany({
-            where: {
-              roomId,
-              dayKey: {
-                ...(plan.rollupLower !== null ? { gte: plan.rollupLower } : {}),
-                lte: plan.rollupUpper ?? plan.cutoffDayKey,
-              },
-              ...nameFilter,
-            },
-            select: { uniqueId: true },
-            distinct: ["uniqueId"],
-          })
-        : Promise.resolve([] as { uniqueId: string }[]),
+        ? matchRollupSenders(
+            roomId,
+            plan.rollupLower,
+            plan.rollupUpper ?? plan.cutoffDayKey,
+            like
+          )
+        : Promise.resolve([] as MatchedUid[]),
     ]);
 
-    const matched = [...new Set([...rawMatches, ...rollupMatches].map((u) => u.uniqueId))];
+    const matched = [...new Set([...rawMatches, ...rollupMatches].map((u) => u.tiktokUid))];
     if (matched.length === 0) return { users: [], total: { giftCount: 0, totalDiamonds: 0 } };
-    fullWhere = { ...baseWhere, uniqueId: { in: matched } };
+    fullWhere = { ...baseWhere, tiktokUid: { in: matched } };
   }
 
   return aggregateGiftUsers(fullWhere);

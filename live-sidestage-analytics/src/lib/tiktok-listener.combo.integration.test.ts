@@ -9,6 +9,7 @@
 // 既存インスタンスを返すので、同一プロセスで2つのlistenerを並べることはできない。
 import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
+import { makeTiktokUid } from "./__fixtures__/gift";
 import { saveComboGift, resolveGroupId, startListener, stopListener } from "./tiktok-listener";
 
 const { MockConnection } = vi.hoisted(() => {
@@ -17,7 +18,7 @@ const { MockConnection } = vi.hoisted(() => {
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     clientParams: Record<string, string> = {};
     constructor(
-      public uniqueId: string,
+      public tiktokHandle: string,
       public options: unknown
     ) {
       MockConnection.instances.push(this);
@@ -39,14 +40,14 @@ const { MockConnection } = vi.hoisted(() => {
 });
 
 vi.mock("TLC-sidestage", () => ({
-  WebcastPushConnection: vi.fn().mockImplementation(function (uniqueId: string, options: unknown) {
-    return new MockConnection(uniqueId, options);
+  WebcastPushConnection: vi.fn().mockImplementation(function (tiktokHandle: string, options: unknown) {
+    return new MockConnection(tiktokHandle, options);
   }),
 }));
 
 vi.mock("./tiktok-existence", () => ({
   existenceChecker: {
-    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, userId: null }),
+    check: vi.fn().mockResolvedValue({ verdict: "UNVERIFIED", nickname: null, tiktokUid: null }),
   },
 }));
 
@@ -71,8 +72,10 @@ async function createRoom() {
   // テストの getMyRooms() がこの部屋をグローバルに claim して workerId /
   // listenerStatus を書きに来る。combo の delta 検証には監視は要らない
   // (このファイルは startListener() を明示的に呼ぶので接続自体はできる)。
+  const handle = `itest_combo_${suffix()}`;
   return prisma.tiktokRoom.create({
-    data: { tiktokId: `itest_combo_${suffix()}`, monitoringSuspended: true },
+    // hostTiktokUid は @unique。ハンドルが毎回一意なので uid も一意になる。
+    data: { hostTiktokUid: makeTiktokUid(handle), tiktokHandle: handle, monitoringSuspended: true },
   });
 }
 
@@ -86,7 +89,9 @@ function comboTick(
   repeatCount: number,
   overrides: Record<string, unknown> = {}
 ): Record<string, unknown> {
+  // TLC の生 payload。キー名は TikTok 側の仕様(userId / uniqueId)。
   return {
+    userId: makeTiktokUid("user_combo"),
     uniqueId: "user_combo",
     nickname: "コンボ",
     giftType: 1,
@@ -128,7 +133,7 @@ async function withListener(
 ) {
   const room = await createRoom();
   try {
-    await startListener(room.id, room.tiktokId, []);
+    await startListener(room.id, room.tiktokHandle, []);
     const conn = MockConnection.instances[MockConnection.instances.length - 1];
     expect(conn).toBeDefined();
     await fn({ roomId: room.id, conn });
@@ -402,7 +407,7 @@ describe("giftハンドラ経由のcombo", () => {
   it("groupId='0'のcomboはフォールバック経路へ落ち、合計は最終累計のまま", async () => {
     await withListener(async ({ roomId, conn }) => {
       const createTime = Date.now();
-      // protobufの既定値。resolveGroupId()がnullに倒すので `uniqueId:giftId` キーで追う。
+      // protobufの既定値。resolveGroupId()がnullに倒すので `tiktokHandle:giftId` キーで追う。
       for (const [r, end] of [[1, false], [3, false], [5, true]] as const) {
         conn.fire("gift", { ...comboTick("0", r, { repeatEnd: end }), createTime });
       }

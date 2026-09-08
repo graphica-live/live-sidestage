@@ -84,7 +84,7 @@ export type CatalogLocale = "default" | "ja";
 
 /** カタログ取得に使う部屋の情報。使い捨て接続のconstructorへそのまま渡す。 */
 export interface GiftCatalogSource {
-  tiktokId: string;
+  tiktokHandle: string;
   deviceId: string;
   /** 段階的廃止対象。`GIFT_CATALOG_PROXY_URL`(日本プロキシ)未設定時のみのフォールバックとして使う。 */
   proxyUrl: string | null;
@@ -272,7 +272,7 @@ export interface ProxyAttemptLogEntry {
   at: string;
   locale: CatalogLocale;
   /** どの部屋を取得元にしたか。プロキシURL自体は記録しない。 */
-  tiktokId: string;
+  tiktokHandle: string;
   /** `GIFT_CATALOG_PROXY_URL` が設定されていたか。 */
   usedJpProxy: boolean;
   outcome: "success" | "failure";
@@ -340,7 +340,7 @@ export async function fetchGiftsFromTikTok(
   const proxyUrl = jpProxyUrl ?? source.proxyUrl;
 
   // WebSocketは張らない。HTTPで `gift/list/` を1回叩くためだけの使い捨て接続。
-  const conn = new WebcastPushConnection(`@${source.tiktokId}`, {
+  const conn = new WebcastPushConnection(`@${source.tiktokHandle}`, {
     processInitialData: false,
     fetchRoomInfoOnConnect: false,
     enableExtendedGiftInfo: false,
@@ -371,7 +371,7 @@ export async function fetchGiftsFromTikTok(
     await recordProxyAttempt({
       at: new Date().toISOString(),
       locale,
-      tiktokId: source.tiktokId,
+      tiktokHandle: source.tiktokHandle,
       usedJpProxy: jpProxyUrl !== null,
       outcome: "success",
       giftCount,
@@ -381,7 +381,7 @@ export async function fetchGiftsFromTikTok(
     await recordProxyAttempt({
       at: new Date().toISOString(),
       locale,
-      tiktokId: source.tiktokId,
+      tiktokHandle: source.tiktokHandle,
       usedJpProxy: jpProxyUrl !== null,
       outcome: "failure",
       error: describeError(err),

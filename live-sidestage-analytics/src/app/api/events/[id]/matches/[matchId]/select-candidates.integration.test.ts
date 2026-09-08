@@ -3,6 +3,7 @@
 // 勝利条件(1本勝負/2本先取)対応で追加した selectCandidates / resetCandidates の検証。
 // 候補過多(CANDIDATES_EXCEEDED)状態からの選択確定・選び直しのフローを一通り確認する。
 import { createHash } from "crypto";
+import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { describe, it, expect, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -11,10 +12,10 @@ import {
   buildSelectionFingerprintInput,
 } from "@/event/candidates-fingerprint";
 
-const auth = vi.hoisted(() => ({ userId: null as string | null }));
+const auth = vi.hoisted(() => ({ principalId: null as string | null }));
 
 vi.mock("next-auth", () => ({
-  getServerSession: async () => (auth.userId ? { user: { id: auth.userId } } : null),
+  getServerSession: async () => (auth.principalId ? { user: { id: auth.principalId } } : null),
 }));
 
 // next-auth をモックしてから読む(authz.ts が import 時に束縛するため)。
@@ -54,26 +55,30 @@ const uniqueSuffix = () => `${Date.now()}_${seq++}`;
 const createdEventIds: string[] = [];
 const createdRoomIds: string[] = [];
 
-async function createRoom(tiktokId: string): Promise<string> {
+async function createRoom(tiktokHandle: string): Promise<string> {
   // monitoringSuspended: true は監視対象からの隔離。Streamer 0人の部屋も watchedRoomFilter() の
   // 監視対象になったため、そのままだと並行して走る listener 系テストの getMyRooms() が
   // グローバルに claim して workerId / listenerStatus を書きに来る。集計の検証に監視は要らない。
   const rows = await prisma.$queryRaw<{ id: string }[]>`
-    INSERT INTO public."TiktokRoom" (id, "tiktokId", "createdAt", "monitoringSuspended")
-    VALUES (gen_random_uuid()::text, ${tiktokId}, NOW(), true)
+    INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
+    VALUES (gen_random_uuid()::text, ${tiktokHandle}, ${makeTiktokUid(tiktokHandle)}, NOW(), true)
     RETURNING id
   `;
   createdRoomIds.push(rows[0].id);
   return rows[0].id;
 }
 
+// gifts は tiktokUid しか持たない。このファイルは表示名を検証しないので、
+// TikTokUser 行は作らず uid だけを固定で使う。
+const LISTENER_TIKTOK_UID = makeTiktokUid(`${PREFIX}_listener1`);
+
 async function insertGift(params: { roomId: string; diamonds: number; receivedAt: Date }) {
   await prisma.$executeRaw`
     INSERT INTO public.gifts
-      (id, "roomId", "uniqueId", nickname, "giftId", "giftName", "repeatCount",
+      (id, "roomId", "tiktokUid", "giftId", "giftName", "repeatCount",
        "diamondCount", "totalDiamonds", "receivedAt", "dayKey", "orderId")
     VALUES
-      (gen_random_uuid()::text, ${params.roomId}, 'listener1', 'listener1',
+      (gen_random_uuid()::text, ${params.roomId}, ${LISTENER_TIKTOK_UID},
        5, 'Rose', 1, ${params.diamonds}, ${params.diamonds}, ${params.receivedAt},
        '2026-09-01', ${`${PREFIX}_${uniqueSuffix()}`})
   `;
@@ -85,7 +90,7 @@ async function newBestOfThreeEvent() {
     data: {
       slug: `${PREFIX}-${uniqueSuffix()}`,
       title: `${PREFIX} イベント`,
-      ownerUserId: OWNER,
+      ownerPrincipalId: OWNER,
       format: "TOURNAMENT",
       entryMode: "SOLO",
       status: "RUNNING",
@@ -102,14 +107,17 @@ async function newBestOfThreeEvent() {
 
 /** 対戦カード1件を、両サイドの参加者・room付きで作る。 */
 async function newMatchWithSides(eventId: string, sessionId: string) {
-  const roomA = await createRoom(`${PREFIX}_a_${uniqueSuffix()}`);
-  const roomB = await createRoom(`${PREFIX}_b_${uniqueSuffix()}`);
+  // 参加者の tiktokUid は、その参加者が出場する room の hostTiktokUid と揃える。
+  const handleA = `${PREFIX}_a_${uniqueSuffix()}`;
+  const handleB = `${PREFIX}_b_${uniqueSuffix()}`;
+  const roomA = await createRoom(handleA);
+  const roomB = await createRoom(handleB);
   const pa = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId: `${PREFIX}_a_${uniqueSuffix()}`, roomId: roomA, displayName: "a" },
+    data: { eventId, tiktokUid: makeTiktokUid(handleA), tiktokHandle: handleA, roomId: roomA, displayName: "a" },
     select: { id: true },
   });
   const pb = await prisma.eventParticipant.create({
-    data: { eventId, tiktokId: `${PREFIX}_b_${uniqueSuffix()}`, roomId: roomB, displayName: "b" },
+    data: { eventId, tiktokUid: makeTiktokUid(handleB), tiktokHandle: handleB, roomId: roomB, displayName: "b" },
     select: { id: true },
   });
 
@@ -184,7 +192,7 @@ afterAll(async () => {
 
 describe("selectCandidates", () => {
   it("候補過多でない対戦への selectCandidates は400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     // reviewReason を CANDIDATES_EXCEEDED 以外にしておく。
@@ -202,7 +210,7 @@ describe("selectCandidates", () => {
   });
 
   it("candidateIds が maxGames(3件)を超えると400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -220,7 +228,7 @@ describe("selectCandidates", () => {
   });
 
   it("candidateIds に重複があると400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -234,7 +242,7 @@ describe("selectCandidates", () => {
   });
 
   it("終了未確定(pending)の候補は選べず400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -250,7 +258,7 @@ describe("selectCandidates", () => {
   });
 
   it("他マッチの候補IDを混ぜると400(このマッチに存在しない候補)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -267,7 +275,7 @@ describe("selectCandidates", () => {
   });
 
   it("候補内容が変わった後の古い指紋では409(楽観的排他)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -287,7 +295,7 @@ describe("selectCandidates", () => {
   });
 
   it("正しく2件選ぶと、選んだ候補だけで2-0判定されFINISHEDになる(3件目は無視)", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId);
 
@@ -336,7 +344,7 @@ describe("selectCandidates", () => {
   });
 
   it("reopen後はcandidatesConfirmedByOrganizerが消え、選択済み候補も全削除される", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId, roomA } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });
@@ -388,7 +396,7 @@ describe("selectCandidates", () => {
 
 describe("resetCandidates", () => {
   it("候補が1件もないマッチでは400", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
 
@@ -397,7 +405,7 @@ describe("resetCandidates", () => {
   });
 
   it("選択済みの候補をリセットすると、超過状態なら即座にCANDIDATES_EXCEEDEDへ戻る", async () => {
-    auth.userId = OWNER;
+    auth.principalId = OWNER;
     const { eventId, sessionId } = await newBestOfThreeEvent();
     const { matchId } = await newMatchWithSides(eventId, sessionId);
     const c1 = await addCandidate({ matchId, offsetMinutes: 0 });

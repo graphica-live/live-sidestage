@@ -8,6 +8,11 @@ last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code M
 
 # テストベースライン: tiktok-account-confirm-modal
 
+> **2026-09 の識別子統一リファクタリングにより、以下に記録された本番実測値は無効。**
+> `TikTokUser` 導入に伴い `public` / `event` の全テーブルを TRUNCATE したため、
+> 監視部屋数・Gift 件数・スコア点数などの実測値は再現できない。次回の実測で置き換えること。
+> 手順・判定基準・テストケースの構成自体は有効。
+
 TikTok ID登録(setup画面の初回登録 / admin-workers画面の監視対象追加)を「入力→即登録」から
 「入力→サーバがTikTok実在確認(nickname/avatar/BIO/フォロー数/フォロワー数取得)→確認モーダル表示→
 ユーザーの確定操作→初めて登録」の2段階へ変更した機能。共通コンポーネント
