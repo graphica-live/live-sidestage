@@ -958,21 +958,26 @@ class _TeamTabContent extends StatefulWidget {
 }
 
 class _TeamTabContentState extends State<_TeamTabContent> {
+  /// null = 陣営合算(aggregateモードの既定表示)。individualモードは
+  /// 「合算」という概念が無いため常に非null(既定選択者)で始まる。
   String? _selectedAnchorId;
 
   @override
   void initState() {
     super.initState();
-    _selectedAnchorId = widget.team.participants.isNotEmpty ? widget.team.participants.first.anchorId : null;
+    _selectedAnchorId = widget.team.isIndividual && widget.team.participants.isNotEmpty
+        ? widget.team.participants.first.anchorId
+        : null;
   }
 
   @override
   Widget build(BuildContext context) {
     final team = widget.team;
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final showSelector = team.participants.length > 1;
 
     BattleTeamParticipantContributors? selected;
-    if (team.isIndividual && team.participants.isNotEmpty) {
+    if (_selectedAnchorId != null && team.participants.isNotEmpty) {
       selected = team.participants.firstWhere(
         (p) => p.anchorId == _selectedAnchorId,
         orElse: () => team.participants.first,
@@ -993,13 +998,21 @@ class _TeamTabContentState extends State<_TeamTabContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (team.isIndividual && team.participants.length > 1)
+        if (showSelector)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Wrap(
               spacing: 8,
               runSpacing: 4,
               children: [
+                // aggregateモードだけ「合算」を選択肢に含める(individualモードには
+                // 陣営合算という概念が無い)。
+                if (!team.isIndividual)
+                  ChoiceChip(
+                    label: const Text('合算'),
+                    selected: _selectedAnchorId == null,
+                    onSelected: (_) => setState(() => _selectedAnchorId = null),
+                  ),
                 for (final p in team.participants)
                   ChoiceChip(
                     label: Text(p.displayName),
