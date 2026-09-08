@@ -9,13 +9,19 @@ import { isEntitlementRowValid } from "./effective-entitlement";
 export async function getUserPlan(userId: string): Promise<PlanTier> {
   // entitlementActive:trueだけでなく、バックフィル未実行の旧Stripe行(provider未設定)も
   // 拾う必要があるため、userId一致の全行を読んでisEntitlementRowValidで判定する。
-  const subscriptions = await prisma.subscription.findMany({
-    where: { userId },
-    select: { plan: true, entitlementActive: true, currentPeriodEnd: true, provider: true, status: true },
-  });
+  const [subscriptions, ambassador] = await Promise.all([
+    prisma.subscription.findMany({
+      where: { userId },
+      select: { plan: true, entitlementActive: true, currentPeriodEnd: true, provider: true, status: true },
+    }),
+    prisma.ambassador.findUnique({ where: { userId }, select: { id: true } }),
+  ]);
   const now = new Date();
   const activePlans = subscriptions
     .filter((s) => isEntitlementRowValid(s, now))
     .map((s) => s.plan);
+  // アンバサダーはPROプラン無料。Subscription行の有無・状態に関わらず底上げする
+  // (Stripe課金は発生しないため、Subscription行自体は作らない)。
+  if (ambassador) activePlans.push("PRO");
   return highestPlan(activePlans);
 }

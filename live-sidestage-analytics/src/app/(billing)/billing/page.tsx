@@ -4,7 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { PlanTier } from "@/lib/plan/types";
 import { highestPlan } from "@/lib/plan/types";
-import { isPlanPurchasable, WEB_MONTHLY_PRICE_JPY, type PaidPlan } from "@/lib/plan/price-map";
+import {
+  isAmbassadorUltraUpgradePurchasable,
+  isPlanPurchasable,
+  WEB_MONTHLY_PRICE_JPY,
+  type PaidPlan,
+} from "@/lib/plan/price-map";
 import { isEntitlementRowValid } from "@/lib/plan/effective-entitlement";
 import { UpgradeButton, ManageBillingButton } from "./UpgradeActions";
 
@@ -24,7 +29,7 @@ export default async function BillingPage({
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
 
-  const [subscriptions, link] = await Promise.all([
+  const [subscriptions, link, ambassador] = await Promise.all([
     prisma.subscription.findMany({
       where: { userId: session.user.id },
       select: { plan: true, provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
@@ -33,11 +38,22 @@ export default async function BillingPage({
       where: { userId: session.user.id },
       select: { stripeCustomerId: true },
     }),
+    prisma.ambassador.findUnique({ where: { userId: session.user.id }, select: { id: true } }),
   ]);
 
+  const isAmbassador = Boolean(ambassador);
   const activeRows = subscriptions.filter((s) => isEntitlementRowValid(s));
-  const currentPlan: PlanTier = highestPlan(activeRows.map((r) => r.plan));
-  const isActivePaid = activeRows.length > 0;
+  // アンバサダーはPROが無料特典。Subscription行が無くても最低PROまで底上げする
+  // (getUserPlan()と同じ考え方。実際の課金有無はisActivePaidで別途判定する)。
+  const effectivePlans: PlanTier[] = activeRows.map((r) => r.plan);
+  if (isAmbassador) effectivePlans.push("PRO");
+  const currentPlan: PlanTier = highestPlan(effectivePlans);
+  // アンバサダーのPRO実購読行(特典と重複)はULTRA差額アップグレードの妨げにしない。
+  // これを除外しないと、後からアンバサダー指定された既存PRO課金者のULTRAカードが
+  // 「プラン変更はプランを管理するから」に固定され、差額アップグレード導線が出せない
+  // (checkout/route.tsの二重課金防止チェックと対にした判定。同ファイル参照)。
+  const rowsForActivePaidCheck = isAmbassador ? activeRows.filter((r) => r.plan !== "PRO") : activeRows;
+  const isActivePaid = rowsForActivePaidCheck.length > 0;
   // provider問わず現在有効な行があるが、それがSTRIPEでない(=ストア経由)場合は
   // Portal誘導ではなく「ストアで契約中」の案内だけを出す。
   const activeStripeRow = activeRows.find((r) => !r.provider || r.provider === "STRIPE");
@@ -74,8 +90,18 @@ export default async function BillingPage({
 
         <div className="grid gap-4 sm:grid-cols-3">
           <PlanCard plan="FREE" current={currentPlan === "FREE"} />
-          <PlanCard plan="PRO" current={currentPlan === "PRO"} isActivePaid={isActivePaid} />
-          <PlanCard plan="ULTRA" current={currentPlan === "ULTRA"} isActivePaid={isActivePaid} />
+          <PlanCard
+            plan="PRO"
+            current={currentPlan === "PRO"}
+            isActivePaid={isActivePaid}
+            isAmbassador={isAmbassador}
+          />
+          <PlanCard
+            plan="ULTRA"
+            current={currentPlan === "ULTRA"}
+            isActivePaid={isActivePaid}
+            isAmbassador={isAmbassador}
+          />
         </div>
       </div>
     </div>
@@ -86,12 +112,17 @@ function PlanCard({
   plan,
   current,
   isActivePaid = false,
+  isAmbassador = false,
 }: {
   plan: PlanTier;
   current: boolean;
   isActivePaid?: boolean;
+  isAmbassador?: boolean;
 }) {
   const price = plan !== "FREE" ? WEB_MONTHLY_PRICE_JPY[plan as PaidPlan] : undefined;
+  // アンバサダーのPROは特典無料。ULTRAは通常価格ではなく「PROからの差額」課金になるため
+  // 通常のWEB_MONTHLY_PRICE_JPYの数字はそのまま出さない。
+  const showAmbassadorFreePro = isAmbassador && plan === "PRO";
   return (
     <div className={`card flex flex-col gap-3 ${current ? "border-brand/60" : ""}`}>
       <div>
@@ -105,7 +136,11 @@ function PlanCard({
         </div>
         {plan !== "FREE" && (
           <p className="mt-1 text-2xl font-bold text-strong">
-            {price !== undefined ? (
+            {showAmbassadorFreePro ? (
+              <span className="text-base font-normal text-brand">アンバサダー特典で無料</span>
+            ) : plan === "ULTRA" && isAmbassador ? (
+              <span className="text-base font-normal text-muted">PROからの差額でアップグレード</span>
+            ) : price !== undefined ? (
               <>
                 ¥{price.toLocaleString()}
                 <span className="text-xs font-normal text-muted"> /月</span>
@@ -118,15 +153,18 @@ function PlanCard({
         <p className="mt-2 text-xs text-muted">{PLAN_DESCRIPTIONS[plan]}</p>
       </div>
 
-      <div className="mt-auto">{renderAction(plan, current, isActivePaid)}</div>
+      <div className="mt-auto">{renderAction(plan, current, isActivePaid, isAmbassador)}</div>
     </div>
   );
 }
 
-function renderAction(plan: PlanTier, current: boolean, isActivePaid: boolean) {
+function renderAction(plan: PlanTier, current: boolean, isActivePaid: boolean, isAmbassador: boolean) {
   if (plan === "FREE") return null;
 
   const paidPlan = plan as PaidPlan;
+
+  // アンバサダーのPROは特典無料。通常のCheckout(二重課金)には進ませない。
+  if (isAmbassador && plan === "PRO") return null;
 
   // 既に有効な有償プラン(provider問わず)を持っている場合、Stripe Checkoutは二重課金を防ぐため
   // 409を返す(src/app/api/billing/checkout/route.ts参照)。プラン変更はPortal経由に一本化する。
@@ -135,7 +173,10 @@ function renderAction(plan: PlanTier, current: boolean, isActivePaid: boolean) {
     return <p className="text-xs text-muted">プラン変更は「プランを管理する」から行えます</p>;
   }
 
-  if (!isPlanPurchasable(paidPlan)) {
+  // アンバサダーのULTRAは差額専用Priceでのみ購入可(checkout/route.ts参照)。
+  // 通常のisPlanPurchasable(ULTRA本体価格)とは別に判定する。
+  const purchasable = isAmbassador && plan === "ULTRA" ? isAmbassadorUltraUpgradePurchasable() : isPlanPurchasable(paidPlan);
+  if (!purchasable) {
     return (
       <button disabled className="btn-primary w-full text-sm opacity-50">
         準備中

@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe";
-import { PAID_PLANS, priceIdForPlan, type PaidPlan } from "@/lib/plan/price-map";
+import { PAID_PLANS, priceIdForAmbassadorUltraUpgrade, priceIdForPlan, type PaidPlan } from "@/lib/plan/price-map";
 import { canonicalOrigin } from "@/lib/canonical-origin";
 import { isEntitlementRowValid } from "@/lib/plan/effective-entitlement";
 
@@ -22,7 +22,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "plan must be PRO or ULTRA" }, { status: 400 });
   }
 
-  const priceId = priceIdForPlan(plan);
+  const userId = session.user.id;
+  const ambassador = await prisma.ambassador.findUnique({ where: { userId }, select: { id: true } });
+
+  // アンバサダーはPROが無料特典なので、通常のPRO課金は行わせない
+  // (誤って二重に支払わせないためのfail-closed)。
+  if (ambassador && plan === "PRO") {
+    return NextResponse.json(
+      { error: "アンバサダー特典によりPROは既に無料でご利用いただけます" },
+      { status: 400 }
+    );
+  }
+
+  // アンバサダーのULTRAは「ULTRA - PRO」の差額専用Priceでのみ購入できる。
+  // 未設定の場合、通常ULTRA価格へのフォールバックはしない(設定漏れを
+  // ユーザー負担に転嫁しないため。price-map.ts参照)。
+  const priceId =
+    ambassador && plan === "ULTRA" ? priceIdForAmbassadorUltraUpgrade() : priceIdForPlan(plan);
   if (!priceId) {
     return NextResponse.json({ error: `${plan}は現在購入できません` }, { status: 503 });
   }
@@ -36,18 +52,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Stripeが設定されていません" }, { status: 503 });
   }
 
-  const userId = session.user.id;
-
   // cross-provider二重課金防止: providerを問わず、既に有効なentitlementを持つ行が
   // あれば拒否する。プラン変更はBilling Portal経由(Stripeの場合)に誘導する。
   // entitlementActive:trueだけでなく、バックフィル未実行の旧Stripe行(provider未設定)も
   // isEntitlementRowValidのフォールバックで拾えるよう、userId一致の全行を読む。
   const activeRows = await prisma.subscription.findMany({
     where: { userId },
-    select: { provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
+    select: { plan: true, provider: true, entitlementActive: true, currentPeriodEnd: true, status: true },
   });
+  // アンバサダーのULTRA差額アップグレードは、特典で無料になっているPROの実購読行と
+  // 重複してよい(それ自体が「無料PRO→差額でULTRAへ」というアップグレード導線のため)。
+  // 判定対象からPRO行を除外しないと、後からアンバサダー指定された既存PRO課金者が
+  // 一生ULTRA差額を購入できなくなる(409で弾かれ続ける)。
+  const rowsForDuplicateCheck =
+    ambassador && plan === "ULTRA" ? activeRows.filter((r) => r.plan !== "PRO") : activeRows;
   // provider未設定の旧行は実質STRIPE(バックフィル前)なので、それ以外のみ「ストア契約」扱いにする。
-  const activeNonStripe = activeRows.find(
+  const activeNonStripe = rowsForDuplicateCheck.find(
     (r) => isEntitlementRowValid(r) && r.provider && r.provider !== "STRIPE",
   );
   if (activeNonStripe) {
@@ -56,7 +76,7 @@ export async function POST(req: Request) {
       { status: 409 },
     );
   }
-  const activeStripe = activeRows.find(
+  const activeStripe = rowsForDuplicateCheck.find(
     (r) => isEntitlementRowValid(r) && (!r.provider || r.provider === "STRIPE"),
   );
   if (activeStripe) {

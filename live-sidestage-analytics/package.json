@@ -13,6 +13,8 @@
     "gift-retention:local": "dotenv -e .env.local.test -- tsx gift-retention.ts",
     "listener-comment-retention": "tsx listener-comment-retention.ts",
     "listener-comment-retention:local": "dotenv -e .env.local.test -- tsx listener-comment-retention.ts",
+    "ambassador-invite-retention": "tsx ambassador-invite-retention.ts",
+    "ambassador-invite-retention:local": "dotenv -e .env.local.test -- tsx ambassador-invite-retention.ts",
     "build": "prisma generate && prisma db push --accept-data-loss && next build",
     "start": "node server.js",
     "db:push": "prisma db push",

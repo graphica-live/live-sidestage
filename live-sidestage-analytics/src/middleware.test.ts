@@ -177,6 +177,27 @@ describe("middleware の matcher", () => {
     }
   });
 
+  it("アンバサダー招待URLは認証なしで通る", () => {
+    for (const path of [
+      "/invite/ambassador/abc123",
+      "/invite/",
+      "/api/ambassador/invite/start",
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("招待パスと似た文字列のパスは保護されたままになる", () => {
+    for (const path of [
+      "/invited", // `invite` に食われてはいけない
+      "/api/ambassador/invitees", // `api/ambassador/invite` に食われてはいけない
+      "/api/ambassador", // 境界より手前(管理者APIは保護対象)
+      "/admin/ambassadors",
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
+
   it("プライバシーポリシーは認証なしで通る", () => {
     for (const path of ["/privacy", "/privacy/"]) {
       expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
