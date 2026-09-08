@@ -3,9 +3,11 @@
 // 1〜3位だけ順位数字をグラデーションメダル(光彩)にする。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:live_sidestage_mobile/models/gift_breakdown.dart';
 import 'package:live_sidestage_mobile/models/gift_ranking_entry.dart';
 import 'package:live_sidestage_mobile/screens/widgets/gradient_kit.dart';
 import 'package:live_sidestage_mobile/screens/widgets/ranking_list_tile.dart';
+import 'package:live_sidestage_mobile/screens/widgets/user_avatar.dart';
 
 const _rank1 = KosaiPalette.rank1;
 const _rank2 = KosaiPalette.rank2;
@@ -76,5 +78,200 @@ void main() {
       final text = tester.widget<Text>(find.text('$rank'));
       expect(text.style?.color, isNull, reason: 'rank $rank');
     }
+  });
+
+  testWidgets('fetchBreakdown未指定なら展開シェブロンを出さない(バトル履歴タブの従来動作)', (tester) async {
+    await tester.pumpWidget(wrap(const RankingListTile(rank: 1, entry: _entry)));
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsNothing);
+  });
+
+  testWidgets('fetchBreakdown未指定時、順位メダル部分にもタップ領域(InkWell)が残る(プロフィール遷移の退行防止)', (tester) async {
+    // openTiktokProfile自体(url_launcher)はテスト環境でモックする既存パターンが無いため呼び出し結果は検証しない。
+    // 従来「行全体タップでプロフィール遷移」だった箇所が、アコーディオン対応の実装変更でメダル部分だけ
+    // タップ領域から漏れる退行(DeepSeek指摘)が実際に起きたため、InkWellの存在だけは回帰確認する。
+    await tester.pumpWidget(wrap(const RankingListTile(rank: 1, entry: _entry)));
+    final medalInkWell = find.ancestor(
+      of: find.byWidgetPredicate(
+        (w) => w is Container && w.constraints == const BoxConstraints.tightFor(width: 26, height: 26),
+      ),
+      matching: find.byType(InkWell),
+    );
+    expect(medalInkWell, findsOneWidget);
+  });
+
+  testWidgets('fetchBreakdown指定時、名前部分のタップでギフト内訳が展開する(アバターは展開しない)', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (uniqueId) async {
+            calls++;
+            return const GiftBreakdownResult(
+              gifts: [
+                GiftBreakdownEntry(giftId: 1, giftName: 'ローズ', repeatCount: 3, totalDiamonds: 300),
+              ],
+              coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false),
+            );
+          },
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.keyboard_arrow_down), findsOneWidget);
+
+    // アバターアイコンのタップでは展開しない(プロフィール遷移用の別タップ領域)。
+    await tester.tap(find.byType(UserAvatar));
+    await tester.pump();
+    expect(calls, 0);
+    expect(find.text('ローズ'), findsNothing);
+
+    // 行のそれ以外(名前)のタップで展開し、ギフト内訳を取得・表示する。
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('ローズ'), findsOneWidget);
+    expect(find.text('×3'), findsOneWidget);
+
+    // 再度タップすると閉じる(再取得はしない = キャッシュ)。
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pump();
+    expect(find.text('ローズ'), findsNothing);
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('ローズ'), findsOneWidget);
+  });
+
+  testWidgets('fetchBreakdown指定時、順位メダル部分のタップでも展開する(web版のtr全体トグルに合わせる)', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 4, // メダル無し(数字表示)のrankで、GradientMedalに依存しないタップ領域を確認する。
+          entry: _entry,
+          fetchBreakdown: (uniqueId) async {
+            calls++;
+            return const GiftBreakdownResult(gifts: [], coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false));
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('4'));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('この期間の内訳はありません'), findsOneWidget);
+  });
+
+  testWidgets('fetchBreakdown指定時、1〜3位(グラデーションメダル)でも順位部分のタップで展開する', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (uniqueId) async {
+            calls++;
+            return const GiftBreakdownResult(gifts: [], coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false));
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.byWidgetPredicate((w) => w is Container && w.constraints == const BoxConstraints.tightFor(width: 26, height: 26)));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 1);
+    expect(find.text('この期間の内訳はありません'), findsOneWidget);
+  });
+
+  testWidgets('fetchBreakdown指定時、複数のギフト種別をtotalDiamonds降順で表示する', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (uniqueId) async => const GiftBreakdownResult(
+            gifts: [
+              GiftBreakdownEntry(giftId: 2, giftName: 'モナリザ', repeatCount: 1, totalDiamonds: 500),
+              GiftBreakdownEntry(giftId: 1, giftName: 'ローズ', repeatCount: 3, totalDiamonds: 300),
+            ],
+            coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('モナリザ'), findsOneWidget);
+    expect(find.text('ローズ'), findsOneWidget);
+    expect(find.text('×1'), findsOneWidget);
+    expect(find.text('×3'), findsOneWidget);
+    // モナリザ(500)がローズ(300)より先に描画される(サーバー側のtotalDiamonds降順を尊重して表示するだけで並び替えない)。
+    final monaY = tester.getTopLeft(find.text('モナリザ')).dy;
+    final roseY = tester.getTopLeft(find.text('ローズ')).dy;
+    expect(monaY, lessThan(roseY));
+  });
+
+  testWidgets('fetchBreakdown指定時、取得失敗でエラー表示、再試行タップで再取得する', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (uniqueId) async {
+            calls++;
+            // 通常のHTTPリクエストと同様、非同期境界を挟んでから例外を投げる
+            // (即時throwだとFutureBuilder購読前にunhandledとして検出されテストが不安定になる)。
+            await Future<void>.delayed(Duration.zero);
+            if (calls == 1) throw Exception('network error');
+            return const GiftBreakdownResult(
+              gifts: [GiftBreakdownEntry(giftId: 1, giftName: 'ローズ', repeatCount: 1, totalDiamonds: 100)],
+              coverage: GiftBreakdownCoverage(detailAvailable: true, partial: false),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    expect(find.text('内訳を取得できませんでした'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '再試行'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '再試行'));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.text('内訳を取得できませんでした'), findsNothing);
+    expect(find.text('ローズ'), findsOneWidget);
+  });
+
+  testWidgets('fetchBreakdown指定時、明細が残っていない期間はその旨を表示する', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (uniqueId) async => const GiftBreakdownResult(
+            gifts: [],
+            coverage: GiftBreakdownCoverage(detailAvailable: false, partial: false),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('内訳は残っていません'), findsOneWidget);
   });
 }

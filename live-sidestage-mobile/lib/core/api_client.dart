@@ -9,6 +9,7 @@ import '../models/account_status.dart';
 import '../models/auth_session.dart';
 import '../models/battle_summary.dart';
 import '../models/battle_team_contributors.dart';
+import '../models/gift_breakdown.dart';
 import '../models/gift_history_event.dart';
 import '../models/gift_ranking_entry.dart';
 import '../models/listener_status.dart';
@@ -458,6 +459,30 @@ class LiveAnalyticsApi {
       hasMore: data['hasMore'] == true,
       verified: data['verified'] == true,
     );
+  }
+
+  /// 貢献タブの行を展開したときの、送信者1人ぶんのギフト名別内訳。
+  Future<GiftBreakdownResult> fetchGiftBreakdown({
+    required String token,
+    required String uniqueId,
+    required String period,
+    required String date,
+    DateTime? startDatetime,
+    DateTime? endDatetime,
+  }) async {
+    final query = Uri(
+      queryParameters: {
+        ...rangeParams(
+          period: period,
+          date: date,
+          startDatetime: startDatetime,
+          endDatetime: endDatetime,
+        ),
+        'uniqueId': uniqueId,
+      },
+    ).query;
+    final data = await _send('GET', '/api/mobile/analytics/gifts/breakdown?$query', null, token: token);
+    return GiftBreakdownResult.tryParse(data);
   }
 
   /// バトル履歴タブの一覧。
