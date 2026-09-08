@@ -419,10 +419,8 @@ export function buildPayload(
         // **公開バリアントは uniqueId を落とす。** リスナー個人のプロフィールへ直リンクできる識別子。
         u: isPublic ? null : event.sender,
         n: nicknameBySender.get(event.sender) ?? "",
-        // アバターURLも公開では落とす。署名付きURLのオブジェクトキーが
-        // `avatars/gift-sender/<uniqueId>.webp` なので、URL自体がハンドルを含む。
-        // 不透明IDで配信するプロキシを入れるまでは公開でリスナーアイコンを出さない。
-        a: isPublic ? null : senderAvatarUrls.get(event.sender) ?? null,
+        // アバターは公開でも出す(2026-09-08、配信者の明示判断で解禁)。
+        a: senderAvatarUrls.get(event.sender) ?? null,
       });
     }
 
@@ -478,13 +476,9 @@ export function buildPayload(
 }
 
 async function buildFromRow(row: ReplayRow, variant: ReplayVariant): Promise<BattleReplayPayload> {
-  // 公開バリアントはリスナーのアバターを載せない(URLがハンドルを含むため)ので、
-  // 署名の発行自体を省く。配信者側の anchorId は TikTok の数値 userId で、
-  // ペイロードの `anchors` に載せている値そのものなので新たな漏洩にならない。
-  const senderUniqueIds =
-    variant === "public"
-      ? []
-      : [...new Set(row.participants.flatMap((p) => p.giftEvents.map((g) => g.senderUniqueIdSnapshot)))];
+  const senderUniqueIds = [
+    ...new Set(row.participants.flatMap((p) => p.giftEvents.map((g) => g.senderUniqueIdSnapshot))),
+  ];
   const giftIds = [...new Set(row.participants.flatMap((p) => p.giftEvents.map((g) => g.giftId)))];
 
   // アバターは署名付きURLで数時間で失効するため保存せず都度解決する。

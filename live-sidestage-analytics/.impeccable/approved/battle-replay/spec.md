@@ -149,7 +149,7 @@ duration は等速で **420ms**、実効速度（速度チップ × 自動早送
 再生ボタン 30px 円（`var(--accent)` / 文字 `var(--on-accent)`）。先頭へ戻るボタンは ghost（枠 `var(--border)`）。
 シークバー: 高さ 4px / `radius 999px` / 地 `var(--border)` / fill `var(--accent)` / つまみ 11px 円。**スコアが動いた時刻に `--fc-self` の tick**（幅 2px・高さ 8px・`top: -2px`）。
 速度チップ `padding: 1px 7px` / `radius 6px` / 枠 `var(--border)`。自動早送りのトグル（表示は `⏩Auto`、`aria-label="自動早送り"`）も同じ寸法で、ON のとき地 `var(--accent)` / 文字 `var(--on-accent)`、OFF のとき枠 `var(--border)` / 文字 `var(--muted)`。
-シークバーの左は**経過時間** `mm:ss`、右は**残り時間** `-mm:ss`（**尺の固定表示ではない**）。自動早送り中の残り時間は `animate-pulse`（`motion-reduce` で停止）。
+シークバーの左は**経過時間** `mm:ss`。右の残り時間ラベルは撤去済み（2026-09-08、ユーザー指示でシークバー幅を優先）。残り時間はシークバー(`input[type=range]`)の `aria-valuetext` にのみ残す。
 
 ### 4.7 貢献者ボード
 
@@ -205,7 +205,7 @@ duration は等速で **420ms**、実効速度（速度チップ × 自動早送
 | 大ギフト演出 | 10,000コイン以上は枠の 88%、1,000〜9,999コイン は 44% でギフト画像を出し、揺らしてフェードアウト | `giftEvents[].d` + `gifts[].img` |
 | 赤帯 | 倍率区間・ボーナスミッション | `segments`（`startMs <= elapsedMs < endMs`。重複時は `opening` 優先） |
 | コントロール | 再生・一時停止 / シーク / 速度 1x・2x・4x / 自動早送り（`⏩Auto`）ON・OFF / 先頭へ | — |
-| 経過時間・残り時間 | 左 `mm:ss` / 右 `-mm:ss` | `elapsedMs` / `durationMs - elapsedMs` |
+| 経過時間 | 左 `mm:ss`（右の残り時間ラベルは撤去済み、`aria-valuetext` のみに残す） | `elapsedMs` |
 | シークの tick | スコアが動いた時刻 | `scorePoints[].t` |
 | 貢献者ボード | 上位貢献者のアイコン + 🪙貢献値 + 順位バッジ | `giftEvents` の `elapsedMs` までの累計。**`isSelf` の anchor 宛だけを集計する**（実バトル画面の下段も自分への貢献者一覧。個人の `isSelf` が1件も無い古い行は自陣営全員へフォールバック） |
 | 「上位 ➡」 | 並びの向きの明示 | — |

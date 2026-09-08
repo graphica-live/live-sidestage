@@ -86,6 +86,7 @@ export function ReplayControls({
           step={100}
           value={Math.round(elapsedMs)}
           aria-label="再生位置"
+          aria-valuetext={`残り${formatClock(Math.max(0, durationMs - elapsedMs))}`}
           onChange={(event) => onSeek(Number(event.target.value))}
           onPointerDown={() => onScrubbing(true)}
           onPointerUp={() => onScrubbing(false)}
@@ -97,16 +98,6 @@ export function ReplayControls({
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
       </div>
-      <span
-        // 残り時間。**経過時間の再掲ではない**(左のラベルが経過)。自動早送り中は
-        // 「いま飛ばしている」ことがここでしか判らないので点滅させる。
-        className={`flex-none font-mono text-[11px] tabular-nums ${
-          quietSkipping ? "animate-pulse text-strong motion-reduce:animate-none" : "text-muted"
-        }`}
-        aria-label="残り時間"
-      >
-        -{formatClock(Math.max(0, durationMs - elapsedMs))}
-      </span>
       <button
         type="button"
         onClick={() => onSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]!)}
