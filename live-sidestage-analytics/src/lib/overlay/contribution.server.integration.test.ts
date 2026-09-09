@@ -40,9 +40,13 @@ beforeAll(async () => {
       verificationCode: "x",
       verified: true,
       roomId,
-      overlayThreshold: 100,
-      overlayDisplayReference: "fixed",
-      overlayDisplayDate: "2026-08-15",
+      overlayContributionSettings: {
+        create: {
+          threshold: 100,
+          displayReference: "fixed",
+          displayDate: "2026-08-15",
+        },
+      },
     },
   });
   streamerId = streamer.id;

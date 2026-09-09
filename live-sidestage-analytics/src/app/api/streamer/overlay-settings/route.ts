@@ -6,7 +6,6 @@ import {
   clampOverlayDisplaySpeed,
   emitOverlaySnapshot,
   ensureOverlayToken,
-  inferOverlayDisplayReference,
   jstDateKey,
   OVERLAY_DISPLAY_SPEED_MAX,
   OVERLAY_DISPLAY_SPEED_MIN,
@@ -18,6 +17,7 @@ import {
   resolveOverlayDayKey,
   shiftDayKey,
 } from "@/lib/overlay";
+import { contributionSettingsServer } from "@/lib/overlay/settings-kinds";
 
 async function loadStreamer(principalId: string) {
   return prisma.streamer.findUnique({
@@ -25,45 +25,44 @@ async function loadStreamer(principalId: string) {
     select: {
       id: true,
       overlayToken: true,
-      overlayDisplayReference: true,
-      overlayDisplayDate: true,
-      overlayThreshold: true,
-      overlayGoalCount: true,
-      overlayVisibleRows: true,
-      overlayNameMaxWidth: true,
-      overlayAlign: true,
-      overlayHeadingBackground: true,
-      overlayDisplaySpeed: true,
+      overlayContributionSettings: true,
     },
   });
 }
 
+type ContributionSettingsShape = {
+  displayReference: string;
+  displayDate: string | null;
+  threshold: number;
+  goalCount: number;
+  visibleRows: number;
+  nameMaxWidth: number;
+  align: string;
+  headingBackground: string;
+  displaySpeed: number;
+};
+
 function toResponse(streamer: {
   overlayToken: string | null;
-  overlayDisplayReference: string;
-  overlayDisplayDate: string | null;
-  overlayThreshold: number;
-  overlayGoalCount: number;
-  overlayVisibleRows: number;
-  overlayNameMaxWidth: number;
-  overlayAlign: string;
-  overlayHeadingBackground: string;
-  overlayDisplaySpeed: number;
+  overlayContributionSettings: ContributionSettingsShape | null;
 }): OverlaySettingsPayload {
-  const displayDate = resolveOverlayDayKey(streamer);
+  const settings = streamer.overlayContributionSettings;
+  const displayReference = settings?.displayReference ?? "today";
+  const displayDate = settings?.displayDate ?? null;
+  const displayDateKey = resolveOverlayDayKey({ overlayDisplayReference: displayReference, overlayDisplayDate: displayDate });
   return {
     overlayToken: streamer.overlayToken ?? "",
-    displayDate,
-    isToday: displayDate === jstDateKey(),
-    threshold: streamer.overlayThreshold,
-    goalCount: streamer.overlayGoalCount,
-    visibleRows: streamer.overlayVisibleRows,
-    nameMaxWidth: streamer.overlayNameMaxWidth,
+    displayDate: displayDateKey,
+    isToday: displayDateKey === jstDateKey(),
+    threshold: settings?.threshold ?? 1000,
+    goalCount: settings?.goalCount ?? 5,
+    visibleRows: settings?.visibleRows ?? 5,
+    nameMaxWidth: settings?.nameMaxWidth ?? 140,
     // DB の列は string なので、オーバーレイ本体(buildOverlaySnapshot)と同じ正規化を通す。
     // 生の値を返すと、設定画面のボタンがどれも選択状態にならない値が紛れうる。
-    align: normalizeOverlayAlign(streamer.overlayAlign),
-    headingBackground: normalizeOverlayHeadingBackground(streamer.overlayHeadingBackground),
-    displaySpeed: clampOverlayDisplaySpeed(streamer.overlayDisplaySpeed),
+    align: normalizeOverlayAlign(settings?.align ?? "left"),
+    headingBackground: normalizeOverlayHeadingBackground(settings?.headingBackground ?? "clear"),
+    displaySpeed: clampOverlayDisplaySpeed(settings?.displaySpeed ?? 3),
   };
 }
 
@@ -93,31 +92,25 @@ export async function PATCH(req: NextRequest) {
   if (!streamer) return NextResponse.json({ error: "配信者情報が見つかりません。" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
-  const data: {
-    overlayDisplayReference?: string;
-    overlayDisplayDate?: string | null;
-    overlayThreshold?: number;
-    overlayGoalCount?: number;
-    overlayVisibleRows?: number;
-    overlayNameMaxWidth?: number;
-    overlayAlign?: string;
-    overlayHeadingBackground?: string;
-    overlayDisplaySpeed?: number;
-  } = {};
+  const data: Record<string, unknown> = {};
 
   if (body.nav === "prev" || body.nav === "next" || body.nav === "today") {
     if (body.nav === "today") {
-      data.overlayDisplayReference = "today";
-      data.overlayDisplayDate = null;
+      data.displayReference = "today";
+      data.displayDate = null;
     } else {
-      const currentDayKey = resolveOverlayDayKey(streamer);
+      const settings = streamer.overlayContributionSettings;
+      const currentDayKey = resolveOverlayDayKey({
+        overlayDisplayReference: settings?.displayReference ?? "today",
+        overlayDisplayDate: settings?.displayDate ?? null,
+      });
       const offset = body.nav === "prev" ? -1 : 1;
       let nextDayKey = shiftDayKey(currentDayKey, offset);
       const today = jstDateKey();
       if (nextDayKey > today) nextDayKey = today;
 
-      data.overlayDisplayReference = inferOverlayDisplayReference(nextDayKey);
-      data.overlayDisplayDate = nextDayKey;
+      data.displayReference = nextDayKey === today ? "today" : "fixed";
+      data.displayDate = nextDayKey === today ? null : nextDayKey;
     }
   }
 
@@ -126,7 +119,7 @@ export async function PATCH(req: NextRequest) {
     if (!Number.isInteger(threshold) || threshold < 100 || threshold % 100 !== 0) {
       return NextResponse.json({ error: "閾値は100以上100の倍数で指定してください。" }, { status: 400 });
     }
-    data.overlayThreshold = threshold;
+    data.threshold = threshold;
   }
 
   if (body.goalCount !== undefined) {
@@ -134,7 +127,7 @@ export async function PATCH(req: NextRequest) {
     if (!Number.isInteger(goalCount) || goalCount < 0) {
       return NextResponse.json({ error: "目標人数は0以上の整数で指定してください。" }, { status: 400 });
     }
-    data.overlayGoalCount = goalCount;
+    data.goalCount = goalCount;
   }
 
   if (body.visibleRows !== undefined) {
@@ -142,7 +135,7 @@ export async function PATCH(req: NextRequest) {
     if (!Number.isInteger(visibleRows) || visibleRows < 1) {
       return NextResponse.json({ error: "表示人数は1以上の整数で指定してください。" }, { status: 400 });
     }
-    data.overlayVisibleRows = visibleRows;
+    data.visibleRows = visibleRows;
   }
 
   if (body.nameMaxWidth !== undefined) {
@@ -150,14 +143,14 @@ export async function PATCH(req: NextRequest) {
     if (!Number.isInteger(nameMaxWidth) || nameMaxWidth < 40) {
       return NextResponse.json({ error: "名前の最大幅は40px以上の整数で指定してください。" }, { status: 400 });
     }
-    data.overlayNameMaxWidth = nameMaxWidth;
+    data.nameMaxWidth = nameMaxWidth;
   }
 
   if (body.align !== undefined) {
     if (body.align !== "left" && body.align !== "right") {
       return NextResponse.json({ error: "整列方向はleftまたはrightで指定してください。" }, { status: 400 });
     }
-    data.overlayAlign = body.align;
+    data.align = body.align;
   }
 
   if (body.headingBackground !== undefined) {
@@ -167,7 +160,7 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    data.overlayHeadingBackground = body.headingBackground;
+    data.headingBackground = body.headingBackground;
   }
 
   if (body.displaySpeed !== undefined) {
@@ -182,27 +175,23 @@ export async function PATCH(req: NextRequest) {
         { status: 400 }
       );
     }
-    data.overlayDisplaySpeed = displaySpeed;
+    data.displaySpeed = displaySpeed;
   }
 
-  const updated = await prisma.streamer.update({
-    where: { id: streamer.id },
-    data,
-    select: {
-      overlayToken: true,
-      overlayDisplayReference: true,
-      overlayDisplayDate: true,
-      overlayThreshold: true,
-      overlayGoalCount: true,
-      overlayVisibleRows: true,
-      overlayNameMaxWidth: true,
-      overlayAlign: true,
-      overlayHeadingBackground: true,
-      overlayDisplaySpeed: true,
-    },
-  });
+  const result = await contributionSettingsServer.patch(streamer.id, data);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
 
   emitOverlaySnapshot(streamer.id).catch((err) => console.error("[overlay] emit error:", err));
 
-  return NextResponse.json(toResponse(updated));
+  // result.payload は contributionSettingsServer.load() の内部形（overlayToken/isTodayを持たない、
+  // align等の正規化もしていない）。GETと同じ OverlaySettingsPayload をtoResponse()経由で組み直す
+  // (直接返すとPATCH応答だけ overlayToken 欠落・未正規化値になる)。
+  return NextResponse.json(
+    toResponse({
+      overlayToken: streamer.overlayToken,
+      overlayContributionSettings: result.payload as ContributionSettingsShape,
+    })
+  );
 }
