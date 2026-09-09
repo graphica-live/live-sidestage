@@ -11,13 +11,15 @@ import 'api_client.dart';
 Future<T> withTokenRefresh<T>({
   required Future<T> Function(String token) call,
   required String token,
-  required Future<String?> Function() refreshToken,
+  Future<String?> Function()? refreshToken,
 }) async {
   try {
     return await call(token);
   } on ApiException catch (e) {
     if (!e.isUnauthorized) rethrow;
-    final refreshed = await refreshToken();
+    final refresh = refreshToken;
+    if (refresh == null) rethrow;
+    final refreshed = await refresh();
     if (refreshed == null) rethrow;
     return call(refreshed);
   }

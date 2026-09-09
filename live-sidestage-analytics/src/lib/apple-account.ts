@@ -35,7 +35,7 @@ export const APPLE_PROVIDER = "apple";
 const userSelect = {
   id: true,
   name: true,
-  streamer: { select: { id: true, tiktokHandle: true, verified: true, apiKey: true } },
+  streamer: { select: { id: true, tiktokHandle: true, verified: true } },
 } as const;
 
 function isUniqueViolation(error: unknown): boolean {

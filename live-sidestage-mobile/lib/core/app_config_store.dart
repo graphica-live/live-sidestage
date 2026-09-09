@@ -84,7 +84,7 @@ class AppConfigStore extends ChangeNotifier {
   bool get syncPending => _pendingRevision != null;
 
   /// アカウント削除時の後始末。設定を既定値へ戻し、`FlutterForegroundTask`の
-  /// ストレージ(ForegroundTaskが保持する`apiKey`もこの仕組みで入っている)を
+  /// ストレージ(ForegroundTaskが保持する`token`/`refreshToken`もこの仕組みで入っている)を
   /// 丸ごとクリアする。同一端末で別アカウントへログインしたとき、前アカウントの
   /// 設定・接続情報を引き継がないようにするため。
   Future<void> resetToDefaults() async {

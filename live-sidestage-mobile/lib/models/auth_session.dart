@@ -1,20 +1,17 @@
 class StreamerInfo {
   final String id;
   final String tiktokHandle;
-  final String apiKey;
   final bool verified;
 
   StreamerInfo({
     required this.id,
     required this.tiktokHandle,
-    required this.apiKey,
     required this.verified,
   });
 
   factory StreamerInfo.fromJson(Map<String, dynamic> json) => StreamerInfo(
         id: json['id'] as String,
         tiktokHandle: json['tiktokHandle'] as String,
-        apiKey: json['apiKey'] as String,
         verified: json['verified'] as bool? ?? false,
       );
 }
@@ -22,8 +19,9 @@ class StreamerInfo {
 /// どの認証プロバイダでこのセッションを取ったか。
 ///
 /// サーバーは返さない（端末はどちらのエンドポイントを叩いたか知っている）。
-/// 保持しているのは **ログアウトと無言リフレッシュの分岐に要る**ため。
-/// Google には `signInSilently` があるが Apple には相当するものが無い。
+/// **トークンの再発行には使わない** — access token の再発行は全プロバイダ共通の
+/// refresh token 交換（`/api/mobile/auth/refresh`）で行う。ここで保持しているのは
+/// ログアウト時に Google 側のサインアウトを呼ぶかの分岐と、設定画面のアカウント表示のため。
 enum AuthProvider {
   google,
   apple,
@@ -38,7 +36,14 @@ enum AuthProvider {
 }
 
 class AuthSession {
+  /// 短命の access token（mobile JWT）。HTTP API と socket.io の両方で使う。
   final String token;
+
+  /// 長命の refresh token。`/api/mobile/auth/refresh` で access token を
+  /// 取り直すときに提示する。**サーバー側は1回使い切り(rotation)** なので、
+  /// 再発行に成功したら必ず新しい値で置き換えて保存すること。
+  final String refreshToken;
+
   final String userId;
   final String userName;
   final String userEmail;
@@ -48,6 +53,7 @@ class AuthSession {
 
   AuthSession({
     required this.token,
+    required this.refreshToken,
     required this.userId,
     required this.userName,
     required this.userEmail,
@@ -61,6 +67,8 @@ class AuthSession {
     final streamerJson = json['streamer'] as Map<String, dynamic>?;
     return AuthSession(
       token: json['token'] as String,
+      // 必須。ログイン系エンドポイントは必ず refresh token を返す。
+      refreshToken: json['refreshToken'] as String,
       userId: user['id'] as String,
       userName: user['name'] as String? ?? '',
       userEmail: user['email'] as String? ?? '',
@@ -70,9 +78,12 @@ class AuthSession {
     );
   }
 
+  /// オンボーディング完了 / TikTok ID 変更。サーバーは access token だけを
+  /// 再発行する（`signMobileToken` 直接呼び出し）ので、**refresh token は据え置く**。
   AuthSession withStreamer({required String token, required StreamerInfo streamer}) {
     return AuthSession(
       token: token,
+      refreshToken: refreshToken,
       userId: userId,
       userName: userName,
       userEmail: userEmail,
@@ -82,8 +93,27 @@ class AuthSession {
     );
   }
 
+  /// refresh token の rotation 結果を取り込む。
+  ///
+  /// **access token と refresh token は必ず対で差し替える。** 片方だけ更新すると、
+  /// 次の再発行で無効化済みの refresh token を提示することになり、サーバー側の
+  /// reuse 検知で family ごと失効させられる（＝不要な強制ログアウト）。
+  AuthSession withTokens({required String token, required String refreshToken}) {
+    return AuthSession(
+      token: token,
+      refreshToken: refreshToken,
+      userId: userId,
+      userName: userName,
+      userEmail: userEmail,
+      onboardingRequired: onboardingRequired,
+      provider: provider,
+      streamer: streamer,
+    );
+  }
+
   Map<String, String> toStorageMap() => {
         'token': token,
+        'refreshToken': refreshToken,
         'userId': userId,
         'userName': userName,
         'userEmail': userEmail,
@@ -91,7 +121,6 @@ class AuthSession {
         'provider': provider.name,
         if (streamer != null) 'streamerId': streamer!.id,
         if (streamer != null) 'tiktokHandle': streamer!.tiktokHandle,
-        if (streamer != null) 'apiKey': streamer!.apiKey,
         if (streamer != null) 'verified': streamer!.verified.toString(),
       };
 
@@ -110,6 +139,10 @@ class AuthSession {
 
     return AuthSession(
       token: map['token']!,
+      // **必須キー。** refresh token を持たないセッションは access token を
+      // 取り直せず、失効した瞬間に無言で壊れる。持っていない保存データは
+      // [SessionStorage.load] 側で null（＝未ログイン）として扱う。
+      refreshToken: map['refreshToken']!,
       userId: map['userId']!,
       userName: map['userName']!,
       userEmail: map['userEmail']!,
@@ -119,7 +152,6 @@ class AuthSession {
           ? StreamerInfo(
               id: map['streamerId']!,
               tiktokHandle: map['tiktokHandle']!,
-              apiKey: map['apiKey']!,
               verified: map['verified'] == 'true',
             )
           : null,

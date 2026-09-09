@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       clientId,
     });
     await markLastActive(user.id);
-    return NextResponse.json(mobileAuthResponseBody(user));
+    return NextResponse.json(await mobileAuthResponseBody(user));
   } catch (error) {
     if (error instanceof AppleAuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

@@ -5,6 +5,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../models/account_status.dart';
 import 'api_client.dart';
+import 'api_retry.dart';
 
 /// 背景Isolate(Foreground Service)がFREEプランの読み上げインターバル判定に使う、
 /// 直近にサーバーから実際に取得できた実プラン(plan)の永続化キー。
@@ -51,12 +52,20 @@ class AccountStatusStore extends ChangeNotifier {
   /// 古いリクエストの結果で新しいユーザーの状態を上書きしないためのガード。
   String? _requestedUserId;
 
-  Future<void> refresh({required String userId, required String token}) async {
+  Future<void> refresh({
+    required String userId,
+    required String token,
+    Future<String?> Function()? refreshToken,
+  }) async {
     _requestedUserId = userId;
 
     AccountStatus next;
     try {
-      next = await _api.fetchAccountStatus(token: token).timeout(_timeout);
+      next = await withTokenRefresh(
+        call: (t) => _api.fetchAccountStatus(token: t),
+        token: token,
+        refreshToken: refreshToken,
+      ).timeout(_timeout);
     } catch (_) {
       // ネットワーク断・5xx・タイムアウト・401いずれもここに来る。
       // 401(トークン失効)は他のAPI呼び出しと同様、実際に機能を使う操作の方で
@@ -91,13 +100,20 @@ class AccountStatusStore extends ChangeNotifier {
 
   /// 事後通知SnackBarの「閉じる」操作。サーバーへ既読化を送りつつ、次のrefreshを
   /// 待たずローカル状態からも即座に消す(でないと再度設定タブを開くたびに出続ける)。
-  Future<void> acknowledgeRecentMerge({required String token}) async {
+  Future<void> acknowledgeRecentMerge({
+    required String token,
+    Future<String?> Function()? refreshToken,
+  }) async {
     final notice = status.recentMerge;
     if (notice == null) return;
     status = status.withoutRecentMerge();
     notifyListeners();
     try {
-      await _api.acknowledgeMergeNotice(token: token, logId: notice.id);
+      await withTokenRefresh(
+        call: (t) => _api.acknowledgeMergeNotice(token: t, logId: notice.id),
+        token: token,
+        refreshToken: refreshToken,
+      );
     } catch (_) {
       // ベストエフォート。失敗してもUIは閉じたままでよい(次回起動時に再取得すれば
       // まだ未読ならまた表示されるだけで、既読化の再送を強制する必要はない)。

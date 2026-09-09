@@ -7,6 +7,7 @@ import 'package:in_app_purchase_storekit/store_kit_2_wrappers.dart';
 
 import 'account_status_store.dart';
 import 'api_client.dart';
+import 'api_retry.dart';
 import 'billing_service.dart' show BillingPurchaseState;
 
 /// Apple IAP(StoreKit2)の商品ID。App Store Connectに同じ値でサブスクリプション商品を
@@ -39,6 +40,7 @@ class AppleBillingService extends ChangeNotifier {
   String? _token;
   String? _userId;
   AccountStatusStore? _accountStatusStore;
+  Future<String?> Function()? _refreshToken;
 
   BillingPurchaseState state = BillingPurchaseState.idle;
   String? errorMessage;
@@ -46,15 +48,18 @@ class AppleBillingService extends ChangeNotifier {
 
   /// アプリ起動時、ログイン済みセッションが判明した時点で1回呼ぶ。
   /// [token]はverify-purchase呼び出しに使うJWT、[accountStatusStore]は
-  /// 購入確定後にplanを取り直すために使う。
+  /// 購入確定後にplanを取り直すために使う、[refreshToken]はトークン失効時に
+  /// 再発行するためのコールバック。
   Future<void> init({
     required String token,
     required String userId,
     required AccountStatusStore accountStatusStore,
+    Future<String?> Function()? refreshToken,
   }) async {
     _token = token;
     _userId = userId;
     _accountStatusStore = accountStatusStore;
+    _refreshToken = refreshToken;
 
     // iOS専用。Android版(BillingService)と対称のガード。
     if (!Platform.isIOS) return;
@@ -109,7 +114,11 @@ class AppleBillingService extends ChangeNotifier {
     }
     for (final tx in unfinished) {
       try {
-        await _api.verifyApplePurchase(token: token, transactionId: tx.id);
+        await withTokenRefresh(
+          call: (t) => _api.verifyApplePurchase(token: t, transactionId: tx.id),
+          token: token,
+          refreshToken: _refreshToken,
+        );
         final id = int.tryParse(tx.id);
         if (id != null) await SK2Transaction.finish(id);
       } catch (_) {
@@ -122,7 +131,11 @@ class AppleBillingService extends ChangeNotifier {
     final accountStatusStore = _accountStatusStore;
     final sessionUnchanged = verifyingUserId != null && verifyingUserId == _userId;
     if (accountStatusStore != null && sessionUnchanged) {
-      await accountStatusStore.refresh(userId: verifyingUserId, token: token);
+      await accountStatusStore.refresh(
+        userId: verifyingUserId,
+        token: token,
+        refreshToken: _refreshToken,
+      );
     }
   }
 
@@ -177,7 +190,11 @@ class AppleBillingService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final appAccountToken = await _api.initAppleBilling(token: token);
+      final appAccountToken = await withTokenRefresh(
+        call: (t) => _api.initAppleBilling(token: t),
+        token: token,
+        refreshToken: _refreshToken,
+      );
       final purchaseParam = PurchaseParam(
         productDetails: productDetails,
         applicationUserName: appAccountToken,
@@ -292,7 +309,11 @@ class AppleBillingService extends ChangeNotifier {
     }
 
     try {
-      await _api.verifyApplePurchase(token: token, transactionId: transactionId);
+      await withTokenRefresh(
+        call: (t) => _api.verifyApplePurchase(token: t, transactionId: transactionId),
+        token: token,
+        refreshToken: _refreshToken,
+      );
 
       if (purchase.pendingCompletePurchase) {
         await _iap.completePurchase(purchase);
@@ -304,7 +325,11 @@ class AppleBillingService extends ChangeNotifier {
       final sessionUnchanged = verifyingUserId != null && verifyingUserId == _userId;
       final accountStatusStore = _accountStatusStore;
       if (sessionUnchanged && accountStatusStore != null) {
-        await accountStatusStore.refresh(userId: verifyingUserId, token: token);
+        await accountStatusStore.refresh(
+          userId: verifyingUserId,
+          token: token,
+          refreshToken: _refreshToken,
+        );
       }
 
       if (!sessionUnchanged) {

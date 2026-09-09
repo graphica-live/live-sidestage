@@ -89,7 +89,6 @@ describe("middleware の matcher", () => {
       "/api/health",
       "/api/debug/battle-payloads",
       "/api/internal/gift-event",
-      "/api/analytics/monthly-contributors",
       "/api/overlay/settings",
       "/overlay/contribution",
       "/images/trophy.png", // public/images 配下の静的画像(公開トーナメント表の優勝トロフィー等)

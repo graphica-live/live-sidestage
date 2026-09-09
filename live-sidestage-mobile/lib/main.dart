@@ -285,16 +285,23 @@ class _AuthGateState extends State<AuthGate> {
       _syncedBillingToken = session.token;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        context.read<AccountStatusStore>().refresh(userId: session.userId, token: session.token);
+        final sessions = context.read<SessionController>();
+        context.read<AccountStatusStore>().refresh(
+              userId: session.userId,
+              token: session.token,
+              refreshToken: sessions.refreshToken,
+            );
         context.read<BillingService>().init(
               token: session.token,
               userId: session.userId,
               accountStatusStore: context.read<AccountStatusStore>(),
+              refreshToken: sessions.refreshToken,
             );
         context.read<AppleBillingService>().init(
               token: session.token,
               userId: session.userId,
               accountStatusStore: context.read<AccountStatusStore>(),
+              refreshToken: sessions.refreshToken,
             );
       });
     } else if (_syncedBillingToken != session.token) {

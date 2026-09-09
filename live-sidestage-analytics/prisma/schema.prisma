@@ -46,6 +46,59 @@ model User {
   pendingPurchaseIntents PendingPurchaseIntent[]
   ambassador             Ambassador?
   ambassadorInvitesUsed  AmbassadorInvite[]
+  refreshTokens          RefreshToken[]
+
+  @@schema("public")
+}
+
+// OAuth2的refresh token。access token(mobile JWT)の再発行に使う。
+// rotation方式: 使用のたびに新しい行を発行し、古い行はrevokedAt/replacedByIdで
+// 無効化する(生の値ではなくSHA-256ハッシュのみ保存する)。
+// familyIdは初回発行時に採番し、rotationチェーン全体で共有する(盗難検知の単位)。
+// expiresAtはrotationのたびに30日延長されるsliding expiry。absoluteExpiresAtは
+// family初回発行時刻+90日で固定され、rotationでも延長しない(無期限延長の防止)。
+model RefreshToken {
+  id                String    @id @default(cuid())
+  principalId       String
+  // 発行時点のstreamerId(参考情報)。access token再発行時のクレームには使わない
+  // (mobile-auth.tsが毎回principalIdからDBを引き直す。発見4と同じ規律)。
+  streamerId        String?
+  tokenHash         String    @unique
+  familyId          String
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime
+  revokedAt         DateTime?
+  replacedById      String?
+  user              User      @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  @@index([principalId])
+  @@index([familyId])
+  @@schema("public")
+}
+
+// rotation時の原子的updateMany(1トランザクション)が成功した直後の結果
+// (access token・新しいraw refresh token)を30秒だけ持つ、プロセスをまたいで
+// 共有される永続化replayキャッシュ。マルチIsolate/ネットワーク再試行による
+// 「同じ古いtokenでの正常な同時提示」を、プロセス依存のin-memory Mapではなく
+// ここから同一の結果で応答することでidempotentに吸収する(2026-09-09追記2、
+// VALID項目2)。
+// (2026-09-09追記3) 生のトークン値を平文で持つと、このテーブルの漏洩(バックアップ
+// 流出・内部者アクセス等)だけで30秒間有効な生のrefresh tokenがそのまま漏れ、
+// 「refresh tokenの生の値をDBに残さない」というInvariantと矛盾する
+// (entity-design Skillで検出)。そのためaccessToken/refreshTokenは平文ではなく、
+// アプリケーション層の対称鍵(`REFRESH_TOKEN_REPLAY_ENC_KEY`環境変数、DB接続情報とは
+// 別管理)でAES-256-GCM暗号化した値(`<iv>:<authTag>:<ciphertext>`をbase64で連結した
+// 文字列)を保持する。30秒TTLの短命データに限定した意図的な例外である点は変わらない。
+model RefreshTokenReplay {
+  oldTokenHash    String   @id
+  principalId     String
+  streamerId      String?
+  // AES-256-GCM暗号化済み(平文ではない)。復号には`REFRESH_TOKEN_REPLAY_ENC_KEY`が要る。
+  accessTokenEnc  String
+  refreshTokenEnc String
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
 
   @@schema("public")
 }
@@ -371,7 +424,7 @@ model TiktokRoom {
   consecutiveBlockedCount Int       @default(0)
   // true の間、watchedRoomFilter() はこのRoomの Streamer を「監視対象」から除外する
   // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/
-  // overlayToken/apiKey/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/
+  // overlayToken/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/
   // 再アクセスすると markLastActive() が自動でfalseへ戻し、次のreconcileで監視が復活する。
   monitoringSuspended     Boolean   @default(false)
 
@@ -609,7 +662,6 @@ model Streamer {
   verificationCode      String
   verified              Boolean   @default(false)
   verifiedAt            DateTime?
-  apiKey                String?   @unique
   createdAt             DateTime  @default(now())
   // ユーザー操作(web /api/verify/generate, mobile PATCH /api/mobile/streamer)による
   // tiktokHandle 設定・変更の最終時刻。7日間の再変更ロックの起点に使う。

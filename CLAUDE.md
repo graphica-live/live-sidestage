@@ -39,8 +39,7 @@ TikRIng を除く4つ（analytics / desktop / mobile / TikCaption）は TikTok L
 
 コード上で確認できる実際の連携ポイント（実装の詳細は各プロジェクトのCLAUDE.mdを参照）:
 
-- **desktop → analytics**: `GET /api/analytics/monthly-contributors?month=YYYY-MM`。先月の MVP/TOP5 を取り込む
-- **mobile → analytics**: Google認証 → JWT → apiKey 取得 → socket.io `chat:{streamerId}` ルームでコメント受信
+- **mobile → analytics**: Google/Apple/メール認証 → access token(短命JWT)+refresh token(rotation付き)を発行 → access tokenをそのままsocket.io `chat:{streamerId}` ルームの認証にも使い、失効したら`/api/mobile/auth/refresh`で無言再発行する
 - **OBS ブラウザソース → analytics**: `/overlay/contribution?token=<overlayToken>` → socket.io `overlay:{streamerId}` ルーム。socket 認証は [server.js](live-sidestage-analytics/server.js) の `io.use()` にトークン/APIキーの2系統がまとまっている
 - **mydesktop → desktop**: `http://localhost:38100` へ `socket.io-client` で接続し `effects:video-playing` を購読するだけの一方向連携。認証なし・CORS全開放（desktop側の既存仕様）。詳細は [live-sidestage-mydesktop/CLAUDE.md](live-sidestage-mydesktop/CLAUDE.md)
 

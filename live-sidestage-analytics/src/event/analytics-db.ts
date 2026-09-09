@@ -15,7 +15,7 @@ export type DbClient = PrismaClient | Prisma.TransactionClient;
 // 別プロジェクトだった頃は列を絞った view(public.event_gift_v 等)と GRANT で
 // これを構造的に強制していたが、統合して同じ接続で読むようになったため、
 // 今は「必要な列だけを書く」という規約でしか守られていない。
-// 特に Streamer の apiKey / verificationCode / overlayToken、User.password、
+// 特に Streamer の verificationCode / overlayToken、User.password、
 // Account の access/refresh token は、イベント機能には一切必要ない。
 
 export type StreamerLink = {

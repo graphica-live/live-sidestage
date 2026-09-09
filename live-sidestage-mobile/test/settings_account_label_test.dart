@@ -16,12 +16,13 @@ import 'package:live_sidestage_mobile/screens/tabs/settings_tab.dart';
 
 AuthSession _session(AuthProvider provider) => AuthSession(
       token: 'tok',
+      refreshToken: 'refresh',
       userId: 'u1',
       userName: 'me',
       userEmail: 'me@example.com',
       onboardingRequired: false,
       provider: provider,
-      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', verified: true),
     );
 
 Future<void> _pumpSettings(WidgetTester tester, AuthProvider provider) async {
@@ -42,7 +43,7 @@ Future<void> _pumpSettings(WidgetTester tester, AuthProvider provider) async {
             speech: const SpeechState(),
             busy: false,
             onChangeTiktokHandle: () async {},
-            onBeforeLogout: () async {},
+            onBeforeDeleteAccount: () async {},
           ),
         ),
       ),

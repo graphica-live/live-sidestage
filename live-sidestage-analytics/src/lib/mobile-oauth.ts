@@ -1,4 +1,4 @@
-import { signMobileToken } from "./mobile-auth";
+import { issueRefreshToken, signMobileToken } from "./mobile-auth";
 
 /// モバイル認証(Google / Apple)のレスポンス整形と JWT 発行。
 ///
@@ -10,9 +10,6 @@ export interface MobileAuthStreamer {
   id: string;
   tiktokHandle: string;
   verified: boolean;
-  /// スキーマ上は nullable。従来からそのまま返しているので形は変えない
-  /// （端末側は非 null 前提で読むが、apiKey は Streamer 作成時に必ず入る）。
-  apiKey: string | null;
 }
 
 export interface MobileAuthUser {
@@ -24,16 +21,26 @@ export interface MobileAuthUser {
 
 /// Flutter の `AuthSession.fromJson` が読む形。**プロバイダによらず同じ形にする**
 /// （端末側はどちらのエンドポイントを叩いたか知っているので provider は返さない）。
-export function mobileAuthResponseBody(user: MobileAuthUser) {
+///
+/// `token`(access token)は1時間で切れるので、端末は同時に受け取る `refreshToken` で
+/// 無言再発行する（`POST /api/mobile/auth/refresh`）。**refresh token の発行は DB 書き込みを
+/// 伴うため、この関数は非同期**（呼び出し元は `await` すること）。
+export async function mobileAuthResponseBody(user: MobileAuthUser) {
+  const refreshToken = await issueRefreshToken({
+    principalId: user.id,
+    // 発行時点の参考情報。再発行時のクレームには使わず、毎回 DB から引き直す。
+    streamerId: user.streamer?.id ?? null,
+  });
+
   return {
     token: signMobileToken({ principalId: user.id, streamerId: user.streamer?.id }),
+    refreshToken,
     user: { id: user.id, name: user.name, email: user.email },
     streamer: user.streamer
       ? {
           id: user.streamer.id,
           tiktokHandle: user.streamer.tiktokHandle,
           verified: user.streamer.verified,
-          apiKey: user.streamer.apiKey,
         }
       : null,
     onboardingRequired: !user.streamer,

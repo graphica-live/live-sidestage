@@ -15,11 +15,21 @@ enum SocketStatus { disconnected, connecting, connected, error }
 /// サーバー(server.js の io.use())が unauthorized 系エラーに付与する `err.data` の値。
 /// 未知のcodeは無視し、サーバーから届いた message をそのまま表示する(下位互換)。
 const Map<String, String> _socketErrorMessages = {
-  'INVALID_API_KEY':
-      'アカウントの認証に失敗しました。アプリを再起動しても直らない場合は、TikTokアカウントの連携をやり直してください。',
+  'INVALID_TOKEN': 'アカウントの認証に失敗しました。ログインし直してください。',
+  // 通常は [CommentFeed.onTokenExpired] で無言に取り直すので表示されない。
+  // 再発行に失敗したときだけユーザーの目に触れる。
+  'TOKEN_EXPIRED': 'ログインの有効期限が切れています。ログインし直してください。',
+  'STREAMER_NOT_REGISTERED': 'TikTokアカウントの連携が完了していません。',
   'INVALID_OVERLAY_TOKEN': 'オーバーレイの認証に失敗しました。',
   'MISSING_CREDENTIALS': 'アカウントの認証情報が見つかりません。ログインし直してください。',
 };
+
+/// server.js の CONNECT_ERROR パケット `{message, data}` から `data`（エラーコード）を取り出す。
+String? _socketErrorCode(dynamic err) {
+  if (err is! Map) return null;
+  final code = err['data'];
+  return code is String ? code : null;
+}
 
 /// socket.io の connect_error / error に載る値から表示メッセージを組み立てる。
 ///
@@ -28,8 +38,8 @@ const Map<String, String> _socketErrorMessages = {
 /// message(またはerr自体)を透過表示する。
 String _describeSocketError(dynamic err, String fallbackPrefix) {
   if (err is Map) {
-    final code = err['data'];
-    if (code is String) {
+    final code = _socketErrorCode(err);
+    if (code != null) {
       final known = _socketErrorMessages[code];
       if (known != null) return known;
     }
@@ -74,7 +84,29 @@ class CommentFeed extends ChangeNotifier {
 
   Stream<void> get onConnected => _connectedController.stream;
 
-  void connect(String apiKey) {
+  /// access token が失効していた（サーバーが `TOKEN_EXPIRED` を返した）ときに
+  /// 新しい access token を取り直す手続き。取り直せなければ null を返す。
+  ///
+  /// **コンストラクタ引数ではなく public な mutable フィールド。** [CommentFeed] は
+  /// メイン/背景の両 Isolate から引数なしで生成されており、生成箇所ごとに再発行の
+  /// 手段が違う（メインは [SessionController]、背景は自前の HTTP POST）ため、
+  /// `connect()` の前に呼び出し側が代入する形にしてある。
+  Future<String?> Function()? onTokenExpired;
+
+  /// サーバーが `STREAMER_NOT_REGISTERED`（TikTok 未連携）を返したとき。
+  /// **リトライしても解消しない**ので、購読側は再接続を止めて導線を出すこと。
+  void Function()? onStreamerNotRegistered;
+
+  /// このソケット接続（＝直近の接続成功以降）で既に1回 token を取り直したか。
+  /// 取り直した直後の token でまた `TOKEN_EXPIRED` になった場合に、
+  /// 再発行と再接続を無限に繰り返さないための歯止め。接続に成功したら解除する。
+  bool _tokenRefreshAttempted = false;
+
+  /// 再発行が進行中。socket.io は再接続のたびに `connect_error` を投げるので、
+  /// これが無いと1回の失効で再発行が何本も走る。
+  bool _tokenRefreshInFlight = false;
+
+  void connect(String token) {
     disconnect();
 
     status = SocketStatus.connecting;
@@ -85,7 +117,10 @@ class CommentFeed extends ChangeNotifier {
       liveAnalyticsBaseUrl,
       io.OptionBuilder()
           .setTransports(['websocket'])
-          .setQuery({'apiKey': apiKey})
+          // socket.io v4 標準の `auth` ハンドシェイクペイロード。
+          // **`query` には載せない** — `query.token` はオーバーレイ認証が使用中で、
+          // サーバー側(server.js の io.use())で分岐が衝突する。
+          .setAuth({'token': token})
           .disableAutoConnect()
           .build(),
     );
@@ -93,6 +128,8 @@ class CommentFeed extends ChangeNotifier {
     socket.onConnect((_) {
       status = SocketStatus.connected;
       errorMessage = null;
+      // 繋がった時点で「この token は有効」。次に失効したときのために歯止めを解除する。
+      _tokenRefreshAttempted = false;
       notifyListeners();
       // 再接続のたびに発火する。切れている間の状態変化は push で受け取れていないので、
       // ここを合図に listener 状態を取り直す。
@@ -137,6 +174,29 @@ class CommentFeed extends ChangeNotifier {
     });
 
     socket.onConnectError((err) {
+      final code = _socketErrorCode(err);
+
+      // TikTok 未連携。リトライで解消しないので、購読側に後始末を任せる。
+      if (code == 'STREAMER_NOT_REGISTERED') {
+        status = SocketStatus.error;
+        errorMessage = _describeSocketError(err, '接続エラー');
+        notifyListeners();
+        onStreamerNotRegistered?.call();
+        return;
+      }
+
+      // access token の失効。**まず無言で取り直す。** 取り直せなかったときだけ
+      // エラーとして見せる(_refreshAndReconnect の中)。
+      final refresh = onTokenExpired;
+      if (code == 'TOKEN_EXPIRED' && refresh != null && !_tokenRefreshAttempted) {
+        _tokenRefreshAttempted = true;
+        status = SocketStatus.connecting;
+        errorMessage = null;
+        notifyListeners();
+        unawaited(_refreshAndReconnect(refresh));
+        return;
+      }
+
       status = SocketStatus.error;
       errorMessage = _describeSocketError(err, '接続エラー');
       notifyListeners();
@@ -150,6 +210,33 @@ class CommentFeed extends ChangeNotifier {
 
     _socket = socket;
     socket.connect();
+  }
+
+  /// `TOKEN_EXPIRED` を受けて access token を取り直し、新しい token で張り直す。
+  ///
+  /// `withTokenRefresh`（HTTP 側）と同じ「失効 → 再発行 → 1回だけ再試行」の形。
+  /// 再発行できなければ、その事実をエラーとして見せる（無言で繋がらないままにしない）。
+  Future<void> _refreshAndReconnect(Future<String?> Function() refresh) async {
+    if (_tokenRefreshInFlight) return;
+    _tokenRefreshInFlight = true;
+    try {
+      final token = await refresh();
+      if (token == null) {
+        status = SocketStatus.error;
+        errorMessage = _socketErrorMessages['TOKEN_EXPIRED'];
+        notifyListeners();
+        return;
+      }
+      // connect() は歯止め(_tokenRefreshAttempted)を落とさない。落とすと、
+      // 取り直した token でまた失効扱いされたときに無限ループになる。
+      connect(token);
+    } catch (e) {
+      status = SocketStatus.error;
+      errorMessage = '認証の更新に失敗しました: $e';
+      notifyListeners();
+    } finally {
+      _tokenRefreshInFlight = false;
+    }
   }
 
   /// socket から届いた生データを安全にモデルへ変換する。

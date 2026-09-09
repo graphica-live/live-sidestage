@@ -7,6 +7,7 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 import 'account_status_store.dart';
 import 'api_client.dart';
+import 'api_retry.dart';
 
 /// Google Play課金の商品ID。Play Consoleに同じ値でサブスクリプション商品を
 /// 登録すること(README/CLAUDE.md参照)。サーバー環境変数
@@ -38,6 +39,7 @@ class BillingService extends ChangeNotifier {
   String? _token;
   String? _userId;
   AccountStatusStore? _accountStatusStore;
+  Future<String?> Function()? _refreshToken;
 
   BillingPurchaseState state = BillingPurchaseState.idle;
   String? errorMessage;
@@ -45,15 +47,18 @@ class BillingService extends ChangeNotifier {
 
   /// アプリ起動時、ログイン済みセッションが判明した時点で1回呼ぶ。
   /// [token]はverify-purchase呼び出しに使うJWT、[accountStatusStore]は
-  /// 購入確定後にplanを取り直すために使う。
+  /// 購入確定後にplanを取り直すために使う、[refreshToken]はトークン失効時に
+  /// 再発行するためのコールバック。
   Future<void> init({
     required String token,
     required String userId,
     required AccountStatusStore accountStatusStore,
+    Future<String?> Function()? refreshToken,
   }) async {
     _token = token;
     _userId = userId;
     _accountStatusStore = accountStatusStore;
+    _refreshToken = refreshToken;
 
     // Android専用。iOS上で動かすと、GooglePlayPurchaseParam(applicationUserName等、
     // Android専用フィールド)を使ったbuyや、restorePurchases()がApple側のreceiptを
@@ -141,7 +146,11 @@ class BillingService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final obfuscatedAccountId = await _api.initGoogleBilling(token: token);
+      final obfuscatedAccountId = await withTokenRefresh(
+        call: (t) => _api.initGoogleBilling(token: t),
+        token: token,
+        refreshToken: _refreshToken,
+      );
       final purchaseParam = GooglePlayPurchaseParam(
         productDetails: productDetails,
         applicationUserName: obfuscatedAccountId,
@@ -259,9 +268,13 @@ class BillingService extends ChangeNotifier {
     }
 
     try {
-      await _api.verifyGooglePurchase(
+      await withTokenRefresh(
+        call: (t) => _api.verifyGooglePurchase(
+          token: t,
+          purchaseToken: purchase.verificationData.serverVerificationData,
+        ),
         token: token,
-        purchaseToken: purchase.verificationData.serverVerificationData,
+        refreshToken: _refreshToken,
       );
 
       if (purchase.pendingCompletePurchase) {
@@ -274,7 +287,11 @@ class BillingService extends ChangeNotifier {
       final sessionUnchanged = verifyingUserId != null && verifyingUserId == _userId;
       final accountStatusStore = _accountStatusStore;
       if (sessionUnchanged && accountStatusStore != null) {
-        await accountStatusStore.refresh(userId: verifyingUserId, token: token);
+        await accountStatusStore.refresh(
+          userId: verifyingUserId,
+          token: token,
+          refreshToken: _refreshToken,
+        );
       }
 
       if (!sessionUnchanged) {

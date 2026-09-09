@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
           name: true,
           email: true,
           password: true,
-          streamer: { select: { id: true, tiktokHandle: true, verified: true, apiKey: true } },
+          streamer: { select: { id: true, tiktokHandle: true, verified: true } },
         },
       },
     },
@@ -84,5 +84,5 @@ export async function POST(req: NextRequest) {
 
   resetRateLimit(rateLimitKey);
   await markLastActive(account.user.id);
-  return NextResponse.json(mobileAuthResponseBody(account.user));
+  return NextResponse.json(await mobileAuthResponseBody(account.user));
 }

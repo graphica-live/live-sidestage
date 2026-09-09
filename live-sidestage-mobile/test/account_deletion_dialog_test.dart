@@ -20,12 +20,13 @@ import 'package:live_sidestage_mobile/screens/update_required_screen.dart';
 
 AuthSession _session({bool onboardingRequired = false}) => AuthSession(
       token: 'tok',
+      refreshToken: 'refresh',
       userId: 'u1',
       userName: 'me',
       userEmail: 'me@example.com',
       onboardingRequired: onboardingRequired,
       provider: AuthProvider.google,
-      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', verified: true),
     );
 
 Future<void> _pump(WidgetTester tester, SessionController controller, Widget child) {
@@ -54,7 +55,7 @@ void main() {
           speech: const SpeechState(),
           busy: false,
           onChangeTiktokHandle: () async {},
-          onBeforeLogout: () async {},
+          onBeforeDeleteAccount: () async {},
         ),
       ),
     );

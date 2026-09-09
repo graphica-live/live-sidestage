@@ -5,6 +5,7 @@ import '../../core/account_deletion.dart';
 import '../../core/account_status_store.dart';
 import '../../core/app_config_store.dart';
 import '../../core/battle_filter_store.dart';
+import '../../core/logout.dart';
 import '../../core/plan_gate.dart';
 import '../../core/privacy_policy.dart';
 import '../../core/session_controller.dart';
@@ -36,7 +37,7 @@ class SettingsTab extends StatelessWidget {
     required this.speech,
     required this.busy,
     required this.onChangeTiktokHandle,
-    required this.onBeforeLogout,
+    required this.onBeforeDeleteAccount,
   });
 
   final SpeechState speech;
@@ -46,7 +47,13 @@ class SettingsTab extends StatelessWidget {
   final bool busy;
 
   final Future<void> Function() onChangeTiktokHandle;
-  final Future<void> Function() onBeforeLogout;
+
+  /// アカウント削除の直前に呼ぶ後始末（稼働中の背景サービスの停止）。
+  ///
+  /// **ログアウトはこれを使わない。** ログアウトの手順は `performLogout()`
+  /// (`lib/core/logout.dart`) に一元化してあり、サービス停止・Foreground Service
+  /// 側の資格情報削除・サーバーへの失効通知まで含んでいる。
+  final Future<void> Function() onBeforeDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -254,9 +261,7 @@ class SettingsTab extends StatelessWidget {
                   final confirmed = await confirmLogout(context);
                   if (!confirmed) return;
                   if (!context.mounted) return;
-                  await onBeforeLogout();
-                  if (!context.mounted) return;
-                  await context.read<SessionController>().logout();
+                  await performLogout(context);
                 },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -280,7 +285,8 @@ class SettingsTab extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
           child: KosaiDangerButton(
             label: 'アカウント削除',
-            onPressed: () => confirmAndDeleteAccount(context, onBeforeDelete: onBeforeLogout),
+            onPressed: () =>
+                confirmAndDeleteAccount(context, onBeforeDelete: onBeforeDeleteAccount),
           ),
         ),
         if (store.syncPending)

@@ -35,6 +35,7 @@ class _FakeApi extends LiveAnalyticsApi {
     lastPassword = password;
     return AuthSession(
       token: 'tok',
+      refreshToken: 'refresh',
       userId: 'u1',
       userName: '',
       userEmail: email,
@@ -50,6 +51,7 @@ class _FakeApi extends LiveAnalyticsApi {
     lastPassword = password;
     return AuthSession(
       token: 'tok',
+      refreshToken: 'refresh',
       userId: 'u1',
       userName: '',
       userEmail: email,

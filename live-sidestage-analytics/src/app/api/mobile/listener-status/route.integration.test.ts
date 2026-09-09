@@ -15,19 +15,19 @@ const TIKTOK_ID = "itest_mobile_listener";
 let principalId: string;
 let roomId: string;
 let noRoomPrincipalId: string;
+let noStreamerPrincipalId: string;
 let unverifiedPrincipalId: string;
 let token: string;
+let claimlessToken: string;
 let noStreamerToken: string;
 let noRoomToken: string;
-let apiKey: string;
-let unverifiedApiKey: string;
+let unverifiedToken: string;
 
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-listener-secret";
 
-function request(opts: { bearer?: string; apiKey?: string } = {}): NextRequest {
+function request(opts: { bearer?: string } = {}): NextRequest {
   const headers: Record<string, string> = {};
   if (opts.bearer) headers.authorization = `Bearer ${opts.bearer}`;
-  if (opts.apiKey) headers["x-api-key"] = opts.apiKey;
   return new NextRequest("http://localhost/api/mobile/listener-status", { headers });
 }
 
@@ -57,7 +57,6 @@ beforeAll(async () => {
     data: { email: `itest-mobile-listener-${Date.now()}@local.test` },
   });
   principalId = user.id;
-  apiKey = `itest-listener-key-${Date.now()}`;
   const streamer = await prisma.streamer.create({
     data: {
       principalId,
@@ -66,13 +65,20 @@ beforeAll(async () => {
       verificationCode: "x",
       verified: true,
       roomId,
-      apiKey,
     },
   });
   token = signMobileToken({ principalId, streamerId: streamer.id });
 
-  // streamerId を持たないトークン（オンボーディング途中）。
-  noStreamerToken = signMobileToken({ principalId });
+  // streamerId クレームを持たないトークン（オンボーディング途中に発行されたもの）。
+  // ルートはクレームを見ずに principalId から引き直すので、これでも解決できる。
+  claimlessToken = signMobileToken({ principalId });
+
+  // Streamer が1件も無いユーザー（オンボーディング未完了）。
+  const noStreamer = await prisma.user.create({
+    data: { email: `itest-mobile-listener-nostreamer-${Date.now()}@local.test` },
+  });
+  noStreamerPrincipalId = noStreamer.id;
+  noStreamerToken = signMobileToken({ principalId: noStreamerPrincipalId });
 
   // Streamer はあるが部屋がまだ割り当たっていないユーザー。
   const noRoom = await prisma.user.create({
@@ -94,22 +100,25 @@ beforeAll(async () => {
     data: { email: `itest-mobile-listener-unverified-${Date.now()}@local.test` },
   });
   unverifiedPrincipalId = unverified.id;
-  unverifiedApiKey = `itest-listener-unverified-${Date.now()}`;
-  await prisma.streamer.create({
+  const unverifiedStreamer = await prisma.streamer.create({
     data: {
       principalId: unverifiedPrincipalId,
       tiktokUid: makeTiktokUid(`${TIKTOK_ID}_unverified`),
       tiktokHandle: `${TIKTOK_ID}_unverified`,
       verificationCode: "x",
       verified: false,
-      apiKey: unverifiedApiKey,
     },
+  });
+  unverifiedToken = signMobileToken({
+    principalId: unverifiedPrincipalId,
+    streamerId: unverifiedStreamer.id,
   });
 });
 
 afterAll(async () => {
   await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
   await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.user.delete({ where: { id: noStreamerPrincipalId } }).catch(() => {});
   await prisma.user.delete({ where: { id: unverifiedPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {});
   await prisma.$disconnect();
@@ -121,9 +130,27 @@ describe("GET /api/mobile/listener-status", () => {
     expect(res.status).toBe(401);
   });
 
-  it("streamerIdを持たないトークンは401", async () => {
+  it("Streamer未登録のユーザーのトークンは401", async () => {
     const res = await GET(request({ bearer: noStreamerToken }));
     expect(res.status).toBe(401);
+  });
+
+  // JWTの streamerId クレームは信用せず principalId から引き直す規律。
+  // クレームが無い(オンボーディング途中に発行された)トークンでも解決できる。
+  it("streamerIdクレームが無いトークンでもprincipalIdから解決する", async () => {
+    await setListener("connected", "接続済み", new Date());
+
+    const res = await GET(request({ bearer: claimlessToken }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.listener.roomId).toBe(roomId);
+  });
+
+  // モバイルはBIO認証ゲート対象外。socket認証(server.js)と条件を揃える。
+  it("verified=falseでも401にしない", async () => {
+    const res = await GET(request({ bearer: unverifiedToken }));
+    expect(res.status).toBe(200);
   });
 
   it("部屋が未割り当てならlistenerはnull(エラーではない)", async () => {
@@ -186,43 +213,6 @@ describe("GET /api/mobile/listener-status", () => {
     const res = await GET(request({ bearer: token }));
 
     expect(res.headers.get("cache-control")).toBe("no-store");
-  });
-
-  // 背景 Isolate は JWT を持たず apiKey しか持たない。socket 認証と同じ資格情報。
-  describe("apiKey認証", () => {
-    it("apiKeyだけでも取得できる", async () => {
-      await setListener("connected", "接続済み", new Date());
-
-      const res = await GET(request({ apiKey }));
-      const body = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(body.listener.live).toBe(true);
-    });
-
-    it("不正なapiKeyは401", async () => {
-      const res = await GET(request({ apiKey: "not-a-real-key" }));
-      expect(res.status).toBe(401);
-    });
-
-    // モバイルはBIO認証ゲート対象外。socket認証(server.js)と条件を揃える。
-    it("verified=falseのapiKeyでも200", async () => {
-      const res = await GET(request({ apiKey: unverifiedApiKey }));
-      expect(res.status).toBe(200);
-    });
-
-    it("JWTとapiKeyが別人を指していたら401", async () => {
-      const res = await GET(request({ bearer: noRoomToken, apiKey }));
-      expect(res.status).toBe(401);
-    });
-
-    it("JWTとapiKeyが同じ配信者なら通る", async () => {
-      await setListener("connected", "接続済み", new Date());
-
-      const res = await GET(request({ bearer: token, apiKey }));
-
-      expect(res.status).toBe(200);
-    });
   });
 
   // 列を足す前に書かれた行、および旧Workerが書いた行。

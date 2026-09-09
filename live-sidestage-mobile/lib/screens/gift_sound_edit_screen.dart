@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/api_client.dart';
 import '../core/app_config_store.dart';
 import '../core/gift_name_ja.dart';
+import '../core/logout.dart';
 import '../core/session_controller.dart';
 import '../core/sound_file_cleanup.dart';
 import '../core/sound_library.dart';
@@ -615,11 +616,10 @@ final RegExp _japaneseChars = RegExp(r'[぀-ヿ一-鿿ｦ-ﾝ]');
 /// 遅延生成なので、キーストロークごとにサーバーへ問い合わせ直す理由が無い。
 /// ギフト候補を取りに行く。401 のときだけトークンを取り直して**1回だけ**やり直す。
 ///
-/// JWT は90日で失効するのに、常用のコメント受信は socket.io の apiKey なので
-/// 失効しても画面上はログイン済みのまま見える。JWT を使う数少ない導線である
-/// この一覧だけが 401 になるため、ここで無言の再発行を挟む。
-/// 再発行できない（＝ Google の無言サインインが通らない）ときだけ、
-/// 従来どおり「ログインし直す」導線を出す。
+/// access token は短命なので、通常の利用でも普通に失効する。再発行は
+/// refresh token 交換（[SessionController.refreshToken]）で全ログイン経路が
+/// 同じように行える。再発行できない（＝ refresh token 自体が失効している）
+/// ときだけ、従来どおり「ログインし直す」導線を出す。
 ///
 /// Widget を組み立てずにテストできるよう、ピッカー本体から切り離してある。
 Future<List<GiftCandidate>> fetchGiftCandidatesWithRefresh({
@@ -922,7 +922,7 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
                 // ログイン切れは再試行しても直らない。ログアウトすると AuthGate が
                 // WelcomeScreen へ差し替えるので、このシートは開いたままでよい。
                 ElevatedButton.icon(
-                  onPressed: () => context.read<SessionController>().logout(),
+                  onPressed: () => performLogout(context),
                   icon: const Icon(Icons.logout),
                   label: const Text('ログインし直す'),
                 )

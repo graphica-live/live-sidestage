@@ -10,6 +10,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../models/auth_session.dart';
 import 'api_client.dart';
+import 'api_retry.dart';
 import 'session_storage.dart';
 
 /// android/app/build.gradle.kts の applicationId と一致させること。
@@ -58,7 +59,6 @@ class SessionController extends ChangeNotifier {
     LiveAnalyticsApi? api,
     SessionStorage? storage,
     GoogleSignIn? googleSignIn,
-    Future<String?> Function()? silentIdToken,
     AppleCredentialFetcher? appleCredential,
     AppResumeWatcher? watchAppResume,
     bool? appleSignInEnabled,
@@ -73,16 +73,12 @@ class SessionController extends ChangeNotifier {
               serverClientId: googleServerClientId,
               scopes: ['email'],
             ) {
-    _silentIdToken = silentIdToken ?? _silentIdTokenFromGoogle;
     _appleCredential = appleCredential ?? _appleCredentialFromApple;
   }
 
   final LiveAnalyticsApi _api;
   final SessionStorage _storage;
   final GoogleSignIn _googleSignIn;
-
-  /// 無言でGoogleのidTokenを取り直す。取れなければ null（＝手動の再ログインが要る）。
-  late final Future<String?> Function() _silentIdToken;
 
   late final AppleCredentialFetcher _appleCredential;
 
@@ -102,7 +98,10 @@ class SessionController extends ChangeNotifier {
   final bool _watchAppResumeOnApple;
 
   /// 進行中のトークン再発行。複数のAPI呼び出しが同時に401になっても
-  /// Googleのサインインを多重起動しないよう、同じ Future を共有する。
+  /// refresh token の交換を多重に走らせないよう、同じ Future を共有する。
+  ///
+  /// **これは必須の直列化。** refresh token は1回使い切り(rotation)なので、
+  /// 同じ値で2本同時に交換を試みるとサーバー側の reuse 検知に触れうる。
   Future<String?>? _refreshInFlight;
 
   /// アカウント削除の実行中〜完了後を示す。**[deleteAccount] の最初の await より前に
@@ -317,76 +316,86 @@ class SessionController extends ChangeNotifier {
     if (current == null) return Future.value(false);
 
     return _run(() async {
-      try {
-        final streamer =
-            await _api.updateTiktokHandle(token: current.token, tiktokHandle: tiktokHandle);
-        return current.withStreamer(token: current.token, streamer: streamer);
-      } on ApiException catch (e) {
-        if (!e.isUnauthorized) rethrow;
-        final token = await refreshToken();
-        if (token == null) rethrow;
-        // リフレッシュ後は [session] が差し替わっている。キャプチャ済みの
-        // [current] を戻り値の基底にすると、成功したのに失効トークンを
-        // 保存し直してしまう。
-        final refreshed = session ?? current;
-        final streamer = await _api.updateTiktokHandle(token: token, tiktokHandle: tiktokHandle);
-        return refreshed.withStreamer(token: token, streamer: streamer);
-      }
+      final streamer = await withTokenRefresh(
+        call: (t) => _api.updateTiktokHandle(token: t, tiktokHandle: tiktokHandle),
+        token: current.token,
+        refreshToken: refreshToken,
+      );
+      // リフレッシュが起きた場合、[session] が差し替わっている。キャプチャ済みの
+      // [current] を戻り値の基底にすると、成功したのに失効トークンを
+      // 保存し直してしまうため、必ず最新の [session] を使う。
+      final refreshed = session ?? current;
+      return refreshed.withStreamer(token: refreshed.token, streamer: streamer);
     });
   }
 
-  /// 失効した JWT を Google の無言サインインで取り直す。
+  /// 失効した access token を refresh token で取り直す。
   ///
-  /// 成功したら新しいトークンを返し、保存済みセッションも差し替える。
-  /// 取り直せなければ null を返す（手動の再ログインが要る）。**セッションは壊さない** ――
-  /// オフラインや Play services 側の一時的な失敗でログアウト扱いにしないため。
+  /// 成功したら新しい access token を返し、保存済みセッションも
+  /// （**access token と refresh token の両方を**）差し替える。取り直せなければ
+  /// null を返す（手動の再ログインが要る）。**セッションは壊さない** ――
+  /// オフラインやサーバー側の一時的な失敗でログアウト扱いにしないため。
   ///
-  /// サーバーの JWT は90日で失効するが、常用のコメント受信は socket.io の
-  /// apiKey で繋いでいて失効を検知できない。JWT を使う API（ギフト候補・TikTok ID 変更）が
-  /// 401 を返したときにだけ、ここを通して1回やり直す。
-  /// `MOBILE_JWT_SECRET` のローテーションで失効した場合も同じ経路で復帰する。
+  /// **プロバイダによる分岐は無い。** Google/Apple/メールのどの経路でログインしても、
+  /// サーバーは同じ形の refresh token を発行しており、同じエンドポイント
+  /// (`/api/mobile/auth/refresh`) で再発行できる。以前は Google の
+  /// `signInSilently` に頼っていたため Apple/メールのユーザーだけ無言再発行が
+  /// できなかったが、その非対称は解消済み。
   Future<String?> refreshToken() {
     return _refreshInFlight ??= _doRefresh().whenComplete(() => _refreshInFlight = null);
   }
 
   Future<String?> _doRefresh() async {
-    // これから走る/進行中のアカウント削除が優先。ここで打ち切らないと、サーバー側の
-    // 認証ルートが「Account/Userが既に無い」を新規サインアップと区別できず、
-    // 削除直後に新規Userを作ってしまう。
+    // これから走る/進行中のアカウント削除が優先。ここで打ち切らないと、
+    // 削除済みUserのために無駄なトークンを発行しに行くことになる。
     if (_deleting) return null;
     final current = session;
     if (current == null) return null;
-    // Apple には signInSilently 相当が無い（無言で取り直すと Custom Tab が
-    // 勝手に開く）。失効したら手動の再ログインに委ねる。セッションは壊さない。
-    if (current.provider != AuthProvider.google) return null;
 
+    final (String token, String refreshToken) pair;
     try {
-      final idToken = await _silentIdToken();
-      if (idToken == null) return null;
-
-      final refreshed = await _api.authenticateWithGoogle(idToken: idToken);
-      // 端末に別のGoogleアカウントが残っている場合に、他人のセッションで上書きしない。
-      // 待っている間にログアウト・アカウント削除されていた場合も、セッションを復活させない。
-      if (_deleting || session == null || refreshed.userId != current.userId) return null;
-
-      await _storage.save(refreshed);
-      session = refreshed;
-      // isLoading / errorMessage は動かさない（[_run] を通さない）。背景での更新であり、
-      // ログイン画面のスピナーやエラー表示を動かす種類の処理ではない。
-      notifyListeners();
-      return refreshed.token;
-    } catch (_) {
+      pair = await _api.refreshAccessToken(refreshToken: current.refreshToken);
+    } on ApiException catch (e) {
+      // isRefreshTokenRejected なら再発行は二度と成功しない（再ログインが要る）。
+      // それ以外（通信断・5xx）は一時的な失敗。**どちらの場合もセッションは壊さない** ――
+      // 破棄の判断は呼び出し側の導線に委ね、ここでは null を返すだけにする。
+      debugPrint('[session] access token の再発行に失敗しました: $e');
+      return null;
+    } catch (e) {
+      debugPrint('[session] access token の再発行に失敗しました: $e');
       return null;
     }
+
+    // 待っている間にログアウト・アカウント削除・別アカウントでのログインが
+    // 起きていたら、そちらを尊重して古いセッションを復活させない。
+    final latest = session;
+    if (_deleting || latest == null || latest.userId != current.userId) return null;
+
+    final refreshed = latest.withTokens(token: pair.$1, refreshToken: pair.$2);
+    await _storage.save(refreshed);
+    session = refreshed;
+    // isLoading / errorMessage は動かさない（[_run] を通さない）。背景での更新であり、
+    // ログイン画面のスピナーやエラー表示を動かす種類の処理ではない。
+    notifyListeners();
+    return refreshed.token;
   }
 
-  Future<String?> _silentIdTokenFromGoogle() async {
-    // reAuthenticate: true が要る。付けないと、同じプロセスが動き続けている間は
-    // ネイティブ呼び出しをスキップして前回サインイン時の idToken（有効期限は約1時間）を
-    // 返してくるため、常駐後のリフレッシュが必ず失敗する。
-    final account = await _googleSignIn.signInSilently(reAuthenticate: true);
-    if (account == null) return null;
-    return (await account.authentication).idToken;
+  /// 背景 Isolate が rotation した token ペアを取り込む。
+  ///
+  /// **メイン/背景のどちらで再発行が起きても、もう片方へ必ず伝播させる。**
+  /// 伝播を怠ると、次に相手側が無効化済みの refresh token を提示し、サーバーの
+  /// reuse 検知で family ごと失効（＝不要な強制ログアウト）になる。
+  Future<void> adoptTokens({required String token, required String refreshToken}) async {
+    final current = session;
+    if (current == null) return;
+    if (current.token == token && current.refreshToken == refreshToken) return;
+
+    final updated = current.withTokens(token: token, refreshToken: refreshToken);
+    await _storage.save(updated);
+    // 保存中に別アカウントへ切り替わっていたら取り込まない。
+    if (session?.userId != current.userId) return;
+    session = updated;
+    notifyListeners();
   }
 
   Future<bool> _run(Future<AuthSession> Function() action) async {
@@ -416,15 +425,25 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  /// **画面から直接呼ばないこと。** Foreground Service の停止と、そこに保存された
+  /// token/refreshToken の削除まで含めた正しい手順は `performLogout()`
+  /// (`lib/core/logout.dart`) が持っている。ここはその最終段。
   Future<void> logout() async {
-    await _clearLocalSession(session?.provider);
+    final current = session;
+    // サーバー側で refresh token の family 全体を失効させる。**ベストエフォート** ――
+    // 失敗してもローカルのログアウトは必ず続行する(通信できない場所で
+    // ログアウトできなくなるのを避ける)。
+    if (current != null) {
+      await _api.logoutSession(refreshToken: current.refreshToken);
+    }
+    await _clearLocalSession(current?.provider);
   }
 
   /// アカウント削除。サーバー側のUser削除に成功したら[logout]と同じく
   /// ローカルセッションを未ログイン状態へ落とす。
   ///
   /// 端末に残る他のローカルデータ（設定・取り込み済み効果音ファイル・
-  /// 背景サービスが保持するapiKey等）はここでは触らない — それらは
+  /// 背景サービスが保持する token / refreshToken 等）はここでは触らない — それらは
   /// [SessionController] の責務外（呼び出し側で
   /// `confirmAndDeleteAccount`（`account_deletion.dart`）を通して後始末する）。
   ///
@@ -441,7 +460,11 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _api.deleteAccount(token: current.token);
+      await withTokenRefresh(
+        call: (t) => _api.deleteAccount(token: t),
+        token: current.token,
+        refreshToken: refreshToken,
+      );
     } on ApiException catch (e) {
       _deleting = false;
       errorMessage = e.message;

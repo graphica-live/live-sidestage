@@ -82,7 +82,6 @@ async function createUserWithStreamer(opts: {
       tiktokUid: opts.tiktokUid ?? MOCK_TIKTOK_UID,
       tiktokHandle: opts.tiktokHandle,
       verificationCode: "x",
-      apiKey: `${PREFIX}${Date.now()}`,
       tiktokHandleChangedAt: opts.tiktokHandleChangedAt,
       verified: opts.verified ?? false,
     },

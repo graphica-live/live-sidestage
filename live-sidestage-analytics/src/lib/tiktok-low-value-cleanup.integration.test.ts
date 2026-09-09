@@ -69,7 +69,6 @@ async function attachStreamer(roomId: string, principalId: string) {
       tiktokHandle: tiktokHandle("s"),
       roomId,
       verificationCode: `itest-${suffix()}`,
-      apiKey: `itest-key-${suffix()}`,
       overlayToken: `itest-overlay-${suffix()}`,
     },
   });

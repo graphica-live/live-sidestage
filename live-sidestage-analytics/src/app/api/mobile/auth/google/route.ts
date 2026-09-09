@@ -115,5 +115,5 @@ export async function POST(req: NextRequest) {
 
   // レスポンスの形は Apple 版(`../apple/route.ts`)と共通にしてある。
   // 端末の AuthSession.fromJson は1つしかないので、ここが食い違うと片方が壊れる。
-  return NextResponse.json(mobileAuthResponseBody(user));
+  return NextResponse.json(await mobileAuthResponseBody(user));
 }
