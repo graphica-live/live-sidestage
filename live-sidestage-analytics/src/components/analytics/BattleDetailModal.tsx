@@ -343,9 +343,11 @@ function ShareButton({
         type="button"
         onClick={() => void share()}
         disabled={state === "working"}
-        className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong disabled:opacity-60"
+        aria-label={state === "copied" ? "コピーした" : "共有リンクをコピー"}
+        title={state === "copied" ? "コピーした" : "共有リンクをコピー"}
+        className="flex shrink-0 items-center justify-center rounded-field border border-border p-1.5 text-muted transition-colors hover:text-strong disabled:opacity-60"
       >
-        {state === "copied" ? "リンクをコピーした" : "🔗 共有リンク"}
+        <ArrowShareIcon />
       </button>
       {state === "error" && <span className="text-[10px] text-muted">共有リンクを発行できなかった。</span>}
       {state === "manual" && url !== null && (
@@ -714,6 +716,25 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ArrowShareIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M7 17L17 7" />
+      <path d="M8 7h9v9" />
     </svg>
   );
 }
