@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/account_deletion.dart';
@@ -228,6 +229,33 @@ class SettingsTab extends StatelessWidget {
               value: '@${session?.streamer?.tiktokHandle ?? ''}',
               trailingIcon: Icons.edit,
               onTap: onChangeTiktokHandle,
+            ),
+            _SettingValueRow(
+              title: 'アカウントID',
+              // サポート問い合わせ時の本人特定キー。TikTok側のIDとは無関係の
+              // sidestage内部ID(principalId)なので、未取得時はnullではなく
+              // プレースホルダーを出す(空文字はAccountStatus.emptyの既定値)。
+              value: accountStatus.status.principalId.isEmpty
+                  ? '（未取得）'
+                  : accountStatus.status.principalId,
+              trailingIcon: Icons.copy,
+              onTap: accountStatus.status.principalId.isEmpty
+                  ? null
+                  : () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      try {
+                        await Clipboard.setData(
+                          ClipboardData(text: accountStatus.status.principalId),
+                        );
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('コピーしました')),
+                        );
+                      } catch (_) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('コピーに失敗しました')),
+                        );
+                      }
+                    },
             ),
             if (session != null && session.userEmail.isNotEmpty)
               _SettingValueRow(
