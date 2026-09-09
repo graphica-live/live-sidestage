@@ -11,6 +11,18 @@
 - 本番webサービスの起動が完了していること(`db push --accept-data-loss` によるテーブル作成が済んでいること)
 - **このBatchはアプリケーションコードのcutover(Batch03)より前に実行する**（cutoverはbackfill完了が前提）
 
+**運用上の注記(データドリフト対策)**: 本番実行はBatch03 cutoverの直前(同一メンテナンスウィンドウ内)に行うこと。
+本スクリプトの完了判定は「挿入前のsettings件数 + 今回のinsert件数 === 挿入後のsettings件数」という
+決定的な比較で行っており、`"Streamer"` の全体件数とは比較しない(2クエリ間のrace conditionを避けるため)。
+そのため、**backfill実行〜cutoverの間に新規Streamer登録やStreamer側のoverlay設定変更があった場合、
+それらは新テーブルへ反映されないままcutoverを迎える**(検知もされない)。cutover前に新規登録・変更が
+あった場合は、cutover直前に本スクリプトを再実行すること。ただし `ON CONFLICT DO NOTHING` のため
+**既存行は上書きされない**——Streamer側で値が変わった配信者は新テーブル側が古いままになる。
+対処が必要な場合は次のいずれかを行う:
+1. 該当streamerIdの `overlay_contribution_settings` 行を削除してから再実行する(未backfill扱いに戻り、
+   最新のStreamer値でinsertされる)。
+2. cutover直前に全件UPSERTし直す運用に変更する(頻繁にドリフトが発生する場合)。
+
 ## 実行者
 
 このスクリプトはBatch02の「本番DBへの書き込みを伴う実データ操作」に該当するため、**ユーザーの明示的な指示・確認を経てから実行すること**（worker-expertが自律実行しない）。実行者はRailway本番DBへの書き込み権限を持つ運用担当者（メインエージェント、ユーザー確認後）。
@@ -43,7 +55,7 @@ WHERE NOT EXISTS (SELECT 1 FROM overlay_contribution_settings o WHERE o."streame
    ```bash
    DATABASE_URL="$DATABASE_URL" npx tsx scripts/backfill-overlay-contribution-settings.ts
    ```
-4. スクリプト自身が実行後に `"Streamer"` と `overlay_contribution_settings` の件数一致を確認し、
+4. スクリプト自身が実行後に「挿入前のsettings件数 + insert件数 = 挿入後のsettings件数」の一致を確認し、
    不一致なら exit code 1 で異常終了する。**"完了。件数が一致しました。" のログを確認すること。**
 
 ## 事後確認クエリ(読み取り専用)

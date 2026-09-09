@@ -17,8 +17,10 @@
 //   合わせている(streamerId, displayReference, displayDate, threshold, goalCount, visibleRows,
 //   nameMaxWidth, align, headingBackground, displaySpeed, updatedAt)。
 // - advisory lock で同時実行を防ぐ(migrate-subscription-provider.tsと同じパターン)。
-// - 実行後、"Streamer" の件数と overlay_contribution_settings の件数が一致することを
-//   スクリプト自身が確認し、不一致ならexit code 1で終了する(サイレント成功にしない)。
+// - 完了判定は「挿入前のsettings件数 + 今回のinsert件数 === 挿入後のsettings件数」という
+//   決定的な比較で行う("Streamer"件数との比較はしない)。2クエリの間に新規Streamerが
+//   作成されるとフォールスポジティブになるうえ、Streamer側の値変更(ドリフト)を検知できない
+//   ため。ドリフト自体は本スクリプトの責務外(運用手順側で対処。runbook参照)。
 //
 // 使い方:
 //   npx tsx scripts/backfill-overlay-contribution-settings.ts --dry-run   # 対象件数の確認のみ(書き込みなし)
@@ -29,21 +31,23 @@ import { prisma } from "../src/lib/prisma";
 const TAG = "[backfill-overlay-contribution-settings]";
 const MIGRATION_LOCK_KEY = 891_402_713n;
 
-async function countStreamers(): Promise<number> {
+// count系はすべてBigIntのまま返す。件数比較(完了判定)はBigIntの厳密比較(!==)で行い、
+// Number()への変換はログ表示のときだけ行う(Number.MAX_SAFE_INTEGERを超える精度損失を避ける)。
+async function countStreamers(): Promise<bigint> {
   const rows = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
     `SELECT count(*)::bigint AS count FROM "Streamer"`,
   );
-  return Number(rows[0].count);
+  return rows[0].count;
 }
 
-async function countSettings(): Promise<number> {
+async function countSettings(): Promise<bigint> {
   const rows = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
     `SELECT count(*)::bigint AS count FROM overlay_contribution_settings`,
   );
-  return Number(rows[0].count);
+  return rows[0].count;
 }
 
-async function countMissing(): Promise<number> {
+async function countMissing(): Promise<bigint> {
   const rows = await prisma.$queryRawUnsafe<{ count: bigint }[]>(`
     SELECT count(*)::bigint AS count
     FROM "Streamer" s
@@ -51,7 +55,7 @@ async function countMissing(): Promise<number> {
       SELECT 1 FROM overlay_contribution_settings o WHERE o."streamerId" = s.id
     )
   `);
-  return Number(rows[0].count);
+  return rows[0].count;
 }
 
 async function main() {
@@ -73,10 +77,12 @@ async function main() {
     return;
   }
 
-  if (missing === 0) {
+  let insertedCount = 0n;
+
+  if (missing === 0n) {
     console.log(`${TAG} 未backfillの行はありません。実行をスキップします。`);
   } else {
-    await prisma.$transaction(
+    insertedCount = await prisma.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${MIGRATION_LOCK_KEY}::bigint)`;
 
@@ -93,25 +99,30 @@ async function main() {
         `);
 
         console.log(`${TAG} ${inserted}件をbackfillしました。`);
+        return BigInt(inserted);
       },
       { timeout: 120_000, maxWait: 30_000 },
     );
   }
 
-  // 書き込み後、"Streamer" と overlay_contribution_settings の件数が一致することを確認する。
-  // 不一致はサイレントに握り潰さず、exit code 1で異常終了させる。
-  const streamerCountAfter = await countStreamers();
+  // 完了判定は「挿入前のsettings件数 + 今回のinsert件数 === 挿入後のsettings件数」という
+  // 決定的な比較で行う。"Streamer"件数との比較はrace conditionを生むうえ(2クエリの間の新規
+  // Streamer作成を誤って「一致」判定してしまう)、backfill実行〜cutoverの間のデータドリフト
+  // (新規Streamer登録やStreamer側の値変更が新テーブルへ未反映であること)を検知できないため
+  // 採用しない。不一致はサイレントに握り潰さず、exit code 1で異常終了させる。
   const settingsCountAfter = await countSettings();
+  const expectedSettingsCountAfter = settingsCountBefore + insertedCount;
 
   console.log(
-    `${TAG} 実行後件数確認: Streamer=${streamerCountAfter} / overlay_contribution_settings=${settingsCountAfter}`,
+    `${TAG} 実行後件数確認: overlay_contribution_settings(実行前)=${settingsCountBefore} + ` +
+      `insert件数=${insertedCount} = 期待値${expectedSettingsCountAfter} / 実測値=${settingsCountAfter}`,
   );
 
-  if (streamerCountAfter !== settingsCountAfter) {
+  if (expectedSettingsCountAfter !== settingsCountAfter) {
     console.error(
-      `${TAG} 件数不一致を検出しました(Streamer=${streamerCountAfter} / ` +
-        `overlay_contribution_settings=${settingsCountAfter})。原因を確認してください` +
-        `(backfill実行中に新規Streamerが作成された可能性、または一部行の挿入失敗)。`,
+      `${TAG} 件数不一致を検出しました(期待値=${expectedSettingsCountAfter} / ` +
+        `実測値=${settingsCountAfter})。原因を確認してください` +
+        `(insert中の同時書き込み、または一部行の挿入失敗)。`,
     );
     process.exitCode = 1;
     return;
