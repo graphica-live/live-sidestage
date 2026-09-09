@@ -90,7 +90,7 @@ vi.mock("./overlay", () => ({
 // room の同一性は hostTiktokUid で決まる。テストの「同じ配信者」はハンドルで書かれているので、
 // ハンドルから決定的に uid を導いて同一性を保つ(別ハンドル = 別 uid = 別 room)。
 async function createStreamer(tiktokHandle: string, emailPrefix: string) {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return prisma.streamer.create({
@@ -106,7 +106,7 @@ async function createStreamer(tiktokHandle: string, emailPrefix: string) {
 
 async function cleanupStreamer(streamerId: string) {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
-  if (streamer) await prisma.user.delete({ where: { id: streamer.principalId } });
+  if (streamer) await prisma.principal.delete({ where: { id: streamer.principalId } });
 }
 
 async function cleanupRoom(roomId: string) {

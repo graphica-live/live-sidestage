@@ -92,7 +92,7 @@ export async function addAmbassadorByEmail(rawEmail: string): Promise<AddAmbassa
   const email = normalizeEmail(rawEmail ?? "");
   if (!email) return { ok: false, code: "invalid", error: "メールアドレスを入力してください。" };
 
-  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  const user = await prisma.principal.findUnique({ where: { email }, select: { id: true } });
   if (!user) {
     return { ok: false, code: "not_found", error: "このメールアドレスのユーザーが見つかりません。" };
   }

@@ -51,7 +51,7 @@ async function isWatched(
 afterEach(async () => {
   await prisma.agency.deleteMany({ where: { id: { in: createdAgencyIds.splice(0) } } });
   await Promise.all(
-    createdPrincipalIds.splice(0).map((id) => prisma.user.delete({ where: { id } }).catch(() => {}))
+    createdPrincipalIds.splice(0).map((id) => prisma.principal.delete({ where: { id } }).catch(() => {}))
   );
   await Promise.all(
     createdRoomIds.splice(0).map((id) => prisma.tiktokRoom.delete({ where: { id } }).catch(() => {}))
@@ -130,7 +130,7 @@ describe("watchedRoomFilter", () => {
 
   it("Streamerが居る従来の部屋は引き続き接続対象", async () => {
     const room = await createRoom("streamer_only");
-    const user = await prisma.user.create({ data: { email: `itest-watched-s-${suffix()}@local.test` } });
+    const user = await prisma.principal.create({ data: { email: `itest-watched-s-${suffix()}@local.test` } });
     createdPrincipalIds.push(user.id);
     await prisma.streamer.create({
       data: { principalId: user.id, tiktokUid: room.hostTiktokUid, tiktokHandle: room.tiktokHandle, verificationCode: "x", roomId: room.id },
@@ -173,7 +173,7 @@ describe("watchedRoomFilter (匿名room自動停止トグルON相当)", () => {
       where: { id: room.id },
       data: { lastWatchInstructedAt: new Date(staleBefore.getTime() - 60_000) },
     });
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `itest-watched-anon-s-${suffix()}@local.test` },
     });
     createdPrincipalIds.push(user.id);

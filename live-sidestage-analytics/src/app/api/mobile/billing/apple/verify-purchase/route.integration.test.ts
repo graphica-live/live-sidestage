@@ -60,11 +60,11 @@ beforeAll(async () => {
   // PREFIX="itest-apple-"のdeleteMany({ email: { startsWith } })と前方一致し、全体テスト実行時に
   // 他ファイルのクリーンアップでここのuserA/Bが消され、Subscription.createがFK違反で落ちる
   // (実装後レビュー指摘。単体実行では再現せず、pre-commitのnpm test全体実行でのみ再現した)。
-  const userA = await prisma.user.create({ data: { email: `itest-applebilling-verify-a-${Date.now()}@local.test` } });
+  const userA = await prisma.principal.create({ data: { email: `itest-applebilling-verify-a-${Date.now()}@local.test` } });
   userAId = userA.id;
   tokenA = signMobileToken({ principalId: userAId });
 
-  const userB = await prisma.user.create({ data: { email: `itest-applebilling-verify-b-${Date.now()}@local.test` } });
+  const userB = await prisma.principal.create({ data: { email: `itest-applebilling-verify-b-${Date.now()}@local.test` } });
   userBId = userB.id;
   tokenB = signMobileToken({ principalId: userBId });
 });
@@ -77,8 +77,8 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: userAId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: userBId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: userAId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: userBId } }).catch(() => {});
   await prisma.$disconnect();
 });
 

@@ -4,7 +4,7 @@ import type { JWT } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { PrincipalPrismaAdapter } from "./principal-prisma-adapter";
 import { prisma } from "./prisma";
 import { markLastActive } from "./mark-last-active";
 import { AMBASSADOR_INVITE_COOKIE } from "./ambassador/invite-cookie";
@@ -27,7 +27,7 @@ import { claimAmbassadorInviteForNewUser } from "./ambassador/ambassador";
 /// `signIn` コールバックは現在のセッションを受け取れず「新規サインアップ」と
 /// 「ログイン中の暗黙リンク」を区別できないため、ここでは使えない。
 function emailLinkRestrictedAdapter(): Adapter {
-  const base = PrismaAdapter(prisma);
+  const base = PrincipalPrismaAdapter(prisma);
 
   return {
     ...base,
@@ -35,7 +35,7 @@ function emailLinkRestrictedAdapter(): Adapter {
       const user = await base.getUserByEmail!(email);
       if (!user) return null;
 
-      const linkedAccounts = await prisma.account.count({ where: { userId: user.id } });
+      const linkedAccounts = await prisma.oAuthAccount.count({ where: { userId: user.id } });
       if (linkedAccounts === 0) return user;
 
       // null を返すと NextAuth が新規作成へ進み、User.email の unique に当たって
@@ -56,7 +56,7 @@ const devLoginProvider = CredentialsProvider({
   async authorize(credentials) {
     const email = credentials?.email?.trim().toLowerCase();
     if (!email) return null;
-    const user = await prisma.user.upsert({
+    const user = await prisma.principal.upsert({
       where: { email },
       update: {},
       create: { email, name: email.split("@")[0] },
@@ -104,7 +104,7 @@ export const authOptions: NextAuthOptions = {
       // sessionコールバックがtoken.idへアクセスしてTypeErrorになった時点で
       // JWT_SESSION_ERRORとしてcookieを消す)ので、型だけ合わせて意図どおり返す。
       if (typeof token.id === "string") {
-        const exists = await prisma.user.findUnique({ where: { id: token.id }, select: { id: true } });
+        const exists = await prisma.principal.findUnique({ where: { id: token.id }, select: { id: true } });
         if (!exists) return null as unknown as JWT;
 
         // JWTセッションは再ログインなしにローリング更新され続けるため、ここでも

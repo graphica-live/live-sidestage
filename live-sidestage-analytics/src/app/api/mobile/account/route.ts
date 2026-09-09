@@ -30,7 +30,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.principal.findUnique({
     where: { id: payload.principalId },
     select: {
       id: true,
@@ -112,7 +112,7 @@ export async function DELETE(req: NextRequest) {
 
   // cascadeでAccount/Session/Subscription/Streamer以下が連鎖削除される。
   // Event.ownerPrincipalIdはFKが無いため触れずそのまま残る(上記コメント参照)。
-  await prisma.user.delete({ where: { id: user.id } });
+  await prisma.principal.delete({ where: { id: user.id } });
 
   return NextResponse.json({
     ok: true,

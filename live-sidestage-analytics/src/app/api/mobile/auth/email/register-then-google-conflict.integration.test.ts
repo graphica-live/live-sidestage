@@ -51,8 +51,8 @@ function stubGooglePayload(payload: Record<string, unknown>) {
 }
 
 async function cleanup() {
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
@@ -83,18 +83,18 @@ describe("メール登録 → 同一メールでのGoogleログイン競合", ()
     expect(googleBody.error).toBe("このメールアドレスは別のアカウントで使用されています");
 
     // 攻撃者のUserにGoogleのAccountが足されていない(乗っ取りが成立していない)こと。
-    const accounts = await prisma.account.findMany({ where: { userId: attackerPrincipalId } });
+    const accounts = await prisma.oAuthAccount.findMany({ where: { userId: attackerPrincipalId } });
     expect(accounts).toHaveLength(1);
     expect(accounts[0]!.provider).toBe("email");
 
     // Googleのsubでは何のAccountも作られていない(新規User作成にも倒れていない)こと。
     expect(
-      await prisma.account.count({
+      await prisma.oAuthAccount.count({
         where: { provider: "google", providerAccountId: `${PREFIX}victim-google-sub` },
       }),
     ).toBe(0);
 
     // Userの総数も1のまま(新規User作成に倒れていない)こと。
-    expect(await prisma.user.count({ where: { email } })).toBe(1);
+    expect(await prisma.principal.count({ where: { email } })).toBe(1);
   });
 });

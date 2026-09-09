@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   const [users, agencies, events] = await Promise.all([
     principalIds.length
-      ? prisma.user.findMany({ where: { id: { in: principalIds } }, select: { id: true, email: true } })
+      ? prisma.principal.findMany({ where: { id: { in: principalIds } }, select: { id: true, email: true } })
       : Promise.resolve([]),
     agencyIds.length
       ? prisma.agency.findMany({ where: { id: { in: agencyIds } }, select: { id: true, name: true } })

@@ -38,7 +38,7 @@ beforeAll(async () => {
   });
   roomId = room.id;
 
-  const user = await prisma.user.create({ data: { email: `itest-mobile-ranking-${Date.now()}@local.test` } });
+  const user = await prisma.principal.create({ data: { email: `itest-mobile-ranking-${Date.now()}@local.test` } });
   principalId = user.id;
   const streamer = await prisma.streamer.create({
     data: {
@@ -55,7 +55,7 @@ beforeAll(async () => {
   // 越権(他人の部屋の閲覧)は起きないことを検証するために使う。
   token = signMobileToken({ principalId, streamerId: "forged-streamer-id" });
 
-  const noRoom = await prisma.user.create({ data: { email: `itest-mobile-ranking-noroom-${Date.now()}@local.test` } });
+  const noRoom = await prisma.principal.create({ data: { email: `itest-mobile-ranking-noroom-${Date.now()}@local.test` } });
   noRoomPrincipalId = noRoom.id;
   noRoomToken = signMobileToken({ principalId: noRoomPrincipalId });
 
@@ -74,7 +74,7 @@ beforeAll(async () => {
   // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
   // Subscription無し(=FREE)のユーザー。同一TikTok IDを複数Streamerが共有できる
   // 既存仕様どおり、principalId側と同じroomIdへ別のStreamer行として登録する。
-  const freeUser = await prisma.user.create({ data: { email: `itest-mobile-ranking-free-${Date.now()}@local.test` } });
+  const freeUser = await prisma.principal.create({ data: { email: `itest-mobile-ranking-free-${Date.now()}@local.test` } });
   freePrincipalId = freeUser.id;
   await prisma.streamer.create({
     data: {
@@ -92,9 +92,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await betaLock.release();
   await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: freePrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: freePrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [...listenerUids] } } }).catch(() => {});
   await prisma.$disconnect();

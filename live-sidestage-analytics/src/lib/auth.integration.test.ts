@@ -13,7 +13,7 @@ import { authOptions } from "./auth";
 const PREFIX = "itest-authjwt-";
 
 async function cleanup() {
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(cleanup);
@@ -32,7 +32,7 @@ describe("authOptions.callbacks.jwt", () => {
   });
 
   it("Userが実在する間はtokenをそのまま返す", async () => {
-    const user = await prisma.user.create({ data: { email: `${PREFIX}alive@local.test` } });
+    const user = await prisma.principal.create({ data: { email: `${PREFIX}alive@local.test` } });
     const jwt = authOptions.callbacks!.jwt!;
 
     const token = await jwt({ token: { id: user.id } } as never);
@@ -42,8 +42,8 @@ describe("authOptions.callbacks.jwt", () => {
   });
 
   it("Userが削除済みならnullを返す(アカウント削除後のWebセッション即時失効)", async () => {
-    const user = await prisma.user.create({ data: { email: `${PREFIX}deleted@local.test` } });
-    await prisma.user.delete({ where: { id: user.id } });
+    const user = await prisma.principal.create({ data: { email: `${PREFIX}deleted@local.test` } });
+    await prisma.principal.delete({ where: { id: user.id } });
 
     const jwt = authOptions.callbacks!.jwt!;
     const token = await jwt({ token: { id: user.id } } as never);

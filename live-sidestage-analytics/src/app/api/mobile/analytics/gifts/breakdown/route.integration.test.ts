@@ -40,7 +40,7 @@ beforeAll(async () => {
   });
   roomId = room.id;
 
-  const user = await prisma.user.create({ data: { email: `itest-mobile-gift-breakdown-${Date.now()}@local.test` } });
+  const user = await prisma.principal.create({ data: { email: `itest-mobile-gift-breakdown-${Date.now()}@local.test` } });
   principalId = user.id;
   await prisma.streamer.create({
     data: {
@@ -54,7 +54,7 @@ beforeAll(async () => {
   });
   token = signMobileToken({ principalId });
 
-  const noRoom = await prisma.user.create({
+  const noRoom = await prisma.principal.create({
     data: { email: `itest-mobile-gift-breakdown-noroom-${Date.now()}@local.test` },
   });
   noRoomPrincipalId = noRoom.id;
@@ -71,7 +71,7 @@ beforeAll(async () => {
     },
   });
 
-  const freeUser = await prisma.user.create({
+  const freeUser = await prisma.principal.create({
     data: { email: `itest-mobile-gift-breakdown-free-${Date.now()}@local.test` },
   });
   freePrincipalId = freeUser.id;
@@ -91,9 +91,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await betaLock.release();
   await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: freePrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: freePrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [FAN_A_UID, FAN_B_UID] } } }).catch(() => {});
   await prisma.$disconnect();

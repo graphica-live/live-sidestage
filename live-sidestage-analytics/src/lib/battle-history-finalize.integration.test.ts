@@ -982,7 +982,7 @@ describe("購読なしroomではBattleHistoryが確定されない", () => {
     }
     if (principalIds.length > 0) {
       await prisma.streamer.deleteMany({ where: { principalId: { in: principalIds } } });
-      await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+      await prisma.principal.deleteMany({ where: { id: { in: principalIds } } });
     }
     if (roomIds.length > 0) {
       await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
@@ -1078,7 +1078,7 @@ describe("購読なしroomではBattleHistoryが確定されない", () => {
     const opponentTiktokUid = makeTiktokUid("streamersub_opp");
     const roomId = await createRoom(hostTiktokUid);
 
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `itest-bhf-streamer-${roomId}@local.test`, name: "itest" },
       select: { id: true },
     });

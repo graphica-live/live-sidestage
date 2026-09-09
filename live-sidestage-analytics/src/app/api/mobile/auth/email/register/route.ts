@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   // Account 0件の旧User(5a3e97a以前の「メール/パスワード登録」由来)への相乗りも許可しない —
   // それを許すと、相手のメールを知っているだけの第三者が新しいパスワードを設定して
   // 正面から入れてしまう。Google/Appleの移行はOAuth自体が所有権を証明するので別物。
-  const existingUser = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  const existingUser = await prisma.principal.findUnique({ where: { email }, select: { id: true } });
   if (existingUser) {
     return NextResponse.json({ error: "このメールアドレスは既に登録されています" }, { status: 409 });
   }
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     // 被害者のGoogle Accountが攻撃者の作ったUser行にリンクされる、というアカウント乗っ取りが
     // 成立してしまう。ここでAccountを同時に作ることで「Accountを持つUser」に即座に分類され、
     // 上記2箇所の既存の不変条件がコード変更なしでそのまま防御になる。
-    user = await prisma.user.create({
+    user = await prisma.principal.create({
       data: {
         email,
         password: passwordHash,

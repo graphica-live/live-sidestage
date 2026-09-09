@@ -39,7 +39,7 @@ beforeAll(async () => {
   });
   otherRoomId = otherRoom.id;
 
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `itest-mobile-battle-share-${Date.now()}@local.test` },
   });
   principalId = user.id;
@@ -55,7 +55,7 @@ beforeAll(async () => {
   });
   token = signMobileToken({ principalId });
 
-  const noRoom = await prisma.user.create({
+  const noRoom = await prisma.principal.create({
     data: { email: `itest-mobile-battle-share-noroom-${Date.now()}@local.test` },
   });
   noRoomPrincipalId = noRoom.id;
@@ -66,8 +66,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> BattleHistory
   await prisma.tiktokRoom.delete({ where: { id: otherRoomId } }).catch(() => {});
   await prisma.$disconnect();

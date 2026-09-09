@@ -14,7 +14,7 @@ const PREFIX = "itest-subschema-";
 
 async function cleanup() {
   await prisma.subscription.deleteMany({ where: { user: { email: { startsWith: PREFIX } } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 afterAll(cleanup);
@@ -22,7 +22,7 @@ afterAll(cleanup);
 describe("Subscription旧列(stripeCustomerId/stripeSubscriptionId)にunique制約が無い", () => {
   it("同一stripeCustomerIdを持つ2行目のSubscriptionをcreateできる(解約→再購読の再現)", async () => {
     await cleanup();
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `${PREFIX}${Date.now()}@example.test`, name: "itest" },
     });
 

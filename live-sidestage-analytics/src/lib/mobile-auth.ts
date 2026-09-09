@@ -90,7 +90,7 @@ export async function resolveActiveMobileUser(req: NextRequest): Promise<{ princ
   const auth = resolveUserByMobileToken(req);
   if (!auth) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: auth.principalId }, select: { id: true } });
+  const user = await prisma.principal.findUnique({ where: { id: auth.principalId }, select: { id: true } });
   if (!user) return null;
 
   return { principalId: auth.principalId };

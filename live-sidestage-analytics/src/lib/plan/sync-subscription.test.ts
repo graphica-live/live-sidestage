@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
       updateMany: (...args: unknown[]) => updateMany(...args),
       create: (...args: unknown[]) => create(...args),
     },
-    user: {
+    principal: {
       findUnique: (...args: unknown[]) => findUserUnique(...args),
     },
   },

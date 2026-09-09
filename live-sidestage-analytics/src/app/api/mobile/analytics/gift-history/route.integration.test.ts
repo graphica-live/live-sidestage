@@ -39,7 +39,7 @@ beforeAll(async () => {
   });
   roomId = room.id;
 
-  const user = await prisma.user.create({ data: { email: `itest-mobile-gift-history-${Date.now()}@local.test` } });
+  const user = await prisma.principal.create({ data: { email: `itest-mobile-gift-history-${Date.now()}@local.test` } });
   principalId = user.id;
   await prisma.streamer.create({
     data: {
@@ -53,7 +53,7 @@ beforeAll(async () => {
   });
   token = signMobileToken({ principalId });
 
-  const noRoom = await prisma.user.create({
+  const noRoom = await prisma.principal.create({
     data: { email: `itest-mobile-gift-history-noroom-${Date.now()}@local.test` },
   });
   noRoomPrincipalId = noRoom.id;
@@ -61,7 +61,7 @@ beforeAll(async () => {
 
   // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
   // Subscription無し(=FREE)のユーザー。
-  const freeUser = await prisma.user.create({
+  const freeUser = await prisma.principal.create({
     data: { email: `itest-mobile-gift-history-free-${Date.now()}@local.test` },
   });
   freePrincipalId = freeUser.id;
@@ -93,9 +93,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await betaLock.release();
   await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: freePrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: freePrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> Gift
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [...listenerUids] } } }).catch(() => {});
   await prisma.$disconnect();

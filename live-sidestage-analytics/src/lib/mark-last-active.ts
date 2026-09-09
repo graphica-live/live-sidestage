@@ -31,13 +31,13 @@ export async function markLastActive(principalId: string): Promise<void> {
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { id: principalId }, select: { lastActiveAt: true } });
+    const existing = await prisma.principal.findUnique({ where: { id: principalId }, select: { lastActiveAt: true } });
     if (!existing) return;
 
     const isStale = !existing.lastActiveAt || Date.now() - existing.lastActiveAt.getTime() > THROTTLE_MS;
     if (!isStale) return;
 
-    await prisma.user.updateMany({ where: { id: principalId }, data: { lastActiveAt: new Date() } });
+    await prisma.principal.updateMany({ where: { id: principalId }, data: { lastActiveAt: new Date() } });
   } catch (err) {
     console.error("[mark-last-active] 更新に失敗:", err);
   }

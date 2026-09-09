@@ -36,7 +36,7 @@ async function makeRoom(data: { tag: string; monitoringSuspended: boolean }) {
 }
 
 async function attachStreamer(roomId: string) {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `itest-mla-${suffix()}@local.test`, name: "itest" },
     select: { id: true },
   });
@@ -59,7 +59,7 @@ async function attachStreamer(roomId: string) {
 
 afterAll(async () => {
   await prisma.streamer.deleteMany({ where: { roomId: { in: roomIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+  await prisma.principal.deleteMany({ where: { id: { in: principalIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
 });
 

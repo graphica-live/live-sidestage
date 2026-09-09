@@ -42,9 +42,9 @@ function stubGoogle(sub: string, email: string) {
 }
 
 async function cleanup() {
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { name: { startsWith: PREFIX } } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { name: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
@@ -56,7 +56,7 @@ afterAll(cleanup);
 describe("メール一致リンクの制限", () => {
   it("Account を持たない旧ユーザーへは繋ぐ（移行経路を壊していない）", async () => {
     // 旧 /api/mobile/auth/register 相当。password を持ち Account は無い。
-    const legacy = await prisma.user.create({
+    const legacy = await prisma.principal.create({
       data: { email: EMAIL, name: `${PREFIX}legacy`, password: "hashed" },
     });
 
@@ -67,12 +67,12 @@ describe("メール一致リンクの制限", () => {
     expect(response.status).toBe(200);
     expect(body.user.id).toBe(legacy.id);
     expect(
-      await prisma.account.count({ where: { userId: legacy.id, provider: "google" } }),
+      await prisma.oAuthAccount.count({ where: { userId: legacy.id, provider: "google" } }),
     ).toBe(1);
   });
 
   it("既に Google Account を持つ User へは、同じメールでも別 sub なら繋がない", async () => {
-    const owner = await prisma.user.create({
+    const owner = await prisma.principal.create({
       data: {
         email: EMAIL,
         name: `${PREFIX}owner`,
@@ -88,15 +88,15 @@ describe("メール一致リンクの制限", () => {
 
     expect(response.status).toBe(409);
     // 乗っ取り側の Account が生えていないこと。
-    expect(await prisma.account.count({ where: { userId: owner.id } })).toBe(1);
+    expect(await prisma.oAuthAccount.count({ where: { userId: owner.id } })).toBe(1);
     expect(
-      await prisma.account.count({ where: { providerAccountId: `${PREFIX}sub-attacker` } }),
+      await prisma.oAuthAccount.count({ where: { providerAccountId: `${PREFIX}sub-attacker` } }),
     ).toBe(0);
   });
 
   it("Apple Account だけを持つ User へも繋がない（Google と Apple を統合しない方針）", async () => {
     // 8c03fc4 以前の Apple 経路が作りえた「メールを持つ Apple ユーザー」を想定する。
-    const appleUser = await prisma.user.create({
+    const appleUser = await prisma.principal.create({
       data: {
         email: EMAIL,
         name: `${PREFIX}apple`,
@@ -110,7 +110,7 @@ describe("メール一致リンクの制限", () => {
     const response = await googlePost(googleRequest());
 
     expect(response.status).toBe(409);
-    expect(await prisma.account.count({ where: { userId: appleUser.id } })).toBe(1);
+    expect(await prisma.oAuthAccount.count({ where: { userId: appleUser.id } })).toBe(1);
   });
 
   it("該当 User が居なければ従来どおり新規作成する", async () => {
@@ -121,7 +121,7 @@ describe("メール一致リンクの制限", () => {
     expect(response.status).toBe(200);
     expect(body.user.email).toBe(EMAIL);
     expect(
-      await prisma.account.count({ where: { providerAccountId: `${PREFIX}sub-new` } }),
+      await prisma.oAuthAccount.count({ where: { providerAccountId: `${PREFIX}sub-new` } }),
     ).toBe(1);
   });
 

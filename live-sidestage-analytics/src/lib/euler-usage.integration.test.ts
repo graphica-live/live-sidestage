@@ -18,7 +18,7 @@ async function createRoom(tiktokHandle: string, monitoringSuspended = false) {
 }
 
 async function createStreamerOn(roomId: string, tiktokHandle: string, emailPrefix: string) {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `${emailPrefix}-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   const streamer = await prisma.streamer.create({
@@ -60,7 +60,7 @@ async function createEvent(ownerPrincipalId: string, status: string = "RUNNING")
 }
 
 async function createOwnerUser() {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `itest-euler-owner-${Date.now()}-${Math.random().toString(36).slice(2)}@local.test` },
   });
   return user;
@@ -79,7 +79,7 @@ afterAll(async () => {
   await prisma.agency.deleteMany({ where: { id: { in: cleanupAgencyIds } } });
   await prisma.streamer.deleteMany({ where: { roomId: { in: cleanupRoomIds } } });
   await prisma.tiktokRoom.deleteMany({ where: { id: { in: cleanupRoomIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: cleanupPrincipalIds } } });
+  await prisma.principal.deleteMany({ where: { id: { in: cleanupPrincipalIds } } });
   await prisma.$disconnect();
 });
 

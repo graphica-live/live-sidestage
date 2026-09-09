@@ -26,8 +26,8 @@ function registerRequest(body: Record<string, unknown>, ip = "203.0.113.1") {
 }
 
 async function cleanup() {
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(cleanup);
@@ -50,7 +50,7 @@ describe("POST /api/mobile/auth/email/register", () => {
     const response = await registerPost(registerRequest({ email, password: "correct-horse" }));
     const body = await response.json();
 
-    const accounts = await prisma.account.findMany({ where: { userId: body.user.id } });
+    const accounts = await prisma.oAuthAccount.findMany({ where: { userId: body.user.id } });
     expect(accounts).toHaveLength(1);
     expect(accounts[0]!.provider).toBe("email");
     expect(accounts[0]!.providerAccountId).toBe(email);
@@ -60,7 +60,7 @@ describe("POST /api/mobile/auth/email/register", () => {
     const email = `${PREFIX}hash@local.test`;
     await registerPost(registerRequest({ email, password: "correct-horse" }));
 
-    const user = await prisma.user.findUnique({ where: { email }, select: { password: true } });
+    const user = await prisma.principal.findUnique({ where: { email }, select: { password: true } });
     expect(user?.password).not.toBe("correct-horse");
     expect(await bcrypt.compare("correct-horse", user!.password!)).toBe(true);
   });
@@ -71,17 +71,17 @@ describe("POST /api/mobile/auth/email/register", () => {
 
     const second = await registerPost(registerRequest({ email, password: "another-pass" }));
     expect(second.status).toBe(409);
-    expect(await prisma.user.count({ where: { email } })).toBe(1);
+    expect(await prisma.principal.count({ where: { email } })).toBe(1);
   });
 
   it("Account 0件の旧User(所有権未確認)が既に存在するメールも409で拒否する(相乗り防止)", async () => {
     const email = `${PREFIX}legacy@local.test`;
-    await prisma.user.create({ data: { email, name: `${PREFIX}legacy`, password: "hashed" } });
+    await prisma.principal.create({ data: { email, name: `${PREFIX}legacy`, password: "hashed" } });
 
     const response = await registerPost(registerRequest({ email, password: "correct-horse" }));
     expect(response.status).toBe(409);
     // Accountが足されていないこと(乗っ取り目的の相乗りが成立していないこと)。
-    expect(await prisma.account.count({ where: { providerAccountId: email } })).toBe(0);
+    expect(await prisma.oAuthAccount.count({ where: { providerAccountId: email } })).toBe(0);
   });
 
   it("パスワードが8文字未満は400、Userは作られない", async () => {
@@ -89,7 +89,7 @@ describe("POST /api/mobile/auth/email/register", () => {
     const response = await registerPost(registerRequest({ email, password: "short1" }));
 
     expect(response.status).toBe(400);
-    expect(await prisma.user.count({ where: { email } })).toBe(0);
+    expect(await prisma.principal.count({ where: { email } })).toBe(0);
   });
 
   it("メール形式が不正なら400", async () => {

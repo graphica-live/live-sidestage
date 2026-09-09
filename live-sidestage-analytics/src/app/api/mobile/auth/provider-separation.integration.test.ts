@@ -55,10 +55,10 @@ function stubGooglePayload(payload: Record<string, unknown>) {
 }
 
 async function cleanup() {
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { name: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: null, name: null, accounts: { none: {} }, streamer: null } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { name: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: null, name: null, accounts: { none: {} }, streamer: null } });
 }
 
 beforeEach(async () => {
@@ -84,9 +84,9 @@ describe("Google と Apple の分離", () => {
     // 別ユーザーであること。
     expect(body.user.id).not.toBe(apple.id);
     // Apple の User に Google の Account が足されていないこと。
-    expect(await prisma.account.count({ where: { userId: apple.id } })).toBe(1);
+    expect(await prisma.oAuthAccount.count({ where: { userId: apple.id } })).toBe(1);
     expect(
-      await prisma.account.count({ where: { userId: apple.id, provider: APPLE_PROVIDER } }),
+      await prisma.oAuthAccount.count({ where: { userId: apple.id, provider: APPLE_PROVIDER } }),
     ).toBe(1);
   });
 
@@ -102,7 +102,7 @@ describe("Google と Apple の分離", () => {
     const apple = await resolveAppleUser(appleClaims(), `${PREFIX}apple-user`, TOKENS);
 
     expect(apple.id).not.toBe(googleBody.user.id);
-    expect(await prisma.account.count({ where: { userId: googleBody.user.id } })).toBe(1);
+    expect(await prisma.oAuthAccount.count({ where: { userId: googleBody.user.id } })).toBe(1);
   });
 
   it("Google 同士は従来どおり同じユーザーに戻る（分離で壊していないこと）", async () => {
