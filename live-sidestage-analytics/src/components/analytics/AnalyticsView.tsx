@@ -307,17 +307,17 @@ function BattleOpponentInfo({ battle }: { battle: BattleListItem }) {
   if (opponent.count > 1) {
     return <span className="text-muted">複数人バトル({opponent.count + 1}人)</span>;
   }
-  if (opponent.nickName || opponent.displayId || opponent.tiktokHandle) {
+  if (opponent.nickname || opponent.tiktokHandle) {
     return (
       <div className="flex items-center gap-2 min-w-0">
-        <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
+        <Avatar src={opponent.avatarUrl} alt={opponent.nickname ?? opponent.tiktokHandle ?? "?"} />
         <div className="min-w-0">
           <div className="font-medium truncate max-w-[160px]">
-            {opponent.nickName ?? `@${opponent.displayId}`}
+            {opponent.nickname ?? `@${opponent.tiktokHandle}`}
           </div>
-          {(opponent.displayId || opponent.tiktokHandle) && (
+          {opponent.tiktokHandle && (
             <div className="text-xs text-muted truncate max-w-[160px]">
-              @{opponent.displayId ?? opponent.tiktokHandle}
+              @{opponent.tiktokHandle}
             </div>
           )}
         </div>
@@ -821,8 +821,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
       const opponent = b.opponent;
       return (
         opponent?.tiktokHandle?.toLowerCase().includes(q) ||
-        opponent?.displayId?.toLowerCase().includes(q) ||
-        opponent?.nickName?.toLowerCase().includes(q) ||
+        opponent?.nickname?.toLowerCase().includes(q) ||
         false
       );
     });
