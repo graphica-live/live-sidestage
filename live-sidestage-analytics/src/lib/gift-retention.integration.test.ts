@@ -208,3 +208,180 @@ describe("runGiftRetentionCycle", () => {
   });
 
 });
+
+// 誰も購読していないroom(Streamer登録・AgencyWatch登録・specialWatch・monitorUntilの
+// いずれも無い)の未確定TiktokBattle行が、Gift削除処理を永久停止させないことの検証
+// (review-auto Design ModeでCRITICAL判定。gift-retention.tsのfinalizePendingBattles/
+// countPendingBattlesのSQL修正の固定)。
+describe("runGiftRetentionCycle — 購読なしroomの未確定バトルはGift削除を止めない", () => {
+  const battleRoomIds: string[] = [];
+  const battleListener = makeTiktokUid(`${PREFIX}_battle_u_${uniqueSuffix()}`);
+  let unsubscribedRoomId = "";
+  let subscribedRoomId = "";
+  const oldBattleStartedAt = new Date(`${OLD_DAY}T00:00:00+09:00`);
+
+  async function createBattle(roomId: string, battleId: string) {
+    await prisma.tiktokBattle.create({
+      data: { roomId, battleId, action: 5, startedAt: oldBattleStartedAt },
+    });
+  }
+
+  beforeAll(async () => {
+    unsubscribedRoomId = await createRoom(); // specialWatch等いずれも無い(購読なし)
+    subscribedRoomId = await createRoom();
+    await prisma.tiktokRoom.update({ where: { id: subscribedRoomId }, data: { specialWatch: true } });
+    battleRoomIds.push(unsubscribedRoomId, subscribedRoomId);
+
+    await createBattle(unsubscribedRoomId, `${PREFIX}_battle_unsub`);
+    await insertGift({ roomId: unsubscribedRoomId, tiktokUid: battleListener, dayKey: OLD_DAY, diamonds: 10 });
+  });
+
+  afterAll(async () => {
+    await prisma.tiktokBattle.deleteMany({ where: { roomId: { in: battleRoomIds } } });
+    await prisma.gift.deleteMany({ where: { roomId: { in: battleRoomIds } } });
+    await prisma.giftDailyListenerStat.deleteMany({ where: { roomId: { in: battleRoomIds } } });
+    await prisma.tiktokRoom.deleteMany({ where: { id: { in: battleRoomIds } } });
+    await prisma.giftLifetimeStat.deleteMany({ where: { tiktokUid: battleListener } });
+  });
+
+  it("購読なしroomの未確定バトルが残っていてもGift削除は進む(countPendingBattlesが数えない)", async () => {
+    const result = await runGiftRetentionCycle({ dryRun: false, now: NOW });
+
+    expect(result.deletion.skippedReason).toBeNull();
+    expect(await prisma.gift.count({ where: { roomId: unsubscribedRoomId, dayKey: OLD_DAY } })).toBe(0);
+    // 対象取得SQLからも除外されるので、pending集計にも現れない。
+    expect(result.battles.pending).toBe(0);
+    // 購読なしroomのTiktokBattle行自体は削除されず残る(既存の取りこぼし扱いと同じ、削除しない)。
+    expect(await prisma.tiktokBattle.count({ where: { roomId: unsubscribedRoomId } })).toBe(1);
+  });
+
+  it("購読ありroomの未確定バトルは従来どおり削除を止める(既存動作の回帰防止)", async () => {
+    await createBattle(subscribedRoomId, `${PREFIX}_battle_sub`);
+    await insertGift({ roomId: subscribedRoomId, tiktokUid: battleListener, dayKey: OLD_DAY, diamonds: 10 });
+
+    const result = await runGiftRetentionCycle({ dryRun: false, now: NOW });
+
+    expect(result.battles.pending).toBeGreaterThanOrEqual(1);
+    expect(result.deletion.skippedReason).not.toBeNull();
+    expect(result.deletion.skippedReason).toMatch(/未確定バトル/);
+    // 購読ありroomの対象Giftは削除が見送られたまま残る。
+    expect(await prisma.gift.count({ where: { roomId: subscribedRoomId, dayKey: OLD_DAY } })).toBe(1);
+  });
+});
+
+// Codex-terra TestCase Modeレビュー指摘(HIGH): 上のdescribeブロックはspecialWatchケースしか
+// 検証していない。finalizePendingBattles/countPendingBattlesのraw SQL購読条件は
+// Streamer存在・AgencyWatch存在・monitorUntil未来の3条件をOR結合で別実装しており、
+// これらが漏れると未確定バトルの元Giftが削除され復元不能な履歴欠損になる(CRITICAL相当)。
+// monitorUntil===nowの境界(SQLは`> now`なので含まれない)も固定する。
+describe("runGiftRetentionCycle — 購読条件の網羅(Streamer/AgencyWatch/monitorUntil境界)", () => {
+  const roomIdsHere: string[] = [];
+  const battleListener = makeTiktokUid(`${PREFIX}_battle_cov_${uniqueSuffix()}`);
+  const oldBattleStartedAt = new Date(`${OLD_DAY}T00:00:00+09:00`);
+  let streamerSubjectRoomId = "";
+  let agencyWatchRoomId = "";
+  let monitorFutureRoomId = "";
+  let monitorNowRoomId = "";
+  let principalId = "";
+  let agencyId = "";
+
+  async function createBattle(roomId: string, battleId: string) {
+    await prisma.tiktokBattle.create({
+      data: { roomId, battleId, action: 5, startedAt: oldBattleStartedAt },
+    });
+  }
+
+  beforeAll(async () => {
+    streamerSubjectRoomId = await createRoom();
+    agencyWatchRoomId = await createRoom();
+    monitorFutureRoomId = await createRoom();
+    monitorNowRoomId = await createRoom();
+    roomIdsHere.push(streamerSubjectRoomId, agencyWatchRoomId, monitorFutureRoomId, monitorNowRoomId);
+
+    const user = await prisma.user.create({
+      data: { email: `${PREFIX}-streamer-${uniqueSuffix()}@local.test`, name: "itest" },
+      select: { id: true },
+    });
+    principalId = user.id;
+    await prisma.streamer.create({
+      data: {
+        principalId,
+        roomId: streamerSubjectRoomId,
+        tiktokUid: makeTiktokUid(`${PREFIX}_streamer_${uniqueSuffix()}`),
+        tiktokHandle: `${PREFIX}streamer${uniqueSuffix()}`.toLowerCase(),
+        verificationCode: `${PREFIX}-vc-${uniqueSuffix()}`,
+        apiKey: `${PREFIX}-key-${uniqueSuffix()}`,
+        overlayToken: `${PREFIX}-ov-${uniqueSuffix()}`,
+      },
+    });
+
+    const agency = await prisma.agency.create({
+      data: { email: `${PREFIX}-agency-${uniqueSuffix()}@local.test`, name: "itest事務所" },
+      select: { id: true },
+    });
+    agencyId = agency.id;
+    await prisma.agencyWatch.create({
+      data: {
+        agencyId,
+        roomId: agencyWatchRoomId,
+        tiktokUid: makeTiktokUid(`${PREFIX}_watch_${uniqueSuffix()}`),
+        tiktokHandle: `${PREFIX}watch${uniqueSuffix()}`.toLowerCase(),
+      },
+    });
+
+    await prisma.tiktokRoom.update({
+      where: { id: monitorFutureRoomId },
+      data: { monitorUntil: new Date(NOW.getTime() + 60 * 60 * 1000) },
+    });
+    // 境界: monitorUntil === now は "> now" を満たさないため購読なし扱いになるはず。
+    await prisma.tiktokRoom.update({
+      where: { id: monitorNowRoomId },
+      data: { monitorUntil: NOW },
+    });
+
+    for (const [roomId, tag] of [
+      [streamerSubjectRoomId, "streamer"],
+      [agencyWatchRoomId, "agencywatch"],
+      [monitorFutureRoomId, "future"],
+      [monitorNowRoomId, "now"],
+    ] as const) {
+      await createBattle(roomId, `${PREFIX}_battle_cov_${tag}_${uniqueSuffix()}`);
+      await insertGift({ roomId, tiktokUid: battleListener, dayKey: OLD_DAY, diamonds: 10 });
+    }
+  });
+
+  afterAll(async () => {
+    await prisma.tiktokBattle.deleteMany({ where: { roomId: { in: roomIdsHere } } });
+    await prisma.gift.deleteMany({ where: { roomId: { in: roomIdsHere } } });
+    await prisma.giftDailyListenerStat.deleteMany({ where: { roomId: { in: roomIdsHere } } });
+    await prisma.agencyWatch.deleteMany({ where: { roomId: agencyWatchRoomId } });
+    if (agencyId) await prisma.agency.delete({ where: { id: agencyId } }).catch(() => {});
+    await prisma.streamer.deleteMany({ where: { roomId: streamerSubjectRoomId } });
+    await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIdsHere } } });
+    if (principalId) await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+    await prisma.giftLifetimeStat.deleteMany({ where: { tiktokUid: battleListener } });
+  });
+
+  it("Streamer/AgencyWatch/monitorUntil未来のroomは購読ありとしてGift削除を止める", async () => {
+    const result = await runGiftRetentionCycle({ dryRun: false, now: NOW });
+
+    expect(result.battles.pending).toBeGreaterThanOrEqual(3);
+    expect(result.deletion.skippedReason).not.toBeNull();
+    for (const roomId of [streamerSubjectRoomId, agencyWatchRoomId, monitorFutureRoomId]) {
+      expect(await prisma.gift.count({ where: { roomId, dayKey: OLD_DAY } })).toBe(1);
+    }
+  });
+
+  it("monitorUntil===nowの境界roomは購読なし扱いでGiftが削除される", async () => {
+    // 上のitで全体が止まっているため、monitorNowRoomIdだけを対象に別途battleを片付けて
+    // 単独で検証する(SQLの`> now`境界そのものを、他室の未確定バトルに引きずられず確認する)。
+    await prisma.tiktokBattle.deleteMany({
+      where: { roomId: { in: [streamerSubjectRoomId, agencyWatchRoomId, monitorFutureRoomId] } },
+    });
+
+    const result = await runGiftRetentionCycle({ dryRun: false, now: NOW });
+
+    expect(result.deletion.skippedReason).toBeNull();
+    expect(await prisma.gift.count({ where: { roomId: monitorNowRoomId, dayKey: OLD_DAY } })).toBe(0);
+  });
+});

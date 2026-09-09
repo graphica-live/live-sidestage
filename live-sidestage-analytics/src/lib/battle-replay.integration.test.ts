@@ -64,8 +64,16 @@ async function makeArmies(battleId: string, tiktokUid: string, offsetSec: number
 }
 
 beforeAll(async () => {
+  // specialWatch: true — 誰も購読していないroomではBattleHistoryを確定しないガード
+  // (computeBattleSnapshot冒頭のhasBattleSubscriber判定)の対象から外し、
+  // このファイルの本来の検証対象(リプレイ用データ)に無関係な形でテストが壊れないようにする。
   const room = await prisma.tiktokRoom.create({
-    data: { monitoringSuspended: true, tiktokHandle: SELF_TIKTOK_ID, hostTiktokUid: SELF_ANCHOR_ID },
+    data: {
+      monitoringSuspended: true,
+      tiktokHandle: SELF_TIKTOK_ID,
+      hostTiktokUid: SELF_ANCHOR_ID,
+      specialWatch: true,
+    },
   });
   selfRoomId = room.id;
 

@@ -18,6 +18,7 @@ import {
   type BattleSnapshot,
 } from "./battle-history-finalize";
 import { makeTiktokUid } from "./__fixtures__/gift";
+import { ensureRoomWatchedByAdmin } from "@/lib/tiktok-room";
 
 const SELF_TIKTOK_ID = "itest_finalize_self";
 const NO_HOST_TIKTOK_ID = "itest_finalize_nohost";
@@ -37,13 +38,29 @@ let selfRoomId: string;
 let noHostRoomId: string;
 
 beforeAll(async () => {
+  // specialWatch: true — このファイルの既存テスト群は「購読あり」roomでのBattleHistory
+  // 確定処理そのものを検証する対象。誰も購読していないroomではBattleHistoryを作らない
+  // ガード(computeBattleSnapshot冒頭のhasBattleSubscriber判定)の対象にしてしまうと
+  // ここの正常系テストが軒並み無関係な理由でnullを返して壊れるため、明示的に「購読あり」
+  // へ倒す。購読なし判定そのものの検証は「購読なしroomではBattleHistoryが確定されない」
+  // 節の専用テストで行う。
   const selfRoom = await prisma.tiktokRoom.create({
-    data: { monitoringSuspended: true, tiktokHandle: SELF_TIKTOK_ID, hostTiktokUid: SELF_ANCHOR_ID },
+    data: {
+      monitoringSuspended: true,
+      tiktokHandle: SELF_TIKTOK_ID,
+      hostTiktokUid: SELF_ANCHOR_ID,
+      specialWatch: true,
+    },
   });
   selfRoomId = selfRoom.id;
   // このバトルの参加者ではない配信者の部屋(自分側を特定できないケースの再現)。
   const noHostRoom = await prisma.tiktokRoom.create({
-    data: { monitoringSuspended: true, tiktokHandle: NO_HOST_TIKTOK_ID, hostTiktokUid: UNRELATED_ANCHOR_ID },
+    data: {
+      monitoringSuspended: true,
+      tiktokHandle: NO_HOST_TIKTOK_ID,
+      hostTiktokUid: UNRELATED_ANCHOR_ID,
+      specialWatch: true,
+    },
   });
   noHostRoomId = noHostRoom.id;
 });
@@ -950,5 +967,167 @@ describe("senderGroupId(コンボの束ね鍵)", () => {
       { senderTiktokHandleSnapshot: "fan_b", senderGroupId: null },
     ]);
     expect(kept.groupId).toBe("combo_group_2");
+  });
+});
+
+describe("購読なしroomではBattleHistoryが確定されない", () => {
+  const roomIds: string[] = [];
+  const principalIds: string[] = [];
+  const agencyIds: string[] = [];
+
+  afterAll(async () => {
+    if (agencyIds.length > 0) {
+      await prisma.agencyWatch.deleteMany({ where: { agencyId: { in: agencyIds } } });
+      await prisma.agency.deleteMany({ where: { id: { in: agencyIds } } });
+    }
+    if (principalIds.length > 0) {
+      await prisma.streamer.deleteMany({ where: { principalId: { in: principalIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+    }
+    if (roomIds.length > 0) {
+      await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIds } } });
+    }
+  });
+
+  async function createRoom(
+    hostTiktokUid: string,
+    overrides: Partial<Prisma.TiktokRoomUncheckedCreateInput> = {}
+  ) {
+    const room = await prisma.tiktokRoom.create({
+      data: {
+        monitoringSuspended: true,
+        tiktokHandle: hostTiktokUid,
+        hostTiktokUid,
+        ...overrides,
+      },
+    });
+    roomIds.push(room.id);
+    return room.id;
+  }
+
+  it("Streamer/AgencyWatch/specialWatch/monitorUntilいずれも無いroomはcomputeBattleSnapshotがnullを返す(TiktokBattle行自体は残る)", async () => {
+    const hostTiktokUid = makeTiktokUid("nosub_self");
+    const opponentTiktokUid = makeTiktokUid("nosub_opp");
+    const roomId = await createRoom(hostTiktokUid);
+    await prisma.tiktokBattle.create({
+      data: battleData(roomId, "nosub_snap", {
+        hostTiktokUids: [hostTiktokUid, opponentTiktokUid],
+        hostScores: { [hostTiktokUid]: "1200", [opponentTiktokUid]: "900" },
+      }),
+    });
+
+    const snapshot = await computeBattleSnapshot(roomId, "nosub_snap", NOW);
+    expect(snapshot).toBeNull();
+
+    const result = await materializeBattleHistory(roomId, "nosub_snap", NOW, { stabilityDelayMs: 0 });
+    expect(result).toEqual({ finalized: false, reason: "not-ready" });
+
+    // TiktokBattle行自体は無改修で残る(persistBattleは無関係)。
+    const battle = await prisma.tiktokBattle.findUnique({
+      where: { roomId_battleId: { roomId, battleId: "nosub_snap" } },
+    });
+    expect(battle).not.toBeNull();
+  });
+
+  it("ensureRoomWatchedByAdminで追加したroomはspecialWatchが自動セットされ確定される(HIGH指摘の回帰防止)", async () => {
+    const hostTiktokUid = makeTiktokUid("adminadd_self");
+    const opponentTiktokUid = makeTiktokUid("adminadd_opp");
+    const { roomId } = await ensureRoomWatchedByAdmin({
+      tiktokUid: hostTiktokUid,
+      tiktokHandle: "adminadd_self",
+      nickname: null,
+    });
+    roomIds.push(roomId);
+
+    const room = await prisma.tiktokRoom.findUnique({ where: { id: roomId }, select: { specialWatch: true } });
+    expect(room?.specialWatch).toBe(true);
+
+    await prisma.tiktokBattle.create({
+      data: battleData(roomId, "adminadd_snap", {
+        hostTiktokUids: [hostTiktokUid, opponentTiktokUid],
+        hostScores: { [hostTiktokUid]: "1200", [opponentTiktokUid]: "900" },
+      }),
+    });
+
+    const snapshot = await computeBattleSnapshot(roomId, "adminadd_snap", NOW);
+    expect(snapshot).not.toBeNull();
+  });
+
+  it("monitorUntilが未来のroomは確定される", async () => {
+    const hostTiktokUid = makeTiktokUid("monitor_self");
+    const opponentTiktokUid = makeTiktokUid("monitor_opp");
+    const roomId = await createRoom(hostTiktokUid, {
+      monitorUntil: new Date(NOW.getTime() + 3600_000),
+    });
+    await prisma.tiktokBattle.create({
+      data: battleData(roomId, "monitor_snap", {
+        hostTiktokUids: [hostTiktokUid, opponentTiktokUid],
+        hostScores: { [hostTiktokUid]: "1200", [opponentTiktokUid]: "900" },
+      }),
+    });
+
+    const snapshot = await computeBattleSnapshot(roomId, "monitor_snap", NOW);
+    expect(snapshot).not.toBeNull();
+  });
+
+  // Codex-terra TestCase Modeレビュー指摘(MEDIUM): specialWatch/monitorUntilの実経路検証しか
+  // 無く、Streamer/AgencyWatch relation経由でcomputeBattleSnapshotが購読ありと判定する
+  // integrationケースが欠けていた。relation取得(selfRoom.streamers/watches)の回帰を固定する。
+  it("Streamer登録があるroomは購読ありとして確定される", async () => {
+    const hostTiktokUid = makeTiktokUid("streamersub_self");
+    const opponentTiktokUid = makeTiktokUid("streamersub_opp");
+    const roomId = await createRoom(hostTiktokUid);
+
+    const user = await prisma.user.create({
+      data: { email: `itest-bhf-streamer-${roomId}@local.test`, name: "itest" },
+      select: { id: true },
+    });
+    principalIds.push(user.id);
+    await prisma.streamer.create({
+      data: {
+        principalId: user.id,
+        roomId,
+        tiktokUid: hostTiktokUid,
+        tiktokHandle: hostTiktokUid,
+        verificationCode: `itest-bhf-vc-${roomId}`,
+        apiKey: `itest-bhf-key-${roomId}`,
+        overlayToken: `itest-bhf-ov-${roomId}`,
+      },
+    });
+
+    await prisma.tiktokBattle.create({
+      data: battleData(roomId, "streamersub_snap", {
+        hostTiktokUids: [hostTiktokUid, opponentTiktokUid],
+        hostScores: { [hostTiktokUid]: "1200", [opponentTiktokUid]: "900" },
+      }),
+    });
+
+    const snapshot = await computeBattleSnapshot(roomId, "streamersub_snap", NOW);
+    expect(snapshot).not.toBeNull();
+  });
+
+  it("AgencyWatch登録があるroomは購読ありとして確定される", async () => {
+    const hostTiktokUid = makeTiktokUid("watchsub_self");
+    const opponentTiktokUid = makeTiktokUid("watchsub_opp");
+    const roomId = await createRoom(hostTiktokUid);
+
+    const agency = await prisma.agency.create({
+      data: { email: `itest-bhf-agency-${roomId}@local.test`, name: "itest事務所" },
+      select: { id: true },
+    });
+    agencyIds.push(agency.id);
+    await prisma.agencyWatch.create({
+      data: { agencyId: agency.id, roomId, tiktokUid: hostTiktokUid, tiktokHandle: hostTiktokUid },
+    });
+
+    await prisma.tiktokBattle.create({
+      data: battleData(roomId, "watchsub_snap", {
+        hostTiktokUids: [hostTiktokUid, opponentTiktokUid],
+        hostScores: { [hostTiktokUid]: "1200", [opponentTiktokUid]: "900" },
+      }),
+    });
+
+    const snapshot = await computeBattleSnapshot(roomId, "watchsub_snap", NOW);
+    expect(snapshot).not.toBeNull();
   });
 });
