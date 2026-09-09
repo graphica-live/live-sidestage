@@ -692,6 +692,7 @@ model Streamer {
   overlayLikeContributionSettings OverlayLikeContributionSettings?
   overlayTimerSettings            OverlayTimerSettings?
   overlayTimerState               OverlayTimerState?
+  overlayContributionSettings     OverlayContributionSettings?
 
   @@index([roomId])
   @@schema("public")
@@ -838,6 +839,28 @@ model OverlayTimerState {
   streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
 
   @@map("overlay_timer_state")
+  @@schema("public")
+}
+
+// 貢献リストオーバーレイの設定。1配信者(Streamer)につき1行。
+// desktopの設定UIがないため、固定デフォルト値を使う運用を前提としつつ、
+// 将来のUI追加に備えてテーブル化する。
+model OverlayContributionSettings {
+  streamerId        String   @id
+  displayReference  String   @default("today") // "today" | "fixed"
+  displayDate       String? // YYYY-MM-DD, displayReference="fixed" のときのみ意味を持つ
+  threshold         Int      @default(1000)
+  goalCount         Int      @default(5)
+  visibleRows       Int      @default(5) // この人数を超えたらスナップスクロール
+  nameMaxWidth      Int      @default(140) // px、これを超える名前は省略表示
+  align             String   @default("left") // "left" | "right"
+  headingBackground String   @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
+  displaySpeed      Int      @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
+  updatedAt         DateTime @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("overlay_contribution_settings")
   @@schema("public")
 }
 
