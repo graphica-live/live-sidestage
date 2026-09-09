@@ -4,7 +4,12 @@
 // (実装前レビューLOW指摘を踏まえてreviveSuspendedMonitoring()へ寄せた)。
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { deleteTiktokRoomPermanently, resolveRoomForStreamer, suspendRoomMonitoring } from "./tiktok-room";
+import {
+  deleteTiktokRoomPermanently,
+  ensureRoomWatchedByAdmin,
+  resolveRoomForStreamer,
+  suspendRoomMonitoring,
+} from "./tiktok-room";
 import { makeGiftRow, makeTiktokUid } from "./__fixtures__/gift";
 
 const suffix = () => `${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
@@ -376,5 +381,54 @@ describe("deleteTiktokRoomPermanently", () => {
 
     const orphaned = await prisma.eventParticipant.findFirst({ where: { roomId: room.id } });
     expect(orphaned).not.toBeNull();
+  });
+});
+
+describe("ensureRoomWatchedByAdmin", () => {
+  it("既存room(specialWatch:false)を再度追加すると、update分岐がspecialWatchをtrueへセットする", async () => {
+    // Codex-terra TestCase Modeレビュー指摘(HIGH): update分岐(既存roomへ再度呼ぶ経路)への
+    // specialWatch:true付与は今回の変更対象だが、専用テストが無かった。バトル履歴の購読判定
+    // (battle-subscription.ts)が誤ってfalseのままになる回帰をここで固定する。
+    const subject = makeSubject("adminupd");
+    const room = await prisma.tiktokRoom.create({
+      data: {
+        hostTiktokUid: subject.tiktokUid,
+        tiktokHandle: subject.tiktokHandle,
+        specialWatch: false,
+        handleStaleAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+      select: { id: true },
+    });
+    roomIds.push(room.id);
+
+    const result = await ensureRoomWatchedByAdmin({
+      tiktokUid: subject.tiktokUid,
+      tiktokHandle: subject.tiktokHandle,
+      nickname: null,
+    });
+    expect(result).toEqual({ roomId: room.id, created: false });
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
+    expect(after.specialWatch).toBe(true);
+    expect(after.handleStaleAt).toBeNull();
+
+    const countAfter = await prisma.tiktokRoom.count({ where: { hostTiktokUid: subject.tiktokUid } });
+    expect(countAfter).toBe(1);
+  });
+
+  it("未登録のtiktokUidへ呼ぶと新規roomを作りspecialWatch:trueで作成する", async () => {
+    const subject = makeSubject("adminnew");
+
+    const result = await ensureRoomWatchedByAdmin({
+      tiktokUid: subject.tiktokUid,
+      tiktokHandle: subject.tiktokHandle,
+      nickname: null,
+    });
+    expect(result.created).toBe(true);
+    roomIds.push(result.roomId);
+
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: result.roomId } });
+    expect(after.specialWatch).toBe(true);
+    expect(after.hostTiktokUid).toBe(subject.tiktokUid);
   });
 });

@@ -477,7 +477,10 @@ export async function ensureRoomWatchedByAdmin(
     const commit = await prisma.$transaction(async (tx) => {
       await tx.tiktokRoom.update({
         where: { id: existing.id },
-        data: { tiktokHandle, handleStaleAt: null },
+        // specialWatch: true — 管理者が明示的に監視追加した room は、以後 watchSource の値
+        // (過去にコラボ/battle_start由来だったか)にかかわらず常に「購読あり」として扱う
+        // (バトル履歴生成の購読判定、battle-subscription.ts参照)。
+        data: { tiktokHandle, handleStaleAt: null, specialWatch: true },
       });
       return recordTikTokUser(tx, { tiktokUid, tiktokHandle, nickname: subject.nickname });
     });
@@ -488,7 +491,7 @@ export async function ensureRoomWatchedByAdmin(
   try {
     const { room, commit } = await prisma.$transaction(async (tx) => {
       const created = await tx.tiktokRoom.create({
-        data: { hostTiktokUid: tiktokUid, tiktokHandle },
+        data: { hostTiktokUid: tiktokUid, tiktokHandle, specialWatch: true },
         select: { id: true },
       });
       const marker = await recordTikTokUser(tx, {

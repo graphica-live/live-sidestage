@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: gift-retention
-last_updated: 2026-09-06
+last_updated: 2026-09-09
 last_risk: HIGH
-last_reviewers: Qwen(独立) + fable-expert(Codex/Gemini quota枯渇のため代理)
+last_reviewers: Qwen(独立) + fable-expert(Codex/Gemini quota枯渇のため代理)。2026-09-09追記分(TC-GR-011/012)はbattle-history-subscription-gate機能のreview-auto Code Mode(DeepSeek + Codex-terra)がこのファイルを含む同一diffをレビュー
 ---
 
 # テストベースライン: gift-retention
@@ -34,6 +34,10 @@ last_reviewers: Qwen(独立) + fable-expert(Codex/Gemini quota枯渇のため代
 | TC-GR-008 | 1周回の確定上限(500件)を超えて未確定バトルが残る間は削除を見送る | `countPendingBattles` + `runGiftRetentionCycle`の`skipReason`分岐 | 異常/negative | カットオフより前に未確定バトルが501件以上残る想定 | `deletion.skippedReason`に件数入りメッセージが入り`deletedRows===0` | 自動テストなし | NOT RUN: 501件のバトルフィクスチャ生成コストが高いため未実施。ロジックは`countPendingBattles`(LIMIT無しCOUNT)→`skipReason`分岐でコードレビュー済み | 500件ちょうど(境界)の検証も未実施 |
 | TC-GR-009 | バックフィル/初回実行分岐でも削除済み日はロールアップ対象から除外する(過少値上書き防止) | `runGiftRetentionCycle`の`from`計算(`backfill\|\|watermarkBefore===null`分岐) | 境界/negative | watermarkが(手動復旧等で)nullへ戻された状態で、既に`deletedThrough`が設定済み | `from`が`earliestGiftDayKey()`ではなく`max(earliest, deletedThrough+1)`に切り上がり、削除済み日を再upsertしない | 自動テストなし | NOT RUN: 「watermarkだけ手動でnullに戻す」運用シナリオの再現integrationテスト未作成。修正はTC-GR-005と対称なロジック(`byDeleted`クランプを両分岐で共通化)であることをソース確認済み | 修正前は本分岐だけこのクランプが無かった(MEDIUM finding、修正済み) |
 | TC-GR-010 | 実行後、未確定イベント保護で残った行数をログに出す(観測性) | `countProtectedRows` | 正常 | 削除対象期間に保護roomのGiftが残る | `deletion.protectedRows`が実カウントを返し、0超なら`console.warn`が出る | TC-GR-002のフィクスチャで暗黙にカバー(`protectedRows`はTC-GR-001のdry-run結果でのみ明示アサート、本実行側は今回追加) | PASS(結果に`protectedRows`が入ることを確認。warnログ自体は目視) | |
+| TC-GR-011 | 誰も購読していないroomの未確定バトルはGift削除処理を永久停止させない(CRITICAL対応) | `finalizePendingBattles`, `countPendingBattles` | 異常/negative | Streamer/AgencyWatch/specialWatch/monitorUntilいずれも無いroomに、保持期限超過の未確定`TiktokBattle`行が存在する状態で`runGiftRetentionCycle`を実行 | `countPendingBattles`がこの行を数えない(pending集計から除外)。`applyGiftRetention`のGift削除が`skippedReason`によりskipされない | `npx dotenv -e .env.local.test -- vitest run src/lib/gift-retention.integration.test.ts`(該当describe: 「runGiftRetentionCycle — 購読なしroomの未確定バトルはGift削除を止めない」) | PASS | `finalizePendingBattles`/`countPendingBattles`のraw SQLへEXISTS副問い合わせ(Streamer存在 OR AgencyWatch存在 OR specialWatch OR monitorUntil未来)を追加して対応。詳細は`docs/testing/battle-history-subscription-gate/baseline.md`のTC-BHS-010と対 |
+| TC-GR-012 | 購読ありroomの未確定バトルは従来どおりGift削除を止める(既存動作の回帰防止) | 同上 | 回帰 | 購読ありroom(specialWatch:true)に保持期限超過の未確定`TiktokBattle`行が存在する状態 | `pending>=1`、`skippedReason`に未確定バトルを示す文言が入り、対象Giftの削除が見送られる | 同上 | PASS | `docs/testing/battle-history-subscription-gate/baseline.md`のTC-BHS-011と対 |
+| TC-GR-013 | 購読条件(Streamer/AgencyWatch/monitorUntil未来)の全てがraw SQL側で個別に効く(条件網羅) | 同上 | 正常/回帰 | Streamer登録room・AgencyWatch登録room・monitorUntil未来roomの3種、各に未確定バトルがある状態 | いずれも`pending>=1`、`skippedReason`が非null、対象Giftの削除が見送られる | `npx dotenv -e .env.local.test -- vitest run src/lib/gift-retention.integration.test.ts`(該当describe: 「購読条件の網羅(Streamer/AgencyWatch/monitorUntil境界)」) | PASS | `docs/testing/battle-history-subscription-gate/baseline.md`のTC-BHS-012と対。Codex-terra TestCase Modeレビュー指摘(HIGH)、specialWatch以外がraw SQL側で未検証だった |
+| TC-GR-014 | monitorUntil===nowの境界はraw SQL条件(`> now`)でも購読なし扱い | 同上 | 境界 | monitorUntilをNOWと同時刻にセットしたroomに未確定バトルがある状態 | `skippedReason===null`、対象Giftが削除される | 同上 | PASS | `docs/testing/battle-history-subscription-gate/baseline.md`のTC-BHS-013と対 |
 
 ## Quality Gate
 

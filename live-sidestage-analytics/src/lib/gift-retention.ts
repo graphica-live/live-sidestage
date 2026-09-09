@@ -217,6 +217,12 @@ async function finalizePendingBattles(
   now: Date
 ): Promise<{ pending: number; finalized: number; skipped: number }> {
   const cutoffAt = dayKeyStartUtc(cutoffDayKey);
+  // 購読なしroom(Streamer登録・AgencyWatch登録・specialWatch・monitorUntilのいずれも無い、
+  // コラボ検知由来の匿名監視roomのみ)の未確定TiktokBattle行は最初から対象外にする。
+  // computeBattleSnapshot側のガード(hasBattleSubscriber、battle-subscription.ts)と
+  // 意味的に一致させること。これを入れないと購読なし行が恒久的に「pending」のまま残り、
+  // LIMIT対象を占有して購読ありroomの未確定行を飢餓させるほか、countPendingBattles経由で
+  // Gift削除処理そのものを永久停止させうる。
   const pending = await prisma.$queryRaw<{ roomId: string; battleId: string }[]>`
     SELECT b."roomId" AS "roomId", b."battleId" AS "battleId"
       FROM "tiktok_battles" b
@@ -224,6 +230,16 @@ async function finalizePendingBattles(
        AND NOT EXISTS (
          SELECT 1 FROM "battle_histories" h
           WHERE h."roomId" = b."roomId" AND h."battleId" = b."battleId"
+       )
+       AND EXISTS (
+         SELECT 1 FROM "TiktokRoom" r
+          WHERE r.id = b."roomId"
+            AND (
+              EXISTS (SELECT 1 FROM "Streamer" s WHERE s."roomId" = b."roomId")
+              OR EXISTS (SELECT 1 FROM "AgencyWatch" w WHERE w."roomId" = b."roomId")
+              OR r."specialWatch"
+              OR (r."monitorUntil" IS NOT NULL AND r."monitorUntil" > ${now})
+            )
        )
      ORDER BY b."startedAt" ASC
      LIMIT ${MAX_BATTLE_FINALIZE_PER_CYCLE}
@@ -256,8 +272,11 @@ async function finalizePendingBattles(
  * 1周回 `MAX_BATTLE_FINALIZE_PER_CYCLE` 件までしか処理しないため、それを超えて
  * 残っている分もここで数え、削除をこの周回では見送る判断に使う。
  */
-async function countPendingBattles(cutoffDayKey: string): Promise<number> {
+async function countPendingBattles(cutoffDayKey: string, now: Date): Promise<number> {
   const cutoffAt = dayKeyStartUtc(cutoffDayKey);
+  // finalizePendingBattlesと同じ購読条件で除外する。ここで除外しないと、購読なしroomの
+  // 恒久未確定行が常にpendingBattleCount>0を作り出し、Gift削除処理が全roomに対して
+  // 永久停止する(CRITICAL、review-auto Design Modeで検出)。
   const rows = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*) AS "count"
       FROM "tiktok_battles" b
@@ -265,6 +284,16 @@ async function countPendingBattles(cutoffDayKey: string): Promise<number> {
        AND NOT EXISTS (
          SELECT 1 FROM "battle_histories" h
           WHERE h."roomId" = b."roomId" AND h."battleId" = b."battleId"
+       )
+       AND EXISTS (
+         SELECT 1 FROM "TiktokRoom" r
+          WHERE r.id = b."roomId"
+            AND (
+              EXISTS (SELECT 1 FROM "Streamer" s WHERE s."roomId" = b."roomId")
+              OR EXISTS (SELECT 1 FROM "AgencyWatch" w WHERE w."roomId" = b."roomId")
+              OR r."specialWatch"
+              OR (r."monitorUntil" IS NOT NULL AND r."monitorUntil" > ${now})
+            )
        )
   `;
   return Number(rows[0]?.count ?? 0);
@@ -415,7 +444,7 @@ export async function runGiftRetentionCycle(
   // `finalizePendingBattles` は1周回 MAX_BATTLE_FINALIZE_PER_CYCLE 件までしか処理しない。
   // それを超えて未確定バトルが残っている場合、削除側はバトル確定状態を一切見ずに進むため、
   // 確定を待たずに元Giftを消してしまう。残っている間はこの周回の削除を見送る。
-  const pendingBattleCount = await countPendingBattles(cutoffDayKey);
+  const pendingBattleCount = await countPendingBattles(cutoffDayKey, now);
 
   // --- 3. 削除 ---
   // **ロールアップが削除対象に追いついていなければ消さない。**

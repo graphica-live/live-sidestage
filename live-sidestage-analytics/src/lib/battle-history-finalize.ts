@@ -43,6 +43,7 @@ import {
 import type { HostProfiles } from "@/lib/tiktok-battle";
 import { inferOpeningMultiplier, type OpeningMultiplierResult } from "@/lib/battle-opening-multiplier";
 import { loadTapPointsForBattle } from "@/lib/battle-tap-points";
+import { hasBattleSubscriber } from "@/lib/battle-subscription";
 
 /** BattleHistoryGiftEvent等の子行createManyを分割する単位。Postgresのbind数上限対策
  * (1バトルのギフト送信回数は数百〜数千になりうる)。Prismaの自動分割に依存しない。 */
@@ -258,8 +259,33 @@ export async function computeBattleSnapshot(
 
   const selfRoom = await prisma.tiktokRoom.findUnique({
     where: { id: roomId },
-    select: { hostTiktokUid: true, tiktokHandle: true },
+    select: {
+      hostTiktokUid: true,
+      tiktokHandle: true,
+      specialWatch: true,
+      monitorUntil: true,
+      streamers: { select: { id: true }, take: 1 },
+      watches: { select: { id: true }, take: 1 },
+    },
   });
+  // 誰も購読していない room(Streamer登録・AgencyWatch登録・specialWatch・monitorUntilの
+  // いずれも無い、コラボ検知由来の匿名監視roomのみ)ではBattleHistoryを確定しない。
+  // TiktokBattle行自体は無改修(persistBattleは全room作り続ける)なので、相手room参照
+  // (computeBattleSnapshotのothersクエリ)への影響はない。詳細はbattle-subscription.ts参照。
+  if (
+    selfRoom !== null &&
+    !hasBattleSubscriber(
+      {
+        streamerCount: selfRoom.streamers.length,
+        watchCount: selfRoom.watches.length,
+        specialWatch: selfRoom.specialWatch,
+        monitorUntil: selfRoom.monitorUntil,
+      },
+      now
+    )
+  ) {
+    return null;
+  }
   // hostTiktokUid は fill-once で、閲覧契機の遅延バックフィル(backfillHostTiktokUids)でしか埋まらない。
   // 30秒後の時点でも未解決なことがある。その場合は確定しない(以後もライブ集計にフォールバックする)。
   const selfHostTiktokUid = selfRoom?.hostTiktokUid ?? null;
