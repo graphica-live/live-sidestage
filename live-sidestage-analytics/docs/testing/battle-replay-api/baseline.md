@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-07
+last_updated: 2026-09-09
 last_risk: HIGH
-last_reviewers: [deepseek-v4-flash, fable]
+last_reviewers: [deepseek-v4-flash, fable] / [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 admin版シェア発行API追加時
 ---
 
 # バトル再生API
@@ -15,6 +15,7 @@ last_reviewers: [deepseek-v4-flash, fable]
 (`isReplayable` / `buildPayload` / `ensureShareToken` / `queryBattleReplay` / `queryBattleReplayByShareToken`),
 `src/app/api/analytics/battles/[battleId]/replay/`, `src/app/api/admin/rooms/[roomId]/analytics/battles/[battleId]/replay/`,
 `src/app/api/public/battles/[token]/replay/`, `src/app/api/analytics/battles/[battleId]/share/`,
+`src/app/api/admin/rooms/[roomId]/analytics/battles/[battleId]/share/`(2026-09-09追加。admin版シェア発行API),
 `src/lib/battle-history.ts` の `BattleListItem.replay`
 
 再生に必要なデータを**確定時に残す側**は別ベースライン(`docs/testing/battle-replay-data/baseline.md`)。
@@ -26,7 +27,7 @@ last_reviewers: [deepseek-v4-flash, fable]
 - `[unit]` = `npx vitest run src/lib/battle-replay.test.ts`
 - `[itg]` = `npx dotenv -e .env.local.test -- vitest run src/lib/battle-replay.integration.test.ts`
 - `[list-itg]` = `npx dotenv -e .env.local.test -- vitest run src/lib/battle-history.integration.test.ts`
-- `[route]` = `npx vitest run "src/app/api/public/battles/[token]/replay/route.test.ts" "src/app/api/analytics/battles/[battleId]/replay/route.test.ts" "src/app/api/analytics/battles/[battleId]/share/route.test.ts" "src/app/api/admin/rooms/[roomId]/analytics/battles/[battleId]/replay/route.test.ts"`
+- `[route]` = `npx vitest run "src/app/api/public/battles/[token]/replay/route.test.ts" "src/app/api/analytics/battles/[battleId]/replay/route.test.ts" "src/app/api/analytics/battles/[battleId]/share/route.test.ts" "src/app/api/admin/rooms/[roomId]/analytics/battles/[battleId]/replay/route.test.ts" "src/app/api/admin/rooms/[roomId]/analytics/battles/[battleId]/share/route.test.ts"`
 
 ## テストケース
 
@@ -70,6 +71,7 @@ last_reviewers: [deepseek-v4-flash, fable]
 | TC-BRA-034 | 私的ルートは再生不可を 409 と理由コードで返す | `api/analytics/.../replay` / `api/admin/.../replay` | 異常 | `queryBattleReplay` が `ok: false` | 409 で `{ error: "Replay unavailable", available: false, reason }` | `[route]` | PASS | 所有者向けなので理由を出してよい(公開は出さない) |
 | TC-BRA-035 | 私的ルートは自分の roomId で絞って引く。admin は URL の roomId を使う | `api/analytics/.../replay` / `api/admin/.../replay` | 正常/認可 | セッションのユーザー / admin | `queryBattleReplay("room1", "b1")` が呼ばれ、`Cache-Control: private, no-store` が付く | `[route]` | PASS | 他人のバトルはクエリ段階で引けない |
 | TC-BRA-036 | シェア発行はセッション必須で、URLはサーバー側の正準オリジンで組む | `api/analytics/.../share` | 正常/negative | セッション無し / トークン null / 発行成功 | 401(発行しない)、404、`{ url: "<canonicalOrigin>/b/<token>" }` | `[route]` | PASS | `window.location.origin` だと admin・別ホストからの発行でずれる |
+| TC-BRA-040 | admin版シェア発行は`getAdminSession()`必須で、本人用と同一レスポンス形状・冪等性を持つ | `api/admin/rooms/[roomId]/analytics/.../share` | 正常/negative/認可/回帰 | adminセッション無し / 存在しないroomId / 存在しないbattleId / 発行成功後の2回目POST | 401(発行しない)、404(roomId)、404(battleId)、`{ url: "<canonicalOrigin>/b/<token>" }`(本人用と同一形状)。2回目も同じURL(再発行しない) | `[route]` | PASS | 認可は`getAdminSession()`のみでroom所有者境界は無い(既存admin routeパターンと同じ、TC-BRA-033と同様の設計判断)。管理者が配信者の同意なしに公開URLを発行できる権限拡張を含む(プロダクトオーナー承認済み、2026-09-09) |
 | TC-BRA-037 | 一覧の各行に再生可否が載る | `BattleListItem.replay` / `loadFinalizedBattles` | 正常/回帰 | 確定済み(スコア点あり/なし)・未確定の混在した一覧 | スコア点ありは `{ available: true, reason: null }`、スコア点なしは `no_score_points`、未確定は `not_finalized` | `[list-itg]` | PASS | モーダルを開く前にボタン活性が決まる。追加クエリを増やさず既存 select へ列を足すだけ |
 
 ## Quality Gate

@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-08
-last_risk: LOW
-last_reviewers: [Code Mode]DeepSeek(high)、2026-09-08 モード切替タブの見た目統一時
+last_updated: 2026-09-09
+last_risk: HIGH
+last_reviewers: [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 管理者用シェアボタン解禁時
 ---
 
 # バトル再生の共有リンク
@@ -54,7 +54,7 @@ last_reviewers: [Code Mode]DeepSeek(high)、2026-09-08 モード切替タブの�
 | TC-BRS-010 | 共有ページのタイトルとOGPがバトル名になる | `generateMetadata` / `replayTitleOf` | 正常 | 2陣営のバトル | `<title>` が `{自分} vs {相手} \| LIVE Sidestage`、`og:title` が `{自分} vs {相手}` | `[anon]` | PASS（`配信者 vs 配信者 \| LIVE Sidestage` / `配信者 vs 配信者`） | 表示名はニックネームのみ（ハンドルを含まない） |
 | TC-BRS-011 | 貢献者一覧タブはバトル全体を陣営ごとに合算し、金額降順で並べる | `teamTotalsOf` | 正常/境界/empty state | 複数陣営・複数送信者 / ギフト明細0件の陣営 / 複数人コラボの陣営 | 陣営ごとに送信者を合算し降順。同額は送信者添字順。明細0件の陣営も行が残る（`observedCoins: 0`）。複数人コラボの陣営名は参加者名を ` / ` で連結 | `[unit]` | PASS（35 tests） | 再生画面の貢献者ボード（`contributorsAt`）と違い、時刻で切らず自陣営に限定もしない（第三者向けの全体像） |
 | TC-BRS-012 | クリップボードが使えない環境ではURLを選択可能なテキストで出す | `ShareButton` | 異常/境界 | `navigator.clipboard` が無い状態でシェアを押す | 読み取り専用の入力欄に共有URLが出てフォーカスで全選択される。黙って失敗しない | `[pw]` | PASS（`readonly` の入力欄に `?v=list` 付きURL） | 非 secure context（`http://` の実機確認など）で起きる |
-| TC-BRS-013 | 管理者向けのバトル詳細にはシェアボタンを出さない | `BattleDetailModal` | 境界/認可 | `/admin/rooms/<roomId>` のバトル履歴からモーダルを開く | シェアボタンが1つも無い | `[admin]` | PASS（0件） | 発行APIは `/api/analytics` 配下にしか無く、admin 経路で押せると必ず失敗する |
+| TC-BRS-013 | 管理者向けのバトル詳細でも配信者本人と同じシェアボタンが使え、発行したリンクは第三者が本人発行時と同じように開ける | `BattleDetailModal` / `ShareButton` | 正常/認可/回帰 | `/admin/rooms/<roomId>` のバトル履歴からモーダルを開く | 一覧モードで押すと `<origin>/b/<48桁トークン>?v=list` がクリップボードに入りボタン文言が「リンクをコピーした」へ変わる(TC-BRS-001と同形式)。再生モードで押すと同一トークンで `?v=replay`(TC-BRS-002と同形式)。**このトークンは本人が同じバトルで発行した場合と同一の値**(`ensureShareToken(roomId, battleId)` を共有するため)。発行したURLを別の匿名 context で開くと `/login` へ飛ばされず両モードとも再生できる(TC-BRS-003相当) | `[admin]` | PASS(2026-09-09、`?v=list`トークン一致・匿名open成功) | 2026-09-09: 発行APIが `/api/admin/rooms/[roomId]/analytics/battles/[battleId]/share` に新設され、以前の「adminには出さない」仕様を反転した。認可・404/401・冪等性の保証は `docs/testing/battle-replay-api/baseline.md` の TC-BRA-040。ShareButtonのHTTPエラー時のerror state表示は本変更で新設したものではなく既存ロジック(このbaselineに未収載の既存カバレッジギャップ、今回のスコープ外) |
 | TC-BRS-014 | 公開ページはスマホ幅でも横スクロールしない | `PublicBattleClient` | デバイス差/境界 | 390px 幅で `?v=list` を開く | `document.documentElement` の横スクロールが発生しない | `[anon]` | PASS（`SP_H_OVERFLOW false`） | 共有先はモバイルで開かれる前提 |
 | TC-BRS-015 | mobile向けshare routeは`ensureShareToken`の既存仕様(適格性未判定)をそのまま踏襲し、常にトークンを発行する | `POST /api/mobile/analytics/battles/[battleId]/share` | 正常 | 正しいroomのbattleId(再生可否を問わない) | 200で`{url: "<origin>/b/<48桁トークン>"}`を返す。再生不可バトルでもここでは404にしない(404は`/b/[token]`アクセス時) | `npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/share/route.integration.test.ts"` | PASS(2026-09-08) | Web版`POST /api/analytics/battles/[battleId]/share`と同じ設計 |
 | TC-BRS-016 | mobile向けshare routeは認証・所有者境界を守る | 同上route | 異常/認可/境界 | (a)トークン無し (b)room未接続JWT (c)別roomにのみ存在するbattleId (d)存在しないbattleId | (a)401でtoken発行なし (b)(c)(d)いずれも404 | 同上コマンド | PASS(2026-09-08) | (c)は所有者境界(Codex Design Review medium effortの指摘で追加) |
@@ -64,9 +64,10 @@ last_reviewers: [Code Mode]DeepSeek(high)、2026-09-08 モード切替タブの�
 
 ## Quality Gate
 
-- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-08、モード切替タブ見た目統一時に再実行)
-- `npm run test:unit` → 1471 tests PASS(2026-09-08)
-- `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ PASS(2026-09-08、Errors:0/Warnings:0)
+- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-09、管理者用シェアボタン解禁時に再実行)
+- `npm run test:unit` → 1485 tests PASS(2026-09-09)
+- `npm run test:integration` → 894 tests PASS(2026-09-09、admin share route の integration test 含む)
+- `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ NOT RUN(2026-09-09、typecheck + 実ブラウザ確認で代替。前回2026-09-08はPASS)
 
 ## Out of Scope
 
