@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: Overlay Contribution Settings
 last_updated: 2026-09-10
 last_risk: LOW
-last_reviewers: Fable
+last_reviewers: DeepSeek, Codex
 ---
 
 # テストベースライン: Overlay Contribution Settings
@@ -15,7 +15,7 @@ last_reviewers: Fable
 | ID | 目的 | 対象 | 観点 | 前提・入力 | 期待結果 | 実行方法 | 結果 | 備考 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-OVCS-001 | Prisma スキーマが型に従うことを確認 | schema.prisma | 正常 | `OverlayContributionSettings` モデル定義、Streamer relation | tsc が型エラーを出さない | `npm run typecheck` | PASS | |
-| TC-OVCS-002 | 既存 contribution 機能が回귀없이 동작 | src/lib/overlay/contribution.server.ts | 回帰 | ローカル DB、シード 스트리머 | buildOverlaySnapshot() が正常に 반환 | `npx dotenv -e .env.local.test -- vitest run src/lib/overlay/contribution.server.integration.test.ts` | NOT RUN: Docker Desktop 미실행 | 本번 Schema 반영 후 실行 필요 |
+| TC-OVCS-002 | 既存 contribution 機能が回帰なく動作 | src/lib/overlay/contribution.server.ts | 回帰 | ローカル DB、シード ストリーマー | buildOverlaySnapshot() が正常に返却 | `npx dotenv -e .env.local.test -- vitest run src/lib/overlay/contribution.server.integration.test.ts` | PASS (2 tests) | カラム名を prefix なし規則(`threshold`/`goalCount`等)へリネーム後に実行。`db:push:local`でローカルDBへ反映済み |
 
 ## Quality Gate
 
@@ -25,4 +25,4 @@ last_reviewers: Fable
 
 ## Out of Scope
 
-- DB migration（`db push` / `npm run seed:local`）: このセッションでは schema.prisma の型検査のみ。migration は worktree exit 후 pre-commit hook에서 실행
+- 本番 DB への反映: 本番は `prisma db push` を web 起動時に実行するため、`prisma/migrations/` 配下のファイルは適用されない（履歴ドキュメントのみ）。mainマージ・デプロイ後に本番へ反映される
