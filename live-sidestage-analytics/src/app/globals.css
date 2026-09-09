@@ -482,18 +482,24 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* `.replay-ripple`(アバターと同じ矩形の親、overflow:hidden 無し)基準で配置する。
+   top:0 = アバター上端。レイアウト(1vs1/チーム戦/3人以上)ごとにアバターの実サイズ・
+   セル縦横比が違っても、アバター基準にすることで常に「アバターの真上」になる。
+   中心基準(translate)にしているのは、演出中の scale 変化を継いで最後に飛ばないため。
+   ReplayCell.tsx の winRevealPhase() の着地値(top: "0%")と必ず揃えること。 */
 .replay-win {
   position: absolute;
-  right: 7px;
-  top: 7px;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 2;
   font-family: var(--replay-mono);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   color: #0d0f13;
   background: var(--replay-gold);
-  border-radius: 5px;
-  padding: 1px 6px;
+  border-radius: 6px;
+  padding: 3px 9px;
 }
 /* 終了直後、誰が勝ったか一目でわかるよう中央に大きく出してから .replay-win の位置・大きさへ
    移動する演出。top/left(%)・scale は JS(elapsedMs の純関数)が計算し、ここでは器だけ持つ。 */
@@ -501,11 +507,11 @@ body {
   position: absolute;
   z-index: 3;
   font-family: var(--replay-mono);
-  font-size: 22px;
+  font-size: 34px;
   font-weight: 700;
   color: #0d0f13;
   border-radius: 5px;
-  padding: 1px 6px;
+  padding: 4px 12px;
   white-space: nowrap;
   pointer-events: none;
 }
