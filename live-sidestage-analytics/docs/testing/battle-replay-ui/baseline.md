@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-08
+last_updated: 2026-09-09
 last_risk: LOW
-last_reviewers: [Code Mode]DeepSeek単独、2026-09-08 終了時点滅+演出の自然消滅+WIN reveal演出 追加時
+last_reviewers: [Code Mode]DeepSeek単独、[TestCase Mode]DeepSeek単独、2026-09-09 常設WINバッジの終了前誤表示バグ修正時
 ---
 
 # バトル再生UI
@@ -58,6 +58,7 @@ last_reviewers: [Code Mode]DeepSeek単独、2026-09-08 終了時点滅+演出の
 | TC-BRU-016 | 陣営構成ごとにステージの割り方が変わる（5バリアント） | `buildStageLayout` | 正常 | 1vs1 / 3コラボ / 4コラボ / 2vs2 / 1vs3 | `duo`(全幅レーン) / `trio` / `quad` / `team22` / `one3`。左右の振り分けと相手カード縮小が構成ごとに一致 | `[unit]` | PASS | comp の5バリアントすべてが契約対象 |
 | TC-BRU-017 | 自陣が `teams` の先頭でなくても自分が左枠・大アイコンになる | `buildStageLayout` | 回帰 | `teams[0].isSelf === false` の 1vs1 | 先頭セルが自陣。`right: false` / `largeAvatar: true` | `[unit]` | PASS | 配列の並びに依存すると、順序が変わった瞬間に自分が右枠へ回り気づけない |
 | TC-BRU-018 | WIN バッジは陣営の公式スコアで決め、同点・スコア未確定では出さない | `resolveWinningTeamIndex` / `ReplayStage` | 回帰/境界 | 陣営スコア 5000 vs 9000 / 同点 / 確定陣営1つ以下 | 最大スコアの陣営のみ WIN。同点と確定2陣営未満は null。再生画面でも最終スコア最大の枠にだけ出る | `[color]` / `[pw]` | PASS | 個人スコア基準にすると「負け陣営の最多貢献メンバー」に WIN が付き、一覧・詳細モーダルと食い違う |
+| TC-BRU-060 | 常設 WIN バッジはバトル終了前(`elapsedMs < durationMs`)は出ない | `ReplayCell` の `battleEnded` | 回帰/境界 | 勝者側セルを再生開始直後(`elapsedMs=0`)へシーク | `.replay-win` が DOM に無い。終了(`elapsedMs>=durationMs`)後は表示される | `[pw]` | PASS | `isWinner` はスコア確定時点で静的に決まるため、終了判定を欠くと再生開始直後から WIN が出る |
 | TC-BRU-019 | 陣営色は自陣=赤固定、相手はバトルスコア降順で青→橙→紫 | `assignFactionColors` | 回帰 | 自陣 + 相手3(うち1つはスコア null) | 自陣 `#fe4d4d`。相手はスコア降順に `#4d9fff` `#ffa64d` `#b98aff`。スコア null は最後尾 | `[color]` | PASS | 一覧・詳細モーダルと同じ関数を通ることが色一致の唯一の根拠。サーバーは色を返さない |
 | TC-BRU-020 | 相手陣営のギフト明細が無くても再生でき、注記が出る | `BattleReplayView` | データ欠損 | `opponentGiftsMissing: true` のバトル | 自陣側のカードだけ流れ、注記チップが可視。再生自体は止まらない | `[pw]` | PASS | 相手room未監視のバトルが多数を占める |
 | TC-BRU-021 | 貢献者がまだ0人の時点でもボードの領域は残る | `ReplayContributorBoard` | empty state | 再生位置 t=0 | ボードの高さが保たれ、空文言が出る。下のコントロールが上下に飛ばない | `[pw]` | PASS | |

@@ -113,6 +113,7 @@ export function ReplayCell({
   const bigGiftImg = bigGift ? gifts[bigGift.giftIndex]?.img ?? null : null;
   const bigGiftTier = bigGift ? bigGiftTierOf(bigGift.diamonds) : null;
   const winReveal = isWinner ? winRevealPhase(elapsedMs - durationMs) : null;
+  const battleEnded = elapsedMs >= durationMs;
   const cellClass = [
     "replay-cell",
     cell.right ? "replay-cell--right" : "",
@@ -169,7 +170,7 @@ export function ReplayCell({
         </span>
       )}
       <span className="replay-namechip">{name}</span>
-      {isWinner && !winReveal ? (
+      {isWinner && battleEnded && !winReveal ? (
         <span className="replay-win" style={{ background: GOLD }}>
           WIN
         </span>
