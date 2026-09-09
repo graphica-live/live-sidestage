@@ -38,12 +38,16 @@ const FRAME_INTERVAL_MS = 1000 / 30;
 export const DEFAULT_REPLAY_SPEED = 4;
 
 /**
- * バトル終了(durationMs到達)後も、この猶予だけ内部時計を進めてから止める。
- * カード表示(`REPLAY_BAR_LIFETIME_MS` = 4000ms)・大ギフト演出(`BIG_GIFT_DURATION_MS` = 3200ms)
- * が elapsedMs の純関数として自然にフェードアウトできるようにするため
- * (即座に止めると、終了間際に出た演出が最後の見た目のまま残り続ける)。
+ * バトル終了(durationMs到達)後も、この猶予(**実時間**)だけ内部時計を進めてから止める。
+ * カード表示(`REPLAY_BAR_LIFETIME_MS` = 4000ms)・大ギフト演出(`BIG_GIFT_DURATION_MS` = 3200ms)・
+ * WIN 演出(実時間 900ms+650ms 固定)が elapsedMs の純関数として自然にフェードアウトできるように
+ * するため(即座に止めると、終了間際に出た演出が最後の見た目のまま残り続ける)。
  * 猶予中も `elapsedMs` は durationMs を超えて増え続けるので、表示に使う側は
  * 必要に応じて durationMs へクランプすること。
+ *
+ * 停止判定では `speed` を掛けて elapsedMs 換算する(下記 tick 内)。**実時間**で一定にしないと、
+ * 再生速度が上がるほど猶予の elapsedMs 換算値だけが伸びずに据え置かれ、WIN 演出のように
+ * 「speed 倍の elapsedMs 尺を要する」演出が速い速度で完走前に打ち切られる。
  */
 export const END_FADE_MS = 4200;
 
@@ -155,8 +159,11 @@ export function useReplayClock(durationMs: number, options: ReplayClockOptions =
         appliedBoostRef.current = wanted;
       }
 
-      if (next >= durationMs + END_FADE_MS) {
-        setElapsedMs(durationMs + END_FADE_MS);
+      // END_FADE_MS は実時間の猶予(WIN演出などが完走するまで再生を止めない)。
+      // elapsedMs は speed 倍で進むので、実時間で一定にするには speed 倍して比較する。
+      const fadeMs = END_FADE_MS * speed;
+      if (next >= durationMs + fadeMs) {
+        setElapsedMs(durationMs + fadeMs);
         setPlaying(false);
         return;
       }
