@@ -1,7 +1,7 @@
 ---
 risk: LOW
 reviewers: [DeepSeek]
-review_summary: { findings: 1, valid: 0, fixed: 0 }
+review_summary: { findings: 4, valid: 3, fixed: 3 }
 last_updated: 2026-09-09
 last_risk: LOW
 last_reviewers: [DeepSeek(high)]
@@ -25,7 +25,7 @@ last_reviewers: [DeepSeek(high)]
 | 1 | 確定バトル(1v1)の貢献者一覧 | `npx dotenv -e .env.local.test -- vitest run src/lib/battle-history.integration.test.ts` | `aggregateGiftEventsToContributors` が `senderNicknameSnapshot` をそのまま表示名として返す |
 | 2 | 確定バトル(乱戦/3陣営以上)の相手統合列 | 同上、`queryBattleContributors` の `mergeOpponents` 分岐 | `selectorMode: "individual"` の team が返り、参加者セレクタで個別表示できる |
 | 3 | ライブ(未確定)バトルの貢献者一覧 | `npx dotenv -e .env.local.test -- vitest run src/lib/gift-analytics.integration.test.ts` | `aggregateGiftUsers` が `Gift.nickname` を表示名として返す |
-| 9 | 2vs2チーム戦のヘッダー(`TeamCard`)で自陣営に自分+チームメイトがいる | 手動シード(`BattleHistory`+`BattleHistoryParticipant`、teamIndex0に自分anchorId・チームメイトanchorIdの2名)→ `/analytics` バトル履歴タブ→詳細モーダル | 自分・チームメイトともに実際の配信者名(nickName/displayId)で表示され、どちらか一方だけが「自分」固定文字列にならない。両者とも同じ陣営色(赤)で表示される |
+| 9 | 2vs2チーム戦のヘッダー(`TeamCard`)で自陣営に自分+チームメイトがいる | 手動シード(`BattleHistory`+`BattleHistoryParticipant`、teamIndex0に自分anchorId・チームメイトanchorIdの2名)→ `/analytics` バトル履歴タブ→詳細モーダル | 自分・チームメイトともに実際の配信者名(`nickname`/`tiktokHandle`)で表示され、どちらか一方だけが「自分」固定文字列にならない。両者とも同じ陣営色(赤)で表示される |
 | 10 | 同上バトルの`TeamContributorColumn`セレクタボタン(陣営全体合算/個別配信者切替) | 同上シード、モーダル内の貢献者欄セレクタを確認 | セレクタの各ボタンが自分/チームメイト双方とも実名(`queryBattleContributors`の`participants[].displayName`)で表示される |
 | 14 | `TeamContributorColumn`の貢献者一覧(`ExpandableContributorRow`)の頭出し表示 | 同上シードに貢献者12名以上を追加(`totalDiamonds`降順)→ Playwrightで貢献者欄を確認 | 各行の先頭が旧アイコン(展開用の三角矢印)ではなく降順の順位番号(1,2,3…)で表示される |
 | 15 | 14のケースで順位が2桁(10以上)になったとき | 同上、貢献者欄を最下部までスクロールして確認 | 2桁の順位でもアバターアイコンの左端位置が1桁の行と揃ったまま(`w-4 text-right tabular-nums`の固定幅右寄せで桁数によるズレが無い) |
@@ -43,6 +43,8 @@ last_reviewers: [DeepSeek(high)]
 | 20 | 貢献者0件(境界)のフォールバック表示は2列gridにしない | 貢献者0件・`teams===null`のバトルで詳細モーダルを開く | 「バトル区間を確定できないため集計できません」/「このバトルへの貢献者なし」のいずれかが表示され、grid化・「集計中…」の表示は起きない |
 | 21 | 進行中(`status==="live"`)バトルで自陣営がリードしている詳細モーダル | 手動シード(`npm run seed:battle-live:local`、自450/相手300)→ `/analytics` バトル履歴タブ→進行中バトルの詳細 | `WIN`バッジ・勝敗色ハイライトが表示されない(未決着のため) |
 | 22 | 21と同じバトルが`finished`で確定しスコアが変わらないまま再取得 | 手動シードデータの`status`を`finished`相当に見立てて確認(既存の確定済みバトルで代替確認) | `WIN`バッジが表示される(決着後は通常どおり勝敗表示) |
+| 23 | 対戦相手に`nickname`(`BattleHistoryParticipant.nicknameSnapshot`)が設定されている確定済みバトルの詳細モーダル | 手動シード(`nicknameSnapshot`に日本語名を設定)→ `/analytics` バトル履歴タブ→詳細モーダル | ヘッダー(`TeamCard`/`FallbackVersusHeader`)・貢献者欄とも表示名が`nickname`になり、`tiktokHandle`はサブラベル(`@handle`)としてのみ表示される |
+| 24 | 対戦相手に`nickname`が無い(null)確定済みバトルの詳細モーダル | 既存の確定済みバトル(`nicknameSnapshot: null`)で確認 | 表示名が`@tiktokHandle`にフォールバックし、サブラベルは重複表示されない(090450c5以前の旧仕様どおり`tiktokHandle`の有無だけでサブラベル表示を判定する) |
 
 ## 異常
 
@@ -63,6 +65,7 @@ last_reviewers: [DeepSeek(high)]
 | - | --- | --- | --- |
 | 8 | ライブバトルモーダルの貢献者欄(5人、うち3人nickname未取得) | Playwright(headless)で `/analytics` → バトル履歴タブ → 進行中バトルをクリック | スクリーンショットで各行が1行に収まり、プロフィール名がある人物は日本語名で表示される |
 | 13 | 2vs2チーム戦の詳細モーダル(`TeamCard`ヘッダー+`TeamContributorColumn`セレクタ+貢献者順位) | Playwright(headless、390px/900px)で `/analytics` → バトル履歴タブ → 該当バトルの詳細を開く | ケース9・10・11・14・15を実ブラウザで確認。自分/チームメイトとも実名・同色で表示され、セレクタボタン群は常に1段で名前の長さに関わらず段数が変わらず、貢献者順位も桁数に関わらずアイコン位置が揃う |
+| 25 | ケース23の詳細モーダル(`nickname`設定済み確定バトル) | Playwright(headless)で `/analytics` → バトル履歴タブ → `nicknameSnapshot`設定済みバトルの詳細を開く | ヘッダー・貢献者欄とも`nickname`("ライバル花子"等)が表示され、`WIN`バッジ等の既存表示に回帰がない |
 
 ## 変更履歴
 
@@ -114,3 +117,11 @@ last_reviewers: [DeepSeek(high)]
 - 修正: `isDecided = battle.status !== "live"`を追加し、`bothScores`・`winningIndex`の算出に組み込んだ(`resolveWinningTeamIndex`自体は変更なし、呼び出し側でガード)
 - レビュー: DeepSeek(LOW, high) — finding 1件(「`!== "live"`の否定条件が将来の未知status値に対して脆弱」)。`BattleStatus`型は`"live" | "finished" | "cut_short" | "unknown"`の4値で閉じておりfindingが懸念する未知値は型上発生しないため INVALID
 - テスト結果: `npm run typecheck` PASS。手動シード(`seed:battle-live:local`、自450/相手300、進行中)をPlaywrightで確認し`WIN`バッジ0件、既存の確定済みバトルで`WIN`バッジ1件(回帰なし)を確認
+
+### 2026-09-09 対戦相手の詳細モーダル表示名がtiktokHandleになっていたバグを修正
+
+- 症状: バトル履歴詳細モーダル(ヘッダー`TeamCard`/`FallbackVersusHeader`、貢献者欄)の対戦相手表示名が`nickname`ではなく`tiktokHandle`になっていた
+- 原因: `battle-types.tsx`の型定義(`BattleOpponent`/`BattleParticipant`)が旧フィールド名`nickName`/`displayId`を参照しており、サーバーが返す実フィールド名`nickname`/`tiktokHandle`と不一致だったため常に`undefined`扱いになっていた(一覧側と同一原因、`docs/testing/battle-history-list/baseline.md`参照)
+- 修正: `BattleDetailModal.tsx`のreplayタイトル生成・`TeamCard`・`FallbackVersusHeader`の参照を`nickname`/`tiktokHandle`に統一
+- レビュー: DeepSeek(LOW, high) — finding 4件のうち3件VALID(サブラベル表示条件の回帰。修正時に誤って`opponent.nickname && opponent.tiktokHandle &&`のような`nickname`必須条件を混入させていたため、090450c5以前の実際の仕様(`tiktokHandle`の有無だけで判定)に合わせて`opponent.tiktokHandle &&`のみに修正)、1件INVALID
+- テスト結果: `npm run typecheck` PASS。`BattleHistoryParticipant.nicknameSnapshot`に「ライバル花子」を手動設定しPlaywrightで確認、一覧・詳細モーダルとも`nickname`表示(ケース23〜25)、`WIN`バッジ1件で回帰なしを確認

@@ -180,7 +180,7 @@ export function BattleDetailModal({
                     (teams ?? []).map((team) => ({
                       isSelf: team.isSelf,
                       participants: team.participants.map((p) => ({
-                        label: p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokHandle ?? "?",
+                        label: p.nickname ?? (p.tiktokHandle ? `@${p.tiktokHandle}` : null) ?? "?",
                       })),
                     }))
                   )}
@@ -427,7 +427,7 @@ function TeamCard({
       )}
       <div className="flex min-w-0 flex-col gap-1">
         {team.participants.map((p) => {
-          const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokHandle ?? "?";
+          const label = p.nickname ?? (p.tiktokHandle ? `@${p.tiktokHandle}` : null) ?? "?";
           return (
             <div key={p.tiktokUid} className={`flex min-w-0 items-center gap-1.5 ${align === "right" ? "flex-row-reverse" : ""}`}>
               <Avatar src={p.avatarUrl} alt={label} size="sm" />
@@ -461,13 +461,13 @@ function FallbackVersusHeader({
             <span className="text-muted text-sm">対戦相手不明</span>
           ) : opponent.count > 1 ? (
             <span className="text-muted text-sm">複数人バトル({opponent.count + 1}人)</span>
-          ) : opponent.nickName || opponent.displayId || opponent.tiktokHandle ? (
+          ) : opponent.nickname || opponent.tiktokHandle ? (
             <>
-              <Avatar src={opponent.avatarUrl} alt={opponent.nickName ?? opponent.displayId ?? "?"} />
+              <Avatar src={opponent.avatarUrl} alt={opponent.nickname ?? opponent.tiktokHandle ?? "?"} />
               <div className="min-w-0">
-                <div className="font-medium truncate">{opponent.nickName ?? `@${opponent.displayId}`}</div>
-                {(opponent.displayId || opponent.tiktokHandle) && (
-                  <div className="text-xs text-muted truncate">@{opponent.displayId ?? opponent.tiktokHandle}</div>
+                <div className="font-medium truncate">{opponent.nickname ?? `@${opponent.tiktokHandle}`}</div>
+                {opponent.tiktokHandle && (
+                  <div className="text-xs text-muted truncate">@{opponent.tiktokHandle}</div>
                 )}
               </div>
             </>

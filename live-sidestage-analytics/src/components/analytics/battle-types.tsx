@@ -7,8 +7,7 @@ export type BattleStatus = "live" | "finished" | "cut_short" | "unknown";
 
 export interface BattleOpponent {
   tiktokHandle: string | null;
-  displayId: string | null;
-  nickName: string | null;
+  nickname: string | null;
   avatarUrl: string | null;
   count: number;
 }
@@ -17,8 +16,7 @@ export interface BattleOpponent {
 export interface BattleParticipant {
   tiktokUid: string;
   tiktokHandle: string | null;
-  displayId: string | null;
-  nickName: string | null;
+  nickname: string | null;
   avatarUrl: string | null;
 }
 
@@ -235,14 +233,14 @@ function BattleTeamColumn({ team, size }: { team: BattleParticipant[]; size: "sm
   return (
     <div className="flex flex-col items-center justify-center gap-1 min-w-0">
       {team.map((p) => {
-        const label = p.nickName ?? (p.displayId ? `@${p.displayId}` : null) ?? p.tiktokHandle ?? "?";
+        const label = p.nickname ?? (p.tiktokHandle ? `@${p.tiktokHandle}` : null) ?? "?";
         return (
           <div key={p.tiktokUid} className="flex items-center gap-1.5 min-w-0">
             <Avatar src={p.avatarUrl} alt={label} size={size} />
             <div className={`min-w-0 ${nameMaxWidth}`}>
               <div className={`font-medium truncate ${nameTextClass}`}>{label}</div>
-              {team.length === 1 && (p.displayId || p.tiktokHandle) && (
-                <div className="text-[10px] text-muted truncate">@{p.displayId ?? p.tiktokHandle}</div>
+              {team.length === 1 && p.tiktokHandle && (
+                <div className="text-[10px] text-muted truncate">@{p.tiktokHandle}</div>
               )}
             </div>
           </div>
