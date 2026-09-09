@@ -213,6 +213,30 @@ sidestageユーザーによる**TikTokアカウントの所有主張**と、cont
 `AppSetting` の `mobileBetaEnabled` / `analyticsBetaEnabled` / `eventsBetaEnabled` / `agencyBetaEnabled`。**fail-closed で `"true"` のみ有効**。
 **FREEの制限を一時解除するだけで、プランは書き換えない**（旧設計でULTRA昇格に使った反省）。
 
+### 購読（room購読）
+
+**`TiktokRoom` が誰かの監視対象になっている状態。** 単一の列は無く、次の4経路のいずれかが成立していれば「購読あり」。判定の正本は `hasBattleSubscriber()`（`src/lib/battle-subscription.ts`）。
+
+| 経路 | 条件 | 主体 |
+| --- | --- | --- |
+| Streamer登録 | `Streamer.roomId` の行が存在 | sidestageユーザー |
+| AgencyWatch登録 | `AgencyWatch.roomId` の行が存在 | `Agency` |
+| 特別監視 | `TiktokRoom.specialWatch === true` | 管理者（`/admin/workers` 手動ON / `ensureRoomWatchedByAdmin`） |
+| イベント参加 | `TiktokRoom.monitorUntil > now` | `Event`（`RoomMonitorLease` 経由） |
+
+#### Not
+
+- **課金の定期購読（`Subscription` / Stripe / Google Play / Apple）ではない。** 同じ「購読」でもドメインが全く別
+- socket.io のイベント購読（`overlay:` / `chat:` / `effects:` の subscribe）でもない
+- `TiktokRoom.watchSource` は**現在の購読状態ではない**。「最初に発見された経路」の記録なので判定に使わない
+- listener 側の `subscriberIds`（`tiktok-listener.ts`）は**Streamer由来のIDだけ**で、購読4経路の全体ではない。`specialWatch` が別条件として並記されるのはこのため（`inst.subscriberIds.size > 0 || inst.specialWatch`）
+
+#### Usage
+
+- `BattleHistory` を確定してよいかのゲート（購読なしroomは確定しない）
+- `gift-retention` の削除保護（購読なしroomのギフトは保護対象外）
+- コラボ相手の room を監視対象へ引き込むキック条件
+
 ---
 
 ## 3. 略語・製品名
