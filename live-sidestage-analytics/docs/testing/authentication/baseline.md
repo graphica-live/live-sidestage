@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: authentication
-last_updated: 2026-09-09
+last_updated: 2026-09-10
 last_risk: HIGH
-last_reviewers: DeepSeek(code-review, NO ISSUES x2 / TestCase review, 10 findings) / Codex-terra(code-review, 2 findings, 両方対応済み / TestCase review, NO ISSUES)
+last_reviewers: DeepSeek(code-review, NO ISSUES / TestCase review, NO ISSUES) / Codex-terra(code-review, NO ISSUES / TestCase review, 1 finding、対応済み)
 ---
 
 # テストベースライン: authentication
@@ -31,6 +31,7 @@ rename前後で振る舞いが変わらないことを保証する（実装詳�
 | TC-AUTH-104 | Web(PrincipalPrismaAdapter)とMobile(google route)が同じGoogleアカウントで同一Principalへ収束する | `PrincipalPrismaAdapter` / mobile google route | 正常/回帰 | Web経由createUser+linkAccount → Mobile経由同一sub | 同一Principal.idに収束 | `npx dotenv -e .env.local.test -- vitest run src/app/api/mobile/auth/web-mobile-convergence.integration.test.ts` | PASS | Web側は実際にPrincipalPrismaAdapterのcreateUser/linkAccount/getUserByAccountを直接呼んで検証。公式PrismaAdapterではなく自前Adapterで検証していることが重要（rename後は公式Adapterはmodel名不一致で動作しない）。getUserByEmailはTC-AUTH-105/106（emailLinkRestrictedAdapter経由）でカバー。getUser/updateUser/deleteUser/unlinkAccountはこのアプリのコードパスから呼ばれない（未使用メソッド） |
 | TC-AUTH-105 | Accountを持たない旧Principal（メール/パスワード登録由来）へはメール一致でリンクする | メール一致リンク制限 | 正常/移行 | OAuthAccount 0件の旧Principal + 同じメールでGoogleログイン | 既存Principalへリンクされる | `npx dotenv -e .env.local.test -- vitest run src/app/api/mobile/auth/google/email-link-restriction.integration.test.ts` | PASS | 5a3e97a以前の旧ユーザー移行経路 |
 | TC-AUTH-106 | Accountを持つ現役Principalへはメール一致でリンクしない | メール一致リンク制限 | 異常/セキュリティ | OAuthAccountを持つPrincipal + 同じメールで別プロバイダログイン | 409または新規Principal（乗っ取り防止） | 同上 | PASS | 後から同じメールを入手した第三者による乗っ取り防止 |
+| TC-AUTH-004 | GoogleProviderはprompt=select_accountを要求する | `authOptions.providers` | 正常/回帰 | 静的設定確認 | `google.options.authorization.params.prompt === "select_account"`(next-authが最終的にマージする側の値。トップレベルの`authorization`はデフォルトのscopeのみで呼び出し側の設定を反映しない) | `npx dotenv -e .env.local.test -- vitest run src/lib/auth.integration.test.ts -t "GoogleProvider"` | PASS | 本番でブラウザに複数Googleアカウントがログイン済みの状態からアカウント切替すると、Google側InteractiveLoginが500を返す事象が実際に発生した(2026-09-10)。select_accountで暗黙切替を経由させず明示選択に固定し回避する。Google側のInteractiveLogin自体はこちらのE2Eで再現・検証できないため、設定値の存在を回帰的に確認する。初回実装は誤ってトップレベル`authorization`を検証しfalse negativeだった(Codex-terra TestCase reviewで検出、修正済み) |
 
 ## Out of Scope
 
