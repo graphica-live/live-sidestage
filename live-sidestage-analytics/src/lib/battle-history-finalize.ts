@@ -418,6 +418,25 @@ export async function computeBattleSnapshot(
     observedGiftTotalByTiktokUid.set(p.tiktokUid, total);
   }
 
+  // ギフト名を日本語化(catalog から labelJa を取得して上書き)。表示専用の差し替え —
+  // 一致キー(効果音・集計)には影響しない。
+  const giftIds = [...new Set(giftEvents.map((e) => e.giftId))];
+  const catalogRows = giftIds.length
+    ? await prisma.tiktokGiftCatalog.findMany({
+        where: { giftId: { in: giftIds } },
+        select: { giftId: true, labelJa: true },
+      })
+    : [];
+  const labelJaByGiftId = new Map(
+    catalogRows.filter((c) => c.labelJa).map((c) => [c.giftId, c.labelJa as string])
+  );
+  for (const e of giftEvents) {
+    const jaName = labelJaByGiftId.get(e.giftId);
+    if (jaName) {
+      e.giftNameSnapshot = jaName;
+    }
+  }
+
   const participants: BattleSnapshotParticipant[] = participantsBase.map((p) => {
     const capture = p.roomId === null ? null : captureByTiktokUid.get(p.tiktokUid) ?? null;
     return {
