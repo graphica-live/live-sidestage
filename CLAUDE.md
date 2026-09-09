@@ -51,6 +51,10 @@ TikRIng を除く4つ（analytics / desktop / mobile / TikCaption）は TikTok L
 - **ギフト名の日本語表示は TikTok 公式から取る。** 以前ここにあった手作業辞書 `shared/gift-names/`（553エントリ、`sync.mjs` が desktop と mobile へ配布）は 2026-08-27 に廃止した。`gift/list/` に **`webcast_language=ja-JP`**（`ja` では効かない）を渡すと公式の日本語名が返り、671 giftId 中 651 件をカバーする。desktop は `backend/lib/tiktok-gift-catalog.js` が英語版と日本語版を突き合わせて SQLite に貯め、mobile は analytics の `GET /api/mobile/gifts` が返す `labelJa` を端末に貯める
 - **日本語は表示専用。** ギフトの一致判定（効果音のトリガ、集計キー）は TikTok が実際に送ってくる名前で行う。LIVE の gift イベントは英語で届くので、日本語を一致キーに保存すると**例外もログも出ないまま鳴らなくなる**。ただし配信者ごとのサブスクギフトは TikTok 自身が日本語名で送ってくる（例:「わやハグ」）ので、「一致キーは常に英語」ではない
 
+## 用語辞書
+
+プロジェクト固有の用語・ID・Entity名・略語の正本は [docs/project-dictionary.md](docs/project-dictionary.md)。参照も追加も `project-dictionary` Skill を通す（辞書の内容はここへ再掲しない）。
+
 ## CI (GitHub Actions)
 
 ワークフローはルートの `.github/workflows/` にのみ置く。モノレポでは**サブディレクトリ配下のワークフローは GitHub に認識されない**。ワークフローを足すときは**必ず `paths:` フィルタで対象プロジェクトを絞る**（絞らないと無関係なプロジェクトの push でも発火する）。プロジェクトのディレクトリで動くものは `defaults.run.working-directory` も指定する。

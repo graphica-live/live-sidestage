@@ -6,7 +6,9 @@ Thumbs.db
 desktop.ini
 
 # ローカルのマージキュー台帳・ロックファイル・worktree一式（正本は .git/claude-merge-queue/）
-/.claude/
+/.claude/*
+# プロジェクト共有の Skill だけは版管理する（親ディレクトリを除外すると配下の否定が効かないので /* にする）
+!/.claude/skills/
 .codegraph/
 .serena/
 .scratch/
