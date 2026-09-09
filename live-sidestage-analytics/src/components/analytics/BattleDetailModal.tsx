@@ -156,23 +156,26 @@ export function BattleDetailModal({
         className="relative mx-auto w-full max-w-lg rounded-xl border border-white/10 bg-panel p-5 sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          ref={closeButtonRef}
-          type="button"
-          onClick={onClose}
-          aria-label="閉じる"
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong"
-        >
-          <CloseIcon />
-        </button>
+        <div className="absolute right-3 top-3 flex items-center gap-1">
+          {canShare && <ShareButton key={mode} battleId={battle.battleId} view={mode} base={base} />}
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            aria-label="閉じる"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong"
+          >
+            <CloseIcon />
+          </button>
+        </div>
 
         {mode === "replay" ? null : (
-          <div className="pr-8 text-xs text-muted">{new Date(battle.startedAt).toLocaleString("ja-JP")}</div>
+          <div className="pr-16 text-xs text-muted">{new Date(battle.startedAt).toLocaleString("ja-JP")}</div>
         )}
 
         {mode === "replay" ? (
           <div className="mt-2">
-            <div className="mb-2 flex items-start justify-between gap-3 pr-8">
+            <div className="mb-2 flex items-start justify-between gap-3 pr-16">
               <div className="min-w-0">
                 <div className="truncate text-[13px] font-semibold text-strong">
                   {replayTitleOf(
@@ -190,7 +193,6 @@ export function BattleDetailModal({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                {canShare && <ShareButton battleId={battle.battleId} view="replay" base={base} />}
                 <button
                   type="button"
                   onClick={() => setMode("list")}
@@ -235,18 +237,27 @@ export function BattleDetailModal({
               aria-disabled={!battle.replay.available}
               aria-describedby={battle.replay.available ? undefined : "replay-unavailable-reason"}
               onClick={() => setMode("replay")}
+              aria-label="バトルを再生"
               title={battle.replay.available ? undefined : REPLAY_UNAVAILABLE_LABEL[battle.replay.reason ?? "not_finalized"]}
-              className="rounded-field bg-brand px-5 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-border disabled:text-muted"
+              className="flex h-16 w-16 items-center justify-center rounded-full bg-brand text-on-accent transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-border disabled:text-muted"
             >
-              ▶ バトルを再生
+              <PlayIcon />
             </button>
+            <span
+              className={
+                battle.replay.available
+                  ? "text-sm font-semibold text-strong"
+                  : "text-sm font-semibold text-muted"
+              }
+            >
+              バトルを再生
+            </span>
             {/* disabled ボタンの title はホバーでしか読めないので、理由は本文にも出す */}
             {!battle.replay.available && (
               <p id="replay-unavailable-reason" className="m-0 text-[11px] text-muted">
                 {REPLAY_UNAVAILABLE_LABEL[battle.replay.reason ?? "not_finalized"]}
               </p>
             )}
-            {canShare && <ShareButton battleId={battle.battleId} view="list" base={base} />}
           </div>
 
           <div className="mt-5 pt-4">
@@ -338,14 +349,16 @@ function ShareButton({
   };
 
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-end gap-1">
       <button
         type="button"
         onClick={() => void share()}
         disabled={state === "working"}
-        className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong disabled:opacity-60"
+        aria-label={state === "copied" ? "コピーした" : "共有リンクをコピー"}
+        title={state === "copied" ? "コピーした" : "共有リンクをコピー"}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong disabled:opacity-60"
       >
-        {state === "copied" ? "リンクをコピーした" : "🔗 共有リンク"}
+        <ArrowShareIcon />
       </button>
       {state === "error" && <span className="text-[10px] text-muted">共有リンクを発行できなかった。</span>}
       {state === "manual" && url !== null && (
@@ -714,6 +727,23 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ArrowShareIcon() {
+  return (
+    <svg viewBox="0 0 512 512" width={16} height={16} fill="currentColor" aria-hidden>
+      <path d="M512,255.995L277.045,65.394v103.574c-17.255,0-36.408,0-57.542,0c-208.59,0-249.35,153.44-201.394,266.128
+		c9.586-103.098,142.053-100.701,237.358-100.701c7.247,0,14.446,0,21.578,0v112.211L512,255.995z" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={32} height={32} fill="currentColor" aria-hidden className="translate-x-0.5">
+      <path d="M8 5v14l11-7z" />
     </svg>
   );
 }
