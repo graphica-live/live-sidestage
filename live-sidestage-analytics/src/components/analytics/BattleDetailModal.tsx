@@ -65,9 +65,8 @@ export function BattleDetailModal({
   const [replayDurationMs, setReplayDurationMs] = useState<number | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const base = apiBase ?? "/api/analytics";
-  // シェアリンクの発行は配信者本人のセッション経路にしか無い(admin 画面には
-  // POST /api/admin/.../share が無いので、ボタンを出しても 404 になる)。
-  const canShare = base === "/api/analytics";
+  // シェアリンクの発行は配信者本人とadminの両方が使える。
+  const canShare = base === "/api/analytics" || base.startsWith("/api/admin/rooms/");
 
   // 別のバトルを開いたら必ず一覧モードから始める。**依存は battleId** —
   // 親が同じバトルを別オブジェクトで渡し直す(一覧のポーリング更新)たびに
@@ -189,7 +188,7 @@ export function BattleDetailModal({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                {canShare && <ShareButton battleId={battle.battleId} view="replay" />}
+                {canShare && <ShareButton battleId={battle.battleId} view="replay" base={base} />}
                 <button
                   type="button"
                   onClick={() => setMode("list")}
@@ -245,7 +244,7 @@ export function BattleDetailModal({
                 {REPLAY_UNAVAILABLE_LABEL[battle.replay.reason ?? "not_finalized"]}
               </p>
             )}
-            {canShare && <ShareButton battleId={battle.battleId} view="list" />}
+            {canShare && <ShareButton battleId={battle.battleId} view="list" base={base} />}
           </div>
 
           <div className="mt-5 pt-4">
@@ -299,14 +298,23 @@ export function BattleDetailModal({
  *
  * トークンは遅延発行で、2回目以降は同じトークンが返る(再発行しない)。
  */
-function ShareButton({ battleId, view }: { battleId: string; view: "list" | "replay" }) {
+function ShareButton({
+  battleId,
+  view,
+  base,
+}: {
+  battleId: string;
+  view: "list" | "replay";
+  base?: string;
+}) {
   const [state, setState] = useState<"idle" | "working" | "copied" | "manual" | "error">("idle");
   const [url, setUrl] = useState<string | null>(null);
+  const apiBase = base ?? "/api/analytics";
 
   const share = async () => {
     setState("working");
     try {
-      const res = await fetch(`/api/analytics/battles/${encodeURIComponent(battleId)}/share`, {
+      const res = await fetch(`${apiBase}/battles/${encodeURIComponent(battleId)}/share`, {
         method: "POST",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
