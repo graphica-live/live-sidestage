@@ -147,7 +147,7 @@ export function parseWorkerInternalUrls(raw: string | undefined): string[] {
 export async function fetchAssignedRooms(now: Date = new Date()): Promise<AssignedRoom[]> {
   const rooms = await prisma.tiktokRoom.findMany({
     where: await resolveWatchedRoomFilter(now),
-    // Streamer.apiKey などを持ってこないよう列は明示する。
+    // Streamer.overlayToken / verificationCode などの機微列を持ってこないよう列は明示する。
     select: {
       id: true,
       tiktokHandle: true,

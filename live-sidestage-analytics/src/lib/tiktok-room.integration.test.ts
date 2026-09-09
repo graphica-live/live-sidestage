@@ -42,7 +42,6 @@ async function makeStreamerWithoutRoom(subject: Subject) {
       tiktokUid: subject.tiktokUid,
       tiktokHandle: subject.tiktokHandle,
       verificationCode: `itest-${suffix()}`,
-      apiKey: `itest-key-${suffix()}`,
       overlayToken: `itest-overlay-${suffix()}`,
     },
     select: { id: true },

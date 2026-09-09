@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
@@ -81,7 +80,6 @@ export async function POST(req: NextRequest) {
       { status: 503 },
     );
   }
-  const apiKey = crypto.randomBytes(32).toString("hex");
   const streamer = await prisma.$transaction(async (tx) => {
     const created = await tx.streamer.create({
       data: {
@@ -89,7 +87,6 @@ export async function POST(req: NextRequest) {
         tiktokUid: entryCheck.tiktokUid!,
         tiktokHandle: cleanTiktokHandle,
         verificationCode: generateVerificationCode(),
-        apiKey,
         tiktokHandleChangedAt: new Date(),
       },
     });
@@ -108,7 +105,6 @@ export async function POST(req: NextRequest) {
         id: streamer.id,
         tiktokHandle: streamer.tiktokHandle,
         verified: streamer.verified,
-        apiKey: streamer.apiKey,
       },
     },
     { status: 201 }
@@ -241,7 +237,6 @@ export async function PATCH(req: NextRequest) {
       id: streamer.id,
       tiktokHandle: streamer.tiktokHandle,
       verified: streamer.verified,
-      apiKey: streamer.apiKey,
     },
   });
 }

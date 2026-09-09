@@ -22,6 +22,18 @@ vi.mock("@/lib/apple-account", () => ({
   resolveAppleUser: (...args: unknown[]) => resolveAppleUser(...args),
 }));
 
+// 成功応答は refresh token の発行（RefreshToken 行の作成）を伴うようになった。
+// ここはルートの分岐だけを見るテストなので DB は持たせず、書き込みだけ差し替える
+// （rotation の中身は src/lib/mobile-auth.test.ts と mobile-auth.integration.test.ts が見る）。
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    refreshToken: { create: vi.fn(async () => ({ id: "rt-test" })) },
+    // markLastActive（成功時に await される）が触る分。何もしないで良い。
+    streamer: { findUnique: vi.fn(async () => null) },
+    user: { findUnique: vi.fn(async () => null) },
+  },
+}));
+
 const { POST } = await import("./route");
 
 function request(body: unknown) {

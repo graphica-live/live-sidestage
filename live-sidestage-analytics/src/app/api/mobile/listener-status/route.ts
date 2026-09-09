@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { resolveStreamerByMobileToken } from "@/lib/mobile-auth";
+import { resolveUserByMobileToken } from "@/lib/mobile-auth";
 import { activityOf, resolveLiveness } from "@/lib/listener-liveness";
 
 // モバイルアプリのステータス表示用。「配信中」と「配信開始待ち」を区別するために、
@@ -14,9 +14,8 @@ import { activityOf, resolveLiveness } from "@/lib/listener-liveness";
 // レスポンス形も DashboardHeader.tsx / analytics/page.tsx が依存している。
 // 共有するのは鮮度判定の純粋関数だけに留める。
 //
-// 認証は2系統。**背景 Isolate は JWT を持たず apiKey しか持たない**ので、
-// socket 認証(server.js)と同じ apiKey も受け付ける。同じ資格情報で同じ配信者の
-// コメント・ギフトを既に配信しているため、実質的な権限拡大にはならない。
+// 認証はモバイルJWT(Authorization: Bearer)の1系統のみ。背景 Isolate も
+// 同じ access token を持つ(socket 認証・HTTP API と同一の資格情報)。
 
 // 状態は毎回変わるので、ビルド時の静的化とキャッシュを明示的に切る。
 export const dynamic = "force-dynamic";
@@ -77,25 +76,25 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * モバイルJWT または apiKey から streamerId を解決する。
+ * モバイルJWT から streamerId を解決する。
  *
- * 両方が同時に来た場合は**同一の配信者を指しているときだけ通す**。片方が他人のもの
- * だった場合に「たまたま通った方」で応答すると、資格情報の取り違えを隠してしまう。
+ * **JWTペイロードの streamerId クレームは信用せず、principalId から Streamer を
+ * 引き直す。** ここは他人のコメント・ギフト状態へのアクセス境界なので、
+ * socket 認証(server.js の io.use)・resolveMobileAnalyticsContext() と同じ規律に
+ * 揃える。オンボーディング完了前に発行された(streamerId クレームを持たない)
+ * トークンでも、その principal に Streamer が出来ていれば正しく解決できる。
+ *
+ * モバイルはBIO認証ゲート対象外なので verified は問わない。
  */
 async function resolveStreamerId(req: NextRequest): Promise<string | null> {
-  const byToken = resolveStreamerByMobileToken(req)?.id ?? null;
+  const auth = resolveUserByMobileToken(req);
+  if (!auth) return null;
 
-  const apiKey = req.headers.get("x-api-key");
-  if (!apiKey) return byToken;
-
-  // socket 認証(server.js の io.use)と同じ条件で引く。モバイルはBIO認証ゲート対象外。
-  const byApiKey = await prisma.streamer.findFirst({
-    where: { apiKey },
+  const streamer = await prisma.streamer.findUnique({
+    where: { principalId: auth.principalId },
     select: { id: true },
   });
-  if (!byApiKey) return null;
-  if (byToken && byToken !== byApiKey.id) return null;
-  return byApiKey.id;
+  return streamer?.id ?? null;
 }
 
 // カスタム認証のGETなので、経路上のどこかでユーザー間キャッシュされる余地を残さない。

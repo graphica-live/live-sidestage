@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/account_deletion.dart';
+import '../core/logout.dart';
 import '../core/session_controller.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'ログアウト',
-            onPressed: () => controller.logout(),
+            onPressed: () => performLogout(context),
           ),
           IconButton(
             icon: const Icon(Icons.delete_forever),

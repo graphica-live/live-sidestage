@@ -1,8 +1,10 @@
-// 認証プロバイダ(Google / Apple)の取り回し。
+// 認証プロバイダ(Google / Apple / メール)の取り回し。
 //
-// Apple には Google の `signInSilently` に相当するものが無いので、
-// **どちらでログインしたか**を覚えていないと、Apple のセッションで
-// Google の無言サインインを走らせてしまう。保存済みセッションの後方互換も含めて固定する。
+// トークンの再発行は refresh token 交換に一本化してあり、**プロバイダによる
+// 非対称は無い**（以前は Google の `signInSilently` に頼っていたため Apple と
+// メールだけ無言再発行ができなかった）。ここで `provider` を覚えている理由は、
+// ログアウト時に Google 側のサインアウトを呼ぶかの分岐と、設定画面のアカウント表示。
+// 保存済みセッションの後方互換も含めて固定する。
 import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
@@ -21,6 +23,7 @@ AuthSession _session({
 }) =>
     AuthSession(
       token: 'tok',
+      refreshToken: 'refresh',
       userId: 'u1',
       userName: 'me',
       userEmail: 'me@example.com',
@@ -34,8 +37,20 @@ class _FakeApi extends LiveAnalyticsApi {
   int appleAuthCalls = 0;
   int emailRegisterCalls = 0;
   int emailLoginCalls = 0;
+  int refreshCalls = 0;
   String? lastNonce;
   Object? emailLoginError;
+
+  @override
+  Future<(String token, String refreshToken)> refreshAccessToken({
+    required String refreshToken,
+  }) async {
+    refreshCalls++;
+    return ('rotated-token', 'rotated-refresh');
+  }
+
+  @override
+  Future<void> logoutSession({required String refreshToken}) async {}
 
   @override
   Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
@@ -154,7 +169,7 @@ void main() {
     test('オンボーディング完了(withStreamer)後も provider を引き継ぐ', () {
       final session = _session(provider: AuthProvider.apple).withStreamer(
         token: 'tok2',
-        streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
+        streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', verified: true),
       );
       expect(session.provider, AuthProvider.apple);
     });
@@ -163,6 +178,7 @@ void main() {
       final session = AuthSession.fromJson(
         {
           'token': 'tok',
+          'refreshToken': 'refresh',
           'user': {'id': 'u1', 'name': 'me', 'email': 'me@example.com'},
           'streamer': null,
           'onboardingRequired': true,
@@ -171,28 +187,48 @@ void main() {
       );
       expect(session.provider, AuthProvider.apple);
       expect(session.onboardingRequired, isTrue);
+      expect(session.refreshToken, 'refresh');
+    });
+  });
+
+  group('refresh token の保存', () {
+    test('往復しても失われない', () {
+      final restored = AuthSession.fromStorageMap(_session().toStorageMap());
+      expect(restored.refreshToken, 'refresh');
+    });
+
+    test('欠けている保存データは読み込まない（必須キー）', () {
+      // refresh token を持たないセッションは access token を取り直せず、
+      // 失効した瞬間に無言で壊れる。再ログインさせるほうが安全。
+      final map = _session().toStorageMap()..remove('refreshToken');
+      expect(() => AuthSession.fromStorageMap(map), throwsA(isA<TypeError>()));
+    });
+
+    test('オンボーディング完了(withStreamer)では据え置く', () {
+      // サーバーは access token だけを再発行する（refresh token は変わらない）。
+      final session = _session().withStreamer(
+        token: 'tok2',
+        streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', verified: true),
+      );
+      expect(session.token, 'tok2');
+      expect(session.refreshToken, 'refresh');
     });
   });
 
   group('Apple セッションの扱い', () {
-    test('無言リフレッシュを試みない（Google のサインインを走らせない）', () async {
+    test('Google のサインインを走らせずに refresh token で取り直す', () async {
       final api = _FakeApi();
-      var silentCalls = 0;
       final controller = SessionController(
         api: api,
         storage: _FakeStorage(),
         googleSignIn: _FakeGoogleSignIn(),
-        silentIdToken: () async {
-          silentCalls++;
-          return 'id-token';
-        },
       )..session = _session(provider: AuthProvider.apple);
 
-      expect(await controller.refreshToken(), isNull);
-      expect(silentCalls, 0);
+      expect(await controller.refreshToken(), 'rotated-token');
+      expect(api.refreshCalls, 1);
+      // 再発行は「新しいログイン」ではない。Google の認証ルートは一切叩かない。
       expect(api.googleAuthCalls, 0);
-      // セッションは壊さない（手動の再ログインに委ねる）。
-      expect(controller.session, isNotNull);
+      expect(controller.session!.provider, AuthProvider.apple);
     });
 
     test('ログアウトで Google のサインアウトを呼ばない', () async {
@@ -296,23 +332,18 @@ void main() {
       expect(controller.session, isNull);
     });
 
-    test('メールセッションは無言リフレッシュを試みない', () async {
+    test('メールセッションも同じ経路で無言リフレッシュできる', () async {
       final api = _FakeApi();
-      var silentCalls = 0;
       final controller = SessionController(
         api: api,
         storage: _FakeStorage(),
         googleSignIn: _FakeGoogleSignIn(),
-        silentIdToken: () async {
-          silentCalls++;
-          return 'id-token';
-        },
       )..session = _session(provider: AuthProvider.email);
 
-      expect(await controller.refreshToken(), isNull);
-      expect(silentCalls, 0);
+      expect(await controller.refreshToken(), 'rotated-token');
+      expect(api.refreshCalls, 1);
       expect(api.googleAuthCalls, 0);
-      expect(controller.session, isNotNull);
+      expect(controller.session!.provider, AuthProvider.email);
     });
   });
 

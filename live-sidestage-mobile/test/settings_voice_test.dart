@@ -74,7 +74,7 @@ void main() {
               speech: const SpeechState(),
               busy: busy,
               onChangeTiktokHandle: () async {},
-              onBeforeLogout: () async {},
+              onBeforeDeleteAccount: () async {},
             ),
           ),
         ),

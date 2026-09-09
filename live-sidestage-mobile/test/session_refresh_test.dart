@@ -17,35 +17,48 @@ class _FakeGoogleSignIn extends GoogleSignIn {
   }
 }
 
-/// JWT(90日)が失効しても、常用のコメント受信は apiKey なので気づけない。
-/// 401 を受けたときに無言でトークンを取り直せることを固定する。
+/// access token は短命なので通常の利用でも失効する。失効したら refresh token を
+/// 交換して無言で取り直せること（**プロバイダに依らず**）を固定する。
 class _FakeApi extends LiveAnalyticsApi {
-  /// 再認証のたびに `new-1`, `new-2`, … と変わるトークンを配る。
+  /// rotation のたびに `new-1`, `new-2`, … と変わる access token を配る。
   static const tokenPrefix = 'new';
 
-  int authCalls = 0;
+  int refreshCalls = 0;
   int giftCalls = 0;
   int updateCalls = 0;
+  int logoutCalls = 0;
+  String? lastLogoutRefreshToken;
 
   /// このトークンでの呼び出しだけ成功させる。初期値は保存済みの `expired` と
   /// 一致しない値にしてある（＝サーバー側では既に失効している状態）。
   String validToken = 'server-side-only';
 
-  String userId = 'u1';
+  /// サーバーが受け付ける唯一の refresh token。**rotation のたびに変わる**
+  /// （1回使い切り）。
+  String validRefreshToken = 'r-0';
+
+  /// 設定すると refreshAccessToken がこの例外を投げる。
+  ApiException? refreshError;
 
   @override
-  Future<AuthSession> authenticateWithGoogle({required String idToken}) async {
-    authCalls++;
-    validToken = '$tokenPrefix-$authCalls';
-    return AuthSession(
-      token: validToken,
-      userId: userId,
-      userName: 'me',
-      userEmail: 'me@example.com',
-      onboardingRequired: false,
-      provider: AuthProvider.google,
-      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
-    );
+  Future<(String token, String refreshToken)> refreshAccessToken({
+    required String refreshToken,
+  }) async {
+    refreshCalls++;
+    final error = refreshError;
+    if (error != null) throw error;
+    if (refreshToken != validRefreshToken) {
+      throw ApiException('再ログインが必要です', statusCode: 401, code: 'INVALID_REFRESH_TOKEN');
+    }
+    validToken = '$tokenPrefix-$refreshCalls';
+    validRefreshToken = 'r-$refreshCalls';
+    return (validToken, validRefreshToken);
+  }
+
+  @override
+  Future<void> logoutSession({required String refreshToken}) async {
+    logoutCalls++;
+    lastLogoutRefreshToken = refreshToken;
   }
 
   @override
@@ -66,7 +79,7 @@ class _FakeApi extends LiveAnalyticsApi {
     if (token != validToken) {
       throw ApiException('認証が必要です', statusCode: 401);
     }
-    return StreamerInfo(id: 's1', tiktokHandle: tiktokHandle, apiKey: 'k', verified: true);
+    return StreamerInfo(id: 's1', tiktokHandle: tiktokHandle, verified: true);
   }
 
   int deleteAccountCalls = 0;
@@ -106,35 +119,33 @@ AuthSession _expiredSession({
 }) =>
     AuthSession(
       token: 'expired',
+      refreshToken: 'r-0',
       userId: userId,
       userName: 'me',
       userEmail: 'me@example.com',
       onboardingRequired: false,
       provider: provider,
-      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', verified: true),
     );
 
 SessionController _controller({
   required _FakeApi api,
   required _FakeStorage storage,
-  required Future<String?> Function() silentIdToken,
+  AuthProvider provider = AuthProvider.google,
 }) {
   return SessionController(
     api: api,
     storage: storage,
     googleSignIn: _FakeGoogleSignIn(),
-    silentIdToken: silentIdToken,
-  )..session = _expiredSession();
+  )..session = _expiredSession(provider: provider);
 }
 
 void main() {
-  test('同時に呼んでも再認証は1回だけ', () async {
+  test('同時に呼んでも refresh token の交換は1回だけ', () async {
+    // **必須の直列化。** refresh token は1回使い切りなので、同じ値で並行に
+    // 交換を試みるとサーバー側の reuse 検知(family全体の失効)に触れうる。
     final api = _FakeApi();
-    final controller = _controller(
-      api: api,
-      storage: _FakeStorage(),
-      silentIdToken: () async => 'id-token',
-    );
+    final controller = _controller(api: api, storage: _FakeStorage());
 
     final results = await Future.wait([
       controller.refreshToken(),
@@ -142,33 +153,51 @@ void main() {
       controller.refreshToken(),
     ]);
 
-    expect(api.authCalls, 1);
+    expect(api.refreshCalls, 1);
     expect(results, ['new-1', 'new-1', 'new-1']);
     expect(controller.session!.token, 'new-1');
   });
 
-  test('失敗したあとでも再度リフレッシュを試せる（進行中Futureを持ち越さない）', () async {
-    final api = _FakeApi();
-    var idToken = <String?>[null, 'id-token'];
-    var call = 0;
-    final controller = _controller(
-      api: api,
-      storage: _FakeStorage(),
-      silentIdToken: () async => idToken[call++],
-    );
-
-    expect(await controller.refreshToken(), isNull);
-    expect(await controller.refreshToken(), 'new-1');
-  });
-
-  test('無言サインインが通らないときはセッションを壊さない', () async {
+  test('rotation では access token と refresh token を対で差し替える', () async {
+    // 片方だけ更新すると、次の再発行で無効化済みの refresh token を提示して
+    // family ごと失効させられる。
     final api = _FakeApi();
     final storage = _FakeStorage();
-    final controller = _controller(
-      api: api,
-      storage: storage,
-      silentIdToken: () async => null,
-    );
+    final controller = _controller(api: api, storage: storage);
+
+    expect(await controller.refreshToken(), 'new-1');
+    expect(controller.session!.refreshToken, 'r-1');
+    expect(storage.saved!.token, 'new-1');
+    expect(storage.saved!.refreshToken, 'r-1');
+
+    // 保存し直した新しい refresh token で、続けてもう一度取り直せる。
+    expect(await controller.refreshToken(), 'new-2');
+  });
+
+  test('プロバイダに依らず再発行できる（Apple/メールも同じ経路）', () async {
+    for (final provider in [AuthProvider.apple, AuthProvider.email]) {
+      final api = _FakeApi();
+      final controller = _controller(api: api, storage: _FakeStorage(), provider: provider);
+
+      expect(await controller.refreshToken(), 'new-1');
+      expect(api.refreshCalls, 1);
+    }
+  });
+
+  test('失敗したあとでも再度リフレッシュを試せる（進行中Futureを持ち越さない）', () async {
+    final api = _FakeApi()..refreshError = ApiException('サーバーが混み合っています', statusCode: 503);
+    final controller = _controller(api: api, storage: _FakeStorage());
+
+    expect(await controller.refreshToken(), isNull);
+    api.refreshError = null;
+    expect(await controller.refreshToken(), 'new-2');
+  });
+
+  test('refresh token が拒否されてもセッションは壊さない', () async {
+    // 再ログインが要る状態だが、破棄の判断は呼び出し側の導線に委ねる。
+    final api = _FakeApi()..validRefreshToken = 'rotated-elsewhere';
+    final storage = _FakeStorage();
+    final controller = _controller(api: api, storage: storage);
 
     expect(await controller.refreshToken(), isNull);
     expect(controller.session!.token, 'expired');
@@ -176,40 +205,41 @@ void main() {
     expect(storage.clears, 0);
   });
 
-  test('オフラインで再認証が失敗してもセッションを壊さない', () async {
-    final api = _FakeApi();
+  test('オフラインで再発行が失敗してもセッションを壊さない', () async {
+    final api = _FakeApi()..refreshError = ApiException('サーバーに接続できませんでした');
     final storage = _FakeStorage();
-    final controller = _controller(
-      api: api,
-      storage: storage,
-      silentIdToken: () async => throw ApiException('サーバーに接続できませんでした'),
-    );
+    final controller = _controller(api: api, storage: storage);
 
     expect(await controller.refreshToken(), isNull);
     expect(controller.session!.token, 'expired');
+    expect(storage.clears, 0);
   });
 
-  test('別のGoogleアカウントで再認証されたらセッションを上書きしない', () async {
-    final api = _FakeApi()..userId = 'other';
-    final storage = _FakeStorage();
-    final controller = _controller(
-      api: api,
-      storage: storage,
-      silentIdToken: () async => 'id-token',
-    );
+  test('待っている間にログアウトされていたらセッションを復活させない', () async {
+    final api = _FakeApi();
+    final controller = _controller(api: api, storage: _FakeStorage());
 
-    expect(await controller.refreshToken(), isNull);
-    expect(controller.session!.userId, 'u1');
-    expect(storage.saved, isNull);
+    final refreshing = controller.refreshToken();
+    controller.session = null;
+
+    expect(await refreshing, isNull);
+    expect(controller.session, isNull);
+  });
+
+  test('背景Isolateが rotation したペアを取り込める', () async {
+    final storage = _FakeStorage();
+    final controller = _controller(api: _FakeApi(), storage: storage);
+
+    await controller.adoptTokens(token: 'bg-token', refreshToken: 'bg-refresh');
+
+    expect(controller.session!.token, 'bg-token');
+    expect(controller.session!.refreshToken, 'bg-refresh');
+    expect(storage.saved!.refreshToken, 'bg-refresh');
   });
 
   test('401ならトークンを取り直してギフト候補を取得し直す', () async {
     final api = _FakeApi();
-    final controller = _controller(
-      api: api,
-      storage: _FakeStorage(),
-      silentIdToken: () async => 'id-token',
-    );
+    final controller = _controller(api: api, storage: _FakeStorage());
 
     final gifts = await fetchGiftCandidatesWithRefresh(
       api: api,
@@ -257,29 +287,38 @@ void main() {
   test('TikTok ID 変更も401でトークンを取り直し、新しいトークンを保存する', () async {
     final api = _FakeApi();
     final storage = _FakeStorage();
-    final controller = _controller(
-      api: api,
-      storage: storage,
-      silentIdToken: () async => 'id-token',
-    );
+    final controller = _controller(api: api, storage: storage);
 
     expect(await controller.changeTiktokHandle('newid'), isTrue);
     expect(api.updateCalls, 2);
     // 失効トークンを保存し直していないこと。
     expect(controller.session!.token, 'new-1');
     expect(storage.saved!.token, 'new-1');
+    // access token だけの再発行なので refresh token は据え置き。
+    expect(storage.saved!.refreshToken, 'r-1');
     expect(controller.session!.streamer!.tiktokHandle, 'newid');
+  });
+
+  group('logout', () {
+    test('サーバー側の family 失効を呼んでからローカルを消す', () async {
+      final api = _FakeApi();
+      final storage = _FakeStorage();
+      final controller = _controller(api: api, storage: storage);
+
+      await controller.logout();
+
+      expect(api.logoutCalls, 1);
+      expect(api.lastLogoutRefreshToken, 'r-0');
+      expect(storage.clears, 1);
+      expect(controller.session, isNull);
+    });
   });
 
   group('deleteAccount', () {
     test('成功したらセッションとローカルストレージを消す', () async {
       final api = _FakeApi();
       final storage = _FakeStorage();
-      final controller = _controller(
-        api: api,
-        storage: storage,
-        silentIdToken: () async => 'id-token',
-      );
+      final controller = _controller(api: api, storage: storage);
 
       final result = await controller.deleteAccount();
 
@@ -293,11 +332,7 @@ void main() {
     test('サーバー側が失敗(fail-closed)ならセッションを壊さずfalseを返す', () async {
       final api = _FakeApi()..deleteAccountError = ApiException('Stripe解約に失敗しました', statusCode: 500);
       final storage = _FakeStorage();
-      final controller = _controller(
-        api: api,
-        storage: storage,
-        silentIdToken: () async => 'id-token',
-      );
+      final controller = _controller(api: api, storage: storage);
 
       final result = await controller.deleteAccount();
 
@@ -309,33 +344,25 @@ void main() {
 
     test('失敗後は通常どおりtoken refreshできる(削除中フラグを引きずらない)', () async {
       final api = _FakeApi()..deleteAccountError = ApiException('失敗', statusCode: 500);
-      final controller = _controller(
-        api: api,
-        storage: _FakeStorage(),
-        silentIdToken: () async => 'id-token',
-      );
+      final controller = _controller(api: api, storage: _FakeStorage());
 
       expect(await controller.deleteAccount(), isFalse);
       expect(await controller.refreshToken(), 'new-1');
     });
 
-    // 削除リクエスト送信中に割り込んだtoken refreshが、サーバー側のGoogle認証ルートへ
-    // 新規User作成のトリガーを送ってしまわないことを固定する。_deleting は
-    // deleteAccount() の最初のawaitより前に同期的に立つので、直後に呼んだ
-    // refreshToken() は _doRefresh() の入り口で早期returnし、Google認証は一切呼ばれない。
-    test('削除中に割り込んだtoken refreshは新規認証を試みない', () async {
+    // 削除リクエスト送信中に割り込んだ token refresh が、消えたUserのために
+    // 無駄なトークンを発行しに行かないことを固定する。_deleting は deleteAccount() の
+    // 最初のawaitより前に同期的に立つので、直後に呼んだ refreshToken() は
+    // _doRefresh() の入り口で早期returnする。
+    test('削除中に割り込んだtoken refreshは再発行を試みない', () async {
       final api = _FakeApi();
-      final controller = _controller(
-        api: api,
-        storage: _FakeStorage(),
-        silentIdToken: () async => 'id-token',
-      );
+      final controller = _controller(api: api, storage: _FakeStorage());
 
       final deleteFuture = controller.deleteAccount();
       final refreshResult = await controller.refreshToken();
 
       expect(refreshResult, isNull);
-      expect(api.authCalls, 0);
+      expect(api.refreshCalls, 0);
       expect(await deleteFuture, isTrue);
     });
   });

@@ -14,6 +14,8 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/app_config_store.dart';
+import 'package:live_sidestage_mobile/core/session_storage.dart'
+    show foregroundRefreshTokenStorageKey;
 import 'package:live_sidestage_mobile/models/app_config.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -151,12 +153,12 @@ void main() {
 
   group('resetToDefaults', () {
     // アカウント削除時の後始末。同一端末で別アカウントへログインしたとき、
-    // 前アカウントの設定・ForegroundTaskのapiKeyを引き継がないようにする。
+    // 前アカウントの設定・ForegroundTaskが保持するtoken/refreshTokenを引き継がないようにする。
     test('設定を既定値へ戻し、保存済みストレージも消す', () async {
       final store = AppConfigStore();
       await store.load();
       await store.updateSound((c) => c.copyWith(masterVolume: 42).addSet('ダンス', id: 'dance'));
-      await FlutterForegroundTask.saveData(key: 'apiKey', value: 'k1');
+      await FlutterForegroundTask.saveData(key: foregroundRefreshTokenStorageKey, value: 'r1');
 
       await store.resetToDefaults();
 
@@ -164,7 +166,7 @@ void main() {
       expect(store.sound.masterVolume, const AppConfig().sound.masterVolume);
       expect(store.sound.sets.map((s) => s.id), [SoundSet.defaultId]);
       expect(store.syncPending, isFalse);
-      expect(await FlutterForegroundTask.getData<String>(key: 'apiKey'), isNull);
+      expect(await FlutterForegroundTask.getData<String>(key: foregroundRefreshTokenStorageKey), isNull);
 
       final reloaded = AppConfigStore();
       await reloaded.load();

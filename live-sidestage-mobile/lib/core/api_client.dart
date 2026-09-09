@@ -93,10 +93,21 @@ class ApiException implements Exception {
   /// HTTPステータス。通信自体に失敗した場合は null。
   final int? statusCode;
 
-  ApiException(this.message, {this.statusCode});
+  /// サーバーが返した機械可読なエラーコード（`{"error": ..., "code": ...}` の `code`）。
+  /// 現状は refresh token 系（`INVALID_REFRESH_TOKEN` / `TOKEN_REUSE_DETECTED`）だけが
+  /// 使う。**表示には使わない** — 文言は常に [message] 側。
+  final String? code;
+
+  ApiException(this.message, {this.statusCode, this.code});
 
   /// トークンが無効・期限切れ。再ログイン(またはトークン再取得)が必要。
   bool get isUnauthorized => statusCode == 401;
+
+  /// refresh token 自体が使えない（失効・rotation済みの再提示による盗難検知）。
+  /// **この場合だけは再発行を諦めて再ログイン導線へ倒してよい。** 通信断や5xxと
+  /// 混同すると、一時的な障害でユーザーを強制ログアウトさせてしまう。
+  bool get isRefreshTokenRejected =>
+      isUnauthorized && (code == 'INVALID_REFRESH_TOKEN' || code == 'TOKEN_REUSE_DETECTED');
 
   /// トークンは有効だが、その操作を行う権限(プラン等)が無い。
   /// **再ログインでは解決しない。** isUnauthorizedと混同すると、権限不足なだけの
@@ -353,6 +364,37 @@ class LiveAnalyticsApi {
     return AuthSession.fromJson(data, provider: AuthProvider.email);
   }
 
+  /// access token を refresh token で取り直す。
+  ///
+  /// **`Authorization` ヘッダは付けない。** access token が既に失効している状態で
+  /// 呼ばれるのが前提で、認可は提示した refresh token 自体が担う。
+  ///
+  /// サーバー側は **1回使い切り(rotation)** なので、成功したら返ってきた
+  /// refresh token を必ず保存し直すこと。古い値を使い回すと reuse 検知に
+  /// 引っかかり、その family（＝この端末のセッション）全体が失効する。
+  ///
+  /// refresh token 自体が使えない場合は 401 + `code`
+  /// (`INVALID_REFRESH_TOKEN` / `TOKEN_REUSE_DETECTED`) の [ApiException] を投げる
+  /// ([ApiException.isRefreshTokenRejected])。通信断・5xx と区別すること。
+  Future<(String token, String refreshToken)> refreshAccessToken({
+    required String refreshToken,
+  }) async {
+    final data = await _post('/api/mobile/auth/refresh', {'refreshToken': refreshToken});
+    return (data['token'] as String, data['refreshToken'] as String);
+  }
+
+  /// サーバー側で refresh token の family 全体を失効させる。
+  ///
+  /// **ベストエフォート。** 失敗してもローカルのログアウトは続行する（ここで
+  /// 例外を伝播させると、通信できない場所でログアウトできなくなる）。
+  Future<void> logoutSession({required String refreshToken}) async {
+    try {
+      await _post('/api/mobile/auth/logout', {'refreshToken': refreshToken});
+    } catch (e) {
+      debugPrint('[api_client] ログアウトのサーバー通知に失敗しました: $e');
+    }
+  }
+
   Future<(String token, StreamerInfo streamer)> registerStreamer({
     required String token,
     required String tiktokHandle,
@@ -552,10 +594,11 @@ class LiveAnalyticsApi {
 
   /// TikTok Live 接続の状態。socket の `chat:listener` が落ちても収束させるための保険。
   ///
-  /// 背景 Isolate から呼ぶので **JWT ではなく apiKey** で認証する
-  /// （背景側は apiKey しか持っていない）。部屋が未割り当てなら null を返す。
-  Future<ListenerStatus?> fetchListenerStatus({required String apiKey}) async {
-    final data = await _send('GET', '/api/mobile/listener-status', null, apiKey: apiKey);
+  /// 背景 Isolate から呼ぶが、認証は他の API と同じ access token（JWT）で行う。
+  /// 背景 Isolate も token / refreshToken を持ち、自力で再発行できる
+  /// （`background_task_handler.dart`）。部屋が未割り当てなら null を返す。
+  Future<ListenerStatus?> fetchListenerStatus({required String token}) async {
+    final data = await _send('GET', '/api/mobile/listener-status', null, token: token);
     final listener = data['listener'];
     if (listener is! Map) return null;
     return ListenerStatus.tryParse(Map<String, dynamic>.from(listener));
@@ -647,7 +690,6 @@ class LiveAnalyticsApi {
     String path,
     Map<String, String>? body, {
     String? token,
-    String? apiKey,
   }) async {
     final http.Response response;
     try {
@@ -655,7 +697,6 @@ class LiveAnalyticsApi {
       final headers = {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
-        'x-api-key': ?apiKey,
         // 偽装可能な自己申告値なので権限判定には使わない(サーバー側も現状読まない)。
         // 将来「このバージョン未満は拒否」を足すときの配管として、まず送る側だけ用意する。
         'X-App-Version': ?AppVersion.current,
@@ -706,6 +747,7 @@ class LiveAnalyticsApi {
       throw ApiException(
         decoded['error'] as String? ?? _fallbackMessageForStatus(response.statusCode),
         statusCode: response.statusCode,
+        code: decoded['code'] as String?,
       );
     }
 

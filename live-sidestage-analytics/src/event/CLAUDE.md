@@ -28,7 +28,7 @@
 
 **列は必ず明示して SELECT する。`SELECT *` を書かない。** 統合前は列を絞った view と GRANT で
 これを構造的に強制していたが、今は規約でしか守られていない。`Streamer` の
-`apiKey` / `verificationCode` / `overlayToken`、`User.password`、`Account` の
+`verificationCode` / `overlayToken`、`User.password`、`Account` の
 access/refresh token は、イベント機能には一切必要ない。
 
 `TiktokRoom` への**書き込み**は `src/lib/tiktok-room.ts` の

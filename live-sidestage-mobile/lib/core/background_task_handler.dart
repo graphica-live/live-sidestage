@@ -12,6 +12,8 @@ import 'api_client.dart';
 import 'app_config_store.dart';
 import 'comment_feed.dart';
 import 'ios_audio_keepalive.dart';
+import 'session_storage.dart'
+    show foregroundRefreshTokenStorageKey, foregroundTokenStorageKey;
 import 'sound_engine.dart';
 import 'sound_library.dart';
 import 'sound_player_pool.dart';
@@ -73,7 +75,29 @@ class CommentSpeechTaskHandler extends TaskHandler {
   //
   // どちらも `(roomId, revision)` で新旧を判定する。**壁時計は比較しない。**
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
-  String? _apiKey;
+
+  /// 短命の access token。socket 接続と listener-status 取得の両方で使う。
+  String? _token;
+
+  /// 長命の refresh token。**背景 Isolate も自前で access token を取り直せる**
+  /// （HTTP POST だけで完結するので、GoogleSignIn のプラグインチャネルを
+  /// 持たない headless エンジンでも動く）。
+  String? _refreshToken;
+
+  /// 進行中の再発行。socket と listener-status のどちらからも呼ばれうるので、
+  /// **必ず直列化する** — refresh token は1回使い切りで、同じ値で同時に2本
+  /// 交換を試みるとサーバー側の reuse 検知に触れうる。
+  Future<String?>? _tokenRefreshInFlight;
+
+  /// refresh token の失効をメイン Isolate へ既に伝えたか。
+  /// listener-status の再試行は30秒間隔で続くので、これが無いと同じ通知を
+  /// 延々と送り続けることになる。再発行に成功したら解除する。
+  bool _authExpiredNotified = false;
+
+  /// TikTok 未連携の後始末を済ませたか。socket と listener-status の両方から
+  /// 呼ばれうるので、二重にサービス停止・通知を行わないための歯止め。
+  bool _streamerNotRegisteredHandled = false;
+
   ListenerStatus? _listener;
 
   StreamSubscription<ListenerStatus>? _listenerSub;
@@ -204,10 +228,17 @@ class CommentSpeechTaskHandler extends TaskHandler {
     // socket が張り直るたびに取り直す。切れている間の push は受け取れていない。
     _connectedSub = _commentFeed.onConnected.listen((_) => _scheduleReconcile(Duration.zero));
 
-    final apiKey = await FlutterForegroundTask.getData<String>(key: 'apiKey');
-    _apiKey = apiKey;
-    if (apiKey != null) {
-      _commentFeed.connect(apiKey);
+    // **接続より先にコールバックを差し込む。** 逆順だと、最初のハンドシェイクが
+    // TOKEN_EXPIRED で弾かれたときに再発行が走らず、接続できないまま止まる。
+    _commentFeed.onTokenExpired = _refreshAccessToken;
+    _commentFeed.onStreamerNotRegistered = _handleStreamerNotRegistered;
+
+    _token = await FlutterForegroundTask.getData<String>(key: foregroundTokenStorageKey);
+    _refreshToken =
+        await FlutterForegroundTask.getData<String>(key: foregroundRefreshTokenStorageKey);
+    final token = _token;
+    if (token != null) {
+      _commentFeed.connect(token);
     }
 
     // **socket 接続より後、かつ await しない。** HTTPのタイムアウトは20秒あるので、
@@ -264,17 +295,22 @@ class CommentSpeechTaskHandler extends TaskHandler {
   /// socket 再接続が続くと短い間隔で重ねて呼ばれうる。
   Future<void> _reconcile(int generation) async {
     if (_reconcileInFlight) return;
-    final apiKey = _apiKey;
-    if (apiKey == null) return;
+    final token = _token;
+    if (token == null) return;
 
     _reconcileInFlight = true;
     var nextDelay = _reconcileInterval;
     try {
-      final status = await _api.fetchListenerStatus(apiKey: apiKey);
+      final status = await _fetchListenerStatusWithRefresh(token);
       if (generation != _reconcileGeneration) return;
       if (status != null) _applyListener(status);
     } on ApiException catch (e) {
       if (generation != _reconcileGeneration) return;
+      if (e.code == 'STREAMER_NOT_REGISTERED') {
+        // TikTok 未連携。socket 側と同じ後始末をする（再試行では解消しない）。
+        _handleStreamerNotRegistered();
+        return;
+      }
       if (e.statusCode == 404 || e.statusCode == 405) {
         // 旧サーバー。叩き続けても意味がないので止める。push だけで動かす。
         debugPrint('[listener] サーバーが listener-status を持っていないため取得を停止します');
@@ -290,6 +326,96 @@ class CommentSpeechTaskHandler extends TaskHandler {
     }
   }
 
+  /// listener-status の取得。401 のときだけ access token を取り直して
+  /// **1回だけ**やり直す（`withTokenRefresh` と同じ形。403 は権限の話なので対象外）。
+  Future<ListenerStatus?> _fetchListenerStatusWithRefresh(String token) async {
+    try {
+      return await _api.fetchListenerStatus(token: token);
+    } on ApiException catch (e) {
+      if (!e.isUnauthorized) rethrow;
+      final refreshed = await _refreshAccessToken();
+      if (refreshed == null) rethrow;
+      return _api.fetchListenerStatus(token: refreshed);
+    }
+  }
+
+  // ── access token の再発行（背景 Isolate 自前） ─────────────────────────────
+  //
+  // 背景 Isolate は GoogleSignIn のプラグインチャネルを持たない headless エンジンだが、
+  // refresh token 方式は HTTP POST だけで完結するので自力で再発行できる。
+
+  /// 保持している refresh token で access token を取り直す。取り直せなければ null。
+  Future<String?> _refreshAccessToken() {
+    return _tokenRefreshInFlight ??=
+        _doRefreshAccessToken().whenComplete(() => _tokenRefreshInFlight = null);
+  }
+
+  Future<String?> _doRefreshAccessToken() async {
+    final refreshToken = _refreshToken;
+    if (refreshToken == null) return null;
+
+    final (String token, String refreshed) pair;
+    try {
+      pair = await _api.refreshAccessToken(refreshToken: refreshToken);
+    } on ApiException catch (e) {
+      if (e.isRefreshTokenRejected) {
+        // refresh token 自体が使えない(失効・reuse検知)。再試行しても直らないので
+        // 再ログインを促す。**セッションはここでは壊さない** — 破棄の判断は
+        // メイン Isolate 側（ユーザーの操作を伴う導線）に委ねる。
+        debugPrint('[auth] refresh token が失効しています。再ログインが必要です: $e');
+        if (!_authExpiredNotified) {
+          _authExpiredNotified = true;
+          FlutterForegroundTask.sendDataToMain({'type': 'authExpired'});
+        }
+        return null;
+      }
+      // 通信断・5xx。次に TOKEN_EXPIRED / 401 を踏んだときに再試行する。
+      debugPrint('[auth] access token の再発行に失敗しました(一時的): $e');
+      return null;
+    } catch (e) {
+      debugPrint('[auth] access token の再発行に失敗しました: $e');
+      return null;
+    }
+
+    _token = pair.$1;
+    _refreshToken = pair.$2;
+    _authExpiredNotified = false;
+    await FlutterForegroundTask.saveData(key: foregroundTokenStorageKey, value: pair.$1);
+    await FlutterForegroundTask.saveData(key: foregroundRefreshTokenStorageKey, value: pair.$2);
+    // **メイン Isolate へ必ず伝播させる。** 伝えないと、次にメイン側が
+    // 無効化済みの refresh token を提示し、サーバーの reuse 検知で
+    // family ごと失効（＝不要な強制ログアウト）になる。
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'tokenRefreshed',
+      'token': pair.$1,
+      'refreshToken': pair.$2,
+    });
+    return pair.$1;
+  }
+
+  /// TikTok 未連携（サーバーが `STREAMER_NOT_REGISTERED` を返した）。
+  ///
+  /// **リトライしても解消しない。** 接続し直すたびに同じエラーで弾かれるだけなので、
+  /// 再試行を止めてサービスごと畳み、メイン Isolate に導線を任せる。
+  void _handleStreamerNotRegistered() {
+    if (_streamerNotRegisteredHandled) return;
+    _streamerNotRegisteredHandled = true;
+    debugPrint('[auth] TikTokアカウントが未連携のためサービスを停止します');
+
+    // 世代を進めて、進行中/予約済みの listener-status 再試行を無効化する。
+    _reconcileGeneration++;
+    _reconcileTimer?.cancel();
+    _reconcileTimer = null;
+    // 以後の再接続も止める（onDestroy でも disconnect するが、停止が非同期なので先に切る）。
+    // **socket の event handler から同期的に dispose しない。** この関数は
+    // `connect_error` の購読中に呼ばれており、その場で購読を破棄すると走査中の
+    // リストを壊す。次のマイクロタスクへ逃がす。
+    scheduleMicrotask(_commentFeed.disconnect);
+
+    FlutterForegroundTask.sendDataToMain({'type': 'streamerNotRegistered'});
+    unawaited(FlutterForegroundTask.stopService());
+  }
+
   @override
   void onReceiveData(Object data) {
     if (data is! Map) return;
@@ -302,11 +428,35 @@ class CommentSpeechTaskHandler extends TaskHandler {
       // ここで張り直しと状態の取り直しを促す。
       case 'lifecycle':
         if (data['state'] != 'resumed') return;
-        final apiKey = _apiKey;
-        if (apiKey != null && _commentFeed.status != SocketStatus.connected) {
-          _commentFeed.connect(apiKey);
+        final token = _token;
+        if (token != null && _commentFeed.status != SocketStatus.connected) {
+          _commentFeed.connect(token);
         }
         _scheduleReconcile(Duration.zero);
+      // メイン Isolate 側で rotation が起きた（または前面復帰時の再同期）。
+      // **必ず取り込む。** 古い refresh token を持ったまま再発行を試みると、
+      // サーバーの reuse 検知で family ごと失効させられる。
+      case 'tokenRefreshed':
+        final nextToken = data['token'];
+        final nextRefreshToken = data['refreshToken'];
+        if (nextToken is! String || nextRefreshToken is! String) return;
+        if (nextToken == _token && nextRefreshToken == _refreshToken) return;
+        _token = nextToken;
+        _refreshToken = nextRefreshToken;
+        // 背景 Isolate 自身の永続化も更新する（サービス再起動後の onStart 用）。
+        unawaited(
+          FlutterForegroundTask.saveData(key: foregroundTokenStorageKey, value: nextToken),
+        );
+        unawaited(
+          FlutterForegroundTask.saveData(
+            key: foregroundRefreshTokenStorageKey,
+            value: nextRefreshToken,
+          ),
+        );
+        // 古い token で弾かれて切れている場合はここで張り直す。
+        if (_commentFeed.status != SocketStatus.connected) {
+          _commentFeed.connect(nextToken);
+        }
       case 'applyConfig':
         final revision = data['revision'];
         final json = data['json'];

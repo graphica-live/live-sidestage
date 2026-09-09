@@ -20,12 +20,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 AuthSession _session() => AuthSession(
       token: 'tok',
+      refreshToken: 'refresh',
       userId: 'u1',
       userName: 'me',
       userEmail: 'me@example.com',
       onboardingRequired: false,
       provider: AuthProvider.google,
-      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', apiKey: 'k', verified: true),
+      streamer: StreamerInfo(id: 's1', tiktokHandle: 'tt', verified: true),
     );
 
 Future<void> _pumpSettings(WidgetTester tester) async {
@@ -46,7 +47,7 @@ Future<void> _pumpSettings(WidgetTester tester) async {
             speech: const SpeechState(),
             busy: false,
             onChangeTiktokHandle: () async {},
-            onBeforeLogout: () async {},
+            onBeforeDeleteAccount: () async {},
           ),
         ),
       ),

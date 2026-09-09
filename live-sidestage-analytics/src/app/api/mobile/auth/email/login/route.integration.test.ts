@@ -54,6 +54,11 @@ describe("POST /api/mobile/auth/email/login", () => {
     expect(response.status).toBe(200);
     expect(body.user.email).toBe(email);
     expect(typeof body.token).toBe("string");
+    // access token は1時間で切れるので、端末は同時に受け取る refresh token で再発行する。
+    // 全ログイン経路が mobileAuthResponseBody() 経由なので、ここで形を固定すれば足りる。
+    expect(typeof body.refreshToken).toBe("string");
+    // 登録時とログイン時にそれぞれ1本ずつ（同じ端末の別セッション扱い。互いに独立した family）。
+    expect(await prisma.refreshToken.count({ where: { user: { email } } })).toBe(2);
   });
 
   it("パスワードが誤っていれば401、メッセージは汎用", async () => {

@@ -15,7 +15,10 @@ import '../core/feature_status.dart';
 import '../core/gift_activity.dart';
 import '../core/gift_name_ja.dart';
 import '../core/session_controller.dart';
+import '../core/session_storage.dart'
+    show foregroundRefreshTokenStorageKey, foregroundTokenStorageKey;
 import '../main.dart' show startCallback;
+import '../models/auth_session.dart';
 import '../models/comment.dart';
 import 'gift_sound_edit_screen.dart' show fetchGiftCandidatesWithRefresh;
 import 'subscription_screen.dart';
@@ -135,15 +138,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   DateTime? _roomSwitchDeadline;
   String? _switchingToTiktokHandle;
 
+  /// 背景 Isolate へ最後に押し込んだ access token。同じ値を送り直さないための目印。
+  String? _lastPushedToken;
+
+  /// 背景 Isolate へ最後に押し込んだ refresh token。
+  ///
+  /// JWT は決定的署名のため、同一 payload・同一秒の `iat` で同時に2回発行されると
+  /// access token 文字列が一致しうる（実測は稀だが、rotation の race で起こりうる）。
+  /// access token だけの比較では、その場合に refresh token の更新が伝播漏れする。
+  String? _lastPushedRefreshToken;
+
+  SessionController? _sessions;
+
   @override
   void initState() {
     super.initState();
     FlutterForegroundTask.addTaskDataCallback(_onTaskData);
     WidgetsBinding.instance.addObserver(this);
+    // メイン Isolate 側で rotation が起きたら背景 Isolate へ伝播させる。
+    // **どちらのIsolateで再発行が起きても、もう片方へ必ず伝える** のが設計上の要件。
+    _sessions = context.read<SessionController>()..addListener(_onSessionChanged);
+    _lastPushedToken = _sessions?.session?.token;
+    _lastPushedRefreshToken = _sessions?.session?.refreshToken;
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncRunningStatus());
     WidgetsBinding.instance.addPostFrameCallback((_) => _refreshGiftNames());
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkAutoStopPending());
     unawaited(_loadFirstRunGuideState());
+  }
+
+  // ── メイン Isolate ⇄ 背景 Isolate の token 同期 ──────────────────────────────
+  //
+  // 資格情報は2箇所に載っている（メイン: flutter_secure_storage、
+  // 背景: FlutterForegroundTask のストレージ）。**片方で rotation したら必ず
+  // もう片方へ伝播させる。** 伝えないと、相手側が無効化済みの refresh token を
+  // 提示し、サーバーの reuse 検知で family ごと失効（＝不要な強制ログアウト）になる。
+
+  /// セッションが更新された（rotation・ログイン・ログアウト）。
+  void _onSessionChanged() {
+    final session = _sessions?.session;
+    if (session == null) {
+      _lastPushedToken = null;
+      _lastPushedRefreshToken = null;
+      return;
+    }
+    if (session.token == _lastPushedToken &&
+        session.refreshToken == _lastPushedRefreshToken) {
+      return;
+    }
+    unawaited(_pushTokensToTask(session));
+  }
+
+  /// 背景 Isolate へ現在の token ペアを押し込む。
+  Future<void> _pushTokensToTask(AuthSession session) async {
+    _lastPushedToken = session.token;
+    _lastPushedRefreshToken = session.refreshToken;
+    await _saveTokensToTask(session);
+    FlutterForegroundTask.sendDataToTask({
+      'command': 'tokenRefreshed',
+      'token': session.token,
+      'refreshToken': session.refreshToken,
+    });
+  }
+
+  /// 背景 Isolate 側の永続化（サービス起動時 `onStart` が読む値）を更新する。
+  Future<void> _saveTokensToTask(AuthSession session) async {
+    await FlutterForegroundTask.saveData(
+      key: foregroundTokenStorageKey,
+      value: session.token,
+    );
+    await FlutterForegroundTask.saveData(
+      key: foregroundRefreshTokenStorageKey,
+      value: session.refreshToken,
+    );
   }
 
   Future<void> _loadFirstRunGuideState() async {
@@ -199,6 +265,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // 無関係に常に行う（待機サービスの仕組みとは独立した話のため）。
     if (state == AppLifecycleState.resumed) {
       unawaited(_checkAutoStopPending());
+      // **前面復帰のたびに token を再同期する。** 背面にいる間に背景 Isolate 側で
+      // rotation が起きていた場合、その通知(`tokenRefreshed`)は既に受け取って
+      // セッションへ取り込まれている。ここで押し直すことで、逆にメイン側だけが
+      // 新しい状態を持っている場合の desync も解消する（どちらが新しくても、
+      // 猶予期間つきの rotation が正常な競合として吸収する）。
+      final session = _sessions?.session;
+      if (session != null) unawaited(_pushTokensToTask(session));
     }
 
     if (!_idleServiceEnabled) return;
@@ -260,8 +333,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await store.setFeatureMask(tts: false, sound: false);
     if (!mounted || !_idleServiceEnabled) return;
 
-    final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
-    final started = await _startService(apiKey: apiKey, store: store, idle: true);
+    final session = context.read<SessionController>().session;
+    final started = await _startService(session: session, store: store, idle: true);
     if (!mounted) return;
     setState(() => _serviceRunning = started);
   }
@@ -311,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // context は最初の await より前に読んでおく。await をまたいで触ると、
     // 画面が破棄されたあとに参照しうる。
     final store = context.read<AppConfigStore>();
-    final apiKey = context.read<SessionController>().session?.streamer?.apiKey;
+    final session = context.read<SessionController>().session;
 
     try {
       final running = await FlutterForegroundTask.isRunningService;
@@ -320,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (!running) {
           // 停止中からの開始。**押した機能だけ**を有効にする。
           await store.setFeatureMask(tts: isTts, sound: !isTts);
-          final started = await _startService(apiKey: apiKey, store: store);
+          final started = await _startService(session: session, store: store);
           if (!started) {
             await store.setFeatureMask(tts: false, sound: false);
           }
@@ -368,12 +441,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// **権限を要求せず、失敗しても何も言わない。** アプリを開いただけで許可ダイアログが
   /// 出るのは第一印象として悪いし、待機は「あれば貢献タブが自動更新される」という
   /// 上乗せなので、立てられなければ黙って諦めてよい(タブ切替と手動更新は生きている)。
+  ///
+  /// **ゲートは「TikTok が未連携か」で判定する（`session?.streamer == null`）。**
+  /// 以前は「TikTok登録時にだけ発行される資格情報」の有無で判定していたが、
+  /// access token は TikTok 連携前から常に存在する。そのまま置き換えると
+  /// 未連携でもサービスが立ち上がり、
+  /// サーバーに `STREAMER_NOT_REGISTERED` で弾かれ続ける。
+  ///
+  /// token / refreshToken は **必ず同じ [AuthSession] から対で取り出す。**
+  /// 別々に受け取ると、片方だけ古い値を渡す事故が起こりうる（rotation 済みの
+  /// refresh token を渡すと、背景 Isolate が reuse 検知に引っかかる）。
   Future<bool> _startService({
-    required String? apiKey,
+    required AuthSession? session,
     required AppConfigStore store,
     bool idle = false,
   }) async {
-    if (apiKey == null) {
+    if (session?.streamer == null) {
       if (!idle) _showMessage('TikTokアカウントの登録が完了していないため開始できません。');
       return false;
     }
@@ -390,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
 
-    await FlutterForegroundTask.saveData(key: 'apiKey', value: apiKey);
+    await _saveTokensToTask(session!);
 
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -600,6 +683,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       case 'noLiveAutoStop':
         unawaited(_checkAutoStopPending());
+      // 背景 Isolate が access token を取り直した。メイン側のセッションへ取り込む
+      // （取り込まないと、次にメイン側が無効化済みの refresh token を提示して
+      //  reuse 検知で強制ログアウトになる）。
+      case 'tokenRefreshed':
+        final token = map['token'];
+        final refreshToken = map['refreshToken'];
+        if (token is! String || refreshToken is! String) return;
+        // 背景発の値なので、押し返さない（無限の往復を避ける）。
+        _lastPushedToken = token;
+        unawaited(
+          context.read<SessionController>().adoptTokens(
+                token: token,
+                refreshToken: refreshToken,
+              ),
+        );
+      // refresh token 自体が失効した（再発行では復帰できない）。**自動ログアウトはしない** ――
+      // ユーザーの操作を伴わずにセッションを捨てると、通信環境の問題と区別が付かない
+      // 見え方になる。再ログインを促すだけにとどめる。
+      case 'authExpired':
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ログインの有効期限が切れました。設定タブからログインし直してください。'),
+            duration: Duration(seconds: 10),
+          ),
+        );
+      // TikTok 未連携。背景 Isolate 側は既にサービスを畳んでいる。
+      case 'streamerNotRegistered':
+        setState(() => _serviceRunning = false);
+        // 保存値も実態へ合わせる（「機能有効 ⇒ サービス稼働」の不変条件の維持）。
+        unawaited(context.read<AppConfigStore>().setFeatureMask(tts: false, sound: false));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('TikTokアカウントの連携が完了していないため停止しました。設定タブからTikTok IDを登録してください。'),
+            duration: Duration(seconds: 10),
+          ),
+        );
       case 'comment':
         final comment = Comment.tryParse(map);
         if (comment == null) return;
@@ -686,7 +805,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         action: SnackBarAction(
           label: '閉じる',
           onPressed: () {
-            if (token != null) accountStatus.acknowledgeRecentMerge(token: token);
+            if (token != null) {
+              final sessions = context.read<SessionController>();
+              accountStatus.acknowledgeRecentMerge(
+                token: token,
+                refreshToken: sessions.refreshToken,
+              );
+            }
           },
         ),
       ),
@@ -758,7 +883,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   speech: _speech,
                   busy: _serviceBusy,
                   onChangeTiktokHandle: changeTiktokHandle,
-                  onBeforeLogout: _stopService,
+                  onBeforeDeleteAccount: _stopService,
                 ),
               ],
             ),
@@ -787,6 +912,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
+    _sessions?.removeListener(_onSessionChanged);
     WidgetsBinding.instance.removeObserver(this);
     _roomSwitchTimer?.cancel();
     _scrollController.dispose();

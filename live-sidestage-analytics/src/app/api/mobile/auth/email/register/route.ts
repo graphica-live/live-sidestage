@@ -92,5 +92,5 @@ export async function POST(req: NextRequest) {
     throw error;
   }
 
-  return NextResponse.json(mobileAuthResponseBody({ ...user, streamer: null }));
+  return NextResponse.json(await mobileAuthResponseBody({ ...user, streamer: null }));
 }
