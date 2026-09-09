@@ -482,10 +482,16 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* `.replay-ripple`(アバターと同じ矩形の親、overflow:hidden 無し)基準で配置する。
+   top:0 = アバター上端。レイアウト(1vs1/チーム戦/3人以上)ごとにアバターの実サイズ・
+   セル縦横比が違っても、アバター基準にすることで常に「アバターの真上」になる。
+   中心基準(translate)にしているのは、演出中の scale 変化を継いで最後に飛ばないため。
+   ReplayCell.tsx の winRevealPhase() の着地値(top: "0%")と必ず揃えること。 */
 .replay-win {
   position: absolute;
-  right: 7px;
-  top: 7px;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 2;
   font-family: var(--replay-mono);
   font-size: 14px;
@@ -843,10 +849,6 @@ span.replay-thumb {
   right: 7px;
   bottom: auto;
   top: 7px;
-}
-.replay-cell--right .replay-win {
-  right: auto;
-  left: 7px;
 }
 /* コンボの個数。畳み込み後の最終値をいきなり出さず、刻みに合わせて 1 から上げる。
    --replay-n が最終値、steps() は inline で与える */

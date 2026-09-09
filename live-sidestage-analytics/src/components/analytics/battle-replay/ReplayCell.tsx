@@ -35,10 +35,15 @@ const WIN_TRAVEL_MS = 650;
  * `motionScale` は再生速度の逆数(4倍速なら 0.25)。WIN 演出の尺を速度非依存にするため、
  * `WIN_REVEAL_MS` と `WIN_TRAVEL_MS` をここで割る。これにより、実時間での演出長は常に一定。
  * (大ギフト演出 `bigGiftPhase()` とは逆方向のスケーリング)
+ *
+ * **top/left は `.replay-ripple`(配信者アイコンを内包する要素)基準の相対値。** セル基準の
+ * px 固定だと、1vs1・チーム戦・3人以上でアバターの実サイズ・セル縦横比が違うため
+ * 「アバターの真上」がレイアウトごとにズレる。ripple 基準にすることで、どの画面でも
+ * アバター中心(50%)→アバター上端(0%)への移動になり、常設位置 `.replay-win` の
+ * `top: 0` と着地時(eased=1)に厳密に一致する。
  */
 function winRevealPhase(
   sinceEndMs: number,
-  cellRight: boolean,
   motionScale: number
 ): { opacity: number; scale: number; top: string; left: string } | null {
   const revealMs = WIN_REVEAL_MS / motionScale;
@@ -54,11 +59,8 @@ function winRevealPhase(
   return {
     opacity: 1,
     scale: 1 - 0.6 * eased,
-    // 中央(50%,50%) → 常設バッジ位置へ寄せる。
-    // cellRight=false(左側セル) なら常設位置は右上(right:7px, top:7px)
-    // cellRight=true(右側セル) なら常設位置は左上(left:7px, top:7px)に移動させる
-    top: `${50 - 43 * eased}%`,
-    left: cellRight ? `${50 - 43 * eased}%` : `${50 + 43 * eased}%`,
+    top: `${50 - 50 * eased}%`,
+    left: "50%",
   };
 }
 
@@ -124,7 +126,7 @@ export function ReplayCell({
   // ギフト画像が取れないときは大演出を出さない(配信者アイコンを隠すだけになるため)。
   const bigGiftImg = bigGift ? gifts[bigGift.giftIndex]?.img ?? null : null;
   const bigGiftTier = bigGift ? bigGiftTierOf(bigGift.diamonds) : null;
-  const winReveal = isWinner ? winRevealPhase(elapsedMs - durationMs, cell.right, motionScale) : null;
+  const winReveal = isWinner ? winRevealPhase(elapsedMs - durationMs, motionScale) : null;
   const battleEnded = elapsedMs >= durationMs;
   const cellClass = [
     "replay-cell",
@@ -173,6 +175,27 @@ export function ReplayCell({
               initialOf(name)
             )}
           </div>
+          {/* WIN バッジは `.replay-ripple`(アバターと同じ矩形、overflow:hidden 無し)基準で
+              配置する。`.replay-avatar` 自身は角丸クリップのため overflow:hidden なので不可。 */}
+          {isWinner && battleEnded && !winReveal ? (
+            <span className="replay-win" style={{ background: GOLD }}>
+              WIN
+            </span>
+          ) : null}
+          {winReveal ? (
+            <span
+              className="replay-win-big"
+              style={{
+                background: GOLD,
+                opacity: winReveal.opacity,
+                top: winReveal.top,
+                left: winReveal.left,
+                transform: `translate(-50%, -50%) scale(${winReveal.scale})`,
+              }}
+            >
+              WIN
+            </span>
+          ) : null}
         </div>
         <div className="replay-host-score">{scoreNumber.toLocaleString("ja-JP")}</div>
       </div>
@@ -182,25 +205,6 @@ export function ReplayCell({
         </span>
       )}
       <span className="replay-namechip">{name}</span>
-      {isWinner && battleEnded && !winReveal ? (
-        <span className="replay-win" style={{ background: GOLD }}>
-          WIN
-        </span>
-      ) : null}
-      {winReveal ? (
-        <span
-          className="replay-win-big"
-          style={{
-            background: GOLD,
-            opacity: winReveal.opacity,
-            top: winReveal.top,
-            left: winReveal.left,
-            transform: `translate(-50%, -50%) scale(${winReveal.scale})`,
-          }}
-        >
-          WIN
-        </span>
-      ) : null}
       {hideLanes ? null : (
         <div className={laneClass}>
           {laneCards.map((card) => (
