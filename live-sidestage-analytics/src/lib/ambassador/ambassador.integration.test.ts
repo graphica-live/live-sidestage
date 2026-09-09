@@ -11,7 +11,7 @@ const principalIds: string[] = [];
 const inviteIds: string[] = [];
 
 async function createUser(): Promise<string> {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `${unique()}@example.test` },
     select: { id: true },
   });
@@ -22,7 +22,7 @@ async function createUser(): Promise<string> {
 afterEach(async () => {
   await prisma.ambassador.deleteMany({ where: { principalId: { in: principalIds } } });
   await prisma.ambassadorInvite.deleteMany({ where: { id: { in: inviteIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+  await prisma.principal.deleteMany({ where: { id: { in: principalIds } } });
   principalIds.length = 0;
   inviteIds.length = 0;
 });
@@ -112,7 +112,7 @@ describe("addAmbassadorByEmail", () => {
 
   it("前後空白・大文字混在のメールアドレスも正規化して既存ユーザーを見つける", async () => {
     const email = `${unique()}@example.test`;
-    const user = await prisma.user.create({ data: { email }, select: { id: true } });
+    const user = await prisma.principal.create({ data: { email }, select: { id: true } });
     principalIds.push(user.id);
 
     const result = await addAmbassadorByEmail(`  ${email.toUpperCase()}  `);
@@ -122,7 +122,7 @@ describe("addAmbassadorByEmail", () => {
 
   it("既にアンバサダーのユーザーを重複追加しようとするとduplicateを返す", async () => {
     const email = `${unique()}@example.test`;
-    const user = await prisma.user.create({ data: { email }, select: { id: true } });
+    const user = await prisma.principal.create({ data: { email }, select: { id: true } });
     principalIds.push(user.id);
 
     const first = await addAmbassadorByEmail(email);

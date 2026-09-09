@@ -109,7 +109,7 @@ const fake = vi.hoisted(() => {
         return { count };
       },
     },
-    user: {
+    principal: {
       async findUnique({ where }: { where: { id: string } }) {
         const user = users.get(where.id);
         return user ? { ...user } : null;

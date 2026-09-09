@@ -23,7 +23,7 @@ beforeAll(async () => {
   const room = await prisma.tiktokRoom.create({ data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: HOST_UID } });
   roomId = room.id;
 
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `itest-mobile-battle-contributors-${Date.now()}@local.test` },
   });
   principalId = user.id;
@@ -39,7 +39,7 @@ beforeAll(async () => {
   });
   token = signMobileToken({ principalId });
 
-  const noRoom = await prisma.user.create({
+  const noRoom = await prisma.principal.create({
     data: { email: `itest-mobile-battle-contributors-noroom-${Date.now()}@local.test` },
   });
   noRoomPrincipalId = noRoom.id;
@@ -83,8 +83,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> TiktokBattle, Gift
   // TikTokUser は room スコープを持たないので cascade されない。
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: [HOST_UID, LISTENER_UID] } } }).catch(() => {});

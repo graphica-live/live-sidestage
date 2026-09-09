@@ -36,11 +36,11 @@ let tokenA: string;
 let tokenB: string;
 
 beforeAll(async () => {
-  const userA = await prisma.user.create({ data: { email: `itest-verify-purchase-a-${Date.now()}@local.test` } });
+  const userA = await prisma.principal.create({ data: { email: `itest-verify-purchase-a-${Date.now()}@local.test` } });
   userAId = userA.id;
   tokenA = signMobileToken({ principalId: userAId });
 
-  const userB = await prisma.user.create({ data: { email: `itest-verify-purchase-b-${Date.now()}@local.test` } });
+  const userB = await prisma.principal.create({ data: { email: `itest-verify-purchase-b-${Date.now()}@local.test` } });
   userBId = userB.id;
   tokenB = signMobileToken({ principalId: userBId });
 });
@@ -52,8 +52,8 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: userAId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: userBId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: userAId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: userBId } }).catch(() => {});
   await prisma.$disconnect();
 });
 

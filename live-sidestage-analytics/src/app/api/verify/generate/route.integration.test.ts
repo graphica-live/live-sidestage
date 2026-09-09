@@ -51,7 +51,7 @@ function req(tiktokHandle: string) {
 
 async function cleanup() {
   await prisma.streamer.deleteMany({ where: { tiktokHandle: { startsWith: TID_PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
@@ -73,7 +73,7 @@ async function createUserWithStreamer(opts: {
   /** 省略時は実在確認モックと同一 uid(= 同一アカウントの改名として通る) */
   tiktokUid?: string;
 }) {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `${PREFIX}${Date.now()}@local.test`, name: `${PREFIX}user` },
   });
   const streamer = await prisma.streamer.create({
@@ -180,7 +180,7 @@ describe("POST /api/verify/generate — TikTok ID変更7日ロック", () => {
   });
 
   it("新規登録は7日ロックの対象外で、即座にtiktokHandleChangedAtがセットされる", async () => {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `${PREFIX}${Date.now()}new@local.test`, name: `${PREFIX}newuser` },
     });
     auth.principalId = user.id;

@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "TikTok IDを入力してください" }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.principal.findUnique({
     where: { id: auth.principalId },
     include: { streamer: true },
   });
@@ -123,7 +123,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "TikTok IDを入力してください" }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.principal.findUnique({
     where: { id: auth.principalId },
     include: { streamer: true },
   });

@@ -134,7 +134,7 @@ export async function suspendLowValueRoom(
 
     if (await roomHasPaidWatcher(principalIds, tx)) return null;
 
-    const users = await tx.user.findMany({
+    const users = await tx.principal.findMany({
       where: { id: { in: principalIds } },
       select: { lastActiveAt: true },
     });

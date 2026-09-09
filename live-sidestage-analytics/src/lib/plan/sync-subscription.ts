@@ -93,7 +93,7 @@ export async function syncSubscriptionFromStripe(stripeSubscriptionId: string): 
   // (onDelete: Cascade)なのでcreateがP2003で失敗し続ける。削除は
   // DELETE /api/mobile/account 側でCustomer自体をStripeから消しているはずで、
   // ここへ遅延webhookが届いても復元すべきデータが無いのでno-opにする。
-  const user = await prisma.user.findUnique({ where: { id: principalId }, select: { id: true } });
+  const user = await prisma.principal.findUnique({ where: { id: principalId }, select: { id: true } });
   if (!user) return;
 
   try {

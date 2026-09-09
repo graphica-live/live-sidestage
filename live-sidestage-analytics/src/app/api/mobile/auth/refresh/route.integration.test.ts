@@ -29,19 +29,19 @@ function request(path: string, body: unknown, raw?: string) {
 }
 
 async function cleanup() {
-  const users = await prisma.user.findMany({
+  const users = await prisma.principal.findMany({
     where: { email: { startsWith: PREFIX } },
     select: { id: true },
   });
   const ids = users.map((u) => u.id);
   if (ids.length) {
     await prisma.refreshTokenReplay.deleteMany({ where: { principalId: { in: ids } } });
-    await prisma.user.deleteMany({ where: { id: { in: ids } } });
+    await prisma.principal.deleteMany({ where: { id: { in: ids } } });
   }
 }
 
 async function setup(label: string) {
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `${PREFIX}${label}@local.test`, name: `${PREFIX}${label}` },
     select: { id: true },
   });

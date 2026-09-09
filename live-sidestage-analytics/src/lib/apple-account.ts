@@ -43,7 +43,7 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 async function findByAppleSub(sub: string): Promise<MobileAuthUser | null> {
-  const account = await prisma.account.findUnique({
+  const account = await prisma.oAuthAccount.findUnique({
     where: { provider_providerAccountId: { provider: APPLE_PROVIDER, providerAccountId: sub } },
     select: { providerEmail: true, user: { select: userSelect } },
   });
@@ -66,7 +66,7 @@ async function createAppleUser(
 ): Promise<MobileAuthUser> {
   // User と Account を nested write で一度に作る。$transaction を回すより、
   // 原子性・孤児 User の防止・作成した providerEmail の取り出しが1つの形で済む。
-  const account = await prisma.account.create({
+  const account = await prisma.oAuthAccount.create({
     data: {
       type: "oauth",
       provider: APPLE_PROVIDER,
@@ -91,7 +91,7 @@ async function createAppleUser(
 /// (直前の正常ログインで持っていた値を失わないため)。
 async function persistAppleTokens(sub: string, tokens: AppleTokens): Promise<void> {
   if (!tokens.refreshToken) return;
-  await prisma.account.updateMany({
+  await prisma.oAuthAccount.updateMany({
     where: { provider: APPLE_PROVIDER, providerAccountId: sub },
     data: { refresh_token: tokens.refreshToken, appleClientId: tokens.clientId },
   });

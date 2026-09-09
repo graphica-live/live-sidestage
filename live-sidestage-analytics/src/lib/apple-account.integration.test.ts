@@ -30,15 +30,15 @@ function claims(overrides: Partial<AppleIdTokenClaims> = {}): AppleIdTokenClaims
 }
 
 async function cleanup() {
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { name: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: null, name: null, accounts: { none: {} }, streamer: null } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { name: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: null, name: null, accounts: { none: {} }, streamer: null } });
 }
 
 /// Google でログイン済みの既存ユーザー（＝メールの所有が確認できている）。
 async function createGoogleUser(local: string) {
-  return prisma.user.create({
+  return prisma.principal.create({
     data: {
       email: email(local),
       accounts: {
@@ -49,7 +49,7 @@ async function createGoogleUser(local: string) {
 }
 
 async function appleAccountOf(sub: string) {
-  return prisma.account.findUnique({
+  return prisma.oAuthAccount.findUnique({
     where: { provider_providerAccountId: { provider: APPLE_PROVIDER, providerAccountId: sub } },
   });
 }
@@ -82,7 +82,7 @@ describe("resolveAppleUser", () => {
     );
 
     // User にメールを持たせると、あとから Google がメール一致で拾って統合してしまう。
-    const stored = await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } });
+    const stored = await prisma.principal.findUnique({ where: { id: user.id }, select: { email: true } });
     expect(stored?.email).toBeNull();
 
     expect((await appleAccountOf(`${PREFIX}sub-store`))?.providerEmail).toBe(email("store"));
@@ -146,14 +146,14 @@ describe("resolveAppleUser", () => {
 
     expect(user.id).not.toBe(google.id);
     // 既存ユーザー側に Apple が足されていないこと。
-    expect(await prisma.account.count({ where: { userId: google.id } })).toBe(1);
+    expect(await prisma.oAuthAccount.count({ where: { userId: google.id } })).toBe(1);
     expect(
-      await prisma.account.count({ where: { userId: google.id, provider: APPLE_PROVIDER } }),
+      await prisma.oAuthAccount.count({ where: { userId: google.id, provider: APPLE_PROVIDER } }),
     ).toBe(0);
   });
 
   it("メールを先取りされた User にも繋がない（作成も失敗しない）", async () => {
-    const squatter = await prisma.user.create({
+    const squatter = await prisma.principal.create({
       data: { email: email("squat"), password: "hashed" },
     });
 
@@ -211,12 +211,12 @@ describe("resolveAppleUser", () => {
     const ids = new Set(results.map((r) => r.id));
     expect(ids.size).toBe(1);
     expect(
-      await prisma.account.count({
+      await prisma.oAuthAccount.count({
         where: { provider: APPLE_PROVIDER, providerAccountId: `${PREFIX}sub-race` },
       }),
     ).toBe(1);
     // 負けた側の User が作られっぱなしになっていないこと(nested write ごと巻き戻る)。
-    expect(await prisma.user.count({ where: { name } })).toBe(1);
+    expect(await prisma.principal.count({ where: { name } })).toBe(1);
   });
 
   it("revoke用のrefresh_tokenとclientIdを保存し、2回目以降は最新値で上書きする", async () => {

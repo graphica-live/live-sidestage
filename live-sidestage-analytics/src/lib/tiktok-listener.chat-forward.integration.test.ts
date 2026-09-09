@@ -81,7 +81,7 @@ async function setupRoom(label: string, subscriberCount: number) {
   const principalIds: string[] = [];
   const streamerIds: string[] = [];
   for (let i = 0; i < subscriberCount; i++) {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `itest-chatfwd-${label}-${suffix()}@local.test` },
     });
     const streamer = await prisma.streamer.create({
@@ -107,7 +107,7 @@ async function setupRoom(label: string, subscriberCount: number) {
 async function teardownRoom(ctx: { roomId: string; principalIds: string[] }) {
   await stopListener(ctx.roomId);
   for (const principalId of ctx.principalIds) {
-    await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+    await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
   }
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }

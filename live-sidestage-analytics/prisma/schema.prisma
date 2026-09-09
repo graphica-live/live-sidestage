@@ -23,7 +23,7 @@ datasource db {
 // public — TikTok Live の受信データと認証
 // ============================================================================
 
-model User {
+model Principal {
   id            String    @id @default(cuid())
   name          String?
   email         String?   @unique
@@ -38,7 +38,7 @@ model User {
   // 90日有効なモバイルトークンだと再ログインなしで長期間使われ続けるため。
   lastActiveAt  DateTime?
 
-  accounts               Account[]
+  accounts               OAuthAccount[]
   sessions               Session[]
   streamer               Streamer?
   subscriptions          Subscription[]
@@ -48,6 +48,7 @@ model User {
   ambassadorInvitesUsed  AmbassadorInvite[]
   refreshTokens          RefreshToken[]
 
+  @@map("User")
   @@schema("public")
 }
 
@@ -70,7 +71,7 @@ model RefreshToken {
   absoluteExpiresAt DateTime
   revokedAt         DateTime?
   replacedById      String?
-  user              User      @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  principal         Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@index([principalId])
   @@index([familyId])
@@ -110,7 +111,7 @@ model Ambassador {
   id          String   @id @default(cuid())
   principalId String   @unique
   createdAt   DateTime @default(now())
-  user        User     @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  user        Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -126,7 +127,7 @@ model AmbassadorInvite {
   expiresAt         DateTime
   usedAt            DateTime?
   usedByPrincipalId String?
-  usedByUser        User?     @relation(fields: [usedByPrincipalId], references: [id], onDelete: SetNull)
+  usedByUser        Principal? @relation(fields: [usedByPrincipalId], references: [id], onDelete: SetNull)
 
   @@index([expiresAt])
   @@schema("public")
@@ -148,10 +149,10 @@ enum SubscriptionProvider {
   @@schema("public")
 }
 
-// User単位の課金プラン。行が無いUser = FREE扱い(全Userに先回りして作らない)。
+// Principal単位の課金プラン。行が無いPrincipal = FREE扱い(全Principalに先回りして作らない)。
 // **1ユーザーが複数の有効な行を同時に持ちうる**(Web/Stripeとモバイル/Google Play・Appleは
 // 別契約として独立に成立する)。getUserPlan()は有効な全行から最上位プランを算出する。
-// event機能はUser.idへの生FKを張らない方針(Event.ownerPrincipalId参照)なので、
+// event機能はPrincipal.idへの生FKを張らない方針(Event.ownerPrincipalId参照)なので、
 // event側からもこのモデルをprincipalIdの一致だけで参照する。
 //
 // フェーズA(拡張のみ)時点のスキーマ。provider/providerSubscriptionId等はnullable。
@@ -203,7 +204,7 @@ model Subscription {
   // onDelete: Cascadeで行ごと消える。DELETE /api/mobile/account はこの削除より前に
   // stripe.customers.del()でStripe側のCustomer(=関連subscription全て)を先に消しており、
   // 課金が残ったままDB上の紐付けだけ失う、という状態にはならない。
-  user User @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  user Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   // nullable列を含む複合unique。旧行はprovider=nullのまま共存でき、
   // 新規行だけが実質的な一意性チェックを受ける(Postgresの複合unique indexの仕様)。
@@ -218,7 +219,7 @@ model StripeCustomerLink {
   stripeCustomerId String   @unique
   createdAt        DateTime @default(now())
 
-  user User @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  user Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -238,18 +239,18 @@ model PendingPurchaseIntent {
 
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  user Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
 
   @@unique([provider, token])
   @@schema("public")
 }
 
-// **Account.userId と Session.userId は識別子命名規約(principalId)の唯一の例外。**
+// **OAuthAccount.userId と Session.userId は識別子命名規約(principalId)の唯一の例外。**
 // @next-auth/prisma-adapter が Prisma のフィールド名を直書きするため改名できない
 // (@map で DB 列名だけ変えても Prisma フィールド名は変わらない)。この2つ以外に userId は存在しない。
-model Account {
+model OAuthAccount {
   id                String  @id @default(cuid())
-  userId            String // 例外(NextAuth PrismaAdapter 制約)。実体は User.id = principalId
+  userId            String // 例外(NextAuth PrismaAdapter 制約)。実体は Principal.id = principalId
   type              String
   provider          String
   providerAccountId String
@@ -263,8 +264,8 @@ model Account {
 
   // プロバイダが申告したメール。**表示・運用のためだけに持つ**。
   //
-  // アカウントのリンク判定に使ってはいけない(それは User.email の役割)。
-  // Apple 経由の User は「Google と統合されない」ために User.email を持たないので、
+  // アカウントのリンク判定に使ってはいけない(それは Principal.email の役割)。
+  // Apple 経由の Principal は「Google と統合されない」ために Principal.email を持たないので、
   // 画面に出すメールはここから取る。詳細は src/lib/apple-account.ts
   //
   // 列名を email にしないのは、PrismaAdapter が渡された data を絞らず
@@ -280,19 +281,20 @@ model Account {
   // では常にnull。詳細は src/lib/apple-auth.ts の revokeAppleToken()
   appleClientId String?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user Principal @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@map("Account")
   @@schema("public")
 }
 
 model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique
-  userId       String // 例外(NextAuth PrismaAdapter 制約)。実体は User.id = principalId
+  userId       String // 例外(NextAuth PrismaAdapter 制約)。実体は Principal.id = principalId
   expires      DateTime
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user Principal @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@schema("public")
 }
@@ -611,9 +613,9 @@ model ListenerEpoch {
 // 事務所・企業向けのアカウント。配信者本人(Streamer)とは独立していて、
 // 自分ではTikTok IDを持たず、監視対象(AgencyWatch)を通してのみデータを参照する。
 //
-// Userではなくemailを識別子にしている。管理者が相手のGoogleアカウントのメールアドレスを
+// Principalではなくemailを識別子にしている。管理者が相手のGoogleアカウントのメールアドレスを
 // 先に登録し、本人がそのアカウントでログインした時点で使えるようにするため
-// (ログイン前はUser行が存在しないので、principalIdでは紐づけられない)。
+// (ログイン前はPrincipal行が存在しないので、principalIdでは紐づけられない)。
 // 事務所が存在すること自体が利用許可であり、別途の承認フラグは持たない。
 model Agency {
   id              String   @id @default(cuid())
@@ -654,7 +656,7 @@ model AgencyWatch {
 
 model Streamer {
   id                    String    @id @default(cuid())
-  principalId           String    @unique // sidestage の User.id
+  principalId           String    @unique // sidestage の Principal.id
   // 登録ゲートが実在確認の応答から得た不変ID。room を消しても resolveRoomForStreamer() が
   // これを使って再作成できるようにするため、TiktokRoom とは別にここでも保持する(NOT NULL)。
   tiktokUid             String
@@ -679,7 +681,7 @@ model Streamer {
   overlayHeadingBackground String  @default("clear") // "clear" | "crystal-blue" | "sakura-pink"
   overlayDisplaySpeed      Int     @default(3) // 1(遅い)〜5(速い)、スナップスクロールと全体縮小表示の待機時間を制御
 
-  user User        @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  user Principal   @relation(fields: [principalId], references: [id], onDelete: Cascade)
   room TiktokRoom? @relation(fields: [roomId], references: [id])
 
   // desktopの5ウィジェット移植で追加。既存のoverlay*列(contribution専用)とは分離し、
@@ -1513,7 +1515,7 @@ model Event {
   coverImageKey    String?
   prizeText        String? @db.Text // 優勝賞品。公開ページでは空なら賞品セクション自体を出さない
   noticeText       String? @db.Text // 注意事項+FAQ(軽量Markdownサブセット。src/event/notice-blocks.ts が解釈する)
-  ownerPrincipalId String // User.id。FKは張らない(将来 auth サービスへ切り出すため)
+  ownerPrincipalId String // Principal.id。FKは張らない(将来 auth サービスへ切り出すため)
 
   format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
   entryMode  String // "SOLO" | "TEAM"
@@ -1644,7 +1646,7 @@ model EventParticipant {
   roomId       String // TiktokRoom.id(論理参照)
   teamId       String?
   displayName  String // イベント内の表示名。登録時の初期値は TikTok ID で、主催者があとから編集できる
-  principalId  String? // 会員登録済みなら User.id へリンク
+  principalId  String? // 会員登録済みなら Principal.id へリンク
   status       String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
   joinedAt     DateTime @default(now())
 

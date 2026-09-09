@@ -298,7 +298,7 @@ describe("runGiftRetentionCycle — 購読条件の網羅(Streamer/AgencyWatch/m
     monitorNowRoomId = await createRoom();
     roomIdsHere.push(streamerSubjectRoomId, agencyWatchRoomId, monitorFutureRoomId, monitorNowRoomId);
 
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `${PREFIX}-streamer-${uniqueSuffix()}@local.test`, name: "itest" },
       select: { id: true },
     });
@@ -310,7 +310,6 @@ describe("runGiftRetentionCycle — 購読条件の網羅(Streamer/AgencyWatch/m
         tiktokUid: makeTiktokUid(`${PREFIX}_streamer_${uniqueSuffix()}`),
         tiktokHandle: `${PREFIX}streamer${uniqueSuffix()}`.toLowerCase(),
         verificationCode: `${PREFIX}-vc-${uniqueSuffix()}`,
-        apiKey: `${PREFIX}-key-${uniqueSuffix()}`,
         overlayToken: `${PREFIX}-ov-${uniqueSuffix()}`,
       },
     });
@@ -358,7 +357,7 @@ describe("runGiftRetentionCycle — 購読条件の網羅(Streamer/AgencyWatch/m
     if (agencyId) await prisma.agency.delete({ where: { id: agencyId } }).catch(() => {});
     await prisma.streamer.deleteMany({ where: { roomId: streamerSubjectRoomId } });
     await prisma.tiktokRoom.deleteMany({ where: { id: { in: roomIdsHere } } });
-    if (principalId) await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
+    if (principalId) await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
     await prisma.giftLifetimeStat.deleteMany({ where: { tiktokUid: battleListener } });
   });
 

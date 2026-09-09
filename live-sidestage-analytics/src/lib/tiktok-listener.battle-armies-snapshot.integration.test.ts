@@ -65,7 +65,7 @@ function suffix() {
 
 async function setupRoom(label: string) {
   const tiktokHandle = `itest_armies_${label}_${suffix()}`;
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `itest-armies-${label}-${suffix()}@local.test` },
   });
   const streamer = await prisma.streamer.create({
@@ -87,7 +87,7 @@ async function setupRoom(label: string) {
 
 async function teardownRoom(ctx: { roomId: string; principalId: string }) {
   await stopListener(ctx.roomId);
-  await prisma.user.delete({ where: { id: ctx.principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: ctx.principalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: ctx.roomId } }).catch(() => {});
 }
 

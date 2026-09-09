@@ -51,7 +51,7 @@ beforeAll(async () => {
     data: { tiktokHandle: STREAMER_TIKTOK_ID, hostTiktokUid: HOST_TIKTOK_UID },
   });
   roomId = room.id;
-  const user = await prisma.user.create({ data: { email: `itest-gift-analytics-${Date.now()}@local.test` } });
+  const user = await prisma.principal.create({ data: { email: `itest-gift-analytics-${Date.now()}@local.test` } });
   const streamer = await prisma.streamer.create({
     data: {
       principalId: user.id,
@@ -81,7 +81,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const streamer = await prisma.streamer.findUnique({ where: { id: streamerId } });
   if (streamer) {
-    await prisma.user.delete({ where: { id: streamer.principalId } }); // cascades User -> Streamer
+    await prisma.principal.delete({ where: { id: streamer.principalId } }); // cascades User -> Streamer
   }
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades TiktokRoom -> Gift
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: ALL_UIDS } } }).catch(() => {});

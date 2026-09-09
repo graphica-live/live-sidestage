@@ -46,8 +46,8 @@ async function cleanup() {
   await prisma.event.deleteMany({ where: { slug: { startsWith: PREFIX } } });
   await prisma.subscription.deleteMany({ where: { user: { email: { startsWith: PREFIX } } } });
   await prisma.stripeCustomerLink.deleteMany({ where: { user: { email: { startsWith: PREFIX } } } });
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
@@ -74,7 +74,7 @@ describe("DELETE /api/mobile/account", () => {
   });
 
   it("Userとcascade先(Account/Subscription)を削除する", async () => {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: {
         email: `${PREFIX}basic@local.test`,
         accounts: {
@@ -96,15 +96,15 @@ describe("DELETE /api/mobile/account", () => {
     const response = await deleteAccount(authedRequest(token));
 
     expect(response.status).toBe(200);
-    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
-    expect(await prisma.account.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.principal.findUnique({ where: { id: user.id } })).toBeNull();
+    expect(await prisma.oAuthAccount.count({ where: { userId: user.id } })).toBe(0);
     expect(await prisma.subscription.count({ where: { principalId: user.id } })).toBe(0);
     expect(deleteStripeCustomer).toHaveBeenCalledWith(`${PREFIX}cus-basic`);
   });
 
   it("Appleアカウントはrefresh_tokenとclientIdでrevokeを呼ぶ(失敗しても削除は継続)", async () => {
     revokeAppleToken.mockRejectedValueOnce(new Error("apple down"));
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: {
         email: `${PREFIX}apple@local.test`,
         accounts: {
@@ -127,11 +127,11 @@ describe("DELETE /api/mobile/account", () => {
       expect.anything(),
       expect.objectContaining({ refreshToken: "rtok", clientId: "com.example.app" }),
     );
-    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
+    expect(await prisma.principal.findUnique({ where: { id: user.id } })).toBeNull();
   });
 
   it("refresh_tokenが無いApple移行前ユーザーはrevokeを呼ばずに削除する", async () => {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: {
         email: `${PREFIX}apple-legacy@local.test`,
         accounts: {
@@ -153,7 +153,7 @@ describe("DELETE /api/mobile/account", () => {
 
   it("Stripe削除が失敗したら500で中断し、Userは削除されない(課金だけ残る事故を防ぐ)", async () => {
     deleteStripeCustomer.mockRejectedValueOnce(new Error("stripe down"));
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: {
         email: `${PREFIX}stripe-fail@local.test`,
         stripeCustomerLink: { create: { stripeCustomerId: `${PREFIX}cus-fail` } },
@@ -172,11 +172,11 @@ describe("DELETE /api/mobile/account", () => {
     const response = await deleteAccount(authedRequest(token));
 
     expect(response.status).toBe(500);
-    expect(await prisma.user.findUnique({ where: { id: user.id } })).not.toBeNull();
+    expect(await prisma.principal.findUnique({ where: { id: user.id } })).not.toBeNull();
   });
 
   it("所有していたEventのownerPrincipalIdには触れない(削除もブロックもしない)", async () => {
-    const user = await prisma.user.create({ data: { email: `${PREFIX}organizer@local.test` } });
+    const user = await prisma.principal.create({ data: { email: `${PREFIX}organizer@local.test` } });
     const event = await prisma.event.create({
       data: {
         slug: `${PREFIX}cup`,
@@ -193,7 +193,7 @@ describe("DELETE /api/mobile/account", () => {
     const response = await deleteAccount(authedRequest(token));
 
     expect(response.status).toBe(200);
-    expect(await prisma.user.findUnique({ where: { id: user.id } })).toBeNull();
+    expect(await prisma.principal.findUnique({ where: { id: user.id } })).toBeNull();
 
     const stillThere = await prisma.event.findUnique({ where: { id: event.id } });
     expect(stillThere).not.toBeNull();

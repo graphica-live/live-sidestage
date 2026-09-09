@@ -20,7 +20,7 @@ async function main() {
     throw new Error(`seed-event-local はローカルDB専用。DATABASE_URL が localhost ではない: ${url}`);
   }
 
-  const owner = await prisma.user.upsert({
+  const owner = await prisma.principal.upsert({
     where: { email: SEED_OWNER_EMAIL },
     update: {},
     create: { name: "dev", email: SEED_OWNER_EMAIL },

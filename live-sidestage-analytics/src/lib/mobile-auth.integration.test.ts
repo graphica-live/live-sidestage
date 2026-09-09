@@ -22,7 +22,7 @@ const { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily, verifyM
 const PREFIX = "itest-refreshtoken-";
 
 async function cleanup() {
-  const users = await prisma.user.findMany({
+  const users = await prisma.principal.findMany({
     where: { email: { startsWith: PREFIX } },
     select: { id: true },
   });
@@ -30,12 +30,12 @@ async function cleanup() {
   if (ids.length) {
     await prisma.refreshTokenReplay.deleteMany({ where: { principalId: { in: ids } } });
     // RefreshToken は onDelete: Cascade で消える。
-    await prisma.user.deleteMany({ where: { id: { in: ids } } });
+    await prisma.principal.deleteMany({ where: { id: { in: ids } } });
   }
 }
 
 async function createUser(label: string) {
-  return prisma.user.create({
+  return prisma.principal.create({
     data: { email: `${PREFIX}${label}@local.test`, name: `${PREFIX}${label}` },
     select: { id: true },
   });
@@ -111,7 +111,7 @@ describe("refresh token rotation（実DB）", () => {
     const user = await createUser("cascade");
     const rawToken = await issueRefreshToken({ principalId: user.id, streamerId: null });
 
-    await prisma.user.delete({ where: { id: user.id } });
+    await prisma.principal.delete({ where: { id: user.id } });
 
     expect(await prisma.refreshToken.count({ where: { principalId: user.id } })).toBe(0);
     expect(await rotateRefreshToken(rawToken)).toEqual({ error: "INVALID_REFRESH_TOKEN" });

@@ -65,7 +65,7 @@ async function addLegacyColumn(c: PrismaClient) {
 }
 
 async function seedData(c: PrismaClient) {
-  const user = await c.user.create({ data: { email: `reset-${Date.now()}@local.test` } });
+  const user = await c.principal.create({ data: { email: `reset-${Date.now()}@local.test` } });
   const room = await c.tiktokRoom.create({
     data: { hostTiktokUid: "7000000000000000111", tiktokHandle: "itest_reset_host" },
   });
@@ -163,7 +163,7 @@ describe("migrate-tiktok-userid-reset", () => {
     expect(await client.event.count()).toBe(0);
     expect(await client.eventMatch.count()).toBe(0);
     expect(await client.tiktokRoom.count()).toBe(0);
-    expect(await client.user.count()).toBe(0);
+    expect(await client.principal.count()).toBe(0);
 
     // 実行記録は残る(判定には使わない)。
     expect(

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   const providerAccountId = payload.sub;
   const email = payload.email.toLowerCase();
 
-  const account = await prisma.account.findUnique({
+  const account = await prisma.oAuthAccount.findUnique({
     where: { provider_providerAccountId: { provider: "google", providerAccountId } },
     include: { user: { include: { streamer: true } } },
   });
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     //
     // apple の Account だけを持つ User に繋がないことも、ここで同時に担保される
     // （Google と Apple を統合しない方針。src/lib/apple-account.ts 参照）。
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.principal.findUnique({
       where: { email },
       include: { streamer: true, accounts: { select: { id: true }, take: 1 } },
     });
@@ -94,16 +94,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingUser) {
-      await prisma.account.create({
+      await prisma.oAuthAccount.create({
         data: { userId: existingUser.id, type: "oauth", provider: "google", providerAccountId },
       });
       user = existingUser;
     } else {
       user = await prisma.$transaction(async (tx) => {
-        const newUser = await tx.user.create({
+        const newUser = await tx.principal.create({
           data: { email, name: payload!.name ?? null, image: payload!.picture ?? null },
         });
-        await tx.account.create({
+        await tx.oAuthAccount.create({
           data: { userId: newUser.id, type: "oauth", provider: "google", providerAccountId },
         });
         return { ...newUser, streamer: null };

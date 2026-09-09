@@ -18,7 +18,7 @@ function request(body: unknown) {
 }
 
 async function cleanup() {
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
@@ -39,7 +39,7 @@ describe("POST /api/auth/register (ENABLE_PASSWORD_REGISTER=1)", () => {
 
     expect(response.status).toBe(201);
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.principal.findUnique({ where: { email } });
     expect(user?.name).toBe("テスト");
     expect(user?.password).not.toBe("password1");
   });
@@ -50,7 +50,7 @@ describe("POST /api/auth/register (ENABLE_PASSWORD_REGISTER=1)", () => {
     const response = await POST(request({ name: "テスト", email, password: "password1" }));
 
     expect(response.status).toBe(400);
-    expect(await prisma.user.count({ where: { email } })).toBe(1);
+    expect(await prisma.principal.count({ where: { email } })).toBe(1);
   });
 
   it("項目不足とパスワード長は 400", async () => {

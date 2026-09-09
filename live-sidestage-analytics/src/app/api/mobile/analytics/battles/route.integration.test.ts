@@ -42,7 +42,7 @@ beforeAll(async () => {
   const room = await prisma.tiktokRoom.create({ data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: HOST_UID } });
   roomId = room.id;
 
-  const user = await prisma.user.create({ data: { email: `itest-mobile-battles-${Date.now()}@local.test` } });
+  const user = await prisma.principal.create({ data: { email: `itest-mobile-battles-${Date.now()}@local.test` } });
   principalId = user.id;
   await prisma.streamer.create({
     data: {
@@ -56,7 +56,7 @@ beforeAll(async () => {
   });
   token = signMobileToken({ principalId });
 
-  const noRoom = await prisma.user.create({ data: { email: `itest-mobile-battles-noroom-${Date.now()}@local.test` } });
+  const noRoom = await prisma.principal.create({ data: { email: `itest-mobile-battles-noroom-${Date.now()}@local.test` } });
   noRoomPrincipalId = noRoom.id;
   noRoomToken = signMobileToken({ principalId: noRoomPrincipalId });
 
@@ -88,7 +88,7 @@ beforeAll(async () => {
 
   // requireHistoryPlanのプラン拒否そのものを検証するための、room接続済み・
   // Subscription無し(=FREE)のユーザー。
-  const freeUser = await prisma.user.create({ data: { email: `itest-mobile-battles-free-${Date.now()}@local.test` } });
+  const freeUser = await prisma.principal.create({ data: { email: `itest-mobile-battles-free-${Date.now()}@local.test` } });
   freePrincipalId = freeUser.id;
   await prisma.streamer.create({
     data: {
@@ -106,9 +106,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await betaLock.release();
   await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: freePrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: freePrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades -> TiktokBattle
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: LISTENER_UID } }).catch(() => {});
   await prisma.$disconnect();

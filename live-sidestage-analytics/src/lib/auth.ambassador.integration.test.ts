@@ -26,7 +26,7 @@ const inviteIds: string[] = [];
 
 async function createUser(): Promise<{ id: string; email: string }> {
   const email = `${unique()}@example.test`;
-  const user = await prisma.user.create({ data: { email }, select: { id: true, email: true } });
+  const user = await prisma.principal.create({ data: { email }, select: { id: true, email: true } });
   principalIds.push(user.id);
   return { id: user.id, email: user.email! };
 }
@@ -35,7 +35,7 @@ afterEach(async () => {
   mockCookieValue = undefined;
   await prisma.ambassador.deleteMany({ where: { principalId: { in: principalIds } } });
   await prisma.ambassadorInvite.deleteMany({ where: { id: { in: inviteIds } } });
-  await prisma.user.deleteMany({ where: { id: { in: principalIds } } });
+  await prisma.principal.deleteMany({ where: { id: { in: principalIds } } });
   principalIds.length = 0;
   inviteIds.length = 0;
 });

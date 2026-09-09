@@ -48,7 +48,7 @@ function authedRequest(token: string, tiktokHandle: string) {
 
 async function cleanup() {
   await prisma.streamer.deleteMany({ where: { tiktokHandle: { startsWith: TID_PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(async () => {
@@ -59,7 +59,7 @@ afterAll(cleanup);
 
 describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
   it("ロック中は409 TIKTOK_ID_CHANGE_LOCKEDを返し、tiktokHandleは変わらない", async () => {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `${PREFIX}${Date.now()}@local.test`, name: `${PREFIX}user` },
     });
     const changedAt = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
@@ -87,7 +87,7 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
   });
 
   it("7日経過後の変更は許可され、古いverifiedはリセットされる", async () => {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `${PREFIX}${Date.now()}@local.test`, name: `${PREFIX}user2` },
     });
     const changedAt = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
@@ -113,7 +113,7 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
   });
 
   it("ロックが明けていても、実在確認で得たtiktokUidが登録済みと異なれば409 TIKTOK_UID_MISMATCHで拒否する", async () => {
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: `${PREFIX}${Date.now()}mm@local.test`, name: `${PREFIX}user3` },
     });
     const streamer = await prisma.streamer.create({
@@ -142,7 +142,7 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
 
   it("ADMIN_EMAILのユーザーは7日ロック中でも変更を許可し、tiktokHandleChangedAt更新・verifiedリセットは維持される", async () => {
     const changedAt = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1日前(通常ならロック中)
-    const user = await prisma.user.create({
+    const user = await prisma.principal.create({
       data: { email: ADMIN_EMAIL, name: `${PREFIX}admin` },
     });
     try {
@@ -168,7 +168,7 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
       expect(reloaded.verified).toBe(false);
     } finally {
       await prisma.streamer.deleteMany({ where: { principalId: user.id } });
-      await prisma.user.delete({ where: { id: user.id } });
+      await prisma.principal.delete({ where: { id: user.id } });
     }
   });
 });

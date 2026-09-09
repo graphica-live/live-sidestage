@@ -116,7 +116,7 @@ export async function resolveActiveMobileUser(req: NextRequest): Promise<{ princ
   const auth = resolveUserByMobileToken(req);
   if (!auth) return null;
 
-  const user = await prisma.user.findUnique({ where: { id: auth.principalId }, select: { id: true } });
+  const user = await prisma.principal.findUnique({ where: { id: auth.principalId }, select: { id: true } });
   if (!user) return null;
 
   return { principalId: auth.principalId };
@@ -167,7 +167,7 @@ export async function resolveMobileAnalyticsContext(
 // ---------------------------------------------------------------------------
 
 /// `prisma` そのものと `$transaction` のコールバック引数の両方を受けられるようにする。
-type RefreshTokenDb = Pick<typeof prisma, "refreshToken" | "user" | "refreshTokenReplay">;
+type RefreshTokenDb = Pick<typeof prisma, "refreshToken" | "principal" | "refreshTokenReplay">;
 
 function hashRefreshToken(rawToken: string): string {
   return crypto.createHash("sha256").update(rawToken).digest("hex");
@@ -321,7 +321,7 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
       if (!current) return { error: "INVALID_REFRESH_TOKEN" };
 
       // streamerId は **必ず現在のDB値**から解決する(トークンに焼かれた値を信用しない)。
-      const user = await tx.user.findUnique({
+      const user = await tx.principal.findUnique({
         where: { id: current.principalId },
         select: { id: true, streamer: { select: { id: true } } },
       });

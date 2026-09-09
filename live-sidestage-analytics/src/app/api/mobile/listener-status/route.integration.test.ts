@@ -53,7 +53,7 @@ beforeAll(async () => {
   });
   roomId = room.id;
 
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { email: `itest-mobile-listener-${Date.now()}@local.test` },
   });
   principalId = user.id;
@@ -74,14 +74,14 @@ beforeAll(async () => {
   claimlessToken = signMobileToken({ principalId });
 
   // Streamer が1件も無いユーザー（オンボーディング未完了）。
-  const noStreamer = await prisma.user.create({
+  const noStreamer = await prisma.principal.create({
     data: { email: `itest-mobile-listener-nostreamer-${Date.now()}@local.test` },
   });
   noStreamerPrincipalId = noStreamer.id;
   noStreamerToken = signMobileToken({ principalId: noStreamerPrincipalId });
 
   // Streamer はあるが部屋がまだ割り当たっていないユーザー。
-  const noRoom = await prisma.user.create({
+  const noRoom = await prisma.principal.create({
     data: { email: `itest-mobile-listener-noroom-${Date.now()}@local.test` },
   });
   noRoomPrincipalId = noRoom.id;
@@ -96,7 +96,7 @@ beforeAll(async () => {
   noRoomToken = signMobileToken({ principalId: noRoomPrincipalId, streamerId: noRoomStreamer.id });
 
   // BIO認証が済んでいない配信者。モバイルはBIO認証ゲート対象外なので弾かれないこと。
-  const unverified = await prisma.user.create({
+  const unverified = await prisma.principal.create({
     data: { email: `itest-mobile-listener-unverified-${Date.now()}@local.test` },
   });
   unverifiedPrincipalId = unverified.id;
@@ -116,10 +116,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: noStreamerPrincipalId } }).catch(() => {});
-  await prisma.user.delete({ where: { id: unverifiedPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: noStreamerPrincipalId } }).catch(() => {});
+  await prisma.principal.delete({ where: { id: unverifiedPrincipalId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {});
   await prisma.$disconnect();
 });

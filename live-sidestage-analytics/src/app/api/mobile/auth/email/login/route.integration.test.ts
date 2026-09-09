@@ -36,8 +36,8 @@ function registerRequest(body: Record<string, unknown>, ip: string) {
 }
 
 async function cleanup() {
-  await prisma.account.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
-  await prisma.user.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  await prisma.oAuthAccount.deleteMany({ where: { providerAccountId: { startsWith: PREFIX } } });
+  await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
 }
 
 beforeEach(cleanup);
@@ -58,7 +58,7 @@ describe("POST /api/mobile/auth/email/login", () => {
     // 全ログイン経路が mobileAuthResponseBody() 経由なので、ここで形を固定すれば足りる。
     expect(typeof body.refreshToken).toBe("string");
     // 登録時とログイン時にそれぞれ1本ずつ（同じ端末の別セッション扱い。互いに独立した family）。
-    expect(await prisma.refreshToken.count({ where: { user: { email } } })).toBe(2);
+    expect(await prisma.refreshToken.count({ where: { principal: { email } } })).toBe(2);
   });
 
   it("パスワードが誤っていれば401、メッセージは汎用", async () => {
@@ -84,7 +84,7 @@ describe("POST /api/mobile/auth/email/login", () => {
 
   it("emailプロバイダのAccountを持たない旧User(Account0件、password直挿し)は401で拒否する(High-2の核心)", async () => {
     const email = `${PREFIX}legacy@local.test`;
-    await prisma.user.create({
+    await prisma.principal.create({
       data: { email, name: `${PREFIX}legacy`, password: await bcrypt.hash("correct-horse", 12) },
     });
 
@@ -97,8 +97,8 @@ describe("POST /api/mobile/auth/email/login", () => {
 
   it("Googleアカウントとして登録済みのメールには専用メッセージを返す", async () => {
     const email = `${PREFIX}google@local.test`;
-    const user = await prisma.user.create({ data: { email, name: `${PREFIX}google-user` } });
-    await prisma.account.create({
+    const user = await prisma.principal.create({ data: { email, name: `${PREFIX}google-user` } });
+    await prisma.oAuthAccount.create({
       // Account.userId は NextAuth の PrismaAdapter が固定する列名なので principalId へ改名しない。
       data: { userId: user.id, type: "oauth", provider: "google", providerAccountId: `${PREFIX}google-sub` },
     });

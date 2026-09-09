@@ -33,7 +33,7 @@ const SELF_HOST = {
 };
 
 async function main() {
-  const user = await prisma.user.upsert({
+  const user = await prisma.principal.upsert({
     where: { email: DEV_EMAIL },
     update: {},
     create: { email: DEV_EMAIL, name: "Dev Local" },

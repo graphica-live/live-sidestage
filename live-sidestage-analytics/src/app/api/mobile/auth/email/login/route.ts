@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   // 所有権未確認のハッシュ)を構造的にログイン対象から除外する。旧行の唯一の出口は
   // 従来どおりGoogleへの移行経路のまま(register側もAccountの有無を問わず409で
   // 旧行への相乗りを防いでいる。詳細は ../register/route.ts のコメント参照)。
-  const account = await prisma.account.findUnique({
+  const account = await prisma.oAuthAccount.findUnique({
     where: { provider_providerAccountId: { provider: "email", providerAccountId: email } },
     select: {
       user: {
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     // ここで account 自体(email Accountの有無)ではなく、別途 provider を見て
     // 判定するのは、旧register由来やdev-login由来の password あり/なし行を
     // 誤って「Googleアカウント」と案内しないため。
-    const existing = await prisma.user.findUnique({
+    const existing = await prisma.principal.findUnique({
       where: { email },
       select: { accounts: { select: { provider: true } } },
     });

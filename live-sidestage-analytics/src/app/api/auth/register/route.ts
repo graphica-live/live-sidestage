@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.principal.findUnique({ where: { email } });
   if (existing) {
     return NextResponse.json(
       { error: "このメールアドレスは既に登録されています" },
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
-  const user = await prisma.user.create({
+  const user = await prisma.principal.create({
     data: { name, email, password: hashedPassword },
   });
 
