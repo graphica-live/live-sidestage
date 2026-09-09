@@ -74,6 +74,10 @@ export const authOptions: NextAuthOptions = {
       // 旧パスワードユーザー(Account を持たない)の移行のためだけに有効にしている。
       // 危険な側は emailLinkRestrictedAdapter が閉じる。
       allowDangerousEmailAccountLinking: true,
+      // ブラウザに複数Googleアカウントがログイン済みだと、Google側の暗黙アカウント切替
+      // (InteractiveLogin?authuser=1 経由)が本番のeventsサブドメインで実際に500を返した
+      // (2026-09-10)。select_accountで明示選択の画面へ直接飛ばし、この経路自体を避ける。
+      authorization: { params: { prompt: "select_account" } },
     }),
     ...(process.env.ENABLE_DEV_LOGIN === "1" ? [devLoginProvider] : []),
   ],

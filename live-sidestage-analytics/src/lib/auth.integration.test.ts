@@ -51,3 +51,16 @@ describe("authOptions.callbacks.jwt", () => {
     expect(token).toBeNull();
   });
 });
+
+describe("authOptions.providers", () => {
+  it("GoogleProviderはprompt=select_accountを要求する(複数アカウント時のGoogle側InteractiveLogin 500回避)", () => {
+    // next-authのGoogleProvider()はデフォルトのauthorization(scopeのみ)をトップレベルに置き、
+    // 呼び出し側が渡したoptions(clientId/authorization等)は`options`プロパティにそのまま保持する。
+    // 実際の認可URL生成時にnext-auth内部(core/lib/providers.js parseProviders)がこの両者をマージする。
+    // トップレベルのauthorizationを見ると呼び出し側の設定を検証したことにならない(2026-09-10、Codex指摘)。
+    const google = authOptions.providers.find((p) => p.id === "google");
+    const userOptions = (google as { options?: { authorization?: { params?: { prompt?: string } } } } | undefined)
+      ?.options;
+    expect(userOptions?.authorization?.params?.prompt).toBe("select_account");
+  });
+});
