@@ -2,13 +2,13 @@
 project: live-sidestage-analytics
 feature: Overlay Contribution Settings
 last_updated: 2026-09-10
-last_risk: HIGH
-last_reviewers: DeepSeek, Codex
+last_risk: CRITICAL
+last_reviewers: DeepSeek, Codex, Gemini (Batch04列削除)
 ---
 
 # テストベースライン: Overlay Contribution Settings
 
-オーバーレイ貢献リスト設定。Streamer モデルから分離した独立テーブル `OverlayContributionSettings`。設定 UI (`/overlays`、API `/api/streamer/overlay-settings`)は Batch03 で本テーブル経由の読み書きへ切替済み。
+オーバーレイ貢献リスト設定。Streamer モデルから分離した独立テーブル `OverlayContributionSettings`。設定 UI (`/overlays`、API `/api/streamer/overlay-settings`)は Batch03 で本テーブル経由の読み書きへ切替済み。**Batch04（2026-09-10）で `Streamer` 側の旧9列（`overlayDisplayReference`/`overlayDisplayDate`/`overlayThreshold`/`overlayGoalCount`/`overlayVisibleRows`/`overlayNameMaxWidth`/`overlayAlign`/`overlayHeadingBackground`/`overlayDisplaySpeed`）を削除し、`OverlayContributionSettings` だけが表示設定の正本になった。** `overlayToken`（全overlay種類共通の認証credential）は無変更のままStreamerに残る。列削除自体は実装詳細でありユーザー可視の振る舞い変化はないため、新規テストケースの追加はなし（Batch03時点のケースがそのまま有効）。
 
 ## テストケース
 
@@ -34,9 +34,19 @@ last_reviewers: DeepSeek, Codex
 このプロジェクトで回すコマンド（TC 番号を振らない）。
 
 - `npm run typecheck`: PASS
+- `npm run test:unit`: PASS (2026-09-10 Batch04列削除後、110ファイル/1520テスト全PASS)
+- `npx dotenv -e .env.local.test -- vitest run src/lib/overlay/contribution.server.integration.test.ts`: PASS (2026-09-10 Batch04列削除後、2 tests)
+- `npx dotenv -e .env.local.test -- vitest run src/app/api/streamer/overlay-settings/route.integration.test.ts`: PASS (2026-09-10 Batch04列削除後、8 tests)
 
 ## Out of Scope
 
 - 本番 DB への反映: 本番は `prisma db push` を web 起動時に実行するため、`prisma/migrations/` 配下のファイルは適用されない（履歴ドキュメントのみ）。mainマージ・デプロイ後に本番へ反映される
 - 件数不一致(異常終了パス)の再現テスト: 手動シミュレーションが煩雑で実務上の価値が低いためスキップ(2026-09-10 DeepSeek/Codexレビューで判断)
 - 完全backfill済み状態でのdry-run確認: 任意。必須ではないため未実施(2026-09-10 DeepSeek/Codexレビューで判断)
+
+## Batch04(列削除)レビュー記録 (2026-09-10)
+
+DeepSeek/Gemini: NO ISSUES(0 findings)。Codex-terra: 2件指摘。
+
+- **CRITICAL(Codexのみ)**: migration.sqlがDROP COLUMNのみでbackfill完了検証を含まない → 本番DBへ読み取り専用クエリで直接検証し、`Streamer`と`overlay_contribution_settings`の件数一致・欠損0件・非デフォルト値を持つ未backfill行0件を実測確認した(実行時点: streamer_count=1, settings_count=1, missing_settings_row=0, data_loss_risk_count=0)。migration.sql自体に検証ロジックを埋め込む設計変更はスコープ外と判断し、実データ確認で安全性を担保
+- **HIGH(Codexのみ)**: `scripts/backfill-overlay-contribution-settings.ts`が列削除後は実行不能になる → 意図した仕様(一回限りのbackfillは完了・検証済み)。スクリプト冒頭に「Batch04完了により死亡」コメントを追記して誤実行を防止(削除はせず`scripts/migrate-tiktok-userid-reset.ts`と同じ「履歴として残す死んだスクリプト」の扱いに統一)

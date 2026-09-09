@@ -1,3 +1,9 @@
+// **2026-09-10 Batch04完了により死亡(実行不能)。** Streamer側の旧9列(overlayThreshold等)を
+// `prisma/migrations/20260910040000_drop_streamer_overlay_columns` で削除済みのため、以下のSQLが
+// 参照する列は本番にもう存在しない。本番backfillは完了・全件検証済み(Streamer/overlay_contribution_settings
+// の件数一致・欠損0件を確認)につき再実行の必要はない。削除せず履歴として残す
+// (`scripts/migrate-tiktok-userid-reset.ts` と同じ扱い)。
+//
 // Streamer に残っている overlay 貢献リスト表示設定9列(overlayDisplayReference等)を、
 // 新テーブル OverlayContributionSettings へコピーする一回限りのbackfillスクリプト。
 //
