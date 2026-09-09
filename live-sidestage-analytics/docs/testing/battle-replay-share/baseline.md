@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-09
-last_risk: HIGH
-last_reviewers: [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 管理者用シェアボタン解禁時
+last_updated: 2026-09-10
+last_risk: LOW
+last_reviewers: [Code Mode]DeepSeek(high)、2026-09-10 共有ボタンアイコン化・位置変更・再生ボタン円形化
 ---
 
 # バトル再生の共有リンク
@@ -41,8 +41,9 @@ last_reviewers: [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 管�
 
 | # | ケース | 対象 | 種別 | 前提 | 期待結果 | 実行方法 | 結果 | 備考 |
 | - | --- | --- | --- | --- | --- | --- | --- | --- |
-| TC-BRS-001 | 貢献者一覧モードのシェアボタンは、その表示状態を指す共有URLを発行してクリップボードへ入れる | `ShareButton` | 正常 | 確定済みバトルのモーダル（一覧モード） | クリップボードが `<origin>/b/<48桁トークン>?v=list`。ボタンの文言が「リンクをコピーした」へ変わる | `[pw]` | PASS（`http://localhost:3200/b/1c031a3d…a915?v=list`） | オリジンはサーバー側の `canonicalOrigin("analytics")`。`window.location.origin` を使うと別ホスト発行でずれる |
-| TC-BRS-002 | 再生モードのシェアボタンは再生状態を指す共有URLを発行する | `ShareButton` | 正常 | 同じバトルを再生モードにしてシェア | クリップボードが同じトークンで `?v=replay`。**トークンは一覧モードのときと同一**（表示状態はクエリで表す） | `[pw]` | PASS（トークン一致・`?v=replay`） | 表示状態をトークンへ埋めると同一バトルで2トークンになり管理が壊れる |
+| TC-BRS-001 | 貢献者一覧モードのシェアボタンは、その表示状態を指す共有URLを発行してクリップボードへ入れる | `ShareButton` | 正常 | 確定済みバトルのモーダル（一覧モード） | クリップボードが `<origin>/b/<48桁トークン>?v=list`。ボタンはモーダル右上(閉じるボタンのすぐ左)に矢印アイコン(SVG)のみで文字ラベル無しで表示され、コピー成功後も見た目は変わらず `aria-label`/`title` が「コピーした」に変わる | `[pw]` | PASS(2026-09-10、`http://127.0.0.1:3200/b/fab90486…f60fa5?v=list`、share response 200) | オリジンはサーバー側の `canonicalOrigin("analytics")`。`window.location.origin` を使うと別ホスト発行でずれる |
+| TC-BRS-002 | 再生モードのシェアボタンは再生状態を指す共有URLを発行する | `ShareButton` | 正常 | 同じバトルを再生モードにしてシェア | クリップボードが同じトークンで `?v=replay`。**トークンは一覧モードのときと同一**（表示状態はクエリで表す）。ボタンは一覧モードと同じモーダル右上の位置に固定表示される（list/replay 共通コンテナ） | `[pw]` | PASS(2026-09-10、モーダル右上に矢印アイコンのみ表示、41-replay-mode-modal.pngで確認) | 表示状態をトークンへ埋めると同一バトルで2トークンになり管理が壊れる |
+| TC-BRS-021 | 一覧モードでコピー済み(`copied`)状態にした後、再生モードへ切り替えると共有ボタンの状態がリセットされる | `ShareButton` / `BattleDetailModal` | 回帰/状態遷移 | 一覧モードでシェアして `copied` 状態にしてから「バトルを再生」で再生モードへ切替 | 再生モードの共有ボタンは `idle` 状態（`aria-label`/`title` が「共有リンクをコピー」）で表示され、`copied` の見た目を引き継がない | `[pw]` | PASS(2026-09-10、replay mode idle share button count 1) | list/replay 両モードで同一位置にボタンを固定表示する構造にしたため、`ShareButton` に `key={mode}` を付けて mode 切替のたびに再マウントし内部 state をリセットする(code-review MEDIUM finding対応) |
 | TC-BRS-003 | 共有URLは未ログインの第三者がログインを求められずに開ける | `/b/[token]` / `middleware` | 正常/認可 | 発行済みURLを**別の匿名コンテキスト**で開く | `/login` へリダイレクトされず、`/b/<token>` のまま再生画面が出る | `[anon]` | PASS（`ANON_REPLAY_PATH /b/…` `?v=replay`） | 除外 matcher に `b(?:/|$)` が無いとここで落ちる |
 | TC-BRS-004 | 公開ページのタブ切替は表示中のモードをURLへ反映する | `PublicBattleClient` | 状態遷移 | 再生タブで開いた状態から「貢献者一覧」を押す | URLの検索文字列が `?v=list` へ変わる。ページ全体の再読み込みは起きない | `[anon]` | PASS（`AFTER_TAB ?v=list`） | `useSearchParams` は使わない（overlay で本番だけ壊れた経緯）。書き戻しは `window.history.replaceState` |
 | TC-BRS-005 | `?v=list` を直接開くと貢献者一覧タブが選択済みで表示される | `/b/[token]` | 正常/境界 | `?v=list` のURLへ直接アクセス | 「貢献者一覧」タブが選択状態（`aria-pressed="true"`）。`?v` 未指定・不明値は再生タブ | `[anon]` | PASS（`DIRECT_LIST_ACTIVE true`） | 受け口はサーバーコンポーネントの `searchParams` |
@@ -60,14 +61,14 @@ last_reviewers: [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 管�
 | TC-BRS-016 | mobile向けshare routeは認証・所有者境界を守る | 同上route | 異常/認可/境界 | (a)トークン無し (b)room未接続JWT (c)別roomにのみ存在するbattleId (d)存在しないbattleId | (a)401でtoken発行なし (b)(c)(d)いずれも404 | 同上コマンド | PASS(2026-09-08) | (c)は所有者境界(Codex Design Review medium effortの指摘で追加) |
 | TC-BRS-017 | mobile向けshare routeは既発行tokenを再利用する | 同上route | 回帰 | 同じbattleIdへ2回POST | 2回目も同じURLを返す(新規token発行しない) | 同上コマンド | PASS(2026-09-08) | Web版と同じ`ensureShareToken`の冪等性 |
 | TC-BRS-019 | 公開ページヘッダーのコピーボタンはシェアアイコンで表示され、コピー成功でチェックアイコンへ変わる | `PublicBattleClient` の `CopyLinkButton` | 正常 | `/b/[token]` を開いてボタンを押す | 押す前は共有(share)アイコンかつ `aria-label="リンクをコピー"`。押すとクリップボードへURLが入り、アイコンがチェックへ変わり `aria-label="コピーした"` に。2秒後に共有アイコンへ戻る | `[anon]` | PASS(2026-09-08) | クリップボード不可時のテキスト入力フォールバックは TC-BRS-012 と共通ロジック |
-| TC-BRS-020 | 公開ページのモード切替タブは、配信者ページの再生ボタンと同じ見た目・文言を使う(シェアボタンの有無だけが差) | `PublicBattleClient` の `ModeTab` | 正常/回帰 | `/b/[token]` を開き、選択中/非選択のタブそれぞれを見る | 「バトルを再生」タブは選択中のとき配信者ページの再生ボタンと同一の見た目(accent色・大きめパディング・太字・▶マーク付き文言)になる。非選択タブは枠線+ミュートテキストの小さいボタン。選択の切替はこれまでどおりクリックで即時反映され、URLの `?v=` も連動する | `[anon]` | PASS(2026-09-08) | ユーザー指示「公開ページと自分のページでシェアボタンの有無以外で差を出さないで」への対応。配信者ページ(`BattleDetailModal`)の再生ボタンは常時タブ形式ではなく片方向ボタンのため、タブ構造自体は据え置き見た目だけ合わせる方針(ユーザー確認済み) |
+| TC-BRS-020 | 公開ページのモード切替タブは、配信者ページの再生ボタンと同じ見た目を使う(シェアボタンの有無だけが差) | `PublicBattleClient` の `ReplayTab` | 正常/回帰 | `/b/[token]` を開き、選択中/非選択のタブそれぞれを見る | 「バトルを再生」タブは選択中のとき配信者ページの再生ボタンと同じ円形+大きい▶アイコンになる(`aria-label="バトルを再生"`)。非選択タブは枠線+ミュートテキストの小さいボタン(`▶ バトルを再生`の文言)。選択の切替はこれまでどおりクリックで即時反映され、URLの `?v=` も連動する | `[anon]` | PASS(2026-09-10、42/43番スクショで非選択・選択中両状態を実機確認) | ユーザー指示「公開ページと自分のページでシェアボタンの有無以外で差を出さないで」への対応。2026-09-10、配信者ページの再生ボタンが円形+大アイコン+下ラベルへ変更されたのに合わせ、公開ページの選択中タブも同じ円形+アイコンへ追従(ユーザー確認済み)。配信者ページは常時タブ形式ではなく片方向ボタン+下ラベルのため、タブ構造自体(非選択タブの見た目・ラベル配置)は据え置き |
 
 ## Quality Gate
 
-- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-09、管理者用シェアボタン解禁時に再実行)
-- `npm run test:unit` → 1485 tests PASS(2026-09-09)
-- `npm run test:integration` → 894 tests PASS(2026-09-09、admin share route の integration test 含む)
-- `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ NOT RUN(2026-09-09、typecheck + 実ブラウザ確認で代替。前回2026-09-08はPASS)
+- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-10、共有ボタンアイコン化・位置変更・再生ボタン円形化)
+- `npm run test:unit` → 1520 tests PASS(2026-09-10)
+- `npm run test:integration` → 919 tests PASS(2026-09-10)
+- `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ NOT RUN(2026-09-10、typecheck + 実ブラウザ確認で代替。前回2026-09-09はNOT RUN、2026-09-08はPASS)
 
 ## Out of Scope
 

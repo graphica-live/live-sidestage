@@ -58,10 +58,8 @@ export function PublicBattleClient({
           <CopyLinkButton />
         </div>
 
-        <div className="flex gap-1 border-b border-row-border px-[14px] py-2">
-          <ModeTab active={mode === "replay"} onClick={() => switchMode("replay")}>
-            ▶ バトルを再生
-          </ModeTab>
+        <div className="flex items-center gap-1.5 border-b border-row-border px-[14px] py-2">
+          <ReplayTab active={mode === "replay"} onClick={() => switchMode("replay")} />
           <ModeTab active={mode === "list"} onClick={() => switchMode("list")}>
             貢献者一覧
           </ModeTab>
@@ -99,6 +97,45 @@ export function PublicBattleClient({
         </a>
       </p>
     </main>
+  );
+}
+
+/**
+ * 「バトルを再生」タブだけは配信者ページの再生ボタンと見た目を合わせる(円形+大アイコン)。
+ * ユーザー指示「シェアボタンの有無以外で差を出さない」を、配信者側のボタン形状変更に追従させたもの。
+ * 非選択時は他タブと同じ小さい枠線ボタンのまま(選択中だけ強調する構造は維持)。
+ */
+function ReplayTab({ active, onClick }: { active: boolean; onClick: () => void }) {
+  if (!active) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed="false"
+        className="rounded-field border border-border px-2 py-1 text-[11px] text-muted transition-colors hover:text-strong"
+      >
+        ▶ バトルを再生
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed="true"
+      aria-label="バトルを再生"
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-on-accent transition-colors hover:bg-brand-hover"
+    >
+      <PlayIcon />
+    </button>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={22} height={22} fill="currentColor" aria-hidden className="translate-x-0.5">
+      <path d="M8 5v14l11-7z" />
+    </svg>
   );
 }
 
