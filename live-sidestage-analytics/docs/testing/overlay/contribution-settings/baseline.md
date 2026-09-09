@@ -8,7 +8,7 @@ last_reviewers: DeepSeek, Codex
 
 # テストベースライン: Overlay Contribution Settings
 
-オーバーレイ貢献リスト設定。Streamer モデルから分離した独立テーブル `OverlayContributionSettings`。設定 UI がないため固定デフォルト値で運用。将来の UI 追加に備えてテーブル化。
+オーバーレイ貢献リスト設定。Streamer モデルから分離した独立テーブル `OverlayContributionSettings`。設定 UI (`/overlays`、API `/api/streamer/overlay-settings`)は Batch03 で本テーブル経由の読み書きへ切替済み。
 
 ## テストケース
 
@@ -21,6 +21,13 @@ last_reviewers: DeepSeek, Codex
 | TC-OVCS-005 | backfillが冪等(再実行で重複・上書きなし) | scripts/backfill-overlay-contribution-settings.ts | 正常 | TC-OVCS-004実行済みの状態で再実行 | 「未backfillの行はありません」でスキップ、件数一致 | 同スクリプトを再実行 | PASS | ON CONFLICT DO NOTHINGにより冪等であることを確認 |
 | TC-OVCS-006 | デフォルト値のStreamerも正しくbackfillされる(混在データ) | scripts/backfill-overlay-contribution-settings.ts | 正常 | カスタム済みStreamer1件+デフォルト値のStreamer1件(新規作成) | 新規分のみinsertされ、既存カスタム行は変更されない。件数一致 | dry-run→実行→`SELECT * FROM overlay_contribution_settings` | PASS | 2行とも正しい値。カスタム行は不変 |
 | TC-OVCS-007 | overlayDisplayDateがNULLのStreamerもNULLとして正しくbackfillされる | scripts/backfill-overlay-contribution-settings.ts | 境界 | `overlayDisplayReference`(既定"today")のまま`overlayDisplayDate`を一度も設定していないStreamer1件(新規作成、overlayDisplayDate=NULL) | overlay_contribution_settingsの`displayDate`列もNULLとしてbackfillされる(件数一致、例外なし) | 一時セットアップスクリプトでStreamerを作成→本番相当の実行(dry-runなし)→`SELECT "displayDate" FROM overlay_contribution_settings WHERE "streamerId"=...`で確認→後片付け | PASS | `streamer.overlayDisplayDate=null` → `overlay_contribution_settings.displayDate=null` を実測確認。検証用の一時スクリプトはcommit対象外(検証後に削除済み) |
+| TC-OVCS-008 | 設定行が無い配信者のGETがデフォルト値を返す | src/app/api/streamer/overlay-settings/route.ts (GET) | 正常/境界 | OverlayContributionSettings行が無いStreamer | threshold=1000/goalCount=5/visibleRows=5/nameMaxWidth=140/align=left/headingBackground=clear/displaySpeed=3、displayDate・isTodayが定義される | `npx dotenv -e .env.local.test -- vitest run src/app/api/streamer/overlay-settings/route.integration.test.ts` | PASS | |
+| TC-OVCS-009 | カスタム値ありの配信者のGETが正しい値を返す | src/app/api/streamer/overlay-settings/route.ts (GET) | 正常 | threshold=500/goalCount=10/visibleRows=8/nameMaxWidth=200/align=right/headingBackground=sakura-pink/displaySpeed=5/displayReference=fixed/displayDate=2026-09-01 | GETが全カラムをそのまま返す。isToday=false | 同上 | PASS | |
+| TC-OVCS-010 | PATCH応答がOverlaySettingsPayload契約を満たす(overlayToken/isToday/正規化値を含む) | src/app/api/streamer/overlay-settings/route.ts (PATCH) | 回帰 | 設定行なしの配信者へ`{threshold:600,goalCount:12}`をPATCH | 応答にoverlayToken(string)・isToday・align=left・headingBackground=clear・displaySpeed=3が含まれる(内部payload直返しではない)。DBにも反映される | 同上 | PASS | 2026-09-10 code-review DeepSeek HIGH finding修正の固定。当初は`contributionSettingsServer.patch()`の内部payloadを直接返しoverlayToken/isToday欠落・未正規化値だった |
+| TC-OVCS-011 | PATCHで既存設定を更新できる | src/app/api/streamer/overlay-settings/route.ts (PATCH) | 正常 | 既存threshold=400の配信者へ`{threshold:700}`をPATCH | 応答・DBともthreshold=700 | 同上 | PASS | |
+| TC-OVCS-012 | PATCH nav=today/prevで日付基準が正しく遷移する | src/app/api/streamer/overlay-settings/route.ts (PATCH) | 正常 | displayReference=fixed,displayDate=2026-09-01の状態で`{nav:"today"}`、続けてdisplayReference=today状態で`{nav:"prev"}` | today: displayReference=today・displayDate=NULLへ。prev: 前日の日付キーへ遷移しdisplayReference=fixed | 同上 | PASS | |
+| TC-OVCS-013 | 不正な閾値のPATCHは拒否される | src/app/api/streamer/overlay-settings/route.ts (PATCH) | 異常 | `{threshold:150}`(100の倍数でない) | HTTP 400、エラーメッセージ返却、DB変更なし | 同上 | PASS | |
+| TC-OVCS-014 | 旧Streamer列時代に上限が無かった数値項目は、cutover後も広い値を受理する(後方互換性) | src/app/api/streamer/overlay-settings/route.ts (PATCH) | 境界/回帰 | `{threshold:5000000,goalCount:2000000,visibleRows:500,nameMaxWidth:5000}` | HTTP 200、指定値がそのまま反映される(100万等の恣意的な上限で拒否されない) | `npx dotenv -e .env.local.test -- vitest run src/app/api/streamer/overlay-settings/route.integration.test.ts` | PASS | 2026-09-10 Codex MEDIUM finding修正の固定。当初`clampInt(..,1_000_000)`等の新規上限が旧実装(上限なし)からの後方互換性を破壊していた |
 
 ## Quality Gate
 

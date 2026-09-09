@@ -210,6 +210,96 @@ const likeContributionSettingsServer: OverlaySettingsServer<Record<string, unkno
   },
 };
 
+// ── contribution ───────────────────────────────────────────────────────────
+const contributionSettingsServer: OverlaySettingsServer<Record<string, unknown>> = {
+  async load(streamerId) {
+    const s = await prisma.overlayContributionSettings.findUnique({ where: { streamerId } });
+    return {
+      displayReference: s?.displayReference ?? "today",
+      displayDate: s?.displayDate ?? null,
+      threshold: s?.threshold ?? 1000,
+      goalCount: s?.goalCount ?? 5,
+      visibleRows: s?.visibleRows ?? 5,
+      nameMaxWidth: s?.nameMaxWidth ?? 140,
+      align: s?.align ?? "left",
+      headingBackground: s?.headingBackground ?? "clear",
+      displaySpeed: s?.displaySpeed ?? 3,
+    };
+  },
+  async patch(streamerId, body) {
+    const data: Record<string, unknown> = {};
+
+    if (body.displayReference !== undefined) {
+      if (body.displayReference !== "today" && body.displayReference !== "fixed") {
+        return { ok: false, error: "表示基準が不正です。" };
+      }
+      data.displayReference = body.displayReference;
+    }
+
+    if (body.displayDate !== undefined) {
+      if (body.displayDate !== null && typeof body.displayDate !== "string") {
+        return { ok: false, error: "表示日が不正です。" };
+      }
+      data.displayDate = body.displayDate;
+    }
+
+    // 上限はPostgresのInt32範囲のみ(cutover前のStreamer列直書き実装は上限を課していなかった。
+    // ここで新たな上限を追加すると、既存クライアントが送っていた値が理由なく400になる)。
+    const INT32_MAX = 2_147_483_647;
+
+    if (body.threshold !== undefined) {
+      const v = clampInt(body.threshold, 100, INT32_MAX);
+      if (v === null || v % 100 !== 0) return { ok: false, error: "閾値は100以上100の倍数で指定してください。" };
+      data.threshold = v;
+    }
+
+    if (body.goalCount !== undefined) {
+      const v = clampInt(body.goalCount, 0, INT32_MAX);
+      if (v === null) return { ok: false, error: "目標人数は0以上の整数で指定してください。" };
+      data.goalCount = v;
+    }
+
+    if (body.visibleRows !== undefined) {
+      const v = clampInt(body.visibleRows, 1, INT32_MAX);
+      if (v === null) return { ok: false, error: "表示人数は1以上の整数で指定してください。" };
+      data.visibleRows = v;
+    }
+
+    if (body.nameMaxWidth !== undefined) {
+      const v = clampInt(body.nameMaxWidth, 40, INT32_MAX);
+      if (v === null) return { ok: false, error: "名前の最大幅は40px以上の整数で指定してください。" };
+      data.nameMaxWidth = v;
+    }
+
+    if (body.align !== undefined) {
+      if (body.align !== "left" && body.align !== "right") {
+        return { ok: false, error: "整列方向はleftまたはrightで指定してください。" };
+      }
+      data.align = body.align;
+    }
+
+    if (body.headingBackground !== undefined) {
+      if (body.headingBackground !== "clear" && body.headingBackground !== "crystal-blue" && body.headingBackground !== "sakura-pink") {
+        return { ok: false, error: "見出し背景はclear、crystal-blue、sakura-pinkのいずれかで指定してください。" };
+      }
+      data.headingBackground = body.headingBackground;
+    }
+
+    if (body.displaySpeed !== undefined) {
+      const v = clampInt(body.displaySpeed, 1, 5);
+      if (v === null) return { ok: false, error: "表示速度は1〜5の整数で指定してください。" };
+      data.displaySpeed = v;
+    }
+
+    await prisma.overlayContributionSettings.upsert({
+      where: { streamerId },
+      create: { streamerId, ...data },
+      update: data,
+    });
+    return { ok: true, payload: await contributionSettingsServer.load(streamerId) };
+  },
+};
+
 // ── timer ──────────────────────────────────────────────────────────────────
 const MAX_GIFT_RULES = 50;
 
@@ -339,3 +429,5 @@ export const OVERLAY_SETTINGS_SERVER: Record<Exclude<OverlayKind, "contribution"
   "tap-list": tapListSettingsServer,
   timer: timerSettingsServer,
 };
+
+export { contributionSettingsServer };

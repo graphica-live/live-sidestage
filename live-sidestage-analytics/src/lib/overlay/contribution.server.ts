@@ -26,21 +26,16 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     where: { id: streamerId },
     select: {
       roomId: true,
-      overlayDisplayReference: true,
-      overlayDisplayDate: true,
-      overlayThreshold: true,
-      overlayGoalCount: true,
-      overlayVisibleRows: true,
-      overlayNameMaxWidth: true,
-      overlayAlign: true,
-      overlayHeadingBackground: true,
-      overlayDisplaySpeed: true,
+      overlayContributionSettings: true,
     },
   });
 
   if (!streamer || !streamer.roomId) return null;
 
-  const dayKey = resolveOverlayDayKey(streamer);
+  const settings = streamer.overlayContributionSettings;
+  const displayReference = settings?.displayReference ?? "today";
+  const displayDate = settings?.displayDate ?? null;
+  const dayKey = resolveOverlayDayKey({ overlayDisplayReference: displayReference, overlayDisplayDate: displayDate });
 
   // 「貢献しきい値到達順」で並べるため、集計済みの合計ではなくギフト1件ずつを時系列で
   // 積み上げ、各ユーザーが初めて閾値を超えた瞬間(receivedAt)を qualifiedAt として記録する。
@@ -67,7 +62,8 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
     tally.nickname = gift.nickname;
     tally.profileImageUrl = gift.profileImageUrl;
     tally.total += gift.totalDiamonds;
-    if (tally.qualifiedAt === null && tally.total >= streamer.overlayThreshold) {
+    const threshold = settings?.threshold ?? 1000;
+    if (tally.qualifiedAt === null && tally.total >= threshold) {
       tally.qualifiedAt = gift.receivedAt;
     }
   }
@@ -86,13 +82,13 @@ export async function buildOverlaySnapshot(streamerId: string): Promise<OverlayS
   return {
     dayKey,
     isToday: dayKey === jstDateKey(),
-    threshold: streamer.overlayThreshold,
-    goalCount: streamer.overlayGoalCount,
-    visibleRows: streamer.overlayVisibleRows,
-    nameMaxWidth: streamer.overlayNameMaxWidth,
-    align: normalizeOverlayAlign(streamer.overlayAlign),
-    headingBackground: normalizeOverlayHeadingBackground(streamer.overlayHeadingBackground),
-    displaySpeed: clampOverlayDisplaySpeed(streamer.overlayDisplaySpeed),
+    threshold: settings?.threshold ?? 1000,
+    goalCount: settings?.goalCount ?? 5,
+    visibleRows: settings?.visibleRows ?? 5,
+    nameMaxWidth: settings?.nameMaxWidth ?? 140,
+    align: normalizeOverlayAlign(settings?.align ?? "left"),
+    headingBackground: normalizeOverlayHeadingBackground(settings?.headingBackground ?? "clear"),
+    displaySpeed: clampOverlayDisplaySpeed(settings?.displaySpeed ?? 3),
     qualifiedCount: contributors.length,
     contributors,
   };
