@@ -45,6 +45,10 @@ export const agencyAuthOptions: NextAuthOptions = {
       id: AGENCY_GOOGLE_PROVIDER_ID,
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // ブラウザに複数Googleアカウントがログイン済みだと、Google側の暗黙アカウント切替
+      // (InteractiveLogin?authuser=N 経由)が本番で500を返す(2026-09-10)。配信者側
+      // src/lib/auth.ts と同じく select_account で明示選択の画面へ直接飛ばし、この経路自体を避ける。
+      authorization: { params: { prompt: "select_account" } },
     }),
     ...(process.env.ENABLE_DEV_LOGIN === "1" ? [devLoginProvider] : []),
   ],

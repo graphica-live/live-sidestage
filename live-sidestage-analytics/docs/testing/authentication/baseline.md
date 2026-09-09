@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: authentication
 last_updated: 2026-09-10
 last_risk: HIGH
-last_reviewers: DeepSeek(code-review, NO ISSUES / TestCase review, NO ISSUES) / Codex-terra(code-review, NO ISSUES / TestCase review, 1 finding、対応済み)
+last_reviewers: DeepSeek(code-review + TestCase review 同時実施, NO ISSUES / SUFFICIENT) / Codex-terra(code-review + TestCase review 同時実施, NO ISSUES / SUFFICIENT)
 ---
 
 # テストベースライン: authentication
@@ -32,6 +32,7 @@ rename前後で振る舞いが変わらないことを保証する（実装詳�
 | TC-AUTH-105 | Accountを持たない旧Principal（メール/パスワード登録由来）へはメール一致でリンクする | メール一致リンク制限 | 正常/移行 | OAuthAccount 0件の旧Principal + 同じメールでGoogleログイン | 既存Principalへリンクされる | `npx dotenv -e .env.local.test -- vitest run src/app/api/mobile/auth/google/email-link-restriction.integration.test.ts` | PASS | 5a3e97a以前の旧ユーザー移行経路 |
 | TC-AUTH-106 | Accountを持つ現役Principalへはメール一致でリンクしない | メール一致リンク制限 | 異常/セキュリティ | OAuthAccountを持つPrincipal + 同じメールで別プロバイダログイン | 409または新規Principal（乗っ取り防止） | 同上 | PASS | 後から同じメールを入手した第三者による乗っ取り防止 |
 | TC-AUTH-004 | GoogleProviderはprompt=select_accountを要求する | `authOptions.providers` | 正常/回帰 | 静的設定確認 | `google.options.authorization.params.prompt === "select_account"`(next-authが最終的にマージする側の値。トップレベルの`authorization`はデフォルトのscopeのみで呼び出し側の設定を反映しない) | `npx dotenv -e .env.local.test -- vitest run src/lib/auth.integration.test.ts -t "GoogleProvider"` | PASS | 本番でブラウザに複数Googleアカウントがログイン済みの状態からアカウント切替すると、Google側InteractiveLoginが500を返す事象が実際に発生した(2026-09-10)。select_accountで暗黙切替を経由させず明示選択に固定し回避する。Google側のInteractiveLogin自体はこちらのE2Eで再現・検証できないため、設定値の存在を回帰的に確認する。初回実装は誤ってトップレベル`authorization`を検証しfalse negativeだった(Codex-terra TestCase reviewで検出、修正済み) |
+| TC-AUTH-005 | agency側GoogleProvider(`agency-google`)もprompt=select_accountを要求する | `agencyAuthOptions.providers` (`src/lib/agency/auth.ts`) | 正常/回帰 | 静的設定確認(DB不要のunit) | `options.id === "agency-google"` のproviderの `options.authorization.params.prompt === "select_account"` | `npx vitest run src/lib/agency/auth.test.ts` | PASS | TC-AUTH-004の配信者側修正(448816f9)が `agency-google` には未適用で、agencyホスト(`/agency/login`)からの切替で同じGoogle側500が残っていた(2026-09-10)。next-authの `GoogleProvider({ id })` はトップレベル`id`を"google"のまま保持し、上書きした`id`も`options`側にあるため、`providers.find(p => p.id === "agency-google")` では見つからない(実装時に実測)。検索も検証も`options`側で行う |
 
 ## Out of Scope
 
