@@ -135,13 +135,15 @@ export function BattleDetailModal({
   if (!battle) return null;
 
   const opponent = battle.opponent;
-  const bothScores = battle.selfScore !== null && battle.opponentScore !== null;
+  // 進行中(live)は暫定スコアがリードしているだけで決着していないため、勝敗表示を出さない。
+  const isDecided = battle.status !== "live";
+  const bothScores = isDecided && battle.selfScore !== null && battle.opponentScore !== null;
   const win = bothScores && BigInt(battle.selfScore!) > BigInt(battle.opponentScore!);
   const lose = bothScores && BigInt(battle.selfScore!) < BigInt(battle.opponentScore!);
 
   const teams = battle.teams;
   const colorByIndex = teams ? assignFactionColors(teams) : null;
-  const winningIndex = teams ? resolveWinningTeamIndex(teams) : null;
+  const winningIndex = teams && isDecided ? resolveWinningTeamIndex(teams) : null;
   // 上下貫通の縦分割線は2陣営(自分1陣営+相手1陣営。相手陣営内が複数人でも2陣営)のときのみ。
   // 3陣営以上(乱戦・個人戦)は対戦表が2列gridの折返し表示になり、下部貢献欄との列対応が
   // 無いため線を統合しない(spec.md参照)。

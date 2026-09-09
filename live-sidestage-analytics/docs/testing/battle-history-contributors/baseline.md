@@ -1,10 +1,10 @@
 ---
-risk: MEDIUM
-reviewers: [claude-manual-verification]
-review_summary: { findings: 0, valid: 0, fixed: 0 }
-last_updated: 2026-09-08
-last_risk: HIGH
-last_reviewers: [Codex(low), DeepSeek(high), Codex(medium, user-requested), Gemini(agy/gemini-3.7-flash-medium, user-requested, NO ISSUES)]
+risk: LOW
+reviewers: [DeepSeek]
+review_summary: { findings: 1, valid: 0, fixed: 0 }
+last_updated: 2026-09-09
+last_risk: LOW
+last_reviewers: [DeepSeek(high)]
 ---
 
 # バトル履歴 貢献者欄
@@ -41,6 +41,8 @@ last_reviewers: [Codex(low), DeepSeek(high), Codex(medium, user-requested), Gemi
 | 5 | 4のケースで `FallbackContributorList`(狭い1カラム) | 同上、実ブラウザで確認 | アバター+名前(flex-1 truncate)+💎コイン数のみを1行で表示し、`@uniqueId` の重複表示や折り返しによるレイアウト崩れが起きない |
 | 11 | 絵文字混在・長い配信者名(例:「Nana☺️🐾ファンダム最強伝説」「けん玉最弱王2nd配信中〜今日も練習配信するよ〜」)の`TeamCard`ラベルおよび`TeamContributorColumn`セレクタボタン群(「合算」+参加者ごとのボタン) | 手動シード+Playwright(390px/900px両方の幅で確認) | `TeamCard`ラベルは改行されず`truncate`で1行省略表示される。`TeamContributorColumn`のセレクタボタン群は名前の長さ・ボタン数に関わらず常に1段で表示され(折り返さない)、親幅に収まらない場合は各ボタンが均等に縮小し`truncate`で省略される(ボタンが枠外にはみ出さない)。左右の貢献者パネルの高さ・対称性が崩れない |
 | 20 | 貢献者0件(境界)のフォールバック表示は2列gridにしない | 貢献者0件・`teams===null`のバトルで詳細モーダルを開く | 「バトル区間を確定できないため集計できません」/「このバトルへの貢献者なし」のいずれかが表示され、grid化・「集計中…」の表示は起きない |
+| 21 | 進行中(`status==="live"`)バトルで自陣営がリードしている詳細モーダル | 手動シード(`npm run seed:battle-live:local`、自450/相手300)→ `/analytics` バトル履歴タブ→進行中バトルの詳細 | `WIN`バッジ・勝敗色ハイライトが表示されない(未決着のため) |
+| 22 | 21と同じバトルが`finished`で確定しスコアが変わらないまま再取得 | 手動シードデータの`status`を`finished`相当に見立てて確認(既存の確定済みバトルで代替確認) | `WIN`バッジが表示される(決着後は通常どおり勝敗表示) |
 
 ## 異常
 
@@ -104,3 +106,11 @@ last_reviewers: [Codex(low), DeepSeek(high), Codex(medium, user-requested), Gemi
 - 変更: `src/app/api/mobile/analytics/battles/[battleId]/contributors/route.ts`が`queryBattleContributors()`の`teams`を握り潰していたのを修正。`sanitizeAvatarUrl`を`teams[].contributors`/`teams[].participants[].contributors`へ再帰適用してレスポンスへ含めるようにした
 - レビュー: Codex(low, Design)+DeepSeek(high, Design)+Codex(medium, user-requested)+Gemini(agy/gemini-3.7-flash-medium, user-requested, NO ISSUES)。「複数アプリを跨ぐ変更」でHIGH判定
 - テスト結果: `npm run typecheck` PASS。`npx dotenv -e .env.local.test -- vitest run "src/app/api/mobile/analytics/battles/[battleId]/contributors/route.integration.test.ts"` 11 tests PASS(新規「確定済みバトルはteams(陣営別)を返す」ケース含む)。既存の`gift-analytics`/`battle-history`/`battle-history-finalize`integrationテスト55 tests回帰PASS
+
+### 2026-09-09 進行中バトルのWINバッジ誤表示を修正
+
+- 症状: バトル履歴詳細モーダルで、進行中(`status==="live"`)のバトルでも片方が暫定的にリードした時点で`WIN`バッジ・勝敗色ハイライトが表示されていた(まだ決着していないのに)
+- 原因: `BattleDetailModal.tsx`の`winningIndex`(`resolveWinningTeamIndex`呼び出し)と`win`/`lose`(`FallbackVersusHeader`用)が`battle.status`を見ずにスコアの大小だけで判定していた。mobile版(`battle_history_tab.dart`の`_OutcomeBadge`)は`status===live`を先にチェックする実装済みで、Web側だけ未対策だった
+- 修正: `isDecided = battle.status !== "live"`を追加し、`bothScores`・`winningIndex`の算出に組み込んだ(`resolveWinningTeamIndex`自体は変更なし、呼び出し側でガード)
+- レビュー: DeepSeek(LOW, high) — finding 1件(「`!== "live"`の否定条件が将来の未知status値に対して脆弱」)。`BattleStatus`型は`"live" | "finished" | "cut_short" | "unknown"`の4値で閉じておりfindingが懸念する未知値は型上発生しないため INVALID
+- テスト結果: `npm run typecheck` PASS。手動シード(`seed:battle-live:local`、自450/相手300、進行中)をPlaywrightで確認し`WIN`バッジ0件、既存の確定済みバトルで`WIN`バッジ1件(回帰なし)を確認
