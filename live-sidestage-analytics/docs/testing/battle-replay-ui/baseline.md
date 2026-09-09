@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-09
-last_risk: LOW
-last_reviewers: [Code Mode]DeepSeek単独、[TestCase Mode]DeepSeek単独、2026-09-09 常設WINバッジの終了前誤表示バグ修正時
+last_updated: 2026-09-10
+last_risk: MEDIUM
+last_reviewers: [Design Mode]DeepSeek単独、[Code Mode]DeepSeek単独、2026-09-10 WINバッジの重なり解消・速度非依存化・拡大修正時
 ---
 
 # バトル再生UI
@@ -96,7 +96,8 @@ last_reviewers: [Code Mode]DeepSeek単独、[TestCase Mode]DeepSeek単独、2026
 | TC-BRU-053 | 残り時間の時計はスコアバーと重ならない | `.replay-clock` / `.replay-scorebar` | 正常/回帰 | 再生を開始して一時停止し、時計・スコアバー・各セグメントの矩形を測る | 時計の上端がスコアバーの下端より下にあり、どのセグメントとも矩形が交差しない。時計自体は読める | `[pw]` | PASS（実測: バー下端 143 / 時計 149〜169.5、`overlapBar=false` / `overlapSeg=false`） | 以前はバー中央に重ねていてスコア数値と時計が互いに潰し合っていた |
 | TC-BRU-054 | 1vs1 の配信者アイコンは左右等寸 | `buildStageLayout` / `.replay-avatar--lg` | 正常/回帰 | 1vs1 のバトルと 4コラボのバトルをそれぞれ再生し、各セルのアイコンの実寸を測る | 1vs1 は左右とも 128px。4コラボは全枠 96px。3コラボ・1vs3 は自陣のみ 128px（相手枠は縦が狭いため） | `[pw]` `[unit]` | PASS（実測: 1vs1 = 128/128、4コラボ = 96×4。variant ごとの `largeAvatar` は unit で固定） | 以前は 1vs1 でも自分だけ 128px で、枠の広さが同じなのに非対称に見えていた |
 | TC-BRU-056 | バトル終了時、時計は `00:00` のまま点滅して終了をひと目で示す | `ReplayScoreBar` | 正常/回帰 | 末尾へシーク | `.replay-clock` に `replay-clock--ended` が付与され点滅する。表示文字列は `00:00` のまま | `[pw]` | PASS(2026-09-08 実測) | 即座停止だけでは「終わって止まった」のか「固まった」のか見分けが付かなかった(ユーザー指摘) |
-| TC-BRU-057 | 終了直後、勝者側に大きく WIN が出てから常設の小バッジ位置へ移動・縮小する | `ReplayCell` の `winRevealPhase` | 正常/回帰/境界 | 勝者側セルを末尾直前からシークし、200ms刻みで観測 | 終了(`elapsedMs>=durationMs`)から900msで中央に出現(opacity/scaleが単調増加)、続く650msで右上の常設バッジ位置へ移動しながら縮小、以後は既存の小さい `.replay-win` バッジのみに収束する。一時停止・シークでも同じ計算式で位置が決まる（`elapsedMs` の純関数） | `[pw]` | PASS(2026-09-08 実測: 中央 opacity 0.12→0.86 / 移動後 top 48%→12%, left 51%→88%, scale 0.98→0.47) | ひっそり小バッジが出るだけでは勝敗が分かりにくいというユーザー指摘への対応 |
+| TC-BRU-057 | 終了直後、勝者側に大きく WIN が出てから常設の小バッジ位置へ移動・縮小する。演出の実時間長は再生速度に依存しない | `ReplayCell` の `winRevealPhase` | 正常/回帰/境界 | 勝者側セルを末尾直前からシークし、200ms刻みで観測。1x/2x/4x それぞれで確認 | 終了(`elapsedMs>=durationMs`)から実時間900msで中央に出現(opacity/scaleが単調増加)、続く実時間650msで常設バッジ位置(`cell.right===false` なら右上、`cell.right===true` なら左上)へ移動しながら縮小、以後は既存の小さい `.replay-win` バッジ（`font-size: 14px`）のみに収束する。中央大表示は `.replay-win-big`（`font-size: 34px`）。この実時間の長さ(900ms/650ms)はどの再生速度でも一定（`WIN_REVEAL_MS`/`WIN_TRAVEL_MS` を `motionScale` で割って算出するため）。一時停止・シークでも同じ計算式で位置が決まる（`elapsedMs` の純関数） | `[pw]` | PASS(2026-09-08 実測: 左側セル 中央 opacity 0.12→0.86 / 移動後 top 48%→12%, left 51%→88%, scale 0.98→0.47。2026-09-10 右側セルの左上移動・4倍速再生時の視認性を追加実測) | ひっそり小バッジが出るだけでは勝敗が分かりにくいというユーザー指摘への対応。以前は演出の尺が elapsedMs 単位の固定値で、再生速度が上がるほど実時間で見える長さが短くなっていた（速度4倍で実質225ms）ため修正 |
+| TC-BRU-061 | 3陣営以上の右側セルが勝者のとき、常設 WIN バッジと順位バッジが重ならない | `ReplayCell` / `globals.css` の `.replay-cell--right .replay-win` | 回帰/境界 | 4コラボ(3陣営以上)で右側セル(`cell.right===true`)の陣営が勝者、終了後(`elapsedMs>=durationMs`)へシーク | 順位バッジ(右上)と WIN バッジ(左上)が別位置に表示され重ならない。左側セルの勝者は従来どおり WIN バッジが右上 | `[inject]` (`officialScore` を差し替えて右側セルを勝者にする) `[pw]` | PASS(2026-09-10 実測、4コラボシードの anchorIndex 3(右下)を勝者に差し替えて確認) | 以前は `.replay-win` が cell.right を考慮しない固定位置(right:7px, top:7px)で、右側セルでは常に順位バッジと同座標に重なっていた |
 | TC-BRU-058 | 演出計算用の経過時間は末尾超過後も進み続けるが、時計・シークバー等の表示は `durationMs` でクランプされる | `BattleReplayView` の `displayElapsedMs` | 境界/回帰 | 末尾到達後(`END_FADE_MS` 猶予中)の任意の時点 | `ReplayCell` 等の演出計算には生の `elapsedMs`(`durationMs` 超過値)が渡り自然消滅を計算できる一方、時計・シークバーの表示は `durationMs` を超えない | `[pw]` | PASS(2026-09-08、TC-BRU-047/056の実測がこの分離の裏付け) | 表示専用のクランプが無いと時計が `00:00` を超えて表示されてしまう |
 | TC-BRU-059 | 終了間際に発生した大ギフト演出・カード・リップルは、終了後も自然に消滅する（残留しない） | `useReplayClock` の `END_FADE_MS` | 境界/回帰 | 終了直前(リップルが表示中の位置)へシークし、猶予期間(4200ms超)だけ実時間で待つ | 大ギフト演出・カード・リップル(`.replay-ring`)が猶予期間中に自然消滅し、要素数が0になる。演出が終了の瞬間の見た目のまま固まらない | `[pw]` | PASS(2026-09-08 実測: シーク直後 `ringCount:3` → 7秒後 `ringCount:0, bigGiftCount:0`) | 即座停止(旧実装)では末尾間際の演出が消滅計算を完了できず画面に残り続けていた(ユーザー指摘) |
 | TC-BRU-023 | 実装が凍結済みの視覚契約から外れていない | 再生画面全体 | 視覚契約 | `comp.png` と同条件(1280px / dark / reduced-motion) | 領域ごとに `spec.md` の数値と一致。要素・挙動インベントリに欠落なし。`MAJOR` ゼロ | `[vqa]` | PASS | ユーザー指示で契約側を更新した5点（カードのギフト画像の背景撤去 / 大ギフト演出 / 時計の点滅 / 時計をバー直下へ / 1vs1 のアイコン 128px）は `comp.png` より `spec.md` 本文が優先。初回は MAJOR 2件(ヘッダの表題・副題が契約と別物 / 順位バッジと WIN バッジの振り分け違反)を修正して再撮影。MINOR 1件(1vs1 で長いギフト名のとき全幅レーンのカードが名前チップへわずかに掛かる。CSS は spec どおりでデータ依存)は残置。色トークンだけ反映され余白・タイポ・密度が既定へ丸まる乖離を明示的に疑う |

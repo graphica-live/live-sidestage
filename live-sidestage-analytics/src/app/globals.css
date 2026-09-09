@@ -488,12 +488,12 @@ body {
   top: 7px;
   z-index: 2;
   font-family: var(--replay-mono);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 700;
   color: #0d0f13;
   background: var(--replay-gold);
-  border-radius: 5px;
-  padding: 1px 6px;
+  border-radius: 6px;
+  padding: 3px 9px;
 }
 /* 終了直後、誰が勝ったか一目でわかるよう中央に大きく出してから .replay-win の位置・大きさへ
    移動する演出。top/left(%)・scale は JS(elapsedMs の純関数)が計算し、ここでは器だけ持つ。 */
@@ -501,11 +501,11 @@ body {
   position: absolute;
   z-index: 3;
   font-family: var(--replay-mono);
-  font-size: 22px;
+  font-size: 34px;
   font-weight: 700;
   color: #0d0f13;
   border-radius: 5px;
-  padding: 1px 6px;
+  padding: 4px 12px;
   white-space: nowrap;
   pointer-events: none;
 }
@@ -843,6 +843,10 @@ span.replay-thumb {
   right: 7px;
   bottom: auto;
   top: 7px;
+}
+.replay-cell--right .replay-win {
+  right: auto;
+  left: 7px;
 }
 /* コンボの個数。畳み込み後の最終値をいきなり出さず、刻みに合わせて 1 から上げる。
    --replay-n が最終値、steps() は inline で与える */
