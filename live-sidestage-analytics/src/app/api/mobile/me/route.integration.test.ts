@@ -13,6 +13,7 @@ import {
   MOBILE_MAINTENANCE_MODE_SETTING,
 } from "@/lib/mobile-settings";
 import { betaSettingKey } from "@/lib/plan/beta-settings";
+import { withBetaSettingLock } from "@/lib/__fixtures__/beta-setting-lock";
 import { GET as mePost } from "./route";
 import { GET as probeGet } from "../entitlement/probe/route";
 
@@ -88,10 +89,17 @@ describe("GET /api/mobile/me", () => {
   it("analyticsβ有効ならFREEでもmobile.history.extendedRangeが解放される(実プランはFREEのまま)", async () => {
     const user = await prisma.user.create({ data: { email: `${PREFIX}analytics-beta@local.test` } });
     const token = signMobileToken({ principalId: user.id });
-    await setSetting(betaSettingKey("analytics"), "true");
-
-    const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
-    const body = await response.json();
+    // analyticsBetaEnabled は AppSetting の単一行でファイル間共有。並列実行される
+    // analytics 系テスト(β 無効前提)と窓が重なると双方向に落ちるため、ロックで直列化する。
+    const body = await withBetaSettingLock(async () => {
+      await setSetting(betaSettingKey("analytics"), "true");
+      try {
+        const response = await mePost(authedRequest("https://example.test/api/mobile/me", token));
+        return (await response.json()) as Record<string, unknown>;
+      } finally {
+        await setSetting(betaSettingKey("analytics"), null);
+      }
+    });
 
     expect(body.plan).toBe("FREE");
     expect(body.planLabel).toBe("FREE"); // バッジ表記はmobile領域のβだけを見る

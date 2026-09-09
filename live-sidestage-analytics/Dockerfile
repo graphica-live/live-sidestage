@@ -21,4 +21,9 @@ EXPOSE 3000
 # migrate-shared-tiktok-room.ts は削除した。2026-08-15 以前の DB 形(Streamer.tiktokId /
 # gifts.streamerId)を対象にした一度きりの移行で、識別子統一の reset が全テーブルを
 # TRUNCATE する以上、対象は永久に0件になる。
-CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-match-session.ts && npx tsx scripts/migrate-tiktok-userid-reset.ts && npx prisma db push --accept-data-loss && npx tsx scripts/migrate-match-battle-candidates.ts && node server.js"]
+#
+# migrate-tiktok-userid-reset.ts も 2026-09-09 の本番 cutover 完了をもって CMD から外した
+# (旧形の列 47 件を検出して 57 テーブルを TRUNCATE 済み)。以後は対象が0件でスキップされる
+# だけだが、起動のたびに全テーブルを走査するうえ、将来のスキーマ変更で列名が偶然一致すると
+# 本番データを TRUNCATE しうるため残さない。スクリプト本体は監査用に scripts/ へ残してある。
+CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-match-session.ts && npx prisma db push --accept-data-loss && npx tsx scripts/migrate-match-battle-candidates.ts && node server.js"]

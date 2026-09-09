@@ -59,3 +59,17 @@ INVALID として不対応にしたもの: `AppSetting` の `deleteMany` へ `RE
 - `docs/testing/*/baseline.md` に残る「本番実測値」は本番データ削除後は再現できない。次回の実測で置き換える
 - 本番適用は §9 の順序が前提(worker-guardian → worker1/2/3 → event-worker → web の順で停止 →
   web デプロイ → 逆順で再開)。cutover 後は `Dockerfile` の CMD から reset スクリプトを外す
+
+## 本番 cutover の実測(2026-09-09、この申し送りの消化)
+
+- worker 5サービスを `railway down` で停止 → web を先にデプロイ → 逆順で再開、の順序どおり実施した。
+  ただし **push が worker の自動デプロイを誘発する**ので、web の TRUNCATE と競合しないよう
+  復活しかけた event-worker を `deploymentCancel` で止める必要があった(§9 に無かった手順)
+- reset は旧形の列を **47 件**検出 → **57 テーブル**を TRUNCATE。`tiktok_users` は未作成でスキップ。
+  手動確定 **3 件**を `tiktok-userid-reset:manual-decisions-backup:2026-09-08T23:50:22.957Z` へ退避した
+  (TC-TUI-305 の保証が本番で実際に効いた)
+- 再開時、素の `railway redeploy` は**直前の FAILED deployment のソースを再実行する**ため、
+  修正前のコードで worker 5サービスが全滅した。`--from-source` が必須
+- 起動後 `JWT_SESSION_ERROR` が出るが、User ごと消えた旧セッションを `src/lib/auth.ts` の
+  jwt コールバックが意図的に失効させている経路(設計どおり)
+- 申し送りどおり `Dockerfile` の CMD から reset を外し、戻り防止を TC-TUI-308 で自動化した

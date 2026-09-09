@@ -6,6 +6,7 @@ import { signMobileToken } from "@/lib/mobile-auth";
 import { makeTiktokUid } from "@/lib/__fixtures__/gift";
 import { setSetting } from "@/lib/settings";
 import { betaSettingKey } from "@/lib/plan/beta-settings";
+import { acquireBetaSettingLock } from "@/lib/__fixtures__/beta-setting-lock";
 import { GET } from "./route";
 
 const TIKTOK_ID = "itest_mobile_ranking";
@@ -21,12 +22,15 @@ let freeToken: string;
 
 process.env.MOBILE_JWT_SECRET ||= "itest-mobile-ranking-secret";
 
+// analyticsBetaEnabled は AppSetting の単一行でファイル間共有。me/route.integration.test.ts が
+// これを一時的に true へ切り替えるテストを持つため、倒すタイミングを工夫するだけでは窓が消えず
+// 双方向に落ちる(2026-09-09 実測)。このファイルが走る間はロックを保持して β の書き換えを閉め出す。
+// この機能(mobile.history.*)は analytics 領域の β でバイパスされる設計なので、mobile ではなく
+// analytics を false にする。
+const betaLock = acquireBetaSettingLock();
+
 beforeAll(async () => {
-  // me/route.integration.test.tsがanalyticsBetaEnabledを一時的にtrueへ切り替えるテストを
-  // 持つため、並列実行時にこのファイルのFREE拒否テストがβ経由で通ってしまう
-  // 非決定的失敗を避ける(実装後レビュー指摘、LOW)。この機能(mobile.history.*)は
-  // analytics領域のβでバイパスされる設計のため、mobileではなくanalyticsを明示的にfalseへ倒す。
-  // 真の並列プロセス間競合までは防げないが、少なくともこのファイル自身が前提を明示する。
+  await betaLock.acquired;
   await setSetting(betaSettingKey("analytics"), "false");
 
   const room = await prisma.tiktokRoom.create({
@@ -86,6 +90,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await betaLock.release();
   await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
   await prisma.user.delete({ where: { id: principalId } }).catch(() => {});
   await prisma.user.delete({ where: { id: noRoomPrincipalId } }).catch(() => {});

@@ -46,7 +46,8 @@ TRUNCATE 移行)、`src/lib/tiktok-listener.ts` の `precheckApiLive()`(接続�
 | TC-TUI-304 | 旧形の列があれば全 TRUNCATE する | `runReset()` | 正常 | `gifts.uniqueId` を復活させた状態 | Gift/Event/EventMatch/TiktokRoom/User がすべて0件 | 同上 | PASS | `public` と `event` の両スキーマ |
 | TC-TUI-305 | 手動確定(`winnerDecidedBy IN ('MANUAL','DRAW')`)を TRUNCATE より前に AppSetting へ退避する | `runReset()` | 異常系/データ保全 | `MANUAL` の EventMatch が1件 | `tiktok-userid-reset:manual-decisions-backup*` が1件、中身が `MANUAL` 1件。値は非 null | 同上 | PASS | 採取が TRUNCATE より後だとバックアップが必ず空になる(番号順の実行で踏む) |
 | TC-TUI-306 | marker があっても旧形の列が残っていれば再実行される | `runReset()` | 回帰 | marker あり + `gifts.uniqueId` あり + seed | 全 TRUNCATE される | 同上 | PASS | ロールバック→再前進の救済。marker を手で消す必要がない |
-| TC-TUI-307 | 新形の列が無い旧スキーマでも例外を投げない | `runReset()` | 異常 | `gifts.tiktokUid` を DROP した状態 | 例外なし | 同上 | PASS | このスクリプトは新 Prisma Client で旧スキーマに対して動く(Dockerfile の CMD 順)。raw SQL 原則が守られていることの検証でもある |
+| TC-TUI-307 | 新形の列が無い旧スキーマでも例外を投げない | `runReset()` | 異常 | `gifts.tiktokUid` を DROP した状態 | 例外なし | 同上 | PASS | このスクリプトは新 Prisma Client で旧スキーマに対して動く。raw SQL 原則が守られていることの検証でもある(2026-09-09 の本番 cutover 完了で Dockerfile の CMD からは外れ、以後は手動実行のみ) |
+| TC-TUI-308 | web の既定起動列が cutover 済みの reset を実行せず、残りの実行順を保つ | Dockerfile `CMD` | 回帰/データ保全 | working tree の `Dockerfile` | `migrate-tiktok-userid-reset` を含まない。`migrate-match-session` → `prisma db push` → `migrate-match-battle-candidates` → `node server.js` の順 | `npx vitest run scripts/dockerfile-startup.test.ts` | PASS | `CMD` が壊れても typecheck / next build / 既存テストは一切気付かない。reset を戻すと、将来のスキーマ変更で旧形の列名が偶然復活した瞬間に本番の全テーブルが TRUNCATE される |
 | TC-TUI-401 | 接続前に api-live の uid と room の `hostTiktokUid` を照合する | `precheckApiLive()` | セキュリティ | 一致 / 不一致 / 欠損 / 例外 の4状態 | `verified` のみ接続。他は接続しない | `docs/testing/tiktok-listener-connection/baseline.md` TC-TLC-002/002b/002c/003 | PASS | 実体は tiktok-listener-connection baseline に集約(重複管理を避ける)。追加の TikTok 問い合わせはゼロ |
 | TC-TUI-109 | 所有を確定する呼び出しは `EXISTS` の positive キャッシュを読み飛ばす | `existenceChecker.check()` | セキュリティ | ハンドル H を uid=A でキャッシュ → API が uid=B を返す状態 → `skipPositiveCache: true` | uid=B が返る(A を掴まない) | `npx vitest run src/lib/tiktok-existence.test.ts` | PASS | 6時間 positive キャッシュは「`tiktokHandle` → `tiktokUid` 逆引き表」そのもの。接続時 uid 照合では救えない(誤紐付けは登録時点で成立済み) |
 | TC-TUI-110 | `MISSING` の negative キャッシュと in-flight 重複排除は共有したまま | `existenceChecker.check()` | 回帰 | `MISSING` をキャッシュ後に `skipPositiveCache: true` / 同時2要求 | 問い合わせは1回のまま | 同上 | PASS | uid を持ち回らないので共有してよい。ここまで捨てると TikTok への問い合わせが増える |
@@ -69,6 +70,10 @@ TRUNCATE 移行)、`src/lib/tiktok-listener.ts` の `precheckApiLive()`(接続�
   `backend/lib/shogo-state.js` の dedupe / 登録キーが壊れる。ユーザー決定でスコープ外(運用開始前・月間MVP取り込みは必須機能ではない)
 - **本番デプロイ手順の実行** — worker 停止順・web 停止・cutover 後に Dockerfile の CMD から
   移行スクリプトを外す工程は plan §9 が正本。このベースラインはコードの保証事項のみを扱う
+- **起動時の非破壊 preflight** — CMD から reset を外した後、旧形列の残存・新形列の欠落を検出して
+  `prisma db push --accept-data-loss` の前に起動を止める仕組みは持たない。cutover 前も「検出したら
+  全 TRUNCATE」であって停止ではなかったため本改修で安全性は下がっていないが、未 cutover の DB へ
+  このイメージを向けた場合に db push が差分適用で壊す余地は残る。導入するなら別機能として扱う
 - **`hostProfiles` の `displayId` がハンドルと一致するかの実測** — tiktok-probe による実配信での確認が未着手。
   匿名観測room の `hostTiktokUid` NOT NULL 化はこの前提に乗っている
 - **`TIKTOK_EXISTENCE_CHECK_DISABLED=1` kill switch の意味変更** — uid 必須化により、このフラグが立っている間は
