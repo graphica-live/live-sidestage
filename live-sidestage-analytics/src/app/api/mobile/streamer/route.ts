@@ -138,6 +138,10 @@ export async function PATCH(req: NextRequest) {
   const normalized = normalizeTiktokId(cleanTiktokHandle);
   const currentNormalized = normalizeTiktokId(user.streamer.tiktokHandle);
 
+  // ハンドルが実際に変わる場合のみ実在確認で得られる、検証済みの新tiktokUid。
+  // 冪等リトライ(ハンドル不変)では実在確認自体を行わないためnullのまま。
+  let verifiedTiktokUid: string | null = null;
+
   // デバッグ用アカウント(ADMIN_EMAIL)は7日ロックの対象外。
   const lockExempt = isAdminEmail(user.email);
 
@@ -165,9 +169,14 @@ export async function PATCH(req: NextRequest) {
         { status: 503 }
       );
     }
+    verifiedTiktokUid = entryCheck.tiktokUid;
     // 同一アカウントの改名だけを許す想定だが、UID mismatchチェックは現在一時的に無効化されて
     // おり(isTiktokUidMismatchCheckDisabled()参照)、lockExempt(ADMIN_EMAIL)以外の通常ユーザーも
-    // 別アカウントへの付け替えが通る状態にある。tiktokUid は不変なので更新もしない。
+    // 別アカウントへの付け替えが通る状態にある。この無効化フラグの挙動自体は別件(2026-09-11)
+    // なので今回は変更しない。ただし通った場合、Streamer.tiktokUidは常に「検証済みの現在の
+    // ハンドルが指すアカウント」へ追従させる(下のtx内でverifiedTiktokUidを書き込む) -
+    // room解決(resolveRoomForStreamer)がStreamer.tiktokUidをキーにするため、ここを更新しない限り
+    // ハンドルを何度変えても常に最初のroomへ紐付き続けてしまう(過去の不具合)。
     if (!checkTiktokUidMatch({ tiktokUid: user.streamer.tiktokUid }, entryCheck.tiktokUid, { exempt: lockExempt }).ok) {
       return NextResponse.json(formatTiktokUidMismatchError(), { status: 409 });
     }
@@ -183,12 +192,42 @@ export async function PATCH(req: NextRequest) {
     const currentNormalizedTx = normalizeTiktokId(current.tiktokHandle);
 
     if (currentNormalizedTx === normalized) {
-      // 冪等リトライ: tiktokHandleは実質変わらない。ロック判定・tiktokHandleChangedAt更新はしない。
+      if (verifiedTiktokUid) {
+        // 大文字小文字のみの変更: 実在確認が走りUIDを再取得済み。UID書き込みを伴うため、
+        // 通常分岐と同じCAS・verifiedリセットを適用する(tiktokHandleChangedAtだけは
+        // 7日ロックの対象にしないため更新しない)。
+        const { count } = await tx.streamer.updateMany({
+          where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
+          data: {
+            tiktokHandle: cleanTiktokHandle,
+            tiktokUid: verifiedTiktokUid,
+            verified: false,
+            verifiedAt: null,
+          },
+        });
+        if (count === 0) {
+          return { kind: "conflict" as const };
+        }
+        const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
+        return { kind: "ok" as const, streamer: updated };
+      }
+      // 真の冪等リトライ: entryCheckが走っておらずverifiedTiktokUidはnull。何も検証すべき値がないので
+      // 従来通りtiktokHandleの表記のみ更新する(CAS・verifiedリセットは不要、実質的な変更が無いため)。
       const updated = await tx.streamer.update({
         where: { id: current.id },
         data: { tiktokHandle: cleanTiktokHandle },
       });
       return { kind: "ok" as const, streamer: updated };
+    }
+
+    if (!verifiedTiktokUid) {
+      // 外側でentryCheckを省略した後(=自分視点ではハンドル不変のつもりだった)に、
+      // 別リクエストが実際にハンドルを変えていた場合のレース。ここに到達する時点で
+      // currentNormalizedTx(tx内で再読取した最新値) !== normalized(自分の目標値)が
+      // 確定しているにもかかわらずverifiedTiktokUidがnullなのは、検証済みuidを
+      // 持たないまま実質的な変更へ進もうとしている状態。fail-closedのため書き込まず
+      // 競合として扱い、クライアントに最新状態を取得のうえ再試行させる。
+      return { kind: "conflict" as const };
     }
 
     if (!lockExempt) {
@@ -206,6 +245,7 @@ export async function PATCH(req: NextRequest) {
       where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
       data: {
         tiktokHandle: cleanTiktokHandle,
+        tiktokUid: verifiedTiktokUid,
         tiktokHandleChangedAt: now,
         // BIO認証(verified)は正しさを保っていない値を新IDへ引き継がない。
         verified: false,

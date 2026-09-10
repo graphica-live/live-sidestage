@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { ADMIN_EMAIL } from "@/lib/admin";
 import { makeTiktokUid } from "@/lib/__fixtures__/gift";
+import { resolveRoomForStreamer } from "@/lib/tiktok-room";
 
 const PREFIX = "itest-mobstreamer-";
 const TID_PREFIX = "itestms_";
@@ -32,9 +33,13 @@ vi.mock("@/lib/tiktok-room", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/tiktok-room")>();
   return {
     ...actual,
-    resolveRoomForStreamer: async () => "dummy-room-id",
+    resolveRoomForStreamer: vi.fn(async () => "dummy-room-id"),
   };
 });
+
+// room再解決の検証専用: モックを迂回して実装本体を取得しておく(TC-ROOM-RESOLVEで使用)。
+const actualTiktokRoom =
+  await vi.importActual<typeof import("@/lib/tiktok-room")>("@/lib/tiktok-room");
 
 const { PATCH: streamerPatch } = await import("./route");
 
@@ -153,7 +158,7 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
       expect(reloaded.verified).toBe(true);
     });
 
-    it("既定(未設定=無効化)状態では、tiktokUidが登録済みと異なっても200で許可される", async () => {
+    it("既定(未設定=無効化)状態では、tiktokUidが登録済みと異なっても200で許可される(tiktokUidも新しい値へ更新される)", async () => {
       delete process.env[ENV_KEY];
       const user = await prisma.principal.create({
         data: { email: `${PREFIX}${Date.now()}mm2@local.test`, name: `${PREFIX}user4` },
@@ -178,7 +183,7 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
 
       const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
       expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}new4`);
-      expect(reloaded.tiktokUid).toBe(makeTiktokUid(`${TID_PREFIX}other2`));
+      expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
     });
 
     it("チェック有効時(\"0\")でも、ADMIN_EMAILのユーザーはtiktokUid不一致でも200で許可される", async () => {
@@ -269,6 +274,170 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
     } finally {
       await prisma.streamer.deleteMany({ where: { principalId: user.id } });
       await prisma.principal.delete({ where: { id: user.id } });
+    }
+  });
+
+  it("冪等リトライ(完全同一ハンドル再送信)ではtiktokUidが変化しない", async () => {
+    const user = await prisma.principal.create({
+      data: { email: `${PREFIX}${Date.now()}idem@local.test`, name: `${PREFIX}user6` },
+    });
+    const originalUid = makeTiktokUid(`${TID_PREFIX}idemuid`);
+    const streamer = await prisma.streamer.create({
+      data: {
+        principalId: user.id,
+        tiktokUid: originalUid,
+        tiktokHandle: `${TID_PREFIX}idem6`,
+        verificationCode: "x",
+        tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        verified: true,
+      },
+    });
+    const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+    // 完全に同一のハンドルを再送信(正規化後も一致) = 真の冪等リトライ。実在確認は走らない。
+    const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}idem6`));
+    expect(res.status).toBe(200);
+
+    const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+    expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}idem6`);
+    // verifiedTiktokUidがnull(実在確認未実施)のままなので、tiktokUidは一切触れられない。
+    expect(reloaded.tiktokUid).toBe(originalUid);
+    expect(reloaded.verified).toBe(true);
+  });
+
+  it("ハンドル変更後、Streamer.roomIdは新tiktokUidに対応する既存roomへ正しく付け替わる(room再解決)", async () => {
+    const user = await prisma.principal.create({
+      data: { email: `${PREFIX}${Date.now()}room@local.test`, name: `${PREFIX}user7` },
+    });
+    const oldUid = makeTiktokUid(`${TID_PREFIX}roomold`);
+    const oldHandle = `${TID_PREFIX}roomold`;
+    const newHandle = `${TID_PREFIX}roomnew`;
+
+    // 旧tiktokUidに対応するroom(現在streamerが紐付いている)。
+    const roomA = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: oldUid, tiktokHandle: oldHandle },
+    });
+    // 新tiktokUid(モックが返すMOCK_TIKTOK_UID)に対応する、既に存在する孤立room。
+    // streamerとは未紐付けだが、ギフトデータ等の実体を持つ想定。
+    const roomB = await prisma.tiktokRoom.create({
+      data: { hostTiktokUid: MOCK_TIKTOK_UID, tiktokHandle: newHandle },
+    });
+
+    try {
+      const streamer = await prisma.streamer.create({
+        data: {
+          principalId: user.id,
+          tiktokUid: oldUid,
+          tiktokHandle: oldHandle,
+          verificationCode: "x",
+          tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+          verified: true,
+          roomId: roomA.id,
+        },
+      });
+      const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+      // このテストに限り、resolveRoomForStreamer()の実装本体を使う
+      // (ファイル全体のモックは"dummy-room-id"固定で、room再解決の検証ができないため)。
+      vi.mocked(resolveRoomForStreamer).mockImplementationOnce(actualTiktokRoom.resolveRoomForStreamer);
+
+      const res = await streamerPatch(authedRequest(token, newHandle));
+      expect(res.status).toBe(200);
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
+      // 新規roomを作らず、既存の孤立roomBへ吸着していること。
+      expect(reloaded.roomId).toBe(roomB.id);
+
+      const reloadedRoomB = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: roomB.id } });
+      expect(reloadedRoomB.hostTiktokUid).toBe(MOCK_TIKTOK_UID);
+    } finally {
+      await prisma.streamer.deleteMany({ where: { principalId: user.id } });
+      await prisma.tiktokRoom.deleteMany({ where: { id: { in: [roomA.id, roomB.id] } } });
+    }
+  });
+
+  it("大文字小文字のみのハンドル変更(正規化後は一致)でも実在確認が走り、tiktokUidが検証済みの値へ追従しverifiedがリセットされる", async () => {
+    const user = await prisma.principal.create({
+      data: { email: `${PREFIX}${Date.now()}case@local.test`, name: `${PREFIX}user8` },
+    });
+    const originalHandle = `${TID_PREFIX}casetest`;
+    const streamer = await prisma.streamer.create({
+      data: {
+        principalId: user.id,
+        tiktokUid: MOCK_TIKTOK_UID,
+        tiktokHandle: originalHandle,
+        verificationCode: "x",
+        tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        verified: true,
+      },
+    });
+    const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+    // 大文字小文字だけ変更(normalizeTiktokId後は同一値)。生文字列比較の外側ゲート(162行目)は
+    // 通過するため実在確認は走り、verifiedTiktokUidがセットされる。
+    const changedCaseHandle = `${TID_PREFIX}CaseTest`;
+    const res = await streamerPatch(authedRequest(token, changedCaseHandle));
+    expect(res.status).toBe(200);
+
+    const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+    expect(reloaded.tiktokHandle).toBe(changedCaseHandle);
+    expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
+    // 真の冪等リトライ(verified変化なし)と区別する決定的な観測点:
+    // この分岐はverifiedTiktokUidを検証済み値として書き込むため、通常分岐と同じくverifiedがリセットされる。
+    expect(reloaded.verified).toBe(false);
+    expect(reloaded.verifiedAt).toBeNull();
+  });
+
+  it("事前読取後にハンドル不変と判定(冪等リトライのつもり)したが、tx内再読取までに別リクエストが実際にハンドルを変えていた場合はfail-closedで409 CONFLICTを返し、DBはBの値のまま変化しない", async () => {
+    const user = await prisma.principal.create({
+      data: { email: `${PREFIX}${Date.now()}race@local.test`, name: `${PREFIX}user9` },
+    });
+    const originalHandle = `${TID_PREFIX}racehandle`;
+    const winnerHandle = `${TID_PREFIX}racewinner`;
+    const winnerUid = makeTiktokUid(`${TID_PREFIX}racewinneruid`);
+    const streamer = await prisma.streamer.create({
+      data: {
+        principalId: user.id,
+        tiktokUid: MOCK_TIKTOK_UID,
+        tiktokHandle: originalHandle,
+        verificationCode: "x",
+        tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+        verified: true,
+      },
+    });
+    const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+    // リクエストAは自分視点で「同一ハンドル」の冪等リトライのつもり(外側ゲートでentryCheckがスキップされ、
+    // verifiedTiktokUidはnullのまま)。しかしtxコールバック実行直前に別リクエストBが実際にハンドルを
+    // 変更済みにしておく(prisma.$transactionへの割り込みでレースを再現)。
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    const transactionSpy = vi
+      .spyOn(prisma, "$transaction")
+      .mockImplementationOnce(async (fn: any, opts?: any) => {
+        await prisma.streamer.update({
+          where: { id: streamer.id },
+          data: {
+            tiktokHandle: winnerHandle,
+            tiktokUid: winnerUid,
+            tiktokHandleChangedAt: new Date(),
+          },
+        });
+        return originalTransaction(fn, opts);
+      });
+
+    try {
+      const res = await streamerPatch(authedRequest(token, originalHandle));
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.code).toBe("CONFLICT");
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      // Bの書き込みが保持されたまま。AによってnullやoriginalHandleへ巻き戻されていない。
+      expect(reloaded.tiktokHandle).toBe(winnerHandle);
+      expect(reloaded.tiktokUid).toBe(winnerUid);
+    } finally {
+      transactionSpy.mockRestore();
     }
   });
 });
