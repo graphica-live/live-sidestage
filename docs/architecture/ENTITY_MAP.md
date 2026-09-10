@@ -24,6 +24,7 @@
 | 観測データ | `Gift` `ListenerComment` | 生ログ。保持期限あり |
 | 集計 | `GiftDailyListenerStat` `GiftLifetimeStat` | Gift のロールアップ |
 | Overlay 設定 | `Overlay*Settings` 5種 `OverlayTimerGiftRule` `OverlayTimerState` | OBS ウィジェットの設定（Streamer 単位） |
+| Battle 履歴フィルタ設定 | `BattleHistoryFilterSettings` | ダッシュボードのバトル履歴フィルタ設定。Streamer単位。OBSオーバーレイ設定ではない |
 | Battle 観測 | `TiktokBattle` `TiktokBattleItemUse` `TiktokBattleBonusMission` `TiktokBattleArmiesSnapshot` `TiktokBattleTapPoint` | TikTok が送ってきた生の対戦イベント |
 | Battle 確定履歴 | `BattleHistory` `BattleTeam` `BattleHistoryParticipant` `BattleHistoryGiftEvent` `BattleHistoryItemCardEvent` `BattleHistoryBonusMission` `BattleHistoryScorePoint` | 上を Gift と突き合わせて凍結した非正規化キャッシュ |
 | Event（大会運営、`event` スキーマ） | `Event` `EventSession` `EventMultiplier` `EventTeam` `EventParticipant` `EventRoomLease` `EventMatch` `EventMatchBattleCandidate` `EventMatchSide` `EventMatchSideParticipant` `EventLifePoint` `EventLifeLedger` `EventContribution` `EventStanding` `DetectedBattle` | 大会と採点 |
@@ -204,6 +205,7 @@
 - `OverlayTimerGiftRule` の一致キーは **giftId ではなく giftName（trim + 小文字化）**
 - `OverlayTimerState` は実行時状態。発火はサーバー setTimeout ではなくクライアント側ローカル計算
 - **⚠️ schema.prisma:646-651 は孤児コメント。** 旧 `LikeTally` テーブルの説明が無関係な `OverlayCoinListSettings` の直上に残っている。実体は `src/lib/overlay/like-tally-store.ts` の**プロセス内インメモリ**へ移行済みで、`LikeTally` model は schema に存在しない
+- **`BattleHistoryFilterSettings`（ダッシュボードのバトル履歴フィルタ設定。Streamer単位）はOverlay設定ではない。** OBSオーバーレイ表示ではなくダッシュボード自体の表示フィルタのため、`src/lib/overlay/` 配下には置かず独立モジュールとして扱う
 
 ### 2.6 Battle
 

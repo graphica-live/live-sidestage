@@ -19,10 +19,11 @@ const int maxBattleHideSmallThreshold = 1000;
 /// 背景Isolateは一覧の表示に一切関与しない。表示専用の値を載せると触るたびに
 /// 無駄な同期とACK待ちが走る。[ThemeModeStore]と同じ軽量ストアとして分ける。
 class BattleFilterStore extends ChangeNotifier {
-  bool _hideSmall = true;
+  bool _hideSmall = false;
   int _threshold = defaultBattleHideSmallThreshold;
 
-  /// 既定はON(comp のトグルは初期状態でON)。
+  /// 既定はOFF。未保存の初回起動時はトグルがOFFになる。
+  /// ユーザーが明示的にONにした端末のみ、保存済み値で復元される。
   bool get hideSmall => _hideSmall;
 
   int get threshold => _threshold;
@@ -30,7 +31,7 @@ class BattleFilterStore extends ChangeNotifier {
   Future<void> load() async {
     final enabled = await FlutterForegroundTask.getData<bool>(key: battleHideSmallEnabledStorageKey);
     final threshold = await FlutterForegroundTask.getData<int>(key: battleHideSmallThresholdStorageKey);
-    _hideSmall = enabled ?? true;
+    _hideSmall = enabled ?? false;
     _threshold = _clamp(threshold ?? defaultBattleHideSmallThreshold);
     notifyListeners();
   }

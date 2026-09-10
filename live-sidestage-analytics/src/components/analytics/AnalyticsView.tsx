@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from "rea
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
+import { useBattleFilterSettings } from "./useBattleFilterSettings";
 
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -485,7 +486,13 @@ function GiftBreakdownPanel({
   );
 }
 
-export function AnalyticsView({ apiBase }: { apiBase: string }) {
+export function AnalyticsView({
+  apiBase,
+  persistBattleFilter,
+}: {
+  apiBase: string;
+  persistBattleFilter?: boolean;
+}) {
   const [period, setPeriod] = useState<Period>("day");
   const [currentDate, setCurrentDate] = useState(todayStr());
   const [viewMode, setViewMode] = useState<ViewMode>("ranking");
@@ -503,7 +510,14 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
   const [openBattleId, setOpenBattleId] = useState<string | null>(null);
   const [openTiktokUid, setOpenTiktokUid] = useState<string | null>(null);
   const [breakdowns, setBreakdowns] = useState<Record<string, BreakdownState>>({});
-  const [hideLowDiamond, setHideLowDiamond] = useState(true);
+  const [thresholdDraft, setThresholdDraft] = useState("100");
+  const {
+    hideLowDiamondEnabled: hideLowDiamond,
+    threshold,
+    error: settingsError,
+    setHideLowDiamond,
+    commitThreshold,
+  } = useBattleFilterSettings({ enabled: persistBattleFilter ?? false });
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [customStart, setCustomStart] = useState(() => {
@@ -556,6 +570,11 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
   // **スコープが変わってもリセットしない。** リセットすると連番が 1 に戻り、
   // 往復前に投げた古い応答と往復後の新しい応答が同じ番号になって判定が効かなくなる。
   const seqRef = useRef<Record<string, number>>({});
+
+  // thresholdDraft を threshold の変更に同期する(初期 GET 反映時など)
+  useEffect(() => {
+    setThresholdDraft(threshold.toString());
+  }, [threshold]);
 
   useEffect(() => {
     setOpenTiktokUid(null);
@@ -816,7 +835,7 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
     if (!battlesData) return [];
     const q = filter.toLowerCase();
     return battlesData.battles.filter((b) => {
-      if (hideLowDiamond && b.status !== "live" && b.selfTotalDiamonds <= 100) return false;
+      if (hideLowDiamond && b.status !== "live" && b.selfTotalDiamonds <= threshold) return false;
       if (!q) return true;
       const opponent = b.opponent;
       return (
@@ -825,7 +844,18 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
         false
       );
     });
-  }, [battlesData, filter, hideLowDiamond]);
+  }, [battlesData, filter, hideLowDiamond, threshold]);
+
+  // しきい値入力の blur/Enter 時に検証して保存する
+  const commitDraft = useCallback(() => {
+    const n = Number(thresholdDraft);
+    if (Number.isInteger(n) && n >= 0) {
+      commitThreshold(n);
+    } else {
+      // 不正な値なら draft を現在の threshold に戻す
+      setThresholdDraft(threshold.toString());
+    }
+  }, [thresholdDraft, threshold, commitThreshold]);
 
   // ギフト履歴のカスタム期間は、明細の保持期間(90日、gift-retention-window.tsの
   // GIFT_RETENTION_DAYS)より前の開始日時を選ばせない。サーバー側のクランプ
@@ -1172,8 +1202,29 @@ export function AnalyticsView({ apiBase }: { apiBase: string }) {
                 onChange={(e) => setHideLowDiamond(e.target.checked)}
                 className="cursor-pointer"
               />
-              コイン100以下を非表示
+              コイン
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1}
+                value={thresholdDraft}
+                onChange={(e) => setThresholdDraft(e.target.value)}
+                onBlur={commitDraft}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    (e.currentTarget as HTMLInputElement).blur();
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                aria-label="非表示にするコイン数のしきい値"
+                className="input-field text-sm w-20 px-2 py-1 text-right"
+              />
+              以下を非表示
             </label>
+            {settingsError && (
+              <span className="text-red-400 text-xs">{settingsError}</span>
+            )}
             {lastRefreshed && (
               <span className="ml-auto">
                 更新 {lastRefreshed.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}

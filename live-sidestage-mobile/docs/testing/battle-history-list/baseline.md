@@ -1,16 +1,13 @@
 ---
-risk: MEDIUM
-reviewers: [qwen]
-review_summary: { findings: 3, valid: 0, fixed: 0 }
-last_updated: 2026-09-06
-last_risk: MEDIUM
-last_reviewers: [qwen]
+last_updated: 2026-09-10
+last_risk: LOW
+last_reviewers: [DeepSeek(high), Codex-terra(medium)]
 ---
 
 # バトル履歴一覧(mobile)
 
 対象: `lib/screens/tabs/battle_history_tab.dart`(コイン閾値非表示フィルタ)、
-`lib/core/battle_filter_store.dart`(`isSmallBattle`)
+`lib/core/battle_filter_store.dart`(`BattleFilterStore` 既定値、`isSmallBattle`)
 
 ## 正常
 
@@ -18,6 +15,8 @@ last_reviewers: [qwen]
 | - | --- | --- | --- |
 | 1 | 両陣営ともしきい値未満 | `flutter test test/battle_filter_store_test.dart` | `isSmallBattle` が `true` を返す |
 | 2 | 片方でもしきい値以上 | 同上 | `isSmallBattle` が `false` を返す |
+| 6 | 未保存(初回起動)の既定値 | `flutter test test/battle_filter_store_test.dart` | `BattleFilterStore().hideSmall` が `false`、`threshold` が 100。`load()` で保存値が無い場合もトグルOFF |
+| 7 | 端末で明示的にONにした後の再起動 | 実機(Pixel 7a)でトグルON → アプリ再起動 | ON が復元される(保存済み値が優先)。**NOT RUN**: 既定値の定数変更のみで保存・復元ロジック自体は無変更のため、`flutter test`(ケース6)で代替。実機確認は今回スコープ外 |
 
 ## 境界
 
@@ -52,3 +51,7 @@ last_reviewers: [qwen]
 - 追加: `isSmallBattle` の単体テスト(`test/battle_filter_store_test.dart`)を新規作成(既存テストが無かったため)
 - レビュー: Qwen(risk=MEDIUM、web側と合わせて実施) — finding 3件、実コード照合の結果いずれもINVALIDまたはスコープ外(詳細はweb側baselineの変更履歴を参照。同一diffレビュー)
 - テスト結果: PASS 4 / FAIL 0 / NOT RUN 1(UIケース、理由: 進行中バトルの実データは実配信でしか生成できないため。ロジックはWeb版と同一条件式でWeb側は実データ確認済み)
+
+### 2026-09-10 既定トグルをOFFへ変更
+
+- 変更: `BattleFilterStore._hideSmall` 初期値と `load()` の未保存時フォールバックを `true` → `false`。web側(`live-sidestage-analytics`)のDB既定値 `hideLowDiamondEnabled=false` と揃えた。ケース6/7を追加
