@@ -67,6 +67,7 @@ import {
 } from "./tiktok-room";
 import { resolveWatchedRoomFilter } from "./watched-room-filter";
 import { existenceChecker } from "./tiktok-existence";
+import { isTiktokUidMismatchCheckDisabled } from "./tiktok-id-lock";
 
 export type ListenerStatus =
   | "idle"
@@ -2929,24 +2930,35 @@ async function connectAndAttach(
     return;
   }
   if (preCheck.kind === "mismatch") {
-    // このハンドルの現在の持ち主が登録時と別人。接続すると別人のギフト・コメントが
-    // この room へ入るので、再接続もスケジュールせず handleStaleAt で止める。
-    console.error(
-      `[listener] @${inst.state.tiktokHandle}: hostTiktokUid mismatch (room=${inst.hostTiktokUid}, api-live=${preCheck.actual}) — refusing to connect`
-    );
-    try {
-      await markRoomHandleStale(roomId);
-    } catch (err) {
-      console.error("[listener] markRoomHandleStale error:", err);
+    if (isTiktokUidMismatchCheckDisabled()) {
+      // TIKTOK_UID_MISMATCH_CHECK_DISABLED(既定=無効化)が効いている間は、hostTiktokUid
+      // mismatchによる凍結(markRoomHandleStale)を行わず通常接続へ進む。運用都合による
+      // 一時的な全ユーザー向け安全機構OFF。"0"を設定すれば下のelse分岐(従来の凍結)へ戻る。
+      console.warn(
+        `[listener] @${inst.state.tiktokHandle}: hostTiktokUid mismatch (room=${inst.hostTiktokUid}, api-live=${preCheck.actual}) — TIKTOK_UID_MISMATCH_CHECK_DISABLED, skipping freeze and connecting anyway`
+      );
+      // mismatchのままfall throughし、下のconnect()処理へ進む(offline/unverifiableは
+      // returnしたまま維持する — この分岐だけ意図的にreturnしない)。
+    } else {
+      // このハンドルの現在の持ち主が登録時と別人。接続すると別人のギフト・コメントが
+      // この room へ入るので、再接続もスケジュールせず handleStaleAt で止める。
+      console.error(
+        `[listener] @${inst.state.tiktokHandle}: hostTiktokUid mismatch (room=${inst.hostTiktokUid}, api-live=${preCheck.actual}) — refusing to connect`
+      );
+      try {
+        await markRoomHandleStale(roomId);
+      } catch (err) {
+        console.error("[listener] markRoomHandleStale error:", err);
+      }
+      updateState(
+        inst,
+        "error",
+        FACTS_HANDLE_MISMATCH.message,
+        FACTS_HANDLE_MISMATCH,
+        "handle_mismatch"
+      );
+      return;
     }
-    updateState(
-      inst,
-      "error",
-      FACTS_HANDLE_MISMATCH.message,
-      FACTS_HANDLE_MISMATCH,
-      "handle_mismatch"
-    );
-    return;
   }
   if (preCheck.kind === "unverifiable") {
     // 同一性を確認できない間は接続しない(fail-closed)。バックオフ付きで再試行する。

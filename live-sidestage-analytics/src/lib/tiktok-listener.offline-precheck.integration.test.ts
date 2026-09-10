@@ -206,35 +206,82 @@ describe("precheckApiLive()によるEuler署名消費前のオフライン事前
     await cleanupRoom(roomId);
   });
 
-  it("TC-TLC-002c: api-liveが別人のuidを返したら接続せずhandleStaleAtを立てる(ハンドル再利用の取り違え防止)", async () => {
-    const tiktokHandle = `itest_mismatch_${Date.now()}`;
-    const a = await createStreamer(tiktokHandle, "itest-mismatch-a");
-    const roomId = await resolveRoomForStreamer(a.id);
+  describe("hostTiktokUid mismatch判定(TIKTOK_UID_MISMATCH_CHECK_DISABLED)", () => {
+    const ENV_KEY = "TIKTOK_UID_MISMATCH_CHECK_DISABLED";
+    let originalEnv: string | undefined;
 
-    const { WebcastPushConnection } = await import("TLC-sidestage");
-    (WebcastPushConnection as unknown as { mockImplementation: (fn: (...a: unknown[]) => unknown) => void }).mockImplementation(
-      function (tiktokHandle: unknown, options: unknown) {
-        const conn = new MockConnection(tiktokHandle as string, options);
-        conn.webClient.fetchRoomInfoFromApiLive.mockResolvedValue({
-          data: { liveRoom: { status: 2 }, user: { id: makeTiktokUid("someone-else") } },
-        });
-        return conn;
-      }
-    );
-
-    await startListener(roomId, tiktokHandle, [a.id]);
-
-    expect(MockConnection.instances).toHaveLength(1);
-    expect(MockConnection.instances[0].connectCalls).toBe(0);
-    await vi.waitFor(async () => {
-      expect(await getListenerReason(roomId)).toBe("handle_mismatch");
+    beforeEach(() => {
+      originalEnv = process.env[ENV_KEY];
     });
-    const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: roomId } });
-    expect(room.handleStaleAt).not.toBeNull();
 
-    await stopListener(roomId);
-    await cleanupStreamer(a.id);
-    await cleanupRoom(roomId);
+    afterEach(() => {
+      if (originalEnv === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = originalEnv;
+    });
+
+    it('TC-TLC-002c: TIKTOK_UID_MISMATCH_CHECK_DISABLED="0"(チェック有効)のとき、api-liveが別人のuidを返したら接続せずhandleStaleAtを立てる', async () => {
+      process.env[ENV_KEY] = "0";
+      const tiktokHandle = `itest_mismatch_${Date.now()}`;
+      const a = await createStreamer(tiktokHandle, "itest-mismatch-a");
+      const roomId = await resolveRoomForStreamer(a.id);
+
+      const { WebcastPushConnection } = await import("TLC-sidestage");
+      (WebcastPushConnection as unknown as { mockImplementation: (fn: (...a: unknown[]) => unknown) => void }).mockImplementation(
+        function (tiktokHandle: unknown, options: unknown) {
+          const conn = new MockConnection(tiktokHandle as string, options);
+          conn.webClient.fetchRoomInfoFromApiLive.mockResolvedValue({
+            data: { liveRoom: { status: 2 }, user: { id: makeTiktokUid("someone-else") } },
+          });
+          return conn;
+        }
+      );
+
+      await startListener(roomId, tiktokHandle, [a.id]);
+
+      expect(MockConnection.instances).toHaveLength(1);
+      expect(MockConnection.instances[0].connectCalls).toBe(0);
+      await vi.waitFor(async () => {
+        expect(await getListenerReason(roomId)).toBe("handle_mismatch");
+      });
+      const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: roomId } });
+      expect(room.handleStaleAt).not.toBeNull();
+
+      await stopListener(roomId);
+      await cleanupStreamer(a.id);
+      await cleanupRoom(roomId);
+    });
+
+    it("TC-TLC-002d: 既定(未設定=無効化)のとき、api-liveが別人のuidを返してもhandleStaleAtを立てず接続する", async () => {
+      delete process.env[ENV_KEY];
+      const tiktokHandle = `itest_mismatch_off_${Date.now()}`;
+      const a = await createStreamer(tiktokHandle, "itest-mismatch-off-a");
+      const roomId = await resolveRoomForStreamer(a.id);
+
+      const { WebcastPushConnection } = await import("TLC-sidestage");
+      (WebcastPushConnection as unknown as { mockImplementation: (fn: (...a: unknown[]) => unknown) => void }).mockImplementation(
+        function (tiktokHandle: unknown, options: unknown) {
+          const conn = new MockConnection(tiktokHandle as string, options);
+          conn.webClient.fetchRoomInfoFromApiLive.mockResolvedValue({
+            data: { liveRoom: { status: 2 }, user: { id: makeTiktokUid("someone-else") } },
+          });
+          return conn;
+        }
+      );
+
+      await startListener(roomId, tiktokHandle, [a.id]);
+
+      expect(MockConnection.instances).toHaveLength(1);
+      await vi.waitFor(() => {
+        expect(MockConnection.instances[0].connectCalls).toBe(1);
+      });
+      const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: roomId } });
+      expect(room.handleStaleAt).toBeNull();
+      expect(await getListenerReason(roomId)).not.toBe("handle_mismatch");
+
+      await stopListener(roomId);
+      await cleanupStreamer(a.id);
+      await cleanupRoom(roomId);
+    });
   });
 
   it("TC-TLC-003: api-live/user/room/が例外を投げたとき、console.warnを出しつつ接続せずバックオフ再試行する", async () => {
