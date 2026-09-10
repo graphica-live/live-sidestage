@@ -18,5 +18,5 @@ export default async function Home() {
   // 事務所コンソール(/agency)へはここから振り分けない。事務所は配信者とは別セッションで、
   // このページのセッションでは事務所としてログイン済みかどうかを判定できないため。
   // 事務所ユーザーは /agency に直接アクセスして事務所側のログインを行う。
-  redirect("/setup");
+  redirect("/onboarding");
 }
