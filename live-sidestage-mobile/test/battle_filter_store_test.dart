@@ -2,6 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:live_sidestage_mobile/core/battle_filter_store.dart';
 
 void main() {
+  group('BattleFilterStore', () {
+    test('未保存の初期状態ではトグルOFF・しきい値100', () {
+      final store = BattleFilterStore();
+      expect(store.hideSmall, isFalse);
+      expect(store.threshold, defaultBattleHideSmallThreshold);
+    });
+  });
+
   group('isSmallBattle', () {
     test('両陣営ともしきい値未満なら小さいと判定する', () {
       expect(isSmallBattle(selfScore: '50', opponentScore: '99', threshold: 100), isTrue);

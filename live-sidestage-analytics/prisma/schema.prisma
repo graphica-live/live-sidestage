@@ -684,6 +684,7 @@ model Streamer {
   overlayTimerSettings            OverlayTimerSettings?
   overlayTimerState               OverlayTimerState?
   overlayContributionSettings     OverlayContributionSettings?
+  battleHistoryFilterSettings     BattleHistoryFilterSettings?
 
   @@index([roomId])
   @@schema("public")
@@ -852,6 +853,22 @@ model OverlayContributionSettings {
   streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
 
   @@map("overlay_contribution_settings")
+  @@schema("public")
+}
+
+// ダッシュボードのバトル履歴タブ「コインN以下を非表示」フィルタ設定。1配信者(Streamer)につき1行。
+// OBSオーバーレイ設定ではない(src/lib/overlay 配下には置かない)。
+// mobile(live-sidestage-mobile)の同名機能とは別の正本(端末ローカルで同期しない。
+// 比較指標も selfTotalDiamonds(受取ダイヤ)であり、mobile の selfScore/opponentScore(バトル得点)とは異なる)。
+model BattleHistoryFilterSettings {
+  streamerId            String   @id
+  hideLowDiamondEnabled Boolean  @default(false)
+  threshold             Int      @default(100)
+  updatedAt             DateTime @updatedAt
+
+  streamer Streamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+
+  @@map("battle_history_filter_settings")
   @@schema("public")
 }
 
