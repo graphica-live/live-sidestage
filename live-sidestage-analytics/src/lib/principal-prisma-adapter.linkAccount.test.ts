@@ -109,7 +109,6 @@ describe("linkAccountRestrictedAdapter", () => {
       keyId: "key",
       privateKey: "pk",
       servicesId: "com.example.web",
-      redirectUri: "https://example.test/api/auth/callback/apple",
       bundleId: null,
     });
     const { prisma } = fakePrisma(0);
