@@ -118,6 +118,24 @@ describe("middleware の matcher", () => {
     }
   });
 
+  it("オーバーレイ設定のログイン導線は認証なしで通る", () => {
+    for (const path of [
+      "/overlays/login", // 保護すると自分自身へ無限リダイレクトする
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("オーバーレイ設定向けの除外エントリも前置一致にならない", () => {
+    for (const path of [
+      "/overlays/logins", // `overlays/login` に食われてはいけない
+      "/overlays", // ログイン導線そのものではないので保護されたまま
+      "/overlays/settings",
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
+
   it("事務所コンソールとセッション認証のAPIは保護される", () => {
     for (const path of [
       "/agency",

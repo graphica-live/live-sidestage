@@ -7,7 +7,7 @@ export const DEFAULT_CALLBACK_URL = "/";
 
 // ログイン画面自身へ戻すとループするので、既知のログイン導線は全部弾く。
 // analytics / event / 事務所で画面が分かれているため1本では足りない。
-const LOGIN_PATHS = ["/login", "/event/login", "/agency/login"];
+const LOGIN_PATHS = ["/login", "/event/login", "/agency/login", "/overlays/login"];
 
 function isLoginPath(pathname: string): boolean {
   return LOGIN_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

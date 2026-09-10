@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAgencyPath, isEventPath, loginPathFor } from "./login-path";
+import { isAgencyPath, isEventPath, isOverlayPath, loginPathFor } from "./login-path";
 
 // 未ログイン時の飛び先。middleware.test.ts は matcher(保護範囲)しか見ないので、
 // 振り分けロジックそのものはここで固定する。
@@ -24,6 +24,18 @@ describe("loginPathFor", () => {
     }
   });
 
+  it("オーバーレイ設定はオーバーレイ専用ログインへ送る", () => {
+    for (const path of [
+      "/overlays",
+      "/overlays/settings",
+      "/api/streamer/overlay-settings",
+      "/api/streamer/overlay-settings/contribution",
+      "/api/streamer/overlay-timer",
+    ]) {
+      expect(loginPathFor(path), path).toBe("/overlays/login");
+    }
+  });
+
   it("それ以外は analytics のログインへ送る", () => {
     for (const path of ["/analytics", "/setup", "/admin", "/", "/api/streamer/api-key"]) {
       expect(loginPathFor(path), path).toBe("/login");
@@ -32,17 +44,29 @@ describe("loginPathFor", () => {
 
   // 境界なしの前置一致だと `/eventual` がイベント側へ流れてしまう。
   it("前置一致ではなくパス境界で判定する", () => {
-    for (const path of ["/eventual", "/eventsomething", "/agencyfoo", "/api/eventsx"]) {
+    for (const path of [
+      "/eventual",
+      "/eventsomething",
+      "/agencyfoo",
+      "/api/eventsx",
+      "/overlaysfoo",
+      "/api/streamer/overlay-settingsx",
+    ]) {
       expect(loginPathFor(path), path).toBe("/login");
     }
   });
 });
 
-describe("isAgencyPath / isEventPath", () => {
+describe("isAgencyPath / isEventPath / isOverlayPath", () => {
   it("互いに食い合わない", () => {
     expect(isAgencyPath("/agency/watches")).toBe(true);
     expect(isEventPath("/agency/watches")).toBe(false);
     expect(isEventPath("/events/abc")).toBe(true);
     expect(isAgencyPath("/events/abc")).toBe(false);
+    expect(isOverlayPath("/overlays/settings")).toBe(true);
+    expect(isEventPath("/overlays/settings")).toBe(false);
+    expect(isAgencyPath("/overlays/settings")).toBe(false);
+    // OBS ブラウザソース公開ページ(/overlay/<kind>、末尾sなし)と混同しないこと
+    expect(isOverlayPath("/overlay/contribution")).toBe(false);
   });
 });

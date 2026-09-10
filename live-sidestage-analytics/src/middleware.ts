@@ -12,12 +12,15 @@ import { requestHost, ROOT_REDIRECT_TARGETS } from "@/lib/canonical-origin";
 // Cookie が別なので、同じブラウザで両方に同時ログインでき、片方のログアウトは
 // もう片方に影響しない。詳細は src/lib/agency/session-cookie.ts を参照。
 //
-// **ログイン画面は3系統ある**(analytics / イベント / 事務所)。イベントは表向き別サービス
-// として分離してあるので、/events から弾かれたユーザーを analytics ブランドの /login へ
-// 送らない。飛び先の判定は src/lib/login-path.ts の loginPathFor() に集約してある。
+// **ログイン画面は4系統ある**(analytics / イベント / オーバーレイ設定 / 事務所)。イベントと
+// オーバーレイ設定は表向き別サービスとして分離してあるので、/events や /overlays から弾かれた
+// ユーザーを analytics ブランドの /login へ送らない。飛び先の判定は src/lib/login-path.ts の
+// loginPathFor() に集約してある。
 // **セッション Cookie はホストごとに独立している(host-onlyデフォルトのまま)ため、
 // analyticsでログインしていてもeventsでは別途ログインが必要**——変わるのは飛び先だけでなく、
 // eventsでは実際に未ログイン扱いになる(意図した挙動)。保護範囲(matcher)自体は動かない。
+// overlays は事務所と違い別セッション Cookie を持たないため、analytics でログイン済みなら
+// /overlays もそのまま入れる(セッション自体は共有。分かれているのはログイン画面だけ)。
 //
 // このファイルは Edge ランタイムで動くため、Prisma を引き込むモジュール
 // (src/lib/agency/auth.ts など)を import してはいけない。
@@ -62,6 +65,7 @@ export default async function middleware(req: NextRequest) {
 //   agency/login      — 事務所のログイン導線そのもの(保護すると自分自身へ無限リダイレクトする)
 //   event/login       — イベント主催者のログイン導線そのもの(同上)。`e` は境界付きなので
 //                       /event/login にはマッチせず、専用エントリが要る
+//   overlays/login    — オーバーレイ設定画面のログイン導線そのもの(同上)
 //   e                 — イベントの公開ページ(URLを知っていれば誰でも閲覧可)
 //   b                 — バトル再生のシェアページ(shareToken を知っていれば誰でも閲覧可)。
 //                       境界が無いと /billing まで公開されるので `b(?:/|$)` から縮めないこと
@@ -89,6 +93,6 @@ export default async function middleware(req: NextRequest) {
 // 変更したら src/middleware.test.ts も更新すること(matcher を直接評価している)。
 export const config = {
   matcher: [
-    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|e(?:/|$)|b(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/webhooks/google-play(?:/|$)|api/webhooks/apple(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|terms(?:/|$)|invite(?:/|$)|api/ambassador/invite(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
+    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|overlays/login(?:/|$)|e(?:/|$)|b(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/webhooks/google-play(?:/|$)|api/webhooks/apple(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|terms(?:/|$)|invite(?:/|$)|api/ambassador/invite(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
   ],
 };

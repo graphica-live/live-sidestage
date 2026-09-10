@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 // URL は route group が出ないので /overlays のまま。
 export default async function OverlaySettingsLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session) redirect("/login");
+  if (!session) redirect("/overlays/login");
 
   return (
     <>
