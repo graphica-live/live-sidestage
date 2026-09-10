@@ -43,6 +43,8 @@ jobs:
     env:
       DATABASE_URL: "postgresql://liveanalytics:liveanalytics@localhost:5432/liveanalytics_test"
       NEXTAUTH_SECRET: "ci-only"
+      MOBILE_JWT_SECRET: "k9SrzS5iMHPkKt2I4VffPG5qP3cDESRY17MX27+q6p4="
+      REFRESH_TOKEN_REPLAY_ENC_KEY: "HbDF6s5VJHPOOUwzTheIZhrTUmJUxETmbyT7n8F2wbw="
       WORKER_COUNT: "1"
       WORKER_INDEX: "0"
 
