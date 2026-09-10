@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: authentication
-last_updated: 2026-09-10
+last_updated: 2026-09-11
 last_risk: MEDIUM
-last_reviewers: DeepSeek(code-review NO ISSUES; TestCase review VALID 2)
+last_reviewers: DeepSeek+Gemini+Codex-luna(design-review NO ISSUES/VALID 5, 実コード照合済み)
 ---
 
 # テストベースライン: authentication
@@ -40,6 +40,12 @@ rename前後で振る舞いが変わらないことを保証する（実装詳�
 | TC-AUTH-111 | `APPLE_WEB_REDIRECT_URI`未設定なら`webAppleConfig()`は`null`を返す(fail closed維持) | 同上 | 異常/feature flag | 他のApple env var設定済み、`APPLE_WEB_REDIRECT_URI`のみ空 | `null` | 同上 | PASS | Web版Apple Sign inの設定完了判定として、値の中身は使わずとも「設定されているか」自体は引き続き条件に使う |
 | TC-AUTH-112 | `linkAccountRestrictedAdapter.linkAccount`は`redirectUri`を持たない`WebAppleConfig`を渡されても`appleClientId`/`providerEmail`を正しく書き込む | `linkAccountRestrictedAdapter` (`src/lib/principal-prisma-adapter.ts`) | 正常/回帰 | `webAppleConfig()`が`redirectUri`無しのオブジェクトを返すモック、apple providerのid_token付きaccount | `providerEmail`が正規化済みメール、`appleClientId`が`servicesId`と一致 | `npx vitest run src/lib/principal-prisma-adapter.linkAccount.test.ts` | PASS | TestCaseレビュー(DeepSeek)でBatch01の型変更に対するcoverage gapとして指摘。既存テスト(`linkAccount.test.ts`のapple providerケース)がBatch01の変更後も引き続きこの経路を通しており実質カバー済みだったため、既存ケースの説明をここに明記した(新規テストコード追加ではなく既存カバレッジの文書化) |
 | TC-AUTH-113 | `buildWebClientSecret`は`redirectUri`を持たない`WebAppleConfig`から有効なclient_secret(ES256 JWT)を生成する | `buildWebClientSecret` (`src/lib/web-apple-auth.ts`) | 正常/回帰 | `WebAppleConfig`型(redirectUriフィールド無し) + clientId | `iss`/`sub`/`aud`が正しいJWTを返し、対応する公開鍵でverifyできる | `npx vitest run src/lib/web-apple-auth.test.ts` | PASS | TestCaseレビュー(DeepSeek)で、Batch01の引数型変更(`AppleConfig`→`WebAppleConfig`)に対する専用ケース不足を指摘され追加 |
+
+| TC-AUTH-114 | `/overlays`配下・`overlay-settings`/`overlay-timer` APIは未ログイン時オーバーレイ専用ログインへ送られる | `loginPathFor` / `isOverlayPath` (`src/lib/login-path.ts`) | 正常/回帰 | 静的ロジック確認(DB不要のunit) | `/overlays`, `/overlays/settings`, `/api/streamer/overlay-settings`, `/api/streamer/overlay-settings/contribution`, `/api/streamer/overlay-timer` → `/overlays/login`。`/overlaysfoo`等の前置一致もどきは`/login`のまま(パス境界判定) | `npx vitest run src/lib/login-path.test.ts` | PASS | agency/eventと同じ4系統振り分けパターンに合わせて追加。OBS公開ページ`/overlay/<kind>`(末尾sなし)とは別判定であることも確認済み |
+| TC-AUTH-115 | middlewareの保護範囲は`/overlays/login`だけを公開し、`/overlays`本体は保護されたまま | matcher (`src/middleware.ts`) | 正常/回帰/境界値 | 静的matcher評価(unit) | `/overlays/login`は公開、`/overlays`・`/overlays/settings`・`/overlays/logins`(前置一致もどき)は保護 | `npx vitest run src/middleware.test.ts` | PASS | ログイン画面自身を保護すると自己リダイレクトループになるため、event/agencyと同型の除外エントリを追加 |
+| TC-AUTH-116 | `safeCallbackUrl`は`/overlays/login`をリダイレクトループ防止のため弾く | `safeCallbackUrl` (`src/lib/callback-url.ts`) | 異常/回帰 | `raw="/overlays/login"` | fallback(既定`/`)を返す。`/overlays/logins`(前置一致もどき)は通す | `npx vitest run src/lib/callback-url.test.ts` | PASS | LOGIN_PATHSへの追加漏れはCodex-lunaのdesign-reviewで検出(実コード照合済みVALID) |
+| TC-AUTH-117 | analyticsの`/login`は、NextAuthのcallback-url cookieが`/overlays`配下を指していれば`/overlays/login`へredirectする(OAuthコールバックエラー時の救済導線) | `LoginPage` (`src/app/(auth)/login/page.tsx`) | 正常/異常/回帰 | `next-auth.callback-url`/`__Secure-next-auth.callback-url`のいずれかが`/overlays`配下、queryパラメータあり/なし、cookie無し、壊れた値 | `/overlays`配下なら`/overlays/login`(query引き継ぎ含む)、`/events`配下なら従来どおり`/event/login`、それ以外・cookie無し・壊れた値はredirectせず`/login`をそのまま描画 | `npx vitest run "src/app/(auth)/login/page.test.tsx"` | PASS | 従来はlogin-path.test.ts/middleware.test.tsのみでこのcookie起点の分岐自体は未検証だった(Codex-luna design-review指摘、実コード照合済みVALID)。NextAuth v4の`pages.error`が`pages.signIn`固定で戻る制約への対処をeventパターンのまま踏襲 |
+| TC-AUTH-118 | 配信者は`/overlays`へ未ログインでアクセスすると`/overlays/login`(analyticsブランドの`/login`ではない)へ遷移し、Googleログイン後に既存Principalのまま`/overlays`本体へ入れる。ログアウトは`/overlays/login`へ戻る | `(overlay-settings)/layout.tsx` / `OverlaysHeader.tsx` / `(auth)/overlays/login/page.tsx` | 正常/UI | 実ブラウザ(Playwright)、`dev:local`のdevログイン機能でセッション確立 | `/overlays`未ログイン→`/overlays/login`へ307。ログイン済みセッションで`/overlays`へ直接入れる(再ログイン不要、同一セッションcookieの確認)。ヘッダーの「ログアウト」クリックで`/overlays/login`へ遷移 | Playwright実ブラウザ確認(スクラッチスクリプト。恒久テストコード化はしていない) | PASS | 新規Principal・新規Accountを作らず既存セッションをそのまま使う設計(eventパターン踏襲)であることを実ブラウザで確認 |
 
 ## Out of Scope
 

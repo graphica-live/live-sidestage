@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import GoogleLoginPanel from "../GoogleLoginPanel";
-import { isEventPath } from "@/lib/login-path";
+import { isEventPath, isOverlayPath } from "@/lib/login-path";
 import { canonicalOrigin } from "@/lib/canonical-origin";
 
 // NextAuth が戻り先を覚えている Cookie。本番(https)では __Secure- が付く。
@@ -25,12 +25,12 @@ function callbackPathFromCookie(): string | null {
 /**
  * analytics(配信者/管理者)のログイン画面。
  *
- * イベント側から始まったフローがここへ落ちてくる経路が1つだけある。
+ * イベント側・オーバーレイ設定側から始まったフローがここへ落ちてくる経路が1つだけある。
  * src/lib/auth.ts は `pages: { signIn: "/login" }` だけを設定していて `pages.error` が無く、
  * NextAuth v4 は OAuth コールバックのエラー(**Google の同意画面でのキャンセルを含む**)を
- * `pages.error ?? pages.signIn` へ `?error=` 付きで戻す。そのままだとイベント主催者が
+ * `pages.error ?? pages.signIn` へ `?error=` 付きで戻す。そのままだとイベント主催者/配信者が
  * analytics ブランドの画面を見ることになるので、NextAuth が持っている callback-url Cookie が
- * /events 配下を指していたらイベント側のログインへ送り直す。
+ * /events もしくは /overlays 配下を指していたらそれぞれの専用ログインへ送り直す。
  */
 export default function LoginPage({
   searchParams,
@@ -38,13 +38,14 @@ export default function LoginPage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const path = callbackPathFromCookie();
-  if (path && isEventPath(path)) {
+  if (path && (isEventPath(path) || isOverlayPath(path))) {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(searchParams)) {
       if (typeof value === "string") params.set(key, value);
     }
     const query = params.toString();
-    redirect(query ? `/event/login?${query}` : "/event/login");
+    const target = isEventPath(path) ? "/event/login" : "/overlays/login";
+    redirect(query ? `${target}?${query}` : target);
   }
 
   return (

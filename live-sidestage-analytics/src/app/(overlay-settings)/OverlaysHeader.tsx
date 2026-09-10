@@ -11,8 +11,8 @@ import { signOut } from "next-auth/react";
 // 表向きは別サービスとして見せるため、ここはブランドとログアウトだけに絞る。
 //
 // セッション Cookie は analytics と共有なので、ここでのログアウトは analytics 側からも
-// ログアウトすることになる(1セッション1ログイン)。ログイン画面もあえて分けていない —
-// 同じ配信者アカウントの設定ページなので、event のような別ログイン導線までは不要。
+// ログアウトすることになる(1セッション1ログイン)。ログイン画面は event と同じ理由で
+// /overlays/login に分けてある(表向き別サービスとして見せるため)。
 export default function OverlaysHeader() {
   return (
     <header className="border-b border-border bg-panel sticky top-0 z-10">
@@ -35,7 +35,7 @@ export default function OverlaysHeader() {
         </Link>
 
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => signOut({ callbackUrl: "/overlays/login" })}
           className="btn-ghost text-xs shrink-0"
         >
           ログアウト

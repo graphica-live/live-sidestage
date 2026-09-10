@@ -67,6 +67,14 @@ describe("safeCallbackUrl", () => {
     expect(safeCallbackUrl("/event/logins", ORIGIN)).toBe("/event/logins");
   });
 
+  it("オーバーレイ設定のログイン画面自身も既定へ落とす", () => {
+    expect(safeCallbackUrl("/overlays/login", ORIGIN)).toBe("/");
+  });
+
+  it("/overlays/login で始まるだけの別パスは通す", () => {
+    expect(safeCallbackUrl("/overlays/logins", ORIGIN)).toBe("/overlays/logins");
+  });
+
   // fallback は「弾いたときの戻り先」なので、**拒否する枝すべて**が返さなければならない。
   // 1つでも "/" のまま残すと、その入力のときだけイベント主催者が analytics へ流れる。
   describe("fallback 指定時、拒否する枝はすべて fallback を返す", () => {
