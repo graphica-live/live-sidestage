@@ -12,6 +12,7 @@ import '../models/auth_session.dart';
 import 'api_client.dart';
 import 'api_retry.dart';
 import 'session_storage.dart';
+import 'token_refresh_result.dart';
 
 /// android/app/build.gradle.kts の applicationId と一致させること。
 /// Google Cloud ConsoleのAndroid OAuthクライアント登録に使う値。
@@ -102,7 +103,7 @@ class SessionController extends ChangeNotifier {
   ///
   /// **これは必須の直列化。** refresh token は1回使い切り(rotation)なので、
   /// 同じ値で2本同時に交換を試みるとサーバー側の reuse 検知に触れうる。
-  Future<String?>? _refreshInFlight;
+  Future<TokenRefreshResult>? _refreshInFlight;
 
   /// アカウント削除の実行中〜完了後を示す。**[deleteAccount] の最初の await より前に
   /// 同期的に立てる。** 削除リクエスト送信中に token refresh が割り込むと、サーバー側の
@@ -341,35 +342,49 @@ class SessionController extends ChangeNotifier {
   /// (`/api/mobile/auth/refresh`) で再発行できる。以前は Google の
   /// `signInSilently` に頼っていたため Apple/メールのユーザーだけ無言再発行が
   /// できなかったが、その非対称は解消済み。
-  Future<String?> refreshToken() {
+  Future<String?> refreshToken() async {
+    final result = await refreshTokenDetailed();
+    return result.token;
+  }
+
+  /// [refreshToken] の詳細版。refresh token 自体が失効した（再ログインが要る）のか、
+  /// 通信断・5xx等の一時的な失敗（再試行すれば直りうる）のかを呼び出し側が
+  /// 区別できるようにする（[TokenRefreshResult] 参照）。
+  Future<TokenRefreshResult> refreshTokenDetailed() {
     return _refreshInFlight ??= _doRefresh().whenComplete(() => _refreshInFlight = null);
   }
 
-  Future<String?> _doRefresh() async {
+  Future<TokenRefreshResult> _doRefresh() async {
     // これから走る/進行中のアカウント削除が優先。ここで打ち切らないと、
     // 削除済みUserのために無駄なトークンを発行しに行くことになる。
-    if (_deleting) return null;
+    // **一時的な失敗ではない**(削除中は今後も再発行を試みる意味が無い)ので Rejected。
+    if (_deleting) {
+      return TokenRefreshRejected(StateError('アカウント削除処理中'));
+    }
     final current = session;
-    if (current == null) return null;
+    if (current == null) {
+      return TokenRefreshRejected(StateError('セッションがありません'));
+    }
 
     final (String token, String refreshToken) pair;
     try {
       pair = await _api.refreshAccessToken(refreshToken: current.refreshToken);
-    } on ApiException catch (e) {
+    } catch (e) {
       // isRefreshTokenRejected なら再発行は二度と成功しない（再ログインが要る）。
       // それ以外（通信断・5xx）は一時的な失敗。**どちらの場合もセッションは壊さない** ――
-      // 破棄の判断は呼び出し側の導線に委ね、ここでは null を返すだけにする。
+      // 破棄の判断は呼び出し側の導線に委ねる。
       debugPrint('[session] access token の再発行に失敗しました: $e');
-      return null;
-    } catch (e) {
-      debugPrint('[session] access token の再発行に失敗しました: $e');
-      return null;
+      return tokenRefreshResultFromError(e);
     }
 
     // 待っている間にログアウト・アカウント削除・別アカウントでのログインが
     // 起きていたら、そちらを尊重して古いセッションを復活させない。
+    // **取得した新しいtoken自体は有効**なので一時的失敗ではなく Rejected
+    // （このFutureの呼び出し元には無意味。再試行しても同じ結果になる）。
     final latest = session;
-    if (_deleting || latest == null || latest.userId != current.userId) return null;
+    if (_deleting || latest == null || latest.userId != current.userId) {
+      return TokenRefreshRejected(StateError('再発行中にセッションが切り替わりました'));
+    }
 
     final refreshed = latest.withTokens(token: pair.$1, refreshToken: pair.$2);
     await _storage.save(refreshed);
@@ -377,7 +392,7 @@ class SessionController extends ChangeNotifier {
     // isLoading / errorMessage は動かさない（[_run] を通さない）。背景での更新であり、
     // ログイン画面のスピナーやエラー表示を動かす種類の処理ではない。
     notifyListeners();
-    return refreshed.token;
+    return TokenRefreshed(refreshed.token);
   }
 
   /// 背景 Isolate が rotation した token ペアを取り込む。

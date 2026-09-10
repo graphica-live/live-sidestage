@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: mobile-token-auth
-last_updated: 2026-09-09
-last_risk: CRITICAL
-last_reviewers: Codex-terra+Gemini(code-reviewで同時実施)+DeepSeek(利用不能)
+last_updated: 2026-09-10
+last_risk: HIGH
+last_reviewers: DeepSeek+Codex-luna(Codex-terraはOmniRoute admission 503で利用不能)
 ---
 
 # テストベースライン: mobile-token-auth
@@ -34,12 +34,20 @@ Google/Apple/メール全ログイン経路で access token(短命JWT) + refresh
 | TC-MTA-115 | アカウント削除失敗後も通常どおりtoken refreshできる | `deleteAccount` | 回帰 | 削除失敗直後にrefreshが必要な操作 | 削除中フラグを引きずらずrefreshが動く | `flutter test test/session_refresh_test.dart --plain-name "失敗後は通常どおりtoken refreshできる"` | PASS | |
 | TC-MTA-116 | 削除処理中に割り込んだtoken refreshは再発行を試みない | `deleteAccount` | negative | 削除処理進行中にrefreshがトリガされる | refreshを実行せず削除完了を待つ | `flutter test test/session_refresh_test.dart --plain-name "削除中に割り込んだtoken refreshは再発行を試みない"` | PASS | |
 | TC-MTA-117 | `AuthSession`は`apiKey`を持たず`refreshToken`を必須とする。`refreshToken`欠落の保存データ(旧バージョンからの引き継ぎ含む)は読み込まない | `auth_session.dart`(`AuthSession.fromStorageMap`) | negative/境界 | セッションのシリアライズ/デシリアライズ、`refreshToken`キーを除いた保存データ(旧セッション相当) | JSON表現に`apiKey`キーが存在しない。`refreshToken`欠落時は`TypeError`を投げ、セッション不成立(未ログイン)として扱う | `flutter test test/auth_provider_test.dart --plain-name "欠けている保存データは読み込まない"` | PASS | 2026-09-09、実行方法をDeepSeek TestCaseレビュー指摘(旧セッション後方互換の具体的検証根拠が不明瞭)を受けて具体化 |
-| TC-MTA-118 | socket.io接続はaccess tokenをhandshake.authで送信し、TOKEN_EXPIRED受信で単発フライトのrefresh→再接続を行う | `comment_feed.dart` | 正常 | 接続中にサーバーからTOKEN_EXPIREDイベントを受信 | refreshしてから同一socket接続を再確立する(多重refreshしない) | `flutter test` (comment_feed関連の既存テスト) | PASS | |
+| TC-MTA-118 | socket.io接続はaccess tokenをhandshake.authで送信し、TOKEN_EXPIRED受信でrefresh→再接続を行う | `comment_feed.dart` | 正常 | 接続中にサーバーからTOKEN_EXPIREDイベントを受信、refresh token自体は有効 | refreshしてから同一socket接続を再確立する | `flutter test` (comment_feed関連の既存テスト) | PASS | |
+| TC-MTA-119 | refresh token失効(TokenRefreshRejected)のみ「ログインの有効期限が切れています」を表示し、再試行しない | `comment_feed.dart`(`handleConnectError`) | 異常 | TOKEN_EXPIRED受信→refresh結果がTokenRefreshRejected(サーバーがINVALID_REFRESH_TOKEN/TOKEN_REUSE_DETECTED相当) | エラー文言「ログインの有効期限が切れています」表示、以後タイマー再試行しない(恒久失効として確定) | `flutter test test/comment_feed_token_refresh_test.dart --plain-name "refresh token 失効"` | PASS | 2026-09-10追加。バグ修正: 誤表示の主因(通信断を失効と誤判定)を型で分離 |
+| TC-MTA-120 | 通信断・5xx等の一時的refresh失敗(TokenRefreshFailed)ではログイン切れ文言を出さず、指数バックオフで再試行する | `comment_feed.dart`(`handleConnectError`/`_scheduleRetry`) | 異常 | TOKEN_EXPIRED受信→refresh結果がTokenRefreshFailed(通信断/5xx/タイムアウト等) | 「ログインの有効期限が切れています」を出さず、5秒→倍々→最大60秒のバックオフで`onTokenExpired`を再試行する | `flutter test test/comment_feed_token_refresh_test.dart --plain-name "一時的失敗"` | PASS | 2026-09-10追加 |
+| TC-MTA-121 | refresh進行中(in-flight)に重複してTOKEN_EXPIREDを受けても多重refreshしない | `comment_feed.dart`(`handleConnectError`) | 境界 | refresh実行中に同一接続でTOKEN_EXPIREDが再度届く | 2回目は新たなrefreshを呼ばずconnecting状態を維持する | `flutter test test/comment_feed_token_refresh_test.dart --plain-name "再発行が進行中"` | PASS | 2026-09-10追加 |
+| TC-MTA-122 | `disconnect()`でバックオフ再試行タイマーが確実に停止する | `comment_feed.dart`(`disconnect`) | 異常 | 一時的失敗でバックオフタイマー起動中に`disconnect()`を呼ぶ | タイマーがキャンセルされ、以後`onTokenExpired`が呼ばれない | `flutter test test/comment_feed_token_refresh_test.dart --plain-name "disconnect すると再試行タイマーが止まる"` | PASS | 2026-09-10追加 |
+| TC-MTA-123 | `SessionController.refreshTokenDetailed()`はrefresh成否を型で区別する(`TokenRefreshed`/`TokenRefreshRejected`/`TokenRefreshFailed`) | `SessionController.refreshTokenDetailed` | 正常/異常 | 成功/refresh token失効/通信断・5xx の3パターン | 失効のみ`TokenRefreshRejected`、通信断・5xxは`TokenRefreshFailed`を返す(再ログイン扱いにしない) | `flutter test test/session_refresh_test.dart --plain-name "refreshTokenDetailed"` | PASS | 2026-09-10追加。background_task_handler側の既存`isRefreshTokenRejected`分岐とメインIsolate側を対称化 |
+| TC-MTA-124 | refresh成功で取り直した新token でも連続でTOKEN_EXPIREDになる場合、無限にrefreshを繰り返さない | `comment_feed.dart`(`_refreshAndReconnect`/`connect`) | 異常/境界 | `_refreshAndReconnect`がTokenRefreshedでconnect(newToken)した直後、newTokenでもTOKEN_EXPIREDを受信 | 2回目は通常のTOKEN_EXPIREDエラー表示へ落ち、再度refreshを呼ばない(refresh token乱発・無限ループにならない) | 手動コードレビュー確認(実socket接続が絡むため単体テスト環境では`connect()`を直接駆動できない。[[comment_feed_token_refresh_test.dart]]のコメント方針どおり) | NOT RUN: code-review(DeepSeek+Gemini併用評価)指摘をコードで検証しVALID、`_refreshAndReconnect`のTokenRefreshedケースで`connect(token)`直後に`_tokenRefreshAttempted = true`を明示設定し修正済み。自動再現テストは実socket依存のため未整備 | 2026-09-10追加。code-review finding是正 |
+| TC-MTA-125 | バックオフ待機中にsocket.io自動再接続からTOKEN_EXPIREDが重複して届いても、タイマーを無視して即時refreshしない | `comment_feed.dart`(`handleConnectError`/`_scheduleRetry`) | 異常/境界 | 一時的失敗でバックオフタイマー起動中に、自動再接続由来のTOKEN_EXPIREDが再度届く | `_retryTimer.isActive`中は即時refreshせずconnecting維持、タイマー発火時のみ1回refreshする(指数バックオフが無効化されない) | `flutter test test/comment_feed_token_refresh_test.dart --plain-name "バックオフ待機中に再度"` | PASS | 2026-09-10追加。code-review(Codex-luna) HIGH finding是正 |
+| TC-MTA-126 | disconnect/dispose後、登録解除前に配送された古いsocketのconnect_errorで新規refreshを開始しない | `comment_feed.dart`(`connect`内`onConnectError`登録) | 異常/境界 | 古いsocketのconnect_errorイベントが、disconnect済み(世代が進んだ)後に遅延配送される | 登録時点の世代と現在世代が不一致なら処理しない(古いsocketからの遅延イベントでrefresh/タイマーを開始しない) | 手動コードレビュー確認(イベント配送タイミング依存の競合で、実socketのタイミング制御が必要なため単体テスト環境では再現困難) | NOT RUN: code-review(Codex-luna) MEDIUM finding是正。`socket.onConnectError`登録を世代キャプチャ付きクロージャへ変更し対応済み | 2026-09-10追加 |
 
 ## Quality Gate
 
 - `flutter analyze`(No issues found)
-- `flutter test`(515 tests)
+- `flutter test`(525 tests)
 
 ## Out of Scope
 

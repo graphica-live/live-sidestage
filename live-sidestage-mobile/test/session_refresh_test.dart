@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:live_sidestage_mobile/core/api_client.dart';
 import 'package:live_sidestage_mobile/core/session_controller.dart';
 import 'package:live_sidestage_mobile/core/session_storage.dart';
+import 'package:live_sidestage_mobile/core/token_refresh_result.dart';
 import 'package:live_sidestage_mobile/models/auth_session.dart';
 import 'package:live_sidestage_mobile/screens/gift_sound_edit_screen.dart';
 
@@ -191,6 +192,33 @@ void main() {
     expect(await controller.refreshToken(), isNull);
     api.refreshError = null;
     expect(await controller.refreshToken(), 'new-2');
+  });
+
+  test('refreshTokenDetailed: 成功したら TokenRefreshed を返す', () async {
+    final api = _FakeApi();
+    final controller = _controller(api: api, storage: _FakeStorage());
+
+    final result = await controller.refreshTokenDetailed();
+    expect(result, isA<TokenRefreshed>());
+    expect(result.token, 'new-1');
+  });
+
+  test('refreshTokenDetailed: refresh token 失効は TokenRefreshRejected を返す（一時的失敗と混同しない）', () async {
+    final api = _FakeApi()..validRefreshToken = 'rotated-elsewhere';
+    final controller = _controller(api: api, storage: _FakeStorage());
+
+    final result = await controller.refreshTokenDetailed();
+    expect(result, isA<TokenRefreshRejected>());
+    expect(result.token, isNull);
+  });
+
+  test('refreshTokenDetailed: 通信断・5xxは TokenRefreshFailed を返す（再ログイン扱いにしない）', () async {
+    final api = _FakeApi()..refreshError = ApiException('サーバーが混み合っています', statusCode: 503);
+    final controller = _controller(api: api, storage: _FakeStorage());
+
+    final result = await controller.refreshTokenDetailed();
+    expect(result, isA<TokenRefreshFailed>());
+    expect(result.token, isNull);
   });
 
   test('refresh token が拒否されてもセッションは壊さない', () async {
