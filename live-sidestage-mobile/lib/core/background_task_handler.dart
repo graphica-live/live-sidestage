@@ -18,6 +18,7 @@ import 'sound_engine.dart';
 import 'sound_library.dart';
 import 'sound_player_pool.dart';
 import 'speech_queue.dart';
+import 'token_refresh_result.dart';
 
 /// Foreground Service上の専用Isolateで動作し、Socket.IO接続・VOICEVOX読み上げ・
 /// 効果音再生をUIの有無/画面オン・オフに関係なく継続させる。
@@ -87,7 +88,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
   /// 進行中の再発行。socket と listener-status のどちらからも呼ばれうるので、
   /// **必ず直列化する** — refresh token は1回使い切りで、同じ値で同時に2本
   /// 交換を試みるとサーバー側の reuse 検知に触れうる。
-  Future<String?>? _tokenRefreshInFlight;
+  Future<TokenRefreshResult>? _tokenRefreshInFlight;
 
   /// refresh token の失効をメイン Isolate へ既に伝えたか。
   /// listener-status の再試行は30秒間隔で続くので、これが無いと同じ通知を
@@ -230,7 +231,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
 
     // **接続より先にコールバックを差し込む。** 逆順だと、最初のハンドシェイクが
     // TOKEN_EXPIRED で弾かれたときに再発行が走らず、接続できないまま止まる。
-    _commentFeed.onTokenExpired = _refreshAccessToken;
+    _commentFeed.onTokenExpired = _refreshAccessTokenDetailed;
     _commentFeed.onStreamerNotRegistered = _handleStreamerNotRegistered;
 
     _token = await FlutterForegroundTask.getData<String>(key: foregroundTokenStorageKey);
@@ -345,20 +346,32 @@ class CommentSpeechTaskHandler extends TaskHandler {
   // refresh token 方式は HTTP POST だけで完結するので自力で再発行できる。
 
   /// 保持している refresh token で access token を取り直す。取り直せなければ null。
-  Future<String?> _refreshAccessToken() {
+  Future<String?> _refreshAccessToken() async {
+    final result = await _refreshAccessTokenDetailed();
+    return result.token;
+  }
+
+  /// [_refreshAccessToken] の詳細版。[CommentFeed.onTokenExpired] にはこちらを渡す
+  /// ――`TOKEN_EXPIRED` の表示・再試行の契機を恒久失効/一時失敗で区別するため。
+  Future<TokenRefreshResult> _refreshAccessTokenDetailed() {
     return _tokenRefreshInFlight ??=
         _doRefreshAccessToken().whenComplete(() => _tokenRefreshInFlight = null);
   }
 
-  Future<String?> _doRefreshAccessToken() async {
+  Future<TokenRefreshResult> _doRefreshAccessToken() async {
     final refreshToken = _refreshToken;
-    if (refreshToken == null) return null;
+    if (refreshToken == null) {
+      // refresh token 自体を持っていない(未ログイン/ログアウト後)。
+      // **再試行しても直らない** ので一時的失敗ではなく Rejected。
+      return TokenRefreshRejected(StateError('refresh token がありません'));
+    }
 
     final (String token, String refreshed) pair;
     try {
       pair = await _api.refreshAccessToken(refreshToken: refreshToken);
-    } on ApiException catch (e) {
-      if (e.isRefreshTokenRejected) {
+    } catch (e) {
+      final result = tokenRefreshResultFromError(e);
+      if (result is TokenRefreshRejected) {
         // refresh token 自体が使えない(失効・reuse検知)。再試行しても直らないので
         // 再ログインを促す。**セッションはここでは壊さない** — 破棄の判断は
         // メイン Isolate 側（ユーザーの操作を伴う導線）に委ねる。
@@ -367,14 +380,11 @@ class CommentSpeechTaskHandler extends TaskHandler {
           _authExpiredNotified = true;
           FlutterForegroundTask.sendDataToMain({'type': 'authExpired'});
         }
-        return null;
+      } else {
+        // 通信断・5xx。次に TOKEN_EXPIRED / 401 を踏んだときに再試行する。
+        debugPrint('[auth] access token の再発行に失敗しました(一時的): $e');
       }
-      // 通信断・5xx。次に TOKEN_EXPIRED / 401 を踏んだときに再試行する。
-      debugPrint('[auth] access token の再発行に失敗しました(一時的): $e');
-      return null;
-    } catch (e) {
-      debugPrint('[auth] access token の再発行に失敗しました: $e');
-      return null;
+      return result;
     }
 
     _token = pair.$1;
@@ -390,7 +400,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
       'token': pair.$1,
       'refreshToken': pair.$2,
     });
-    return pair.$1;
+    return TokenRefreshed(pair.$1);
   }
 
   /// TikTok 未連携（サーバーが `STREAMER_NOT_REGISTERED` を返した）。

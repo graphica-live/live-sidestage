@@ -9,6 +9,7 @@ import '../models/follow_event.dart';
 import '../models/gift_event.dart';
 import '../models/listener_status.dart';
 import 'api_client.dart' show liveAnalyticsBaseUrl;
+import 'token_refresh_result.dart';
 
 enum SocketStatus { disconnected, connecting, connected, error }
 
@@ -85,13 +86,15 @@ class CommentFeed extends ChangeNotifier {
   Stream<void> get onConnected => _connectedController.stream;
 
   /// access token が失効していた（サーバーが `TOKEN_EXPIRED` を返した）ときに
-  /// 新しい access token を取り直す手続き。取り直せなければ null を返す。
+  /// 新しい access token を取り直す手続き。結果は [TokenRefreshResult] で返す
+  /// （`null` には潰さない — 恒久失効(再ログイン要)と一時的失敗(再試行可)を
+  /// 呼び出し側で区別するため）。
   ///
   /// **コンストラクタ引数ではなく public な mutable フィールド。** [CommentFeed] は
   /// メイン/背景の両 Isolate から引数なしで生成されており、生成箇所ごとに再発行の
   /// 手段が違う（メインは [SessionController]、背景は自前の HTTP POST）ため、
   /// `connect()` の前に呼び出し側が代入する形にしてある。
-  Future<String?> Function()? onTokenExpired;
+  Future<TokenRefreshResult> Function()? onTokenExpired;
 
   /// サーバーが `STREAMER_NOT_REGISTERED`（TikTok 未連携）を返したとき。
   /// **リトライしても解消しない**ので、購読側は再接続を止めて導線を出すこと。
@@ -106,7 +109,39 @@ class CommentFeed extends ChangeNotifier {
   /// これが無いと1回の失効で再発行が何本も走る。
   bool _tokenRefreshInFlight = false;
 
+  /// 直近に [connect] へ渡された token。**前回と異なる token が渡されたら
+  /// [_tokenRefreshAttempted] を解除する**（新しい token には新しい試行予算を
+  /// 与える）。`lifecycle resumed` 等で同じ token のまま再 connect された場合は
+  /// 解除しない（無限ループ防止を維持）。
+  String? _lastConnectToken;
+
+  /// [connect] / [disconnect] / [dispose] のたびに進む世代。進行中の再発行
+  /// （[_refreshAndReconnect]）が完了したとき、この値が変わっていれば
+  /// 「別の接続へ切り替わった後」なので結果を捨てる（古い token で connect する
+  /// 競合を防ぐ）。
+  int _connectGeneration = 0;
+
+  /// 一時的失敗(通信断・5xx)後の再試行タイマー。恒久失効や接続成功で cancel する。
+  Timer? _retryTimer;
+
+  static const Duration _initialRetryDelay = Duration(seconds: 5);
+  static const Duration _maxRetryDelay = Duration(seconds: 60);
+
+  /// 次に一時的失敗したときの再試行までの待ち時間。指数バックオフで伸び、
+  /// 接続成功時に初期値へ戻る。
+  Duration _retryDelay = _initialRetryDelay;
+
   void connect(String token) {
+    // 外部(SessionController等)から新しい token で呼ばれた場合は新しい
+    // 試行予算を与える。同じ token の再 connect（lifecycle resumed 等）では
+    // 歯止めを解除しない。**refresh成功後の再接続([_refreshAndReconnect])は
+    // ここで一旦リセットされるが、呼び出し元が直後に明示的に立て直す**
+    // （サーバーが取り直した token も拒否し続ける異常時の無限ループ防止）。
+    if (token != _lastConnectToken) {
+      _tokenRefreshAttempted = false;
+    }
+    _lastConnectToken = token;
+
     disconnect();
 
     status = SocketStatus.connecting;
@@ -130,6 +165,8 @@ class CommentFeed extends ChangeNotifier {
       errorMessage = null;
       // 繋がった時点で「この token は有効」。次に失効したときのために歯止めを解除する。
       _tokenRefreshAttempted = false;
+      // 接続できたのでバックオフを初期値へ戻す。
+      _retryDelay = _initialRetryDelay;
       notifyListeners();
       // 再接続のたびに発火する。切れている間の状態変化は push で受け取れていないので、
       // ここを合図に listener 状態を取り直す。
@@ -173,33 +210,13 @@ class CommentFeed extends ChangeNotifier {
       notifyListeners();
     });
 
+    // handleConnectError は socket.io-client の自動再接続からも呼ばれうる。
+    // disconnect()/dispose() 後に登録解除前のイベントが配送されても、登録時の
+    // 世代と現在の世代が変わっていれば無視する(古い socket からの遅延イベント対策)。
+    final registeredGeneration = _connectGeneration;
     socket.onConnectError((err) {
-      final code = _socketErrorCode(err);
-
-      // TikTok 未連携。リトライで解消しないので、購読側に後始末を任せる。
-      if (code == 'STREAMER_NOT_REGISTERED') {
-        status = SocketStatus.error;
-        errorMessage = _describeSocketError(err, '接続エラー');
-        notifyListeners();
-        onStreamerNotRegistered?.call();
-        return;
-      }
-
-      // access token の失効。**まず無言で取り直す。** 取り直せなかったときだけ
-      // エラーとして見せる(_refreshAndReconnect の中)。
-      final refresh = onTokenExpired;
-      if (code == 'TOKEN_EXPIRED' && refresh != null && !_tokenRefreshAttempted) {
-        _tokenRefreshAttempted = true;
-        status = SocketStatus.connecting;
-        errorMessage = null;
-        notifyListeners();
-        unawaited(_refreshAndReconnect(refresh));
-        return;
-      }
-
-      status = SocketStatus.error;
-      errorMessage = _describeSocketError(err, '接続エラー');
-      notifyListeners();
+      if (_connectGeneration != registeredGeneration) return;
+      handleConnectError(err);
     });
 
     socket.onError((err) {
@@ -212,31 +229,132 @@ class CommentFeed extends ChangeNotifier {
     socket.connect();
   }
 
-  /// `TOKEN_EXPIRED` を受けて access token を取り直し、新しい token で張り直す。
-  ///
-  /// `withTokenRefresh`（HTTP 側）と同じ「失効 → 再発行 → 1回だけ再試行」の形。
-  /// 再発行できなければ、その事実をエラーとして見せる（無言で繋がらないままにしない）。
-  Future<void> _refreshAndReconnect(Future<String?> Function() refresh) async {
-    if (_tokenRefreshInFlight) return;
-    _tokenRefreshInFlight = true;
-    try {
-      final token = await refresh();
-      if (token == null) {
-        status = SocketStatus.error;
-        errorMessage = _socketErrorMessages['TOKEN_EXPIRED'];
+  /// `connect_error` パケットの処理本体。テストから直接叩けるように
+  /// `socket.onConnectError` から分離してある。
+  @visibleForTesting
+  void handleConnectError(dynamic err) {
+    final code = _socketErrorCode(err);
+
+    // TikTok 未連携。リトライで解消しないので、購読側に後始末を任せる。
+    if (code == 'STREAMER_NOT_REGISTERED') {
+      status = SocketStatus.error;
+      errorMessage = _describeSocketError(err, '接続エラー');
+      notifyListeners();
+      onStreamerNotRegistered?.call();
+      return;
+    }
+
+    final refresh = onTokenExpired;
+    if (code == 'TOKEN_EXPIRED' && refresh != null) {
+      if (_tokenRefreshInFlight || (_retryTimer?.isActive ?? false)) {
+        // 既に再発行が進行中、またはバックオフ待機中。
+        // socket.io-client は自動再接続するため、待機中にも connect_error が
+        // 届きうる。ここで即時refreshすると指数バックオフが無意味になるので、
+        // 結果/タイマー発火に任せて connecting のまま待つ
+        // （ここでエラー文言を出すと、成功するはずの再試行の直前で
+        // 一瞬 TOKEN_EXPIRED が見えてしまう）。
+        status = SocketStatus.connecting;
+        errorMessage = null;
         notifyListeners();
         return;
       }
-      // connect() は歯止め(_tokenRefreshAttempted)を落とさない。落とすと、
-      // 取り直した token でまた失効扱いされたときに無限ループになる。
-      connect(token);
-    } catch (e) {
-      status = SocketStatus.error;
-      errorMessage = '認証の更新に失敗しました: $e';
-      notifyListeners();
+      if (!_tokenRefreshAttempted) {
+        // access token の失効。**まず無言で取り直す。** 取り直せなかったときだけ
+        // エラーとして見せる(_refreshAndReconnect の中)。
+        _tokenRefreshAttempted = true;
+        status = SocketStatus.connecting;
+        errorMessage = null;
+        notifyListeners();
+        unawaited(_refreshAndReconnect(refresh));
+        return;
+      }
+      // 取り直した token でもまた TOKEN_EXPIRED。無限ループ防止のため、
+      // 下の通常のエラー表示(TOKEN_EXPIRED 文言)へ落ちる。
+    }
+
+    status = SocketStatus.error;
+    errorMessage = _describeSocketError(err, '接続エラー');
+    notifyListeners();
+  }
+
+  /// `TOKEN_EXPIRED` を受けて access token を取り直し、新しい token で張り直す。
+  ///
+  /// `withTokenRefresh`（HTTP 側）と同じ「失効 → 再発行 → 1回だけ再試行」の形。
+  /// **結果の種別で分岐する**（[TokenRefreshResult] 参照）――
+  /// 恒久失効(再ログイン要)だけをエラーとして見せ、一時的失敗(通信断・5xx)は
+  /// バックオフ付きで再試行する（ここで一律に諦めると、一時的な失敗でも
+  /// 「ログインの有効期限が切れています」と誤表示してしまう）。
+  Future<void> _refreshAndReconnect(Future<TokenRefreshResult> Function() refresh) async {
+    if (_tokenRefreshInFlight) return;
+    _tokenRefreshInFlight = true;
+    // この再発行がどの接続世代で始まったかを覚えておく。完了時に世代が
+    // 進んでいたら（別の connect/disconnect が割り込んだ）結果は捨てる。
+    final generation = _connectGeneration;
+    try {
+      final TokenRefreshResult result;
+      try {
+        result = await refresh();
+      } catch (e) {
+        if (generation == _connectGeneration) {
+          _scheduleRetry(error: e);
+        }
+        return;
+      }
+      if (generation != _connectGeneration) return;
+
+      switch (result) {
+        case TokenRefreshed(token: final token):
+          // 取り直した新token は _lastConnectToken と異なるので、connect() 内部の
+          // 歯止めリセットが働いてしまう。**それを直後に打ち消す** ——
+          // 打ち消さないと、サーバーが取り直した token も TOKEN_EXPIRED で
+          // 拒否し続ける異常時に無限ループ(refresh乱発)になる。
+          connect(token);
+          _tokenRefreshAttempted = true;
+        case TokenRefreshRejected():
+          // refresh token 自体が失効。再試行しても直らないので、再ログインを
+          // 促す文言のまま止める。
+          status = SocketStatus.error;
+          errorMessage = _socketErrorMessages['TOKEN_EXPIRED'];
+          notifyListeners();
+        case TokenRefreshFailed():
+          // 通信断・5xx等の一時的失敗。再ログイン扱いにせず、バックオフ付きで
+          // 再試行する。
+          _scheduleRetry();
+      }
     } finally {
       _tokenRefreshInFlight = false;
     }
+  }
+
+  /// 一時的失敗のあと、バックオフ付きで再発行を再試行する。
+  void _scheduleRetry({Object? error}) {
+    // ここで歯止め(_tokenRefreshAttempted)を解除しない。解除すると、バックオフ
+    // 待機中に socket.io-client の自動再接続が連続で TOKEN_EXPIRED を投げた
+    // 場合、handleConnectError がタイマーを無視して即時 refresh してしまう
+    // （待機中は上の `_retryTimer?.isActive` チェックで抑止している。解除は
+    // タイマー発火時にのみ行う）。
+    status = SocketStatus.error;
+    errorMessage = error == null
+        ? 'サーバーに接続できません。通信状態を確認して再接続しています。'
+        : '認証の更新に失敗しました。再接続しています: $error';
+    notifyListeners();
+
+    final generation = _connectGeneration;
+    final delay = _retryDelay;
+    final next = _retryDelay * 2;
+    _retryDelay = next > _maxRetryDelay ? _maxRetryDelay : next;
+
+    _retryTimer?.cancel();
+    _retryTimer = Timer(delay, () {
+      if (generation != _connectGeneration) return;
+      final refresh = onTokenExpired;
+      if (refresh == null) return;
+      status = SocketStatus.connecting;
+      errorMessage = null;
+      notifyListeners();
+      _tokenRefreshAttempted = true;
+      unawaited(_refreshAndReconnect(refresh));
+    });
   }
 
   /// socket から届いた生データを安全にモデルへ変換する。
@@ -278,6 +396,11 @@ class CommentFeed extends ChangeNotifier {
   }
 
   void disconnect() {
+    // 進行中の再発行が完了したときに古い接続へ結果を適用しないよう世代を進め、
+    // 一時失敗の再試行タイマーも止める。
+    _connectGeneration++;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _socket?.dispose();
     _socket = null;
     status = SocketStatus.disconnected;
