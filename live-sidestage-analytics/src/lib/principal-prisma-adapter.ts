@@ -1,5 +1,8 @@
 import type { PrismaClient } from "@prisma/client";
 import type { Adapter, AdapterAccount, AdapterSession, AdapterUser } from "next-auth/adapters";
+import jwt from "jsonwebtoken";
+import { normalizeEmail } from "./apple-auth";
+import { webAppleConfig } from "./web-apple-auth";
 
 /**
  * `@next-auth/prisma-adapter` の `PrismaAdapter()` を自前で持つ最小限のコピー。
@@ -80,6 +83,69 @@ export function PrincipalPrismaAdapter(p: PrismaClient): Adapter {
         if ((error as { code?: string })?.code === "P2025") return null;
         throw error;
       }
+    },
+  };
+}
+
+/// 「既存ログインセッション中に別プロバイダのOAuthへ入ると、メール・プロバイダ種別を
+/// 一切見ずに現在の User へ linkAccount() される」経路を塞ぐラッパー。
+///
+/// next-auth v4 の `callback-handler.js` は、adapterあり + 呼び出し元セッションあり
+/// (`{user}` が渡っている) + 対象OAuthアカウントが未連携、の場合に
+/// `linkAccount({...account, userId: user.id})` を無条件で呼ぶ（メール一致すら見ない）。
+/// これは `signIn` コールバックが `{user, account, profile}` のみを受け取り、
+/// 現在のセッション有無を判定できないため `signIn` コールバックでは塞げない
+/// (`auth.ts` の `emailLinkRestrictedAdapter()` が同じ理由で `getUserByEmail` 側を
+/// アダプタで担保している前例と同じ設計)。
+///
+/// **ルール**: link先 User に既存 OAuthAccount が1件以上あれば拒否する。
+/// - 新規 User 作成直後の初回 linkAccount（`getUserByEmail`/新規createUserを経由）は
+///   Account 0件なので通る。
+/// - Account 0件の旧 User へのメール一致リンク（`emailLinkRestrictedAdapter`が許可する
+///   経路）も Account 0件なので通る。
+/// - 既存ログインセッション中に別プロバイダへ入る経路は、既存セッションの User が
+///   ログインに使ったプロバイダの Account を必ず1件以上持っているため、この1ルールで
+///   Google→Apple・Apple→Google 両方向とも拒否できる。
+export function linkAccountRestrictedAdapter(p: PrismaClient, base: Adapter): Adapter {
+  return {
+    ...base,
+    async linkAccount(account: AdapterAccount) {
+      const existingCount = await p.oAuthAccount.count({ where: { userId: account.userId } });
+      if (existingCount > 0) {
+        // null/undefinedを返すとnext-authは「リンク成功扱い」で処理を続けてしまうため、
+        // 意図的な拒否だと分かる形で例外を投げてサインイン自体を失敗させる。
+        throw new Error(
+          `implicit account linking refused: user already has ${existingCount} linked account(s)`,
+        );
+      }
+
+      let data: AdapterAccount = account;
+      if (account.provider === "apple") {
+        // account.id_token は openid-client の TokenSet(next-auth `Account`が
+        // `Partial<TokenSet>` を extends)経由でここまで届く。署名・iss・aud・expの検証は
+        // openid-client の token交換〜client.callback()内で既に完了しているため、
+        // ここでは再検証せず `jwt.decode` でクレームを読むだけでよい。
+        const claims = account.id_token ? jwt.decode(account.id_token) : null;
+        const email =
+          claims && typeof claims === "object" ? normalizeEmail((claims as { email?: unknown }).email) : null;
+
+        // servicesId(Apple Developer PortalのServices ID)はrevoke時にclient_secretの
+        // 署名対象(sub)として必要。モバイル向け`apple-account.ts`と同じ列構成に揃え、
+        // `revokeAppleToken`がWeb起源のOAuthAccountでもrevoke可能にする。
+        const appleClientId = webAppleConfig()?.servicesId ?? null;
+
+        data = {
+          ...account,
+          // モバイルの`apple-account.ts`と同じく、リンク判定に使わない表示専用の値。
+          providerEmail: email,
+          // AdapterAccount(next-authのTokenSetParameters由来)の型は`string | undefined`
+          // でnullを受け付けないため、undefinedのまま渡す(Prisma側は未指定でnullになる)。
+          refresh_token: account.refresh_token,
+          appleClientId,
+        } as AdapterAccount;
+      }
+
+      return base.linkAccount!(data);
     },
   };
 }

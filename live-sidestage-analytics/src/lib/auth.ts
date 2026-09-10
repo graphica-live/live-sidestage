@@ -4,11 +4,13 @@ import type { JWT } from "next-auth/jwt";
 import { cookies } from "next/headers";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrincipalPrismaAdapter } from "./principal-prisma-adapter";
+import AppleProvider from "next-auth/providers/apple";
+import { PrincipalPrismaAdapter, linkAccountRestrictedAdapter } from "./principal-prisma-adapter";
 import { prisma } from "./prisma";
 import { markLastActive } from "./mark-last-active";
 import { AMBASSADOR_INVITE_COOKIE } from "./ambassador/invite-cookie";
 import { claimAmbassadorInviteForNewUser } from "./ambassador/ambassador";
+import { webAppleConfig, buildWebClientSecret } from "./web-apple-auth";
 
 /// `allowDangerousEmailAccountLinking` のメール一致リンクを
 /// **Account を1件も持たない User だけ**に絞るためのラッパ。
@@ -26,8 +28,13 @@ import { claimAmbassadorInviteForNewUser } from "./ambassador/ambassador";
 /// **プロバイダのオプションでは書けない条件なのでアダプタ側で担保する。**
 /// `signIn` コールバックは現在のセッションを受け取れず「新規サインアップ」と
 /// 「ログイン中の暗黙リンク」を区別できないため、ここでは使えない。
+///
+/// Apple 追加時に見つかった「既存ログインセッション中に別プロバイダのOAuthへ入ると
+/// メール・プロバイダ種別を一切見ずに現在の User へ linkAccount() される」経路
+/// （こちらも signIn コールバックでは塞げない）は、`linkAccountRestrictedAdapter()`
+/// （principal-prisma-adapter.ts）が同じ設計思想で別途担保する。
 function emailLinkRestrictedAdapter(): Adapter {
-  const base = PrincipalPrismaAdapter(prisma);
+  const base = linkAccountRestrictedAdapter(prisma, PrincipalPrismaAdapter(prisma));
 
   return {
     ...base,
@@ -65,6 +72,39 @@ const devLoginProvider = CredentialsProvider({
   },
 });
 
+// Apple 設定が未完了(env var 未設定)ならプロバイダ自体を providers 配列に含めない。
+// feature flag相当。GoogleログインにはAppleの有無が影響しない設計にするため
+// (Batch 01 の webAppleConfig() は fail closed で null を返す)。
+const webAppleConfigValue = webAppleConfig();
+const appleProvider = webAppleConfigValue
+  ? AppleProvider({
+      clientId: webAppleConfigValue.servicesId,
+      // next-auth@4.24.14 実物確認済み: AppleProviderの`clientSecret`は文字列固定型
+      // (providers/apple.d.ts)。モジュールロード時に一度だけ評価されるため、
+      // モバイル向け`buildClientSecret()`(TTL5分)をそのまま使うと5分後から
+      // Apple token交換が全滅する。Web専用の長寿命(90日)wrapperを使う。
+      clientSecret: buildWebClientSecret(webAppleConfigValue, webAppleConfigValue.servicesId),
+      // Apple不変条件: Apple経由のPrincipalはemailを持たない(null)。
+      // 実メールはlinkAccountRestrictedAdapter()がOAuthAccount.providerEmailへ回す。
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name ?? null,
+          email: null,
+          image: null,
+        };
+      },
+      // 既定は checks: ["pkce"] のみ。state/nonceを明示追加しlogin CSRF対策を厚くする
+      // (design-review MEDIUM指摘)。
+      checks: ["pkce", "state", "nonce"],
+    })
+  : null;
+
+// next-authの`defaultCookies()`(core/lib/cookie.js)と同じprefix付与ロジック。
+// useSecureCookies判定はリクエストごとのプロトコルだが、本番/開発いずれも
+// NEXTAUTH_URLのプロトコルと一致するため、モジュールロード時の1回評価で足りる。
+const cookiePrefix = (process.env.NEXTAUTH_URL ?? "").startsWith("https://") ? "__Secure-" : "";
+
 export const authOptions: NextAuthOptions = {
   adapter: emailLinkRestrictedAdapter(),
   providers: [
@@ -79,11 +119,51 @@ export const authOptions: NextAuthOptions = {
       // (2026-09-10)。select_accountで明示選択の画面へ直接飛ばし、この経路自体を避ける。
       authorization: { params: { prompt: "select_account" } },
     }),
+    ...(appleProvider ? [appleProvider] : []),
     ...(process.env.ENABLE_DEV_LOGIN === "1" ? [devLoginProvider] : []),
   ],
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
+  },
+  // design-review確定(HIGH): Appleは response_mode: "form_post" でクロスサイトPOSTで
+  // コールバックへ戻るため、checks(pkce/state/nonce)用cookieが既定の sameSite: "lax" だと
+  // ブラウザに送信されず OAuthCallback エラーで全滅する。Google(GETリダイレクト)側は
+  // sameSite: "none" でも top-level GET は同じcookieが送られるため挙動に影響しない。
+  // next-authは authOptions.cookies を core/init.js で `{...defaultCookies(useSecureCookies), ...authOptions.cookies}`
+  // とキー単位でまるごと上書きする(name含む)ため、cookie名は defaultCookies と同じ
+  // "__Secure-" prefix 付与ロジックをここで再現し、既存のGoogleログイン(session-token等)
+  // との命名規則を崩さないようにする。
+  cookies: {
+    pkceCodeVerifier: {
+      name: `${cookiePrefix}next-auth.pkce.code_verifier`,
+      options: {
+        httpOnly: true,
+        sameSite: "none",
+        path: "/",
+        secure: true,
+        maxAge: 60 * 15,
+      },
+    },
+    state: {
+      name: `${cookiePrefix}next-auth.state`,
+      options: {
+        httpOnly: true,
+        sameSite: "none",
+        path: "/",
+        secure: true,
+        maxAge: 60 * 15,
+      },
+    },
+    nonce: {
+      name: `${cookiePrefix}next-auth.nonce`,
+      options: {
+        httpOnly: true,
+        sameSite: "none",
+        path: "/",
+        secure: true,
+      },
+    },
   },
   callbacks: {
     async jwt({ token, user }) {
