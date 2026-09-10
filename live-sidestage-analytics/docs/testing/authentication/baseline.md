@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: authentication
 last_updated: 2026-09-10
 last_risk: HIGH
-last_reviewers: DeepSeek(code-review + TestCase review 同時実施, NO ISSUES / SUFFICIENT) / Codex-terra(code-review + TestCase review 同時実施, NO ISSUES / SUFFICIENT)
+last_reviewers: DeepSeek(code-review, VALID 1/INVALID 2) / Gemini(code-review, Codex代理, NO ISSUES)
 ---
 
 # テストベースライン: authentication
@@ -33,6 +33,8 @@ rename前後で振る舞いが変わらないことを保証する（実装詳�
 | TC-AUTH-106 | Accountを持つ現役Principalへはメール一致でリンクしない | メール一致リンク制限 | 異常/セキュリティ | OAuthAccountを持つPrincipal + 同じメールで別プロバイダログイン | 409または新規Principal（乗っ取り防止） | 同上 | PASS | 後から同じメールを入手した第三者による乗っ取り防止 |
 | TC-AUTH-004 | GoogleProviderはprompt=select_accountを要求する | `authOptions.providers` | 正常/回帰 | 静的設定確認 | `google.options.authorization.params.prompt === "select_account"`(next-authが最終的にマージする側の値。トップレベルの`authorization`はデフォルトのscopeのみで呼び出し側の設定を反映しない) | `npx dotenv -e .env.local.test -- vitest run src/lib/auth.integration.test.ts -t "GoogleProvider"` | PASS | 本番でブラウザに複数Googleアカウントがログイン済みの状態からアカウント切替すると、Google側InteractiveLoginが500を返す事象が実際に発生した(2026-09-10)。select_accountで暗黙切替を経由させず明示選択に固定し回避する。Google側のInteractiveLogin自体はこちらのE2Eで再現・検証できないため、設定値の存在を回帰的に確認する。初回実装は誤ってトップレベル`authorization`を検証しfalse negativeだった(Codex-terra TestCase reviewで検出、修正済み) |
 | TC-AUTH-005 | agency側GoogleProvider(`agency-google`)もprompt=select_accountを要求する | `agencyAuthOptions.providers` (`src/lib/agency/auth.ts`) | 正常/回帰 | 静的設定確認(DB不要のunit) | `options.id === "agency-google"` のproviderの `options.authorization.params.prompt === "select_account"` | `npx vitest run src/lib/agency/auth.test.ts` | PASS | TC-AUTH-004の配信者側修正(448816f9)が `agency-google` には未適用で、agencyホスト(`/agency/login`)からの切替で同じGoogle側500が残っていた(2026-09-10)。next-authの `GoogleProvider({ id })` はトップレベル`id`を"google"のまま保持し、上書きした`id`も`options`側にあるため、`providers.find(p => p.id === "agency-google")` では見つからない(実装時に実測)。検索も検証も`options`側で行う |
+| TC-AUTH-107 | 事務所側AppleProvider(`apple-agency`)がenv var設定済み時にproviders配列へ含まれ、pkce/state/nonce checksを要求する | `agencyAuthOptions.providers` (`src/lib/agency/auth.ts`) | 正常/回帰 | 静的設定確認(DB不要のunit) | `options.id === "apple-agency"` のproviderが存在し `checks` に `pkce`/`state`/`nonce` を含む | `npx vitest run src/lib/agency/auth.test.ts` | PASS(本環境ではAPPLE_SERVICES_ID等未設定のためwebAppleConfig()がnullを返し、providerがproviders配列に含まれない分岐でテストがskip相当になる。実効検証はAPPLE_*系env var設定環境でのみ成立。配信者側Batch02も同じ制約) | Batch03(事務所コンソール側Apple追加)。配信者側の`appleProvider`と同じfeature flag設計(env var未設定ならproviders配列に含めない) |
+| TC-AUTH-108 | `handlerFor`が`agency-google`/`apple-agency`をagencyHandlerへ、それ以外(配信者側`google`/`apple`、providerId無し)をstreamerHandlerへ振り分ける | `handlerFor` (`src/app/api/auth/[...nextauth]/route.ts`) | 正常/回帰 | 静的ロジック確認(DB不要のunit) | 事務所用id 2種は同じhandlerに、それ以外は別のhandlerに解決される(NextAuthハンドラの中身に依存せず参照の一致で判定) | `npx vitest run "src/app/api/auth/[...nextauth]/route.test.ts"` | PASS | Batch03で`handlerFor`の判定をGoogle単独からAppleを含む集合へ拡張したが、振り分けを固定するテストが実装計画の完了条件にありながら未実装だったため追加した(worker-normalの初回報告ではauth.test.tsのprovider存在確認のみで、handlerFor自体の振り分けは未検証だった) |
 
 ## Out of Scope
 

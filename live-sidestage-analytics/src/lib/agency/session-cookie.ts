@@ -9,18 +9,21 @@ export const AGENCY_AUTH_BASE_PATH = "/api/agency-auth";
 export const AGENCY_LOGIN_PATH = "/agency/login";
 export const AGENCY_CONSOLE_PATH = "/agency";
 
-// 事務所用 Google プロバイダの id。配信者側の "google" とは別 id にする。
+// 事務所用プロバイダの id（Google / Apple）。配信者側と同じ id は使えない。
 //
 // NextAuth v4 は OAuth の redirect_uri を必ず `<origin>/api/auth/callback/<providerId>`
 // として組み立てる(utils/parse-url.js が、パスを持たない NEXTAUTH_URL に対して "/api/auth" を
 // 既定パスとして補うため)。事務所側を /api/agency-auth にマウントしても、この一点だけは
 // /api/auth に戻ってくる。id を分けておけば URL が
-// /api/auth/callback/agency-google となり、配信者側の /api/auth/callback/google と衝突せず、
+// /api/auth/callback/agency-google / /api/auth/callback/apple-agency となり、配信者側と衝突せず、
 // /api/auth のルートから事務所インスタンスへ振り分けられる。
 //
-// Google Cloud Console の「承認済みのリダイレクト URI」にも
-// <origin>/api/auth/callback/agency-google を登録する必要がある。
+// Google Cloud Console の「承認済みのリダイレクト URI」には
+// <origin>/api/auth/callback/agency-google を登録し、
+// Apple Developer Portal の Services ID には
+// <origin>/api/auth/callback/apple-agency を登録する必要がある。
 export const AGENCY_GOOGLE_PROVIDER_ID = "agency-google";
+export const AGENCY_APPLE_PROVIDER_ID = "apple-agency";
 
 // 本番(https)では NextAuth と同じ規約で __Secure- を付ける。
 export const AGENCY_USE_SECURE_COOKIES = (process.env.NEXTAUTH_URL ?? "").startsWith("https://");

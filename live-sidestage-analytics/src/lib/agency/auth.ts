@@ -1,8 +1,10 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import AppleProvider from "next-auth/providers/apple";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { normalizeEmail } from "./agency";
 import {
+  AGENCY_APPLE_PROVIDER_ID,
   AGENCY_CALLBACK_COOKIE,
   AGENCY_CSRF_COOKIE,
   AGENCY_GOOGLE_PROVIDER_ID,
@@ -13,6 +15,7 @@ import {
   AGENCY_STATE_COOKIE,
   AGENCY_USE_SECURE_COOKIES,
 } from "./session-cookie";
+import { webAppleConfig, buildWebClientSecret } from "../web-apple-auth";
 
 // 事務所コンソールは配信者/管理者(src/lib/auth.ts)とは独立したセッションで動く。
 // Cookie名もNextAuthのエンドポイント(/api/agency-auth)も分けてあるため、同じブラウザで
@@ -38,6 +41,31 @@ const devLoginProvider = CredentialsProvider({
   },
 });
 
+// Apple 設定が未完了(env var 未設定)ならプロバイダ自体を providers 配列に含めない。
+// feature flag相当。Googleログインには Appleの有無が影響しない設計にするため。
+const webAppleConfigValue = webAppleConfig();
+const agencyAppleProvider = webAppleConfigValue
+  ? AppleProvider({
+      id: AGENCY_APPLE_PROVIDER_ID,
+      clientId: webAppleConfigValue.servicesId,
+      // 配信者側と同じく、Web専用の長寿命(90日)wrapperを使う。
+      clientSecret: buildWebClientSecret(webAppleConfigValue, webAppleConfigValue.servicesId),
+      // 事務所側は Prisma Adapter を使わず JWT のみで完結するため、
+      // email は実メールをそのまま使ってよい。Google側のメール一致判定が無いので
+      // null化する必要がない(nullだと Agency.email との一致判定に使えない)。
+      // ただし名前と画像は省略する(配信者側と同じ)。
+      profile(profile) {
+        return {
+          id: profile.sub,
+          email: profile.email ?? null,
+          name: profile.name ?? null,
+          image: null,
+        };
+      },
+      checks: ["pkce", "state", "nonce"],
+    })
+  : null;
+
 export const agencyAuthOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -50,6 +78,7 @@ export const agencyAuthOptions: NextAuthOptions = {
       // src/lib/auth.ts と同じく select_account で明示選択の画面へ直接飛ばし、この経路自体を避ける。
       authorization: { params: { prompt: "select_account" } },
     }),
+    ...(agencyAppleProvider ? [agencyAppleProvider] : []),
     ...(process.env.ENABLE_DEV_LOGIN === "1" ? [devLoginProvider] : []),
   ],
   session: { strategy: "jwt" },
@@ -64,9 +93,22 @@ export const agencyAuthOptions: NextAuthOptions = {
       options: { sameSite: "lax", path: "/", secure: AGENCY_USE_SECURE_COOKIES },
     },
     csrfToken: { name: AGENCY_CSRF_COOKIE, options: secureOptions },
-    state: { name: AGENCY_STATE_COOKIE, options: { ...secureOptions, maxAge: 900 } },
-    pkceCodeVerifier: { name: AGENCY_PKCE_COOKIE, options: { ...secureOptions, maxAge: 900 } },
-    nonce: { name: AGENCY_NONCE_COOKIE, options: secureOptions },
+    // design-review確定(HIGH): Appleは response_mode: "form_post" でクロスサイトPOSTで
+    // コールバックへ戻るため、checks(pkce/state/nonce)用cookieが既定の sameSite: "lax" だと
+    // ブラウザに送信されず OAuthCallback エラーで全滅する。Google(GETリダイレクト)側は
+    // sameSite: "none" でも top-level GET は同じcookieが送られるため挙動に影響しない。
+    state: {
+      name: AGENCY_STATE_COOKIE,
+      options: { httpOnly: true, sameSite: "none", path: "/", secure: true, maxAge: 900 },
+    },
+    pkceCodeVerifier: {
+      name: AGENCY_PKCE_COOKIE,
+      options: { httpOnly: true, sameSite: "none", path: "/", secure: true, maxAge: 900 },
+    },
+    nonce: {
+      name: AGENCY_NONCE_COOKIE,
+      options: { httpOnly: true, sameSite: "none", path: "/", secure: true },
+    },
   },
   callbacks: {
     // signIn コールバックで未登録アカウントを弾かない。
