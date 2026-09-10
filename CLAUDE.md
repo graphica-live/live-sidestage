@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | [live-sidestage-analytics](live-sidestage-analytics/CLAUDE.md) | LIVE Sidestage Analytics（イベント運営機能を含む） | `live-analytics` | `graphica-live/LiveAnalytics` | `master` |
 | [live-sidestage-desktop](live-sidestage-desktop/CLAUDE.md) | TikEffect | `tikeffect` | `graphica-live/TikEffect` | `main` |
 | [live-sidestage-mydesktop](live-sidestage-mydesktop/CLAUDE.md) | MyDesktop | `live-sidestage-mydesktop` | なし(モノレポ内で新規) | `main` |
-| [live-sidestage-mobile](live-sidestage-mobile/CLAUDE.md) | LIVE Sidestage (Android) | `live_sidestage_mobile` | remote なし | `master` |
+| [live-sidestage-mobile](live-sidestage-mobile/CLAUDE.md) | LIVE Sidestage (Android/iOS) | `live_sidestage_mobile` | remote なし | `master` |
 | [TikCaption](TikCaption/CLAUDE.md) | TikCaption | `tikcaption` | `graphica-live/TikCaption` | `master` |
 | [TikRIng](TikRIng/CLAUDE.md) | TikRing | `profileimagefitservice` | `graphica-live/frame` | `main` |
 
@@ -33,7 +33,7 @@ TikRIng を除く4つ（analytics / desktop / mobile / TikCaption）は TikTok L
 - **live-sidestage-analytics** — Next.js 14 + Prisma/PostgreSQL + socket.io。Railway ホスティングの Web サービス本体。ギフト集計・ランキング・OBS 用貢献者オーバーレイを提供し、モバイルとデスクトップ両方のバックエンドを兼ねる。**イベント（大会）運営機能もここに入っている**
 - **live-sidestage-desktop** — Electron + Express + better-sqlite3。**ローカル完結**の OBS ウィジェット（演出オーバーレイ）アプリ。analytics とは API キー経由の一方向連携のみ
 - **live-sidestage-mydesktop** — Electron のみ（自前サーバーなし）。desktop の派生で、配信者個人専用の機能ページを持つ。desktop の socket.io（ポート38100固定）へ接続するだけの軽量な観測者アプリで、SQLite・TikTok接続・動画保存ロジックは持たない。desktop が起動していないと機能しない
-- **live-sidestage-mobile** — Flutter (Android)。analytics のクライアント。受信コメントをオンデバイス VOICEVOX で読み上げる
+- **live-sidestage-mobile** — Flutter (Android/iOS)。analytics のクライアント。受信コメントをオンデバイス VOICEVOX で読み上げる
 - **TikCaption** — Electron + Python ASR。マイク音声を文字起こしして字幕オーバーレイを出す独立プロダクト（analytics とは繋がっていない）
 - **TikRIng** — Cloudflare Pages + Functions。透過フレームをアップロードしてリスナー向けの着せ替え URL を発行する Web サービス。他3つとはコード上の連携がない独立プロダクト
 
