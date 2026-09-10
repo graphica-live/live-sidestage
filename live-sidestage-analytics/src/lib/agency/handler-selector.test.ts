@@ -1,6 +1,6 @@
 // DB不要のunitテスト。事務所用provider idがagencyHandlerへ正しく振り分けられることを固定する。
 import { describe, it, expect } from "vitest";
-import { handlerFor } from "./route";
+import { handlerFor } from "./handler-selector";
 import { AGENCY_APPLE_PROVIDER_ID, AGENCY_GOOGLE_PROVIDER_ID } from "@/lib/agency/session-cookie";
 
 describe("handlerFor", () => {
