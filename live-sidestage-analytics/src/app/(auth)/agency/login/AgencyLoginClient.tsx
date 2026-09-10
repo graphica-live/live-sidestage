@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { SessionProvider, signIn } from "next-auth/react";
+import { SessionProvider, getProviders, signIn } from "next-auth/react";
 import GoogleIcon from "@/app/GoogleIcon";
-import { AGENCY_AUTH_BASE_PATH, AGENCY_GOOGLE_PROVIDER_ID } from "@/lib/agency/session-cookie";
+import AppleIcon from "@/app/AppleIcon";
+import { AGENCY_AUTH_BASE_PATH, AGENCY_GOOGLE_PROVIDER_ID, AGENCY_APPLE_PROVIDER_ID } from "@/lib/agency/session-cookie";
 
 const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1";
 
@@ -41,6 +42,21 @@ function AgencyLoginForm() {
   const params = useSearchParams();
   const callbackUrl = useAgencyCallbackUrl();
   const [devEmail, setDevEmail] = useState("agency@local.test");
+  const [appleEnabled, setAppleEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getProviders()
+      .then((providers) => {
+        if (!cancelled) setAppleEnabled(!!providers?.[AGENCY_APPLE_PROVIDER_ID]);
+      })
+      .catch(() => {
+        if (!cancelled) setAppleEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 未登録アカウントはログイン自体は通り、コンソール側で「事務所情報が見つかりません」を出す
   // (理由は agencyAuthOptions の callbacks コメント参照)。ここに出るのは通信エラー等。
@@ -74,6 +90,15 @@ function AgencyLoginForm() {
             <GoogleIcon />
             Googleでログイン
           </button>
+          {appleEnabled && (
+            <button
+              onClick={() => signIn(AGENCY_APPLE_PROVIDER_ID, { callbackUrl })}
+              className="w-full flex items-center justify-center gap-2 bg-black/5 dark:bg-white/5 hover:bg-row-hover border border-border rounded-lg px-4 py-2.5 text-sm font-medium transition-colors mt-2"
+            >
+              <AppleIcon />
+              Appleでログイン
+            </button>
+          )}
           <p className="text-xs text-muted mt-3">
             運営に登録してもらったGoogleアカウントでログインしてください。
             配信者向けのログインとは別で、どちらか一方のログアウトがもう一方に影響することはありません。

@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getProviders, signIn } from "next-auth/react";
 import GoogleIcon from "@/app/GoogleIcon";
+import AppleIcon from "@/app/AppleIcon";
 import { clampCallbackUrl, safeCallbackUrl } from "@/lib/callback-url";
 
 const DEV_LOGIN_ENABLED = process.env.NEXT_PUBLIC_ENABLE_DEV_LOGIN === "1";
@@ -82,6 +83,18 @@ function GoogleButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+function AppleButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-center gap-2.5 bg-bg hover:bg-row-hover border border-border rounded-field px-4 py-[11px] text-[.88rem] font-semibold text-strong transition-colors mt-2"
+    >
+      <AppleIcon />
+      Appleでログイン
+    </button>
+  );
+}
+
 function DevLoginForm({
   devEmail,
   setDevEmail,
@@ -155,6 +168,21 @@ function LoginForm({
     : raw;
   const stats = useLoginStats(variant === "split");
 
+  const [appleEnabled, setAppleEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    getProviders()
+      .then((providers) => {
+        if (!cancelled) setAppleEnabled(!!providers?.apple);
+      })
+      .catch(() => {
+        if (!cancelled) setAppleEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (variant === "split") {
     return (
       <div className="theme-light-forced min-h-screen flex flex-col md:flex-row">
@@ -215,6 +243,7 @@ function LoginForm({
           <div className="w-full max-w-[320px]">
             <div className="card">
               <GoogleButton onClick={() => signIn("google", { callbackUrl })} />
+              {appleEnabled && <AppleButton onClick={() => signIn("apple", { callbackUrl })} />}
             </div>
             <FooterConsent />
             {DEV_LOGIN_ENABLED && (
@@ -239,6 +268,7 @@ function LoginForm({
 
         <div className="card">
           <GoogleButton onClick={() => signIn("google", { callbackUrl })} />
+          {appleEnabled && <AppleButton onClick={() => signIn("apple", { callbackUrl })} />}
         </div>
 
         {DEV_LOGIN_ENABLED && (
