@@ -159,6 +159,7 @@ class SpeechQueueController extends ChangeNotifier {
     enabled = value;
     if (!enabled) {
       _queue.clear();
+      _voicePool?.resetRandomAssignments();
     } else {
       // 有効化し直したら過去のエラーは持ち越さない。UI 側でエラーは
       // ステータス表示の最優先なので、消さないと一度の失敗で永久に赤くなる。

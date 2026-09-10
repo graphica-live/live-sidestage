@@ -73,4 +73,24 @@ void main() {
       expect(_styles().map((s) => s.styleId), contains(pool.effectiveStyleId('user_a')));
     });
   });
+
+  group('resetRandomAssignments', () {
+    test('リセット後は同じ投稿者でもボイスが再抽選されうる', () {
+      final pool = VoicePool(_styles())..randomEnabled = true;
+      final before = pool.effectiveStyleId('user_a');
+
+      pool.resetRandomAssignments();
+
+      // 再抽選結果はモデル内の値である保証のみ(乱数なので同じ値に戻ることもある)。
+      expect(_styles().map((s) => s.styleId), contains(pool.effectiveStyleId('user_a')));
+      expect(before, isNotNull);
+    });
+
+    test('モデルが空でもリセットは落ちない', () {
+      final pool = VoicePool([])..randomEnabled = true;
+
+      expect(() => pool.resetRandomAssignments(), returnsNormally);
+      expect(pool.effectiveStyleId('user_a'), 0);
+    });
+  });
 }
