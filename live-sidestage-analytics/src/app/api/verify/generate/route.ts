@@ -8,6 +8,7 @@ import { isValidNormalizedTiktokHandle } from "@/lib/agency/params";
 import { requireExistingTiktokAccount, formatExistenceGateError } from "@/lib/tiktok-existence";
 import {
   checkTiktokHandleChangeAllowed,
+  checkTiktokUidMatch,
   formatTiktokHandleLockError,
   formatTiktokUidMismatchError,
 } from "@/lib/tiktok-id-lock";
@@ -136,10 +137,10 @@ export async function POST(req: NextRequest) {
       return { kind: "ok" as const, streamer: updated };
     }
 
-    // 同一アカウントの改名だけを許す。tiktokUid は不変なので更新もしない。
-    // 別アカウントのハンドルへ付け替えると、所有の根拠(tiktokUid)と接続先(tiktokHandle)が
-    // 別人を指したまま既存のギフト・履歴がその配信に帰属する。
-    if (current.tiktokUid !== registerTiktokUid) {
+    // 同一アカウントの改名だけを許す想定だが、UID mismatchチェックは現在一時的に無効化されて
+    // おり(isTiktokUidMismatchCheckDisabled()参照)、lockExempt(ADMIN_EMAIL)以外の通常ユーザーも
+    // 別アカウントへの付け替えが通る状態にある。tiktokUid は不変なので更新もしない。
+    if (!checkTiktokUidMatch({ tiktokUid: current.tiktokUid }, registerTiktokUid, { exempt: lockExempt }).ok) {
       return { kind: "uid_mismatch" as const };
     }
 

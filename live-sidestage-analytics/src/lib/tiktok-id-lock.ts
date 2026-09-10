@@ -50,6 +50,38 @@ export function formatTiktokUidMismatchError() {
   };
 }
 
+/**
+ * UID mismatchチェック（別アカウントへの付け替え拒否）の一時無効化フラグ。
+ * 2026-09-11: 運用都合で一時的にOFF。別アカウントへの付け替え拒否という仕様自体を
+ * 恒久廃止したわけではなく、将来 TIKTOK_UID_MISMATCH_CHECK_DISABLED="0" を設定して
+ * ONに戻す可能性がある。
+ *
+ * 既存の TIKTOK_EXISTENCE_CHECK_DISABLED (tiktok-existence.ts) とは極性が逆で、
+ * こちらは未設定(デフォルト)が「無効化」を意味する点に注意。
+ */
+export function isTiktokUidMismatchCheckDisabled(): boolean {
+  return process.env.TIKTOK_UID_MISMATCH_CHECK_DISABLED !== "0";
+}
+
+export type TiktokUidMatchCheck = { ok: true } | { ok: false };
+
+/**
+ * ハンドル変更が「同一TikTokアカウントの改名」であることの確認を行うべきか判定する。
+ * 優先順位: exempt(ADMIN_EMAIL等、7日ロックも免除される特例ユーザー) を最優先で許可し、
+ * 次に isTiktokUidMismatchCheckDisabled() が true の間は常に許可する(一時無効化)。
+ * どちらでもない場合のみ tiktokUid の一致を確認する。
+ */
+export function checkTiktokUidMatch(
+  current: { tiktokUid: string },
+  nextTiktokUid: string,
+  opts: { exempt: boolean }
+): TiktokUidMatchCheck {
+  if (opts.exempt) return { ok: true };
+  if (isTiktokUidMismatchCheckDisabled()) return { ok: true };
+  if (current.tiktokUid !== nextTiktokUid) return { ok: false };
+  return { ok: true };
+}
+
 export function formatTiktokHandleLockError(retryAfter: Date, now: Date = new Date()) {
   const remainingDays = Math.max(
     1,

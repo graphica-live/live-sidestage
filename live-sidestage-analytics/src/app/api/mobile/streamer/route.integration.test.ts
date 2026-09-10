@@ -3,7 +3,7 @@
 // TikTok ID変更の7日ロックがmobile PATCH経路でも機能することを検証する。
 // コアのCAS/ロック判定ロジックは verify/generate/route.integration.test.ts で網羅済みのため、
 // ここでは経路固有の代表ケース(ロック中409、既存verifiedのリセット)のみを対象にする。
-import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signMobileToken } from "@/lib/mobile-auth";
@@ -112,32 +112,132 @@ describe("PATCH /api/mobile/streamer — TikTok ID変更7日ロック", () => {
     expect(reloaded.tiktokHandleChangedAt!.getTime()).toBeGreaterThan(changedAt.getTime());
   });
 
-  it("ロックが明けていても、実在確認で得たtiktokUidが登録済みと異なれば409 TIKTOK_UID_MISMATCHで拒否する", async () => {
-    const user = await prisma.principal.create({
-      data: { email: `${PREFIX}${Date.now()}mm@local.test`, name: `${PREFIX}user3` },
+  describe("UID mismatchチェック(TIKTOK_UID_MISMATCH_CHECK_DISABLED)", () => {
+    const ENV_KEY = "TIKTOK_UID_MISMATCH_CHECK_DISABLED";
+    let originalEnv: string | undefined;
+
+    beforeEach(() => {
+      originalEnv = process.env[ENV_KEY];
     });
-    const streamer = await prisma.streamer.create({
-      data: {
-        principalId: user.id,
-        // モックが返す uid とは別人。ハンドルを空けた第三者への付け替えに相当する。
-        tiktokUid: makeTiktokUid(`${TID_PREFIX}other`),
-        tiktokHandle: `${TID_PREFIX}old3`,
-        verificationCode: "x",
-        tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-        verified: true,
-      },
+    afterEach(() => {
+      if (originalEnv === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = originalEnv;
     });
-    const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
 
-    const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}new3`));
-    const body = await res.json();
+    it("チェック有効時(\"0\")は、実在確認で得たtiktokUidが登録済みと異なれば409 TIKTOK_UID_MISMATCHで拒否する", async () => {
+      process.env[ENV_KEY] = "0";
+      const user = await prisma.principal.create({
+        data: { email: `${PREFIX}${Date.now()}mm@local.test`, name: `${PREFIX}user3` },
+      });
+      const streamer = await prisma.streamer.create({
+        data: {
+          principalId: user.id,
+          // モックが返す uid とは別人。ハンドルを空けた第三者への付け替えに相当する。
+          tiktokUid: makeTiktokUid(`${TID_PREFIX}other`),
+          tiktokHandle: `${TID_PREFIX}old3`,
+          verificationCode: "x",
+          tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+          verified: true,
+        },
+      });
+      const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
 
-    expect(res.status).toBe(409);
-    expect(body.code).toBe("TIKTOK_UID_MISMATCH");
+      const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}new3`));
+      const body = await res.json();
 
-    const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
-    expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}old3`);
-    expect(reloaded.verified).toBe(true);
+      expect(res.status).toBe(409);
+      expect(body.code).toBe("TIKTOK_UID_MISMATCH");
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}old3`);
+      expect(reloaded.verified).toBe(true);
+    });
+
+    it("既定(未設定=無効化)状態では、tiktokUidが登録済みと異なっても200で許可される", async () => {
+      delete process.env[ENV_KEY];
+      const user = await prisma.principal.create({
+        data: { email: `${PREFIX}${Date.now()}mm2@local.test`, name: `${PREFIX}user4` },
+      });
+      const streamer = await prisma.streamer.create({
+        data: {
+          principalId: user.id,
+          tiktokUid: makeTiktokUid(`${TID_PREFIX}other2`),
+          tiktokHandle: `${TID_PREFIX}old4`,
+          verificationCode: "x",
+          tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+          verified: true,
+        },
+      });
+      const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+      const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}new4`));
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.streamer.tiktokHandle).toBe(`${TID_PREFIX}new4`);
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}new4`);
+      expect(reloaded.tiktokUid).toBe(makeTiktokUid(`${TID_PREFIX}other2`));
+    });
+
+    it("チェック有効時(\"0\")でも、ADMIN_EMAILのユーザーはtiktokUid不一致でも200で許可される", async () => {
+      process.env[ENV_KEY] = "0";
+      const user = await prisma.principal.create({
+        data: { email: ADMIN_EMAIL, name: `${PREFIX}admin2` },
+      });
+      try {
+        const streamer = await prisma.streamer.create({
+          data: {
+            principalId: user.id,
+            tiktokUid: makeTiktokUid(`${TID_PREFIX}other3`),
+            tiktokHandle: `${TID_PREFIX}adminold2`,
+            verificationCode: "x",
+            tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+            verified: true,
+          },
+        });
+        const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+        const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}adminnew2`));
+        const body = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(body.streamer.tiktokHandle).toBe(`${TID_PREFIX}adminnew2`);
+      } finally {
+        await prisma.streamer.deleteMany({ where: { principalId: user.id } });
+        await prisma.principal.delete({ where: { id: user.id } });
+      }
+    });
+
+    it("チェック有効時(\"0\")でも、tiktokUidが一致していれば200で許可される", async () => {
+      process.env[ENV_KEY] = "0";
+      const user = await prisma.principal.create({
+        data: { email: `${PREFIX}${Date.now()}mm3@local.test`, name: `${PREFIX}user5` },
+      });
+      const streamer = await prisma.streamer.create({
+        data: {
+          principalId: user.id,
+          // tiktokUid省略なし = 実在確認モックと同一uid(同一アカウントの改名)。
+          tiktokUid: MOCK_TIKTOK_UID,
+          tiktokHandle: `${TID_PREFIX}old5`,
+          verificationCode: "x",
+          tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+          verified: true,
+        },
+      });
+      const token = signMobileToken({ principalId: user.id, streamerId: streamer.id });
+
+      const res = await streamerPatch(authedRequest(token, `${TID_PREFIX}new5`));
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.streamer.tiktokHandle).toBe(`${TID_PREFIX}new5`);
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}new5`);
+      expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
+    });
   });
 
   it("ADMIN_EMAILのユーザーは7日ロック中でも変更を許可し、tiktokHandleChangedAt更新・verifiedリセットは維持される", async () => {

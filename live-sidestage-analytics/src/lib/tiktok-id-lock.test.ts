@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   checkTiktokHandleChangeAllowed,
+  checkTiktokUidMatch,
   formatTiktokHandleLockError,
+  isTiktokUidMismatchCheckDisabled,
   TIKTOK_ID_CHANGE_LOCK_DAYS,
 } from "./tiktok-id-lock";
 
@@ -80,5 +82,86 @@ describe("formatTiktokHandleLockError", () => {
     const retryAfter = new Date(now.getTime() + 1000);
     const result = formatTiktokHandleLockError(retryAfter, now);
     expect(result.error).toContain("あと1日");
+  });
+});
+
+describe("isTiktokUidMismatchCheckDisabled", () => {
+  const ENV_KEY = "TIKTOK_UID_MISMATCH_CHECK_DISABLED";
+
+  it("未設定(既定)のときは無効化(true)を返す", () => {
+    const original = process.env[ENV_KEY];
+    try {
+      delete process.env[ENV_KEY];
+      expect(isTiktokUidMismatchCheckDisabled()).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = original;
+    }
+  });
+
+  it('"0"を明示したときだけ有効化(false)になる', () => {
+    const original = process.env[ENV_KEY];
+    try {
+      process.env[ENV_KEY] = "0";
+      expect(isTiktokUidMismatchCheckDisabled()).toBe(false);
+
+      // "0"以外の値(例: "1"、空文字、空白)は既定と同じく無効化のまま。設定ミスで
+      // 意図せず有効化(false)側へ倒れないことを確認する。
+      process.env[ENV_KEY] = "1";
+      expect(isTiktokUidMismatchCheckDisabled()).toBe(true);
+
+      process.env[ENV_KEY] = "";
+      expect(isTiktokUidMismatchCheckDisabled()).toBe(true);
+
+      process.env[ENV_KEY] = " ";
+      expect(isTiktokUidMismatchCheckDisabled()).toBe(true);
+    } finally {
+      if (original === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = original;
+    }
+  });
+});
+
+describe("checkTiktokUidMatch", () => {
+  const ENV_KEY = "TIKTOK_UID_MISMATCH_CHECK_DISABLED";
+
+  function withEnv<T>(value: string | undefined, fn: () => T): T {
+    const original = process.env[ENV_KEY];
+    try {
+      if (value === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = value;
+      return fn();
+    } finally {
+      if (original === undefined) delete process.env[ENV_KEY];
+      else process.env[ENV_KEY] = original;
+    }
+  }
+
+  it("exempt:true なら、チェック有効時でもtiktokUidが不一致でも常に許可する(判定順序: exemptが最優先)", () => {
+    const result = withEnv("0", () =>
+      checkTiktokUidMatch({ tiktokUid: "uid-a" }, "uid-b", { exempt: true })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("exempt:false かつ既定(未設定=無効化)状態では、tiktokUidが不一致でも許可する", () => {
+    const result = withEnv(undefined, () =>
+      checkTiktokUidMatch({ tiktokUid: "uid-a" }, "uid-b", { exempt: false })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('exempt:false かつチェック有効時("0")は、tiktokUidが不一致なら拒否する', () => {
+    const result = withEnv("0", () =>
+      checkTiktokUidMatch({ tiktokUid: "uid-a" }, "uid-b", { exempt: false })
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('exempt:false かつチェック有効時("0")でも、tiktokUidが一致すれば許可する', () => {
+    const result = withEnv("0", () =>
+      checkTiktokUidMatch({ tiktokUid: "uid-a" }, "uid-a", { exempt: false })
+    );
+    expect(result.ok).toBe(true);
   });
 });

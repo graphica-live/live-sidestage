@@ -6,6 +6,7 @@ import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
 import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
 import {
   checkTiktokHandleChangeAllowed,
+  checkTiktokUidMatch,
   formatTiktokHandleLockError,
   formatTiktokUidMismatchError,
 } from "@/lib/tiktok-id-lock";
@@ -164,8 +165,10 @@ export async function PATCH(req: NextRequest) {
         { status: 503 }
       );
     }
-    // 同一アカウントの改名だけを許す。tiktokUid は不変なので更新もしない。
-    if (entryCheck.tiktokUid !== user.streamer.tiktokUid) {
+    // 同一アカウントの改名だけを許す想定だが、UID mismatchチェックは現在一時的に無効化されて
+    // おり(isTiktokUidMismatchCheckDisabled()参照)、lockExempt(ADMIN_EMAIL)以外の通常ユーザーも
+    // 別アカウントへの付け替えが通る状態にある。tiktokUid は不変なので更新もしない。
+    if (!checkTiktokUidMatch({ tiktokUid: user.streamer.tiktokUid }, entryCheck.tiktokUid, { exempt: lockExempt }).ok) {
       return NextResponse.json(formatTiktokUidMismatchError(), { status: 409 });
     }
   }

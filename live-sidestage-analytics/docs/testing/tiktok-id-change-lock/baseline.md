@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: tiktok-id-change-lock
-last_updated: 2026-09-08
+last_updated: 2026-09-11
 last_risk: HIGH
-last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode), Codex + DeepSeek(Code Mode、ADMIN_EMAIL例外追加)
+last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode), Codex + DeepSeek(Code Mode、ADMIN_EMAIL例外追加), Codex + DeepSeek(Code Mode + TestCase Mode、UID mismatch一時無効化)
 ---
 
 # テストベースライン: tiktok-id-change-lock
@@ -41,6 +41,19 @@ last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code M
 | TC-LOCK-501 | web: ADMIN_EMAILのセッションはロック中でも変更を許可し、他の副作用(tiktokIdChangedAt更新・verifiedリセット)は通常経路と同じ | `POST /api/verify/generate` | 例外系 | セッションemail=ADMIN_EMAIL、`tiktokIdChangedAt`が1日前、`verified: true`、異なるtiktokIdを送信 | 200、`tiktokId`・`tiktokIdChangedAt`が更新され`verified: false`にリセットされる | `route.integration.test.ts` | PASS | `isAdminEmail`(`src/lib/admin.ts`)はロック判定`checkTiktokIdChangeAllowed`の呼び出しだけをスキップし、CAS(`updateMany`のwhere句)は素通りする |
 | TC-LOCK-502 | mobile PATCH: ADMIN_EMAILのユーザーはロック中でも変更を許可し、他の副作用は通常経路と同じ | `PATCH /api/mobile/streamer` | 例外系 | DB上のuser.email=ADMIN_EMAIL、`tiktokIdChangedAt`が1日前、`verified: true`、異なるtiktokIdを送信 | 200、`tiktokId`・`tiktokIdChangedAt`が更新され`verified: false`にリセットされる | `route.integration.test.ts` | PASS | mobileは(NextAuthセッションでなく)DBの`User.email`列で判定する点がwebと異なる |
 | TC-LOCK-503 | `isAdminEmail`は完全一致のみtrue(大文字小文字・前後空白・null/undefinedはfalse) | `isAdminEmail` | 境界 | `ADMIN_EMAIL`と完全一致/大文字化/前後空白/null/undefined/別メール | 完全一致のみtrue | `src/lib/admin.test.ts` | PASS | |
+| TC-LOCK-601 | `checkTiktokUidMatch`: exemptがtrueなら常に許可(disabled/実比較を評価しない) | `checkTiktokUidMatch` | 正常 | `opts.exempt: true`、tiktokUid不一致 | `{ok: true}` | `src/lib/tiktok-id-lock.test.ts` | PASS | |
+| TC-LOCK-602 | `checkTiktokUidMatch`: 既定(環境変数未設定)はUID不一致でも許可(一時無効化) | 同上 | 正常 | `exempt: false`、`TIKTOK_UID_MISMATCH_CHECK_DISABLED`未設定、tiktokUid不一致 | `{ok: true}` | 同上 | PASS | |
+| TC-LOCK-603 | `checkTiktokUidMatch`: `TIKTOK_UID_MISMATCH_CHECK_DISABLED="0"`で有効化時、UID不一致は拒否 | 同上 | 異常 | `exempt: false`、環境変数`"0"`、tiktokUid不一致 | `{ok: false}` | 同上 | PASS | |
+| TC-LOCK-604 | `checkTiktokUidMatch`: 有効化時でもUID一致なら許可 | 同上 | 正常 | `exempt: false`、環境変数`"0"`、tiktokUid一致 | `{ok: true}` | 同上 | PASS | |
+| TC-LOCK-605 | `isTiktokUidMismatchCheckDisabled`: `"0"`以外(未設定/`"1"`/空文字/空白等)はすべて無効化扱い | `isTiktokUidMismatchCheckDisabled` | 境界 | 環境変数 未設定/`"1"`/`""`/`" "`/`"0"` | `"0"`のみ`false`、他は`true` | 同上 | PASS | 設定ミス(空文字等)で意図せず有効化側へ倒れないことを確認 |
+| TC-LOCK-701 | web: チェック有効時(`"0"`)、tiktokUid不一致は409 TIKTOK_UID_MISMATCHで拒否しDBを変更しない | `POST /api/verify/generate` | 異常 | 環境変数`"0"`、実在確認で得たtiktokUidが登録済みと不一致 | 409、`code: "TIKTOK_UID_MISMATCH"`。DBの`tiktokHandle`・`tiktokUid`は変化なし | `route.integration.test.ts:159` | PASS | |
+| TC-LOCK-702 | web: 既定(未設定=無効化)状態はtiktokUid不一致でも許可されDBが更新される。ただし`tiktokUid`自体は上書きされない | 同上 | 正常 | 環境変数未設定、tiktokUid不一致 | 200、DBの`tiktokHandle`は新値・`tiktokHandleChangedAt`は更新。`tiktokUid`は登録済みの値のまま不変 | `route.integration.test.ts:179` | PASS | 別アカウントへの付け替え防止を一時的にOFFにする今回の仕様変更の中心ケース。`tiktokUid`不変はDBの物理的な所有根拠を壊さないための契約 |
+| TC-LOCK-703 | web: チェック有効時でもADMIN_EMAILはtiktokUid不一致で200許可される | 同上 | 例外系 | 環境変数`"0"`、セッションemail=ADMIN_EMAIL、tiktokUid不一致 | 200、DBの`tiktokHandle`が更新される | `route.integration.test.ts:200` | PASS | 7日ロック免除(TC-LOCK-501)と同じ`lockExempt`をUID mismatch判定にも適用 |
+| TC-LOCK-704 | mobile PATCH: チェック有効時(`"0"`)、tiktokUid不一致は409 TIKTOK_UID_MISMATCHで拒否しDBを変更しない | `PATCH /api/mobile/streamer` | 異常 | 環境変数`"0"`、tiktokUid不一致 | 409、`code: "TIKTOK_UID_MISMATCH"`。DBの`tiktokHandle`・`verified`は変化なし | `route.integration.test.ts:127` | PASS | |
+| TC-LOCK-705 | mobile PATCH: 既定(未設定=無効化)状態はtiktokUid不一致でも許可されDBが更新される。ただし`tiktokUid`自体は上書きされない | 同上 | 正常 | 環境変数未設定、tiktokUid不一致 | 200、DBの`tiktokHandle`は新値。`tiktokUid`は登録済みの値のまま不変 | `route.integration.test.ts:156` | PASS | |
+| TC-LOCK-706 | mobile PATCH: チェック有効時でもADMIN_EMAILはtiktokUid不一致で200許可される | 同上 | 例外系 | 環境変数`"0"`、DB上のuser.email=ADMIN_EMAIL、tiktokUid不一致 | 200、DBの`tiktokHandle`が更新される | `route.integration.test.ts:184` | PASS | TC-LOCK-502(7日ロック免除)と対になる |
+| TC-LOCK-707 | web: チェック有効時(`"0"`)でも、tiktokUidが一致(同一アカウントの改名)していれば通常どおり200で許可される | `POST /api/verify/generate` | 正常 | 環境変数`"0"`、実在確認で得たtiktokUidが登録済みと一致 | 200、DBの`tiktokHandle`・`tiktokUid`とも整合して更新 | `route.integration.test.ts` | PASS | チェック有効化時の正常系(一致パス)がexempt/disabledの分岐に紛れて壊れていないことを確認 |
+| TC-LOCK-708 | mobile PATCH: チェック有効時(`"0"`)でも、tiktokUidが一致していれば通常どおり200で許可される | `PATCH /api/mobile/streamer` | 正常 | 環境変数`"0"`、tiktokUidが登録済みと一致 | 200、DBの`tiktokHandle`・`tiktokUid`とも整合して更新 | `route.integration.test.ts` | PASS | |
 
 ## Quality Gate
 
@@ -59,3 +72,5 @@ last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code M
 review-auto Code Modeで`--testcase-file docs/testing/tiktok-account-confirm-modal/baseline.md`を渡し同時実施。
 DeepSeek(risk=HIGH): finding 5件中、「テスト計画が旧機能(tiktok-account-confirm-modal)用のままで本機能(7日ロック)のケースが0件」がVALID(HIGH)として採用され、本baseline(TC-LOCK-*)の新規作成に反映した。他4件はコード実装済み・実装意図通りでINVALID/ALREADY_HANDLED。
 Codex・Gemini(Antigravity)はquota切れのためGemini(OpenRouter経由、`gemini-3.8-flash`、reasoning-effort low)を追加代理として実行。finding 2件(「Prisma `updateMany`のnullフィルタが`IS NULL`として正しくマッチしない」という主張)は、worktree実DBに対する直接検証(`updateMany({where: {tiktokIdChangedAt: null}})`でcount=1を確認)によりPrisma標準動作と矛盾することを実証し、INVALIDと判定した。
+
+2026-09-11: UID mismatchチェック一時無効化の追加時、DeepSeek + Codex(いずれもTestCase Mode、risk=HIGH)を実施。DeepSeekのfinding「チェック有効時(`"0"`)+tiktokUid一致の統合テストが無い」はVALIDとして採用しTC-LOCK-707/708を追加。Codexのfinding「TC-LOCK-702/705の期待結果が`tiktokUid`自体は不変であるべき契約を明記していない」(MEDIUM)もVALIDとして採用し期待結果列を具体化(実装・既存テストは元々`tiktokUid`不変をassert済みで、baselineの記述不足のみが問題だった)。Codexの「フラグ判定に空文字・空白の境界値ケースが無い」(LOW)もVALIDとして採用し単体テスト・TC-LOCK-605へ反映。
