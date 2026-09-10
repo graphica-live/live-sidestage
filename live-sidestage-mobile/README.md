@@ -43,6 +43,11 @@ Android OAuth クライアントが登録されていないと必ず失敗する
 ログイン画面に「Appleでサインイン」が出る（未設定のまま押しても必ず失敗するため）。
 バックエンド側も必須の環境変数が欠けていれば `POST /api/mobile/auth/apple` は 503 を返す。
 
+**CI・ビルド自動化スクリプトはこの2フラグを埋め込んでいない。** 手動で `flutter build apk` /
+`flutter run` する人が下記コマンドの通りに毎回付け忘れるとボタンが消える（バグではなく
+fail-closed仕様どおりの挙動）。「Appleボタンが消えた」と言われたら、まずビルドコマンドに
+`APPLE_SERVICES_ID` / `APPLE_REDIRECT_URI` が付いているか確認する。
+
 Android にはネイティブの Apple 認証が無いので、Custom Tab で **web フロー**を回す。
 そのため client_id は Bundle ID ではなく **Services ID** になり、Apple からの `form_post` を
 受けて `intent://` へ中継する自前のエンドポイントが要る（`/api/mobile/auth/apple/callback`）。
