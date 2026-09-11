@@ -52,8 +52,8 @@ class SyncEnvelope<T> {
     required this.payload,
   });
 
-  /// JSONマップからのパース用ファクトリ。ペイロードは呼び出し側で別途parseする。
-  static SyncEnvelope<dynamic> fromMap(Map<String, dynamic> map) {
+  /// JSONマップからのパース用ファクトリコンストラクタ。ペイロードは呼び出し側で別途parseする。
+  factory SyncEnvelope.fromMap(Map<String, dynamic> map) {
     return SyncEnvelope<dynamic>(
       schemaVersion: map['schemaVersion'] as int? ?? 0,
       streamerId: map['streamerId'] as String? ?? '',
@@ -62,8 +62,8 @@ class SyncEnvelope<T> {
       epoch: map['epoch'] as int? ?? 0,
       version: map['version'] as int? ?? 0,
       period: map['period'] as String?,
-      payload: null,
-    );
+      payload: map['payload'],
+    ) as SyncEnvelope<T>;
   }
 }
 

@@ -168,19 +168,6 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     }
   }
 
-  // Helper method to parse battle status from string.
-  BattleStatus _parseBattleStatus(String? status) {
-    switch (status) {
-      case 'live':
-        return BattleStatus.live;
-      case 'finished':
-        return BattleStatus.finished;
-      case 'cut_short':
-        return BattleStatus.cutShort;
-      default:
-        return BattleStatus.unknown;
-    }
-  }
 
   /// ギフト到着起点。リスナー名フィルタが有効で、かつ直前の結果に進行中バトルが
   /// 含まれる場合のみ意味を持つ(それ以外はギフトが届いても一覧の中身は変わりようがない)。
