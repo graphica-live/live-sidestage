@@ -73,6 +73,8 @@ export type AssignedRoom = {
   consecutiveBlockedCount: number;
   /** includeWeeklyEulerUsage未指定時はnull(「0件」と区別するため)。 */
   weeklyEulerSignUsageCount: number | null;
+  /** includeSignatureUsage24h未指定時はnull(「0件」と区別するため)。 */
+  signatureUsage24hCount: number | null;
   /** true=管理者が監視解除(一時停止)した部屋。ログイン等で自動的にfalseへ戻りうる(reviveSuspendedMonitoring()参照)。 */
   monitoringSuspended: boolean;
   /** 開発用「特別監視」フラグ。trueならStreamer購読が無くてもコラボ・バトル相手発見のキック元になれる(tiktok-listener.ts参照)。 */
@@ -180,6 +182,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: null,
+    signatureUsage24hCount: null,
     monitoringSuspended: r.monitoringSuspended,
     specialWatch: r.specialWatch,
   }));
@@ -203,7 +206,7 @@ const ADMIN_ROOM_LIST_LIMIT = 1000;
  */
 export async function fetchAdminRoomList(
   now: Date = new Date(),
-  options: { includeWeeklyEulerUsage?: boolean } = {}
+  options: { includeWeeklyEulerUsage?: boolean; includeSignatureUsage24h?: boolean } = {}
 ): Promise<AssignedRoom[]> {
   const rooms = await prisma.tiktokRoom.findMany({
     where: { workerId: { not: null } },
@@ -240,6 +243,17 @@ export async function fetchAdminRoomList(
     usageByRoomId = new Map(grouped.map((g) => [g.roomId, g._count._all]));
   }
 
+  let usage24hByRoomId: Map<string, number> | null = null;
+  if (options.includeSignatureUsage24h) {
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const grouped24h = await prisma.eulerSignUsage.groupBy({
+      by: ["roomId"],
+      where: { roomId: { in: rooms.map((r) => r.id) }, createdAt: { gte: oneDayAgo } },
+      _count: { _all: true },
+    });
+    usage24hByRoomId = new Map(grouped24h.map((g) => [g.roomId, g._count._all]));
+  }
+
   const display = await resolveTikTokUserDisplay(rooms.map((r) => r.hostTiktokUid));
 
   return rooms.map((r) => ({
@@ -255,6 +269,7 @@ export async function fetchAdminRoomList(
     eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: usageByRoomId ? usageByRoomId.get(r.id) ?? 0 : null,
+    signatureUsage24hCount: usage24hByRoomId ? usage24hByRoomId.get(r.id) ?? 0 : null,
     monitoringSuspended: r.monitoringSuspended,
     specialWatch: r.specialWatch,
   }));

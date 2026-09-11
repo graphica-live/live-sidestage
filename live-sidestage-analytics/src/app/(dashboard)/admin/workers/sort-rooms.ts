@@ -1,6 +1,6 @@
 import type { AssignedRoom } from "@/lib/worker-status";
 
-export type RoomSortKey = "tiktokHandle" | "listenerUpdatedAt" | "weeklyEulerSignUsageCount";
+export type RoomSortKey = "tiktokHandle" | "listenerUpdatedAt" | "weeklyEulerSignUsageCount" | "signatureUsage24hCount";
 export type RoomSortDir = "asc" | "desc";
 
 // buildWorkerReport() と同じく副作用・時刻依存を持たない純粋関数として切り出す。
@@ -19,10 +19,18 @@ export function sortAssignedRooms(
       if (b.listenerUpdatedAt == null) return -1;
       return sign * (new Date(a.listenerUpdatedAt).getTime() - new Date(b.listenerUpdatedAt).getTime());
     }
-    // weeklyEulerSignUsageCount
-    if (a.weeklyEulerSignUsageCount == null && b.weeklyEulerSignUsageCount == null) return 0;
-    if (a.weeklyEulerSignUsageCount == null) return 1;
-    if (b.weeklyEulerSignUsageCount == null) return -1;
-    return sign * (a.weeklyEulerSignUsageCount - b.weeklyEulerSignUsageCount);
+    if (key === "weeklyEulerSignUsageCount") {
+      if (a.weeklyEulerSignUsageCount == null && b.weeklyEulerSignUsageCount == null) return 0;
+      if (a.weeklyEulerSignUsageCount == null) return 1;
+      if (b.weeklyEulerSignUsageCount == null) return -1;
+      return sign * (a.weeklyEulerSignUsageCount - b.weeklyEulerSignUsageCount);
+    }
+    if (key === "signatureUsage24hCount") {
+      if (a.signatureUsage24hCount == null && b.signatureUsage24hCount == null) return 0;
+      if (a.signatureUsage24hCount == null) return 1;
+      if (b.signatureUsage24hCount == null) return -1;
+      return sign * (a.signatureUsage24hCount - b.signatureUsage24hCount);
+    }
+    return 0;
   });
 }

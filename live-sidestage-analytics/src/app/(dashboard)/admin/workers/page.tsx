@@ -779,11 +779,14 @@ export default function WorkersAdminPage() {
         </div>
       )}
 
-      {report && report.adminRoomList.length > 0 && (
+      {report && report.adminRoomList.length > 0 && (() => {
+        const total24h = filteredRoomList.reduce((sum, r) => sum + (r.signatureUsage24hCount ?? 0), 0);
+        const totalWeekly = filteredRoomList.reduce((sum, r) => sum + (r.weeklyEulerSignUsageCount ?? 0), 0);
+        return (
         <div className="mt-4 rounded border border-border bg-panel overflow-x-auto">
           <div className="px-4 py-2 border-b border-border text-sm text-strong flex items-center gap-3 flex-wrap">
             <span>
-              監視対象一覧({filteredRoomList.length}/{report.adminRoomList.length}件)
+              監視対象一覧({filteredRoomList.length}/{report.adminRoomList.length}件) 署名消費(24h):{total24h} 週間署名消費:{totalWeekly}
             </span>
             <input
               type="text"
@@ -818,6 +821,15 @@ export default function WorkersAdminPage() {
                   </button>
                   <span className="block text-[10px] opacity-70">成功/失敗含む・現在のroomId基準</span>
                 </th>
+                <th className="text-left px-4 py-2 font-normal">
+                  <button
+                    onClick={() => toggleSort("signatureUsage24hCount")}
+                    className="hover:text-strong"
+                  >
+                    署名消費(24時間) {sortKey === "signatureUsage24hCount" && (sortDir === "asc" ? "▲" : "▼")}
+                  </button>
+                  <span className="block text-[10px] opacity-70">成功/失敗含む・現在のroomId基準</span>
+                </th>
                 <th className="text-left px-4 py-2 font-normal">監視状態</th>
                 <th className="text-left px-4 py-2 font-normal">操作</th>
               </tr>
@@ -833,6 +845,9 @@ export default function WorkersAdminPage() {
                   </td>
                   <td className="px-4 py-2 text-muted">
                     {r.weeklyEulerSignUsageCount ?? "—"}
+                  </td>
+                  <td className="px-4 py-2 text-muted">
+                    {r.signatureUsage24hCount ?? "—"}
                   </td>
                   <td className="px-4 py-2 text-muted">
                     {r.monitoringSuspended ? (
@@ -878,7 +893,8 @@ export default function WorkersAdminPage() {
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
 
       {report && report.unassignedRooms.length > 0 && (
         <div className="mt-4 rounded border border-border bg-panel">

@@ -249,4 +249,49 @@ describe("fetchAdminRoomList", () => {
     expect(indexOf(newer.id)).toBeLessThan(indexOf(older.id));
     expect(indexOf(older.id)).toBeLessThan(indexOf(nullRoom.id));
   });
+
+  it("includeSignatureUsage24h未指定時はsignatureUsage24hCountがnull", async () => {
+    const rooms = await fetchAdminRoomList();
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    expect(found!.signatureUsage24hCount).toBeNull();
+  });
+
+  it("includeSignatureUsage24h:trueかつ署名消費0件ならsignatureUsage24hCountは0(nullでない)", async () => {
+    const rooms = await fetchAdminRoomList(new Date(), { includeSignatureUsage24h: true });
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    expect(found!.signatureUsage24hCount).toBe(0);
+  });
+
+  it("includeSignatureUsage24h:trueで直近24時間以内(ちょうど24時間前を含む)の署名消費を成功/失敗問わず数え、25時間前の消費は含めない", async () => {
+    const now = new Date("2026-08-22T12:00:00.000Z");
+    const within = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const exactlyOneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const outside = new Date(now.getTime() - 25 * 60 * 60 * 1000);
+    const base = {
+      roomId: streamerRoom.id,
+      tiktokHandle: streamerRoom.tiktokHandle,
+      trigger: "start" as const,
+      reason: null,
+      role: "worker" as const,
+      workerIndex: 0,
+      listenerEpoch: null,
+      credentialMode: "anonymous" as const,
+      streamerPrincipalIds: [] as string[],
+      agencyIds: [] as string[],
+      eventIds: [] as string[],
+    };
+    await prisma.eulerSignUsage.createMany({
+      data: [
+        { ...base, requestedAt: within, createdAt: within, outcome: "success" },
+        { ...base, requestedAt: within, createdAt: within, outcome: "failed" },
+        { ...base, requestedAt: exactlyOneDayAgo, createdAt: exactlyOneDayAgo, outcome: "success" },
+        { ...base, requestedAt: outside, createdAt: outside, outcome: "success" },
+      ],
+    });
+
+    const rooms = await fetchAdminRoomList(now, { includeSignatureUsage24h: true });
+    const found = rooms.find((r) => r.roomId === streamerRoom.id);
+    // 直近24時間以内(ちょうど24時間前含む)の3件(success2+failed1)を数え、25時間前の1件は含めない。
+    expect(found!.signatureUsage24hCount).toBe(3);
+  });
 });
