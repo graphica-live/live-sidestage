@@ -75,6 +75,8 @@ export type AssignedRoom = {
   weeklyEulerSignUsageCount: number | null;
   /** includeSignatureUsage24h未指定時はnull(「0件」と区別するため)。 */
   signatureUsage24hCount: number | null;
+  /** includeSignatureUsage24h未指定時はnull。このroomのコラボ/バトル検知が引き金となり、非購読の別roomが消費した署名数(直近24時間)。 */
+  collabSignatureUsage24hCount: number | null;
   /** true=管理者が監視解除(一時停止)した部屋。ログイン等で自動的にfalseへ戻りうる(reviveSuspendedMonitoring()参照)。 */
   monitoringSuspended: boolean;
   /** 開発用「特別監視」フラグ。trueならStreamer購読が無くてもコラボ・バトル相手発見のキック元になれる(tiktok-listener.ts参照)。 */
@@ -183,6 +185,7 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: null,
     signatureUsage24hCount: null,
+    collabSignatureUsage24hCount: null,
     monitoringSuspended: r.monitoringSuspended,
     specialWatch: r.specialWatch,
   }));
@@ -244,6 +247,7 @@ export async function fetchAdminRoomList(
   }
 
   let usage24hByRoomId: Map<string, number> | null = null;
+  let collabUsageBySourceRoomId: Map<string, number> | null = null;
   if (options.includeSignatureUsage24h) {
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const grouped24h = await prisma.eulerSignUsage.groupBy({
@@ -252,6 +256,50 @@ export async function fetchAdminRoomList(
       _count: { _all: true },
     });
     usage24hByRoomId = new Map(grouped24h.map((g) => [g.roomId, g._count._all]));
+
+    // コラボ署名消費の集計：このroom(page内のroomId)がコラボ/バトル検知の引き金となって
+    // 別roomが消費した署名数を集計する。
+    const pageRoomIds = rooms.map((r) => r.id);
+    const discovered = await prisma.tiktokRoom.findMany({
+      where: { lastCollabSourceRoomId: { in: pageRoomIds } },
+      select: { id: true, lastCollabSourceRoomId: true },
+    });
+    const sourceByDiscoveredRoomId = new Map(
+      discovered.map((d) => [d.id, d.lastCollabSourceRoomId as string])
+    );
+    const discoveredRoomIds = [...sourceByDiscoveredRoomId.keys()];
+
+    const collabUsage = discoveredRoomIds.length
+      ? await prisma.eulerSignUsage.findMany({
+          where: { roomId: { in: discoveredRoomIds }, createdAt: { gte: oneDayAgo } },
+          select: {
+            roomId: true,
+            streamerPrincipalIds: true,
+            agencyIds: true,
+            roomMonitorUntil: true,
+            requestedAt: true,
+          },
+        })
+      : [];
+
+    collabUsageBySourceRoomId = new Map<string, number>();
+    for (const u of collabUsage) {
+      // 記録時点で非購読(Streamer登録0件 かつ AgencyWatch登録0件 かつ
+      // イベント監視期限が切れているかそもそも無い)だった消費だけを数える。
+      // specialWatchはEulerSignUsageにスナップショットされていないため、この判定には含められない
+      // (既知の近似。画面に注記)。
+      const nonSubscribedAtUsage =
+        u.streamerPrincipalIds.length === 0 &&
+        u.agencyIds.length === 0 &&
+        (u.roomMonitorUntil === null || u.roomMonitorUntil <= u.requestedAt);
+      if (!nonSubscribedAtUsage) continue;
+      const sourceRoomId = sourceByDiscoveredRoomId.get(u.roomId);
+      if (!sourceRoomId) continue;
+      collabUsageBySourceRoomId.set(
+        sourceRoomId,
+        (collabUsageBySourceRoomId.get(sourceRoomId) ?? 0) + 1
+      );
+    }
   }
 
   const display = await resolveTikTokUserDisplay(rooms.map((r) => r.hostTiktokUid));
@@ -270,6 +318,9 @@ export async function fetchAdminRoomList(
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: usageByRoomId ? usageByRoomId.get(r.id) ?? 0 : null,
     signatureUsage24hCount: usage24hByRoomId ? usage24hByRoomId.get(r.id) ?? 0 : null,
+    collabSignatureUsage24hCount: options.includeSignatureUsage24h
+      ? collabUsageBySourceRoomId!.get(r.id) ?? 0
+      : null,
     monitoringSuspended: r.monitoringSuspended,
     specialWatch: r.specialWatch,
   }));

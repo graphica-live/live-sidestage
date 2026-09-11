@@ -19,6 +19,7 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
     consecutiveBlockedCount: 0,
     signatureUsage24hCount: null,
     weeklyEulerSignUsageCount: null,
+    collabSignatureUsage24hCount: null,
     monitoringSuspended: false,
     specialWatch: false,
     ...overrides,
