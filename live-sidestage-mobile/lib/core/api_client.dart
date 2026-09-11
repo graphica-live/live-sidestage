@@ -259,11 +259,25 @@ class GiftRankingResult {
   final ({int giftCount, int totalDiamonds}) total;
   final bool verified;
 
+  /// webプロセスの起動識別子。[RankingSyncStore.acknowledgeResync]へそのまま渡し、
+  /// version tracker をこのRESTレスポンス時点の値へ合わせるのに使う。
+  final String bootId;
+
+  /// full reset単位(日付変更等)。[RankingSyncStore.acknowledgeResync]へそのまま渡す。
+  final int epoch;
+
+  /// (streamerId, kind, epoch)単位の単調増加番号。[RankingSyncStore.acknowledgeResync]
+  /// へそのまま渡す。
+  final int version;
+
   const GiftRankingResult({
     required this.users,
     required this.dateRange,
     required this.total,
     required this.verified,
+    required this.bootId,
+    required this.epoch,
+    required this.version,
   });
 }
 
@@ -274,12 +288,21 @@ class GiftHistoryResult {
   final bool hasMore;
   final bool verified;
 
+  /// webプロセスの起動識別子。[GiftHistorySyncStore.acknowledgeResync]へそのまま渡す。
+  final String bootId;
+
+  /// (streamerId, kind)単位の単調増加番号。[GiftHistorySyncStore.acknowledgeResync]
+  /// へそのまま渡す。
+  final int version;
+
   const GiftHistoryResult({
     required this.events,
     required this.dateRange,
     required this.total,
     required this.hasMore,
     required this.verified,
+    required this.bootId,
+    required this.version,
   });
 }
 
@@ -289,11 +312,20 @@ class BattleListResult {
   final bool hasMore;
   final bool verified;
 
+  /// webプロセスの起動識別子。[BattleHistorySyncStore.acknowledgeResync]へそのまま渡す。
+  final String bootId;
+
+  /// (streamerId, kind)単位の単調増加番号。[BattleHistorySyncStore.acknowledgeResync]
+  /// へそのまま渡す。
+  final int version;
+
   const BattleListResult({
     required this.battles,
     required this.dateRange,
     required this.hasMore,
     required this.verified,
+    required this.bootId,
+    required this.version,
   });
 }
 
@@ -464,6 +496,9 @@ class LiveAnalyticsApi {
         totalDiamonds: (data['total']?['totalDiamonds'] as int?) ?? 0,
       ),
       verified: data['verified'] == true,
+      bootId: data['bootId'] as String? ?? '',
+      epoch: data['epoch'] as int? ?? 0,
+      version: data['version'] as int? ?? 0,
     );
   }
 
@@ -500,6 +535,8 @@ class LiveAnalyticsApi {
       ),
       hasMore: data['hasMore'] == true,
       verified: data['verified'] == true,
+      bootId: data['bootId'] as String? ?? '',
+      version: data['version'] as int? ?? 0,
     );
   }
 
@@ -554,6 +591,8 @@ class LiveAnalyticsApi {
       dateRange: _parseDateRange(data['dateRange']),
       hasMore: data['hasMore'] == true,
       verified: data['verified'] == true,
+      bootId: data['bootId'] as String? ?? '',
+      version: data['version'] as int? ?? 0,
     );
   }
 
