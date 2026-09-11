@@ -1,6 +1,6 @@
 ---
 last_updated: 2026-09-11
-last_risk: MEDIUM
+last_risk: LOW
 last_reviewers: [deepseek-v4-flash, gemini-3.7-flash-medium]
 ---
 
@@ -76,7 +76,9 @@ last_reviewers: [deepseek-v4-flash, gemini-3.7-flash-medium]
 | TC-GRB-031 | ギフト種類数が上限以下のときは truncated が false | `queryGiftBreakdown` | 正常 | ギフト種類数が100以下 | `truncated: false`、全件返る | `[itest]` | PASS | 2026-09-11追加 |
 | TC-GRB-032 | 内訳パネルに「上位N件のみ表示」の注記が出る | `GiftBreakdownPanel` | UI/境界 | API が `truncated: true`（`gifts.length` 件） | パネル上部に「上位{gifts.length}件のみ表示」の注記が表示される。件数はAPI応答由来で固定値をUI側に持たない | `[inject]` | PASS | 2026-09-11追加。サーバー側定数変更時にUI文言が追従しないズレを防ぐため、表示件数は`gifts.length`を参照する実装（DeepSeek/Gemini双方のfinding指摘を反映） |
 | TC-GRB-033 | 上限以下のときは省略注記が出ない | `GiftBreakdownPanel` | 回帰 | API が `truncated: false` | 「上位…のみ表示」の注記は表示されない | `[inject]` | PASS | 2026-09-11追加 |
-| TC-GRB-034 | ランキング行数が多くても、1行の開閉が他行の再レンダーを引き起こさない | `AnalyticsView`(`RankingRow`) | 性能/回帰 | 視聴者数が多い(数千件)ランキング | 行のクリックで開閉した行の内訳パネルのみが表示切替わり、操作が体感できる速度で完了する | `[pw]` | PASS | 2026-09-11追加。「行タップ後に重くなりマウス操作もできなくなる」という不具合報告を受け、`RankingRow`をReact.memo化して開閉時の全行再レンダーを防止 |
+| TC-GRB-034 | ランキング行数が多くても、1行の開閉が他行の再レンダーを引き起こさない | `AnalyticsView`(`RankingRow`) | 性能/回帰 | 視聴者数が多い(数千件)ランキング | 行のクリックで開閉した行の内訳パネルのみが表示切替わり、操作が体感できる速度で完了する | `[pw]` | PASS | 2026-09-11追加。「行タップ後に重くなりマウス操作もできなくなる」という不具合報告を受け、`RankingRow`をReact.memo化して開閉時の全行再レンダーを防止。実測(3000視聴者): memo化後 open 684ms→close 501ms。2026-09-11仮想化導入後も同等の体感速度を維持（open 49ms、close 546ms）、ユーザーのタップ遅延感はなし |
+| TC-GRB-035 | 仮想化によりDOM要素数が制限され、大量行でも初回描画が高速化 | `AnalyticsView`(`useWindowVirtualizer`) | 性能/新規 | 3000視聴者のランキング表 | DOM に実在する `<tr>` は~7個（可視行+overscan）。全行がDOMに存在しない。初回描画時間: 0ms | `[pw]` | PASS | 2026-09-11追加。@tanstack/react-virtualによるwindowスクロール仮想化。table構造を保ちながら上下スペーサー`<tr>`+可視範囲のみ実描画 |
+| TC-GRB-036 | スクロールで画面外に移動した行も、スクロール後のクリックで正常に開閉できる | `AnalyticsView`(`useWindowVirtualizer`) | 性能/新規 | 3000視聴者、ランキング表を大きく下にスクロール後、可視範囲の行をクリック | スクロール後の行クリック: 530ms で開く。パネルが正常に表示される。DOMに存在する行のみ操作対象なのでレンダリングコストは視聴者数に無関係 | `[pw]` | PASS | 2026-09-11追加。仮想化により画面外行はDOM上に存在しないが、スクロール時に即座に再描画されるため操作性に影響なし |
 
 ## Quality Gate
 

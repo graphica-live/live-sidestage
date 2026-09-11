@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { memo, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
@@ -384,145 +385,180 @@ function BreakdownMessage({ title, body }: { title: string; body?: string }) {
   );
 }
 
-// ranking行1本ぶん。sortedFiltered.mapの中でインライン定義していると、内訳の開閉(setOpenTiktokUid /
-// setBreakdowns)のたびにAnalyticsView全体が再レンダーされ、視聴者数が多い配信者ではdiffコストが
-// 行数に比例して重くなる(ギフト内訳の件数とは無関係)。memoで切り出し、実際に変化した行だけ
-// (以前開いていた行と新しく開いた行)を再レンダー対象にする。
+// ranking表の仮想化(window virtualizer)で使う定数。
+// RANKING_ROW_HEIGHT: 通常行(RankingRow)の実測高さ(px)。`estimateSize`にそのまま使い、
+// 通常行には`measureElement`を付けない(固定高さのためResizeObserverでの実測コストを避ける)。
+// dev:localでPC幅(1000px程度)・スマホ幅(390px程度)双方の実描画をPlaywrightで計測して確定した値
+// (実測55.15625pxをtransform/spacer計算の誤差蓄積を避けるため小数のまま採用)。
+const RANKING_ROW_HEIGHT = 55.15625;
+// RANKING_PANEL_ESTIMATED_HEIGHT: 開閉パネル(RankingBreakdownRow)の初期見積り高さ(px)。
+// 実際の高さはgifts件数・ローディング/エラー状態で変わるため、`measureElement`で実測して補正する。
+// ここでの値は初回描画時のレイアウトジャンプを減らすための目安に過ぎない。
+const RANKING_PANEL_ESTIMATED_HEIGHT = 160;
+// overscan: 可視範囲の前後に余分に実描画しておく行数。体感速度とDOM生成コストのバランス。
+const RANKING_OVERSCAN = 8;
+// ranking表のth列数(#/ユーザー/コイン数/hidden sm/hidden md/展開アイコン)。spacer行・パネル行のcolSpanと揃える。
+const RANKING_COLUMN_COUNT = 6;
+
+// ranking行の通常部分(固定高さ)。sortedFiltered.mapの中でインライン定義していると、内訳の開閉
+// (setOpenTiktokUid / setBreakdowns)のたびにAnalyticsView全体が再レンダーされ、視聴者数が多い
+// 配信者ではdiffコストが行数に比例して重くなる(ギフト内訳の件数とは無関係)。memoで切り出し、
+// 実際に変化した行だけ(以前開いていた行と新しく開いた行)を再レンダー対象にする。
+//
+// 仮想化(window virtualizer)の「1アイテム=1<tr>」という単位に合わせるため、以前
+// Fragmentで2本の<tr>(行本体+開閉パネル)を返していたコンポーネントを分割した。行本体は
+// RankingRow、開閉パネルはRankingBreakdownRowが別アイテムとして描画を担う。
+// propsは`user`(キーはuser.tiktokUid/user.rank)のみを安定値として使い、配列内位置
+// (仮想化アイテムのindex)には一切依存しない。パネル挿入で後続行のインデックスがずれても
+// 無関係行のpropsが変わらないため、memo化の効果(開閉時に無関係な行を再レンダーしない)が
+// 仮想化後も維持される。
 const RankingRow = memo(function RankingRow({
   user,
-  idx,
   open,
-  breakdownState,
   toggleBreakdown,
-  fetchBreakdown,
 }: {
   user: GiftUser & { rank: number };
-  idx: number;
   open: boolean;
-  breakdownState: BreakdownState | undefined;
   toggleBreakdown: (tiktokUid: string) => void;
-  fetchBreakdown: (tiktokUid: string, opts?: { silent?: boolean }) => Promise<void>;
 }) {
-  const panelId = `gift-breakdown-${idx}`;
+  const panelId = `gift-breakdown-${user.tiktokUid}`;
   const name = displayNameOf(user);
   // TikTokUser 未観測ならハンドルが無く、プロフィールURLを作れない。
   const profileUrl = user.tiktokHandle ? tiktokProfileUrl(user.tiktokHandle) : null;
 
   return (
-    <Fragment>
-      <tr
-        // 行全体をポインタでの展開トリガにする。行内のリンク・ボタン
-        // (プロフィールリンク、チェブロン)を押したときは展開しない。
-        // 個々の子要素の stopPropagation に頼ると、後から要素を足したときに
-        // 黙って展開が誤発火するため、ここで一括して弾く。
-        // キーボード操作はチェブロンの <button> が担う(行に role/tabIndex を
-        // 足すとネストしたインタラクティブ要素になり、かえってa11yが壊れる)。
-        onClick={(e) => {
-          if ((e.target as HTMLElement).closest("a,button")) return;
-          toggleBreakdown(user.tiktokUid);
-        }}
-        className={`border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer ${
-          open ? "bg-row-hover" : idx === 0 ? "bg-yellow-500/5" : ""
-        }`}
-      >
-        <td className="py-[9px] px-3 text-right text-muted font-mono text-xs">
-          {user.rank}
-        </td>
-        <td className="py-[9px] px-3">
-          <div className="flex items-center gap-2 min-w-0">
+    <tr
+      // 行全体をポインタでの展開トリガにする。行内のリンク・ボタン
+      // (プロフィールリンク、チェブロン)を押したときは展開しない。
+      // 個々の子要素の stopPropagation に頼ると、後から要素を足したときに
+      // 黙って展開が誤発火するため、ここで一括して弾く。
+      // キーボード操作はチェブロンの <button> が担う(行に role/tabIndex を
+      // 足すとネストしたインタラクティブ要素になり、かえってa11yが壊れる)。
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("a,button")) return;
+        toggleBreakdown(user.tiktokUid);
+      }}
+      className={`border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer ${
+        open ? "bg-row-hover" : user.rank === 1 ? "bg-yellow-500/5" : ""
+      }`}
+    >
+      <td className="py-[9px] px-3 text-right text-muted font-mono text-xs">
+        {user.rank}
+      </td>
+      <td className="py-[9px] px-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {profileUrl ? (
+            <a
+              href={profileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="TikTokプロフィールを開く"
+              className="shrink-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Avatar src={user.profileImageUrl} alt={name} />
+            </a>
+          ) : (
+            <span className="shrink-0">
+              <Avatar src={user.profileImageUrl} alt={name} />
+            </span>
+          )}
+          <div className="min-w-0">
             {profileUrl ? (
               <a
                 href={profileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="TikTokプロフィールを開く"
-                className="shrink-0"
+                className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Avatar src={user.profileImageUrl} alt={name} />
+                {name}
               </a>
             ) : (
-              <span className="shrink-0">
-                <Avatar src={user.profileImageUrl} alt={name} />
+              <span className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none block">
+                {name}
               </span>
             )}
-            <div className="min-w-0">
-              {profileUrl ? (
+            {user.tiktokHandle && profileUrl && (
+              <div className="flex items-center gap-1 text-xs text-muted">
+                <span className="truncate max-w-[100px]">
+                  @{user.tiktokHandle}
+                </span>
                 <a
                   href={profileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  className="text-muted hover:text-brand transition-colors shrink-0"
                   title="TikTokプロフィールを開く"
-                  className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {name}
+                  <ExternalLinkIcon />
                 </a>
-              ) : (
-                <span className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none block">
-                  {name}
-                </span>
-              )}
-              {user.tiktokHandle && profileUrl && (
-                <div className="flex items-center gap-1 text-xs text-muted">
-                  <span className="truncate max-w-[100px]">
-                    @{user.tiktokHandle}
-                  </span>
-                  <a
-                    href={profileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted hover:text-brand transition-colors shrink-0"
-                    title="TikTokプロフィールを開く"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <ExternalLinkIcon />
-                  </a>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        </td>
-        <td className="py-[9px] px-3 text-right font-mono font-bold text-strong">
-          {user.totalDiamonds.toLocaleString()}
-        </td>
-        <td className="py-[9px] px-3 text-right text-muted hidden sm:table-cell">
-          {user.giftCount.toLocaleString()}
-        </td>
-        <td className="py-[9px] px-3 text-right text-muted text-xs hidden md:table-cell">
-          {formatRelativeTime(user.lastGiftAt)}
-        </td>
-        <td className="py-[9px] px-0 text-center">
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={panelId}
-            aria-label={`${name} のギフト内訳を${open ? "閉じる" : "開く"}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleBreakdown(user.tiktokUid);
-            }}
-            className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-lg motion-safe:transition-transform duration-150 ${
-              open ? "text-brand rotate-180" : "text-muted"
-            }`}
-          >
-            <ChevronDownIcon />
-          </button>
-        </td>
-      </tr>
-      {open && (
-        <tr className="border-b border-row-border">
-          <td id={panelId} colSpan={6} className="p-0 bg-panel">
-            <div className="breakdown-enter pt-2.5 pb-3 px-3 sm:pl-[52px]">
-              <GiftBreakdownPanel
-                state={breakdownState}
-                onRetry={() => void fetchBreakdown(user.tiktokUid)}
-              />
-            </div>
-          </td>
-        </tr>
-      )}
-    </Fragment>
+        </div>
+      </td>
+      <td className="py-[9px] px-3 text-right font-mono font-bold text-strong">
+        {user.totalDiamonds.toLocaleString()}
+      </td>
+      <td className="py-[9px] px-3 text-right text-muted hidden sm:table-cell">
+        {user.giftCount.toLocaleString()}
+      </td>
+      <td className="py-[9px] px-3 text-right text-muted text-xs hidden md:table-cell">
+        {formatRelativeTime(user.lastGiftAt)}
+      </td>
+      <td className="py-[9px] px-0 text-center">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={`${name} のギフト内訳を${open ? "閉じる" : "開く"}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleBreakdown(user.tiktokUid);
+          }}
+          className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-lg motion-safe:transition-transform duration-150 ${
+            open ? "text-brand rotate-180" : "text-muted"
+          }`}
+        >
+          <ChevronDownIcon />
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+// ranking行の開閉パネル部分(可変高さ)。`openTiktokUid`がセットされているときだけ仮想化
+// アイテム配列へ挿入される、独立した1アイテム=1<tr>。可変高さのため、呼び出し元で
+// `rowVirtualizer.measureElement`をrefとして渡し、実測させる(通常行は固定高さのため
+// 計測しない)。
+const RankingBreakdownRow = memo(function RankingBreakdownRow({
+  user,
+  breakdownState,
+  fetchBreakdown,
+  index,
+  measureRef,
+}: {
+  user: GiftUser & { rank: number };
+  breakdownState: BreakdownState | undefined;
+  fetchBreakdown: (tiktokUid: string, opts?: { silent?: boolean }) => Promise<void>;
+  index: number;
+  measureRef: (node: Element | null) => void;
+}) {
+  const panelId = `gift-breakdown-${user.tiktokUid}`;
+  return (
+    <tr ref={measureRef} data-index={index} className="border-b border-row-border">
+      <td id={panelId} colSpan={RANKING_COLUMN_COUNT} className="p-0 bg-panel">
+        <div className="breakdown-enter pt-2.5 pb-3 px-3 sm:pl-[52px]">
+          <GiftBreakdownPanel
+            state={breakdownState}
+            onRetry={() => void fetchBreakdown(user.tiktokUid)}
+          />
+        </div>
+      </td>
+    </tr>
   );
 });
 
@@ -952,6 +988,59 @@ export function AnalyticsView({
 
     return rows.map((u, i) => ({ ...u, rank: i + 1 }));
   }, [data, filter, sortKey, sortOrder]);
+
+  // ranking表の仮想化アイテム配列。通常時はsortedFilteredをそのまま(1件=1アイテム)、
+  // openTiktokUidがセットされているときだけ、該当ユーザーの直後に「パネル専用アイテム」を
+  // 1件挿入する(同時に開けるのは常に1行、という既存の不変条件を利用した最小構成)。
+  // 各アイテムの実データ参照はuser.tiktokUidで行うため、パネル挿入で後続アイテムの配列内
+  // 位置がずれても、行コンポーネント自体のpropsは変わらない(memo化の効果を維持する)。
+  const rankingVirtualEntries = useMemo(() => {
+    if (!openTiktokUid) {
+      return sortedFiltered.map((user) => ({ kind: "row" as const, user }));
+    }
+    const entries: Array<{ kind: "row" | "panel"; user: GiftUser & { rank: number } }> = [];
+    for (const user of sortedFiltered) {
+      entries.push({ kind: "row", user });
+      if (user.tiktokUid === openTiktokUid) {
+        entries.push({ kind: "panel", user });
+      }
+    }
+    return entries;
+  }, [sortedFiltered, openTiktokUid]);
+
+  // window virtualizerが仮想アイテムの位置をwindowスクロール座標で計算するための、
+  // tbody開始位置(ドキュメント先頭からのオフセット)。フィルタパネル・エラー表示・
+  // 更新時刻表示などtbodyより上のレイアウトが変わると値がずれるため、依存配列を絞らず
+  // 毎レンダー後に再計測する(値が変わらなければsetStateしないため無限ループにはならない)。
+  const rankingTbodyRef = useRef<HTMLTableSectionElement>(null);
+  const [rankingScrollMargin, setRankingScrollMargin] = useState(0);
+  useLayoutEffect(() => {
+    const el = rankingTbodyRef.current;
+    const next = el ? el.getBoundingClientRect().top + window.scrollY : 0;
+    setRankingScrollMargin((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+  });
+
+  const rowVirtualizer = useWindowVirtualizer({
+    count: rankingVirtualEntries.length,
+    estimateSize: (index) =>
+      rankingVirtualEntries[index]?.kind === "panel"
+        ? RANKING_PANEL_ESTIMATED_HEIGHT
+        : RANKING_ROW_HEIGHT,
+    overscan: RANKING_OVERSCAN,
+    scrollMargin: rankingScrollMargin,
+    getItemKey: (index) => {
+      const entry = rankingVirtualEntries[index];
+      if (!entry) return index;
+      return entry.kind === "panel"
+        ? `panel-${entry.user.tiktokUid}`
+        : `row-${entry.user.tiktokUid}`;
+    },
+    // 既定(true)だとパネル行のmeasureElement(ResizeObserver経由)がReactのコミット
+    // フェーズ中にflushSyncを呼び、「flushSync was called from inside a lifecycle
+    // method」という警告が出る(実測確認済み)。パネルの実測はスクロール中の高頻度更新
+    // ではなく開閉時のみなので、同期反映を諦めても体感上の不都合はない。
+    useFlushSync: false,
+  });
 
   const filteredEvents = useMemo(() => {
     if (!historyData) return [];
@@ -1412,18 +1501,55 @@ export function AnalyticsView({
                     </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {sortedFiltered.map((user, idx) => (
-                    <RankingRow
-                      key={user.tiktokUid}
-                      user={user}
-                      idx={idx}
-                      open={openTiktokUid === user.tiktokUid}
-                      breakdownState={breakdowns[user.tiktokUid]}
-                      toggleBreakdown={toggleBreakdown}
-                      fetchBreakdown={fetchBreakdown}
-                    />
-                  ))}
+                <tbody ref={rankingTbodyRef}>
+                  {(() => {
+                    const virtualRows = rowVirtualizer.getVirtualItems();
+                    const totalSize = rowVirtualizer.getTotalSize();
+                    const paddingTop =
+                      virtualRows.length > 0 ? virtualRows[0].start - rankingScrollMargin : 0;
+                    const paddingBottom =
+                      virtualRows.length > 0
+                        ? totalSize + rankingScrollMargin - virtualRows[virtualRows.length - 1].end
+                        : 0;
+                    return (
+                      <>
+                        {paddingTop > 0 && (
+                          <tr aria-hidden="true">
+                            <td colSpan={RANKING_COLUMN_COUNT} style={{ height: paddingTop, padding: 0, border: 0 }} />
+                          </tr>
+                        )}
+                        {virtualRows.map((virtualRow) => {
+                          const entry = rankingVirtualEntries[virtualRow.index];
+                          if (!entry) return null;
+                          if (entry.kind === "panel") {
+                            return (
+                              <RankingBreakdownRow
+                                key={virtualRow.key}
+                                user={entry.user}
+                                breakdownState={breakdowns[entry.user.tiktokUid]}
+                                fetchBreakdown={fetchBreakdown}
+                                index={virtualRow.index}
+                                measureRef={rowVirtualizer.measureElement}
+                              />
+                            );
+                          }
+                          return (
+                            <RankingRow
+                              key={virtualRow.key}
+                              user={entry.user}
+                              open={openTiktokUid === entry.user.tiktokUid}
+                              toggleBreakdown={toggleBreakdown}
+                            />
+                          );
+                        })}
+                        {paddingBottom > 0 && (
+                          <tr aria-hidden="true">
+                            <td colSpan={RANKING_COLUMN_COUNT} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
