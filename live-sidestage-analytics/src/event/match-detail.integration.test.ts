@@ -133,6 +133,9 @@ async function addCandidate(params: {
       confidence: "exact",
       endedAtSource: endedAt ? "observed" : null,
       selected: params.selected ?? false,
+      // CHECK制約 EventMatchBattleCandidate_group_requires_selected: combinedGroupId非null
+      // ならorganizerSelectedもtrue必須(src/event/CLAUDE.md「combinedGroupId」節)。
+      organizerSelected: params.combinedGroupId != null ? true : (params.selected ?? false),
       combinedGroupId: params.combinedGroupId ?? null,
     },
     select: { id: true, startedAt: true, endedAt: true },
