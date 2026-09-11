@@ -51,7 +51,7 @@ describe("GET /api/public/contribution/[token]", () => {
     expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
   });
 
-  it("公開payloadにtiktokUid/tiktokHandle/verifiedを含めない(payloadのキー集合そのものを固定)", async () => {
+  it("公開payloadにverifiedを含めない(tiktokUid/tiktokHandleは含む。payloadのキー集合そのものを固定)", async () => {
     queryByShareTokenMock.mockResolvedValue({
       ok: true,
       payload: {
@@ -61,7 +61,15 @@ describe("GET /api/public/contribution/[token]", () => {
         endDatetime: null,
         dateRange: { start: "2026-09-01", end: "2026-09-01" },
         users: [
-          { nickname: "リスナーA", profileImageUrl: null, giftCount: 3, totalDiamonds: 100, lastGiftAt: "2026-09-01T00:00:00.000Z" },
+          {
+            tiktokUid: "uid1",
+            tiktokHandle: "handle1",
+            nickname: "リスナーA",
+            profileImageUrl: null,
+            giftCount: 3,
+            totalDiamonds: 100,
+            lastGiftAt: "2026-09-01T00:00:00.000Z",
+          },
         ],
         total: { giftCount: 3, totalDiamonds: 100 },
         streamer: { nickname: "配信者A", profileImageUrl: null },
@@ -73,7 +81,7 @@ describe("GET /api/public/contribution/[token]", () => {
 
     for (const user of body.users) {
       expect(Object.keys(user).sort()).toEqual(
-        ["giftCount", "lastGiftAt", "nickname", "profileImageUrl", "totalDiamonds"].sort()
+        ["giftCount", "lastGiftAt", "nickname", "profileImageUrl", "tiktokHandle", "tiktokUid", "totalDiamonds"].sort()
       );
     }
   });

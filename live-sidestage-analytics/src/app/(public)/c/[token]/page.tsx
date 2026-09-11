@@ -10,9 +10,10 @@ import { PublicContributionClient } from "./PublicContributionClient";
 // 認証は無い(URLを知っている人は誰でも見られる)。middleware の除外へ `c(?:/|$)` を
 // 入れてあり、**境界を外すと想定しないパスまで公開される**(src/middleware.test.ts が固定)。
 //
-// ペイロードは `queryContributionRankingByShareToken` が返す公開専用の型で、
-// tiktokUid・tiktokHandle・verifiedを含まない。ここでサーバー側が1回だけ読み、
-// クライアントへ渡す。
+// ペイロードは `queryContributionRankingByShareToken` が返す公開専用の型(verifiedのみ除外)。
+// ここでサーバー側が1回だけ読み、クライアントへ渡す。ギフト内訳アコーディオンは
+// `/api/public/contribution/[token]/breakdown` をクライアント側から叩く(所有者向け
+// `/gifts/breakdown` の公開トークン版)。
 export const dynamic = "force-dynamic";
 
 /** `generateMetadata` と本体で二重にDBを引かないための同一リクエスト内キャッシュ。 */
@@ -50,5 +51,5 @@ export default async function PublicContributionPage({ params }: { params: { tok
   const result = await loadContribution(params.token);
   if (!result.ok) notFound();
 
-  return <PublicContributionClient payload={result.payload} />;
+  return <PublicContributionClient token={params.token} payload={result.payload} />;
 }
