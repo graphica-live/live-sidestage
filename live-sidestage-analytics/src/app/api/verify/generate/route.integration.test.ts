@@ -55,6 +55,9 @@ function req(tiktokHandle: string) {
 async function cleanup() {
   await prisma.streamer.deleteMany({ where: { tiktokHandle: { startsWith: TID_PREFIX } } });
   await prisma.principal.deleteMany({ where: { email: { startsWith: PREFIX } } });
+  // TC-LOCK-106がTiktokRoomを直接作成するため、streamer削除では消えない。
+  // 消し忘れると次回実行時にhostTiktokUid一意制約で失敗する(pre-existing欠陥、2026-09-11修正)。
+  await prisma.tiktokRoom.deleteMany({ where: { tiktokHandle: { startsWith: TID_PREFIX } } });
 }
 
 beforeEach(async () => {

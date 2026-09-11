@@ -134,6 +134,21 @@ class VersionTracker {
     lastEpoch = 0;
     lastVersion = 0;
   }
+
+  /// REST再取得成功後、その時点でサーバーが返したbootId/epoch/versionを
+  /// tracker側へ反映する。
+  ///
+  /// **[reset]とは意味が違う。** [reset]は全て0/nullへ戻すため、REST取得時点で
+  /// サーバー側のversionが既に進んでいる場合(プロセス起動後にversionが単調増加した
+  /// 状態でREST取得した場合)、直後に届くpushのversionは`lastVersion+1`にならず、
+  /// version欠損と誤判定され続けてしまう(REST再取得→reset→また欠損判定…の無限ループ)。
+  /// RESTレスポンス自身が返すbootId/epoch/versionをそのまま採用することで、
+  /// 次に届くpushのversionと正しく連続させる。
+  void acknowledge({required String bootId, required int epoch, required int version}) {
+    lastBootId = bootId;
+    lastEpoch = epoch;
+    lastVersion = version;
+  }
 }
 
 /// version整合性チェックの結果。
@@ -286,11 +301,22 @@ class RankingSyncStore extends ChangeNotifier {
   bool get needsResync => _needsResync;
 
   /// REST再取得成功後、版を更新する。
-  void acknowledgeResync({required Map<String, dynamic> snapshot, required String? period}) {
+  ///
+  /// [bootId]/[epoch]/[version]はRESTレスポンスがそのまま返す値を渡すこと。
+  /// version tracker を`reset()`ではなく`acknowledge()`するのは、REST取得時点で
+  /// 既にサーバー側のversionが進んでいることがあるため(realtime_sync.dartの
+  /// [VersionTracker.acknowledge]のコメント参照)。
+  void acknowledgeResync({
+    required Map<String, dynamic> snapshot,
+    required String? period,
+    required String bootId,
+    required int epoch,
+    required int version,
+  }) {
     _snapshot = snapshot;
     _currentPeriod = period;
     _needsResync = false;
-    _versionTracker.reset();
+    _versionTracker.acknowledge(bootId: bootId, epoch: epoch, version: version);
     notifyListeners();
   }
 
@@ -375,7 +401,14 @@ class GiftHistorySyncStore extends ChangeNotifier {
   bool get needsResync => _needsResync;
 
   /// REST再取得成功後、版を初期化・リセット。
-  void acknowledgeResync({required List<Map<String, dynamic>> history}) {
+  ///
+  /// [bootId]/[version]はRESTレスポンスがそのまま返す値を渡すこと
+  /// (理由はRankingSyncStore.acknowledgeResyncのコメント参照)。
+  void acknowledgeResync({
+    required List<Map<String, dynamic>> history,
+    required String bootId,
+    required int version,
+  }) {
     _history = List.from(history);
     _seenGiftIds.clear();
     for (final event in history) {
@@ -383,7 +416,7 @@ class GiftHistorySyncStore extends ChangeNotifier {
       _seenGiftIds.add(giftId);
     }
     _needsResync = false;
-    _versionTracker.reset();
+    _versionTracker.acknowledge(bootId: bootId, epoch: 0, version: version);
     notifyListeners();
   }
 
@@ -478,7 +511,14 @@ class BattleHistorySyncStore extends ChangeNotifier {
   bool get needsResync => _needsResync;
 
   /// REST再取得成功後、版を初期化・リセット。
-  void acknowledgeResync({required List<Map<String, dynamic>> battles}) {
+  ///
+  /// [bootId]/[version]はRESTレスポンスがそのまま返す値を渡すこと
+  /// (理由はRankingSyncStore.acknowledgeResyncのコメント参照)。
+  void acknowledgeResync({
+    required List<Map<String, dynamic>> battles,
+    required String bootId,
+    required int version,
+  }) {
     _battles.clear();
     _battleIds.clear();
     for (final battle in battles) {
@@ -489,7 +529,7 @@ class BattleHistorySyncStore extends ChangeNotifier {
       }
     }
     _needsResync = false;
-    _versionTracker.reset();
+    _versionTracker.acknowledge(bootId: bootId, epoch: 0, version: version);
     notifyListeners();
   }
 

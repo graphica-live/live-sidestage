@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
 import { resolveUserByMobileToken, signMobileToken } from "@/lib/mobile-auth";
-import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
+import { normalizeTiktokId, resolveRoomForStreamer, resolveRoomForStreamerInTx } from "@/lib/tiktok-room";
+import { reviveSuspendedMonitoring } from "@/lib/mark-last-active";
+import type { Streamer } from "@prisma/client";
 import { requireExistingTiktokAccount } from "@/lib/tiktok-existence";
 import {
   checkTiktokHandleChangeAllowed,
@@ -184,23 +186,83 @@ export async function PATCH(req: NextRequest) {
 
   // tiktokHandleの変更にはCAS(楽観的排他)を使う(web /api/verify/generateと同じパターン)。
   const now = new Date();
-  const result = await prisma.$transaction(async (tx) => {
-    const current = await tx.streamer.findUniqueOrThrow({
-      where: { id: user.streamer!.id },
-      select: { id: true, tiktokHandle: true, tiktokHandleChangedAt: true },
-    });
-    const currentNormalizedTx = normalizeTiktokId(current.tiktokHandle);
 
-    if (currentNormalizedTx === normalized) {
-      if (verifiedTiktokUid) {
-        // 大文字小文字のみの変更: 実在確認が走りUIDを再取得済み。UID書き込みを伴うため、
-        // 通常分岐と同じCAS・verifiedリセットを適用する(tiktokHandleChangedAtだけは
-        // 7日ロックの対象にしないため更新しない)。
+  // P2002(TiktokRoom.hostTiktokUidの同時新規作成競合)はtx全体を巻き込んで失敗する。
+  // upsertRoom()が単体で持っていた「再フェッチで救済」と同じ挙動を保つため、tx全体を1回だけ再試行する。
+  let result:
+    | { kind: "locked"; retryAfter: Date }
+    | { kind: "conflict" }
+    | { kind: "ok"; streamer: Streamer; room: { roomId: string; shouldRevive: boolean; commit: () => void } };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const current = await tx.streamer.findUniqueOrThrow({
+          where: { id: user.streamer!.id },
+          select: { id: true, tiktokHandle: true, tiktokHandleChangedAt: true },
+        });
+        const currentNormalizedTx = normalizeTiktokId(current.tiktokHandle);
+
+        if (currentNormalizedTx === normalized) {
+          if (verifiedTiktokUid) {
+            // 大文字小文字のみの変更: 実在確認が走りUIDを再取得済み。UID書き込みを伴うため、
+            // 通常分岐と同じCAS・verifiedリセットを適用する(tiktokHandleChangedAtだけは
+            // 7日ロックの対象にしないため更新しない)。
+            const { count } = await tx.streamer.updateMany({
+              where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
+              data: {
+                tiktokHandle: cleanTiktokHandle,
+                tiktokUid: verifiedTiktokUid,
+                verified: false,
+                verifiedAt: null,
+              },
+            });
+            if (count === 0) {
+              return { kind: "conflict" as const };
+            }
+            const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
+            const room = await resolveRoomForStreamerInTx(tx, updated.id);
+            return { kind: "ok" as const, streamer: updated, room };
+          }
+          // 真の冪等リトライ: entryCheckが走っておらずverifiedTiktokUidはnull。何も検証すべき値がないので
+          // 従来通りtiktokHandleの表記のみ更新する(CAS・verifiedリセットは不要、実質的な変更が無いため)。
+          // tiktokUidは書き換わらないためroom付替えの対象外だが、statically shapeを揃えるため
+          // resolveRoomForStreamerInTxを通す(既存roomと一致すれば早期returnするだけで実害はない)。
+          const updated = await tx.streamer.update({
+            where: { id: current.id },
+            data: { tiktokHandle: cleanTiktokHandle },
+          });
+          const room = await resolveRoomForStreamerInTx(tx, updated.id);
+          return { kind: "ok" as const, streamer: updated, room };
+        }
+
+        if (!verifiedTiktokUid) {
+          // 外側でentryCheckを省略した後(=自分視点ではハンドル不変のつもりだった)に、
+          // 別リクエストが実際にハンドルを変えていた場合のレース。ここに到達する時点で
+          // currentNormalizedTx(tx内で再読取した最新値) !== normalized(自分の目標値)が
+          // 確定しているにもかかわらずverifiedTiktokUidがnullなのは、検証済みuidを
+          // 持たないまま実質的な変更へ進もうとしている状態。fail-closedのため書き込まず
+          // 競合として扱い、クライアントに最新状態を取得のうえ再試行させる。
+          return { kind: "conflict" as const };
+        }
+
+        if (!lockExempt) {
+          const check = checkTiktokHandleChangeAllowed(
+            { normalizedTiktokHandle: currentNormalizedTx, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
+            normalized,
+            now
+          );
+          if (!check.ok) {
+            return { kind: "locked" as const, retryAfter: check.retryAfter };
+          }
+        }
+
         const { count } = await tx.streamer.updateMany({
           where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
           data: {
             tiktokHandle: cleanTiktokHandle,
             tiktokUid: verifiedTiktokUid,
+            tiktokHandleChangedAt: now,
+            // BIO認証(verified)は正しさを保っていない値を新IDへ引き継がない。
             verified: false,
             verifiedAt: null,
           },
@@ -209,55 +271,17 @@ export async function PATCH(req: NextRequest) {
           return { kind: "conflict" as const };
         }
         const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
-        return { kind: "ok" as const, streamer: updated };
-      }
-      // 真の冪等リトライ: entryCheckが走っておらずverifiedTiktokUidはnull。何も検証すべき値がないので
-      // 従来通りtiktokHandleの表記のみ更新する(CAS・verifiedリセットは不要、実質的な変更が無いため)。
-      const updated = await tx.streamer.update({
-        where: { id: current.id },
-        data: { tiktokHandle: cleanTiktokHandle },
+        const room = await resolveRoomForStreamerInTx(tx, updated.id);
+        return { kind: "ok" as const, streamer: updated, room };
       });
-      return { kind: "ok" as const, streamer: updated };
-    }
-
-    if (!verifiedTiktokUid) {
-      // 外側でentryCheckを省略した後(=自分視点ではハンドル不変のつもりだった)に、
-      // 別リクエストが実際にハンドルを変えていた場合のレース。ここに到達する時点で
-      // currentNormalizedTx(tx内で再読取した最新値) !== normalized(自分の目標値)が
-      // 確定しているにもかかわらずverifiedTiktokUidがnullなのは、検証済みuidを
-      // 持たないまま実質的な変更へ進もうとしている状態。fail-closedのため書き込まず
-      // 競合として扱い、クライアントに最新状態を取得のうえ再試行させる。
-      return { kind: "conflict" as const };
-    }
-
-    if (!lockExempt) {
-      const check = checkTiktokHandleChangeAllowed(
-        { normalizedTiktokHandle: currentNormalizedTx, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
-        normalized,
-        now
-      );
-      if (!check.ok) {
-        return { kind: "locked" as const, retryAfter: check.retryAfter };
+      break;
+    } catch (err) {
+      if (attempt === 0 && (err as { code?: string })?.code === "P2002") {
+        continue;
       }
+      throw err;
     }
-
-    const { count } = await tx.streamer.updateMany({
-      where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
-      data: {
-        tiktokHandle: cleanTiktokHandle,
-        tiktokUid: verifiedTiktokUid,
-        tiktokHandleChangedAt: now,
-        // BIO認証(verified)は正しさを保っていない値を新IDへ引き継がない。
-        verified: false,
-        verifiedAt: null,
-      },
-    });
-    if (count === 0) {
-      return { kind: "conflict" as const };
-    }
-    const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
-    return { kind: "ok" as const, streamer: updated };
-  });
+  }
 
   if (result.kind === "locked") {
     const { error, code, retryAfter } = formatTiktokHandleLockError(result.retryAfter);
@@ -272,8 +296,16 @@ export async function PATCH(req: NextRequest) {
 
   const streamer = result.streamer;
 
-  // 新しいtiktokHandleに対応するTiktokRoomへ付け替える。
-  const roomId = await resolveRoomForStreamer(streamer.id);
+  // room付替え(TiktokRoomのupsert + Streamer.roomId更新)は上のtx内で確定済み。
+  // ここではtx確定後にだけ実行してよい副作用(スロットル記録・監視復活)を処理する。
+  result.room.commit();
+  if (result.room.shouldRevive) {
+    try {
+      await reviveSuspendedMonitoring(result.room.roomId);
+    } catch (err) {
+      console.error("[mobile/streamer] 監視復活処理に失敗:", err);
+    }
+  }
 
   return NextResponse.json({
     streamer: {

@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: battle-history-tab
-last_updated: 2026-09-09
-last_risk: LOW
-last_reviewers: [Code]DeepSeek(high, finding 1件INVALID判定)(Design Modeは局所的な状態管理ロジック修正のため対象外)
+last_updated: 2026-09-11
+last_risk: HIGH
+last_reviewers: DeepSeek + Codex(terra, medium) — realtime-sync刷新(Batch01-06)分
 ---
 
 # テストベースライン: battle-history-tab
@@ -42,11 +42,15 @@ last_reviewers: [Code]DeepSeek(high, finding 1件INVALID判定)(Design Modeは�
 | TC-BH-020 | 陣営の参加者が1人だけ(1vs3の1人側等)ならセレクタを出さない | `_TeamTabContent` | 境界 | `participants.length <= 1`の陣営(aggregate/individual問わず) | チップ列自体が表示されず、陣営合算(=その1人)の内訳がそのまま表示される | `battle_team_contributors_test.dart`でパースはユニット検証。実画面はMarionette MCP/実機 | NOT RUN: 同上(Marionette未接続・adb未導入・該当実データなし) | |
 | TC-BH-021 | 陣営タブ(`_TeamsContributorsView`)のラベルは自陣も「自分」固定文字列でなく、代表者nickname(+他N人)で表示される | `_TeamsContributorsView` | 正常/回帰 | 自陣(`isSelf:true`)に自分1人、または自分+チームメイトがいるバトル | 自陣タブのラベルが「自分」ではなく実際のnickname(例:「ゆきのじょー」、複数人なら「ゆきのじょー 他1人」)で表示される。他陣営のラベル生成ロジックと同一 | analytics側`battle-history.integration.test.ts`(自陣営2名ケース)で`displayName`が`isSelf`によらず代表者nickname(+他N人)になることを検証。実画面はMarionette MCP/実機 | NOT RUN: Marionette MCP未接続・adb未導入・該当実データなし(TC-BH-015と同じ制約) | analytics側`queryBattleContributors`の陣営`displayName`生成で`isSelf`分岐(`"自分"`固定)を撤廃した変更。web版(analytics)は2026-09-06に`participants[].displayName`側だけ同種修正済みで、陣営全体の`displayName`は今回まで「自分」固定が残っていた |
 
+| TC-BH-022 | Socket.IOで正常なbattle-history upsert pushを受信すると、REST再取得を待たず該当バトルの表示(進行中スコア等)が更新される | `BattleHistoryTab.build` + `BattleHistorySyncStore` | 正常/回帰 | `BattleHistorySyncStore`が`canApply`な`chat:battle-history:upsert`を受信(version整合) | `store.getBattles()`に最新状態(新規または上書き)が反映され、`build()`がそれを`allBattles`のソースとして描画する(RESTの`_result`のみに依存しない) | コードレビュー(`build()`が`context.watch<BattleHistorySyncStore>().getBattles()`を`BattleSummary.tryParse`で復元して参照していることを確認) + `flutter test`/`flutter analyze` | PASS(コードレビュー確認、Codexレビューで検出されたHIGH不具合の修正) | Batch06で修正。修正前は`needsResync`時のみ`_load()`が呼ばれ、正常push受信時は画面が一切更新されない不具合があった |
+| TC-BH-023 | REST取得直後、サーバーの現在versionを反映しないまま次のpushを欠損と誤判定しない | `BattleHistorySyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが3、直後に届くpushがversion 4 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, version: 3)`でtrackerを実版数へ同期するため、version 4のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | Batch06で修正。修正前は`acknowledgeResync`が常に`VersionTracker.reset()`(=0)していたため、次のpushが恒久的にversion欠損と誤判定されREST再取得が無限に続くおそれがあった(Codexレビューで検出) |
+
 ## Quality Gate
 
-- `flutter analyze` → No issues found (2026-09-09)
-- `flutter test` → 494 tests, All tests passed! (2026-09-09)
+- `flutter analyze` → No issues found (2026-09-11、既存info 4件のみ、本変更と無関係)
+- `flutter test` → 566 tests, All tests passed! (2026-09-11)
 
 ## Out of Scope
 
 - 4陣営以上での「4スコア横並び」表示: サーバーAPIがselfScore/opponentScoreの2値しか返さないため未実装(spec.md記載のとおり、データ不在による意図的な仕様)
+- TC-BH-022/023のpush反映は実データ・実配信での実機確認が理想だが、本worktreeには`.mcp.json`(Marionette MCP)が無く`adb`もPATH未導入のため実機確認はNOT RUN。コードレビューと`flutter test`で担保している

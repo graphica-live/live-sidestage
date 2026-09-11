@@ -121,12 +121,6 @@ export async function applySessionDiff(
         where: { id: session.id },
         data: { startAt: session.startAt, endAt: session.endAt, name: session.name },
       });
-      // 旧列への dual-write。日程を動かしたら、そこへ割り当てた対戦の旧枠も揃える
-      // (読まないが、ローリング更新中の旧コードが参照する)。
-      await tx.eventMatch.updateMany({
-        where: { eventId, sessionId: session.id },
-        data: { scheduledStartAt: session.startAt, scheduledEndAt: session.endAt },
-      });
     } else {
       await tx.eventSession.create({
         data: {

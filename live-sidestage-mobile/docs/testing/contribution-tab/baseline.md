@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
-last_updated: 2026-09-09
+last_updated: 2026-09-11
 last_risk: HIGH
-last_reviewers: DeepSeek
+last_reviewers: DeepSeek + Codex(terra, medium)。貢献ランキング期間シェアボタン追加分は[Code Mode]Codex-terra(medium)+DeepSeek(high)、[TestCase Mode]DeepSeek(high)
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
@@ -34,12 +34,18 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-014 | `fetchBreakdown` 未指定時(バトル履歴タブ)、順位メダル部分にもタップ領域が残る(退行防止) | `RankingListTile`(バトル履歴タブ) | 回帰 | `fetchBreakdown` 未指定 | 順位メダル部分に `InkWell` が存在する(プロフィール遷移の呼び出し自体はurl_launcherのモック手段が無いため対象外) | `flutter test test/ranking_list_tile_test.dart --plain-name "順位メダル部分にもタップ領域"` | PASS | DeepSeek指摘(HIGH、アコーディオン対応でメダル部分だけタップ領域から漏れ、行全体タップの従来動作が退行していた)を受け追加。openTiktokProfile呼び出しの検証自体は Out of Scope 節参照 |
 | TC-CT-015 | `tiktokHandle` が null(TikTokUser 行が無い送信者)の行はプロフィール遷移のタップを受け付けない | `RankingListTile`(バトル履歴タブ) | 異常/データ欠損 | `tiktokHandle: null`、`fetchBreakdown` 未指定 | 行内の `InkWell`・アバターの `GestureDetector` の `onTap` が全て null(`https://www.tiktok.com/@` を組み立てられないため導線を出さない) | `flutter test test/ranking_list_tile_test.dart --plain-name "タップを受け付けない"` | PASS | tiktokUid統一(`worktree-tiktok-uid-unify`)で `tiktokHandle` が nullable になったことによる新規保証条件 |
 | TC-CT-016 | `tiktokHandle` が null でも内訳アコーディオンは `tiktokUid` をキーに動作する | `RankingListTile`(貢献タブ) | 境界 | `tiktokHandle: null`、`fetchBreakdown` 指定、名前をタップ | `fetchBreakdown` が `entry.tiktokUid` で1回呼ばれ、内訳が表示される | `flutter test test/ranking_list_tile_test.dart --plain-name "fetchBreakdown指定時は名前タップ"` | PASS | 内訳取得キーはハンドルでなく不変な uid なので、ハンドル欠損は展開を妨げない |
+| TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab.build` + `RankingSyncStore` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合) | `store.getSnapshot()`が非nullになり、`build()`がそれを`users`のソースとして描画する(RESTの`_result`のみに依存しない) | コードレビュー(`build()`が`context.watch<RankingSyncStore>().getSnapshot()`を参照し、`entities`を`GiftRankingEntry.tryParse`で復元していることを確認) + `flutter test`/`flutter analyze` | PASS(コードレビュー確認、Codexレビューで検出されたHIGH不具合の修正) | Batch06で修正。修正前は`needsResync`時のみ`_load()`が呼ばれ、正常push受信時は画面が一切更新されない不具合があった |
+| TC-CT-018 | REST取得直後、サーバーの現在versionより1小さいversionのpushを欠損と誤判定しない | `RankingSyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが7、直後に届くpushがversion 8 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, epoch, version: 7)`でtrackerを実際のREST版数へ同期するため、version 8のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | Batch06で修正。修正前は`acknowledgeResync`が常に`VersionTracker.reset()`(=0)していたため、次のpushが恒久的にversion欠損(mismatch)と誤判定されREST再取得が無限に続くおそれがあった(Codexレビューで検出) |
+| TC-CT-019 | 貢献タブの期間ナビ行にシェアアイコン(バトル履歴と同じ共有アイコン)が表示される | `ContributionTab`(`_shareGiftRanking` の `IconButton`) | UI/正常 | 貢献タブを開く | 期間ナビ行の右端に `Icons.share` のアイコンボタンが表示される | 実機確認(Pixel 7a、`33071JEHN14416`) | PASS(2026-09-11、実機screenshot) | ランキングの読込状態(ロード中/エラー)に関わらず常に表示される(`_result` を条件にしていない) |
+| TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗をSnackBarで通知する | `ContributionTab._shareGiftRanking` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後「コピーしました」のSnackBar (b)「コピーに失敗しました」のSnackBar | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: ローカルdevバックエンド(192.168.2.129:3000)への実機到達がWindowsファイアウォールでブロックされ(Privateプロファイルにport 3000の受信許可ルールが無く、管理者権限が必要なため本セッションでは追加不能)、実機からの成功パス実測は今回できず。(b)PASS(2026-09-11、実機で「サーバーが混み合っている」エラー表示を確認。ネットワーク到達不可時の既存エラーハンドリングが新規シェア導線でも機能することを確認) | 成功パスのAPI契約自体は`[unit-int]`(analytics側 `route.integration.test.ts` TC-CS-006、5/5 PASS、実PostgreSQL+実JWTで検証済み)で担保。状態機械はバトル履歴の`ShareButton`から抽出した既存ロジック(`ShareLinkButton.tsx`、web版)と同型で、web側は実ブラウザで成功パスを確認済み(`docs/testing/contribution-share/baseline.md` TC-CS-011) |
 
 ## Quality Gate
 
-- `live-sidestage-mobile`: `flutter analyze` / `flutter test`
+- `live-sidestage-mobile`: `flutter analyze` → PASS(2026-09-11、0 issues) / `flutter test`
 - `live-sidestage-analytics`: `npm run typecheck` / `npx dotenv -e .env.local.test -- npx vitest run <対象ファイル>`
 
 ## Out of Scope
 
 - バトル履歴タブの `RankingListTile` 呼び出し2箇所(`fetchBreakdown` 未指定)の `openTiktokProfile`(url_launcher)実呼び出し検証: テスト環境でurl_launcherをモックする既存パターンが無いため対象外。タップ領域の存在(InkWellの構造)まではTC-CT-014で回帰確認する
+- TC-CT-017/018のpush反映は実データ・実配信での実機確認が理想だが、本worktreeには`.mcp.json`(Marionette MCP)が無く`adb`もPATH未導入のため実機確認はNOT RUN。コードレビューと`flutter test`(`realtime_sync_test.dart`のversion整合性ロジック単体テスト)で担保している
+- `fetchGiftRankingShareUrl`(`lib/core/api_client.dart`)自体のFlutter unit test: 既存の`fetchBattleReplayShareUrl`と同様、APIクライアントの薄いラッパー関数はこのプロジェクトの慣行としてFlutter側では単体テストせず、analytics側のroute.integration.test.tsで契約を担保する(既存踏襲)

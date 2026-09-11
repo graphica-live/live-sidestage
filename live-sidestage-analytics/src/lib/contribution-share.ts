@@ -3,13 +3,15 @@
 // 専用モデル ContributionShareToken を1テーブルだけで扱う。
 //
 // **公開payloadの安全境界はこのファイルが最後の砦。** queryGifts が返す GiftAnalyticsUser を
-// そのまま返さず、nickname/profileImageUrl/集計値だけを含む公開用の型へ必ずマップし直す
-// (verified・tiktokUid・tiktokHandleは公開ページの第三者へ見せない。battle-replay.tsが
-// variant==="public"のときtiktokHandleをnull化しているのと同じ考え方)。
+// そのまま返さず、公開用の型へマップし直す。verified は所有者向けの「未検証データ」表示制御
+// であり第三者の閲覧に意味が無いため除外するが、tiktokUid/tiktokHandle は
+// 所有者向けランキング(RankingRow)と同じくプロフィールリンク・ギフト内訳アコーディオンの
+// キーとして必要なため公開する(ユーザー指示: 2026-09-11)。
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
+import { queryGiftBreakdown, type GiftBreakdownResult } from "@/lib/gift-breakdown";
 import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
 import { generateShareToken } from "@/lib/share-token";
@@ -182,8 +184,10 @@ export async function ensureContributionShareToken(
   }
 }
 
-/** 公開ページに載せる貢献者1人分。tiktokUid/tiktokHandle/verifiedは含まない。 */
+/** 公開ページに載せる貢献者1人分。verifiedは含まない(所有者向け表示制御のため無意味)。 */
 export type PublicContributionUser = {
+  tiktokUid: string;
+  tiktokHandle: string | null;
   nickname: string | null;
   profileImageUrl: string | null;
   giftCount: number;
@@ -207,13 +211,24 @@ export type ContributionRankingQueryResult =
   | { ok: true; payload: PublicContributionPayload }
   | { ok: false };
 
+export type ResolvedContributionShareRange = {
+  roomId: string;
+  period: string;
+  date: string | null;
+  startDatetime: Date | null;
+  endDatetime: Date | null;
+  where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } };
+  dateRange: { start: string; end: string };
+};
+
 /**
- * シェアリンク向け。**トークンだけが鍵**なのでセッションを見ない。
- * `queryGifts` が返す `GiftAnalyticsUser` を素通しせず、公開用フィールドだけへマップし直す。
+ * トークンから「どのroomの、どの期間を集計するか」を解決する。ランキング本体
+ * (`queryContributionRankingByShareToken`)と公開版ギフト内訳(`queryContributionBreakdownByShareToken`)
+ * の両方が同じ期間解決ロジックを必要とするため共通化している。
  */
-export async function queryContributionRankingByShareToken(
+export async function resolveContributionShareRange(
   token: string
-): Promise<ContributionRankingQueryResult> {
+): Promise<{ ok: true; value: ResolvedContributionShareRange } | { ok: false }> {
   const row = await prisma.contributionShareToken.findUnique({
     where: { token },
     select: { roomId: true, period: true, date: true, startDatetime: true, endDatetime: true },
@@ -246,10 +261,27 @@ export async function queryContributionRankingByShareToken(
     dateRange = { start, end };
   }
 
+  return {
+    ok: true,
+    value: { roomId: row.roomId, period: row.period, date: row.date, startDatetime: row.startDatetime, endDatetime: row.endDatetime, where, dateRange },
+  };
+}
+
+/**
+ * シェアリンク向け。**トークンだけが鍵**なのでセッションを見ない。
+ * `queryGifts` が返す `GiftAnalyticsUser` を素通しせず、公開用フィールドだけへマップし直す。
+ */
+export async function queryContributionRankingByShareToken(
+  token: string
+): Promise<ContributionRankingQueryResult> {
+  const resolved = await resolveContributionShareRange(token);
+  if (!resolved.ok) return { ok: false };
+  const row = resolved.value;
+
   // 第2引数(viewerStreamerId)は既存admin routeと同じくroomIdをダミーとして渡す。
   // 現状queryGifts内では未使用だが、将来意味を持たされた場合に公開経路が権限制御を
   // 迂回するリスクがあるため、ここで注意を残しておく。
-  const { users, total } = await queryGifts(row.roomId, row.roomId, where);
+  const { users, total } = await queryGifts(row.roomId, row.roomId, row.where);
 
   const room = await prisma.tiktokRoom.findUnique({
     where: { id: row.roomId },
@@ -267,9 +299,12 @@ export async function queryContributionRankingByShareToken(
     streamerProfileImageUrl = avatarUrls.get(room.hostTiktokUid) ?? null;
   }
 
-  // **verified・tiktokUid・tiktokHandleは公開payloadから除外する。** nickname/profileImageUrl/
-  // 集計値のみを含む型へ明示的にマップし直す(GiftAnalyticsUserをそのまま返さない)。
+  // **verifiedは公開payloadから除外する。** それ以外(tiktokUid/tiktokHandle含む)は
+  // 所有者向けランキングと同じ情報を公開する。GiftAnalyticsUserをそのまま返さず、
+  // 明示的に型を絞ったオブジェクトへマップし直す。
   const users_: PublicContributionUser[] = users.map((u) => ({
+    tiktokUid: u.tiktokUid,
+    tiktokHandle: u.tiktokHandle,
     nickname: u.nickname,
     profileImageUrl: u.profileImageUrl,
     giftCount: u.giftCount,
@@ -284,10 +319,26 @@ export async function queryContributionRankingByShareToken(
       date: row.date,
       startDatetime: row.startDatetime ? row.startDatetime.toISOString() : null,
       endDatetime: row.endDatetime ? row.endDatetime.toISOString() : null,
-      dateRange,
+      dateRange: row.dateRange,
       users: users_,
       total,
       streamer: { nickname: streamerNickname, profileImageUrl: streamerProfileImageUrl },
     },
   };
+}
+
+/**
+ * 公開ページのギフト内訳アコーディオン向け。所有者向け `/api/analytics/gifts/breakdown` と
+ * 同じ `queryGiftBreakdown` を使い、roomId/期間はトークンから解決する
+ * (`resolveContributionShareRange` を共有)。中身は giftId 別の集計のみで、
+ * 個人を特定する追加情報は含まない。
+ */
+export async function queryContributionBreakdownByShareToken(
+  token: string,
+  tiktokUid: string
+): Promise<{ ok: true; value: GiftBreakdownResult } | { ok: false }> {
+  const resolved = await resolveContributionShareRange(token);
+  if (!resolved.ok) return { ok: false };
+  const value = await queryGiftBreakdown(resolved.value.roomId, tiktokUid, resolved.value.where);
+  return { ok: true, value };
 }

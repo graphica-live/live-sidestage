@@ -148,7 +148,6 @@ export type BattleRow = {
   endedAt: Date | null;
   durationSec: number | null;
   hostTiktokUids: string[];
-  hostDisplayIds: string[];
   hostScores: Record<string, string> | null;
   updatedAt: Date;
 };
@@ -177,7 +176,6 @@ export async function fetchBattles(
            "endedAt",
            "durationSec",
            "hostTiktokUids",
-           "hostDisplayIds",
            "hostScores",
            "updatedAt"
     FROM public.tiktok_battles

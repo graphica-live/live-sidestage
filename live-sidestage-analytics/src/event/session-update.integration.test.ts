@@ -66,7 +66,7 @@ async function newParticipant(eventId: string, name: string) {
 /** 対戦を1件、指定の日程へ作る。 */
 async function newMatch(eventId: string, sessionId: string, status = "SCHEDULED") {
   return prisma.eventMatch.create({
-    data: { eventId, sessionId, status, scheduledStartAt: DAY1_START, scheduledEndAt: DAY1_END },
+    data: { eventId, sessionId, status },
     select: { id: true },
   });
 }
@@ -107,10 +107,9 @@ describe("applySessionDiff", () => {
     expect(sessions[0].id).toBe(event.sessionId);
     expect(sessions[0].endAt.toISOString()).toBe(nextEnd.toISOString());
 
-    // 対戦の割り当ては動かない。旧列も新しい窓へ揃う(ローリング更新中の旧コード向け)。
+    // 対戦の割り当ては動かない。
     const after = await prisma.eventMatch.findUniqueOrThrow({ where: { id: match.id } });
     expect(after.sessionId).toBe(event.sessionId);
-    expect(after.scheduledEndAt?.toISOString()).toBe(nextEnd.toISOString());
   });
 
   it("id を持たない行は新しい日程として足す", async () => {

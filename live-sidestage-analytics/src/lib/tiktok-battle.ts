@@ -23,9 +23,8 @@ export type BattlePhase = "START" | "END" | "PROGRESS";
 /**
  * tiktokUid(=hostTiktokUids の要素)ごとのプロフィール情報。
  *
- * **`hostTiktokUids`/`hostDisplayIds` の配列は互いにインデックス対応していない**
- * (armies 走査と anchorInfo 走査が別ループで、順序保証がない)。tiktokUid をキーにした
- * Record にすることで、この既存の弱点を新規フィールドへ持ち込まない。
+ * tiktokUid をキーにした Record にしてある(armies 走査と anchorInfo 走査が別ループで
+ * 順序保証がないため、配列のインデックス対応には頼れない)。
  */
 export type HostProfile = {
   displayId: string | null;
@@ -75,8 +74,6 @@ export type ParsedBattle = {
   durationSec: number | null;
   /** anchorIdStr(数値文字列)の一覧 */
   hostTiktokUids: string[];
-  /** anchorInfo[].user.displayId(ハンドル相当。実データで検証済み、393/394件で取得できている) */
-  hostDisplayIds: string[];
   /** anchorIdStr -> hostScore。TikTok 側の集計値なので文字列のまま持つ */
   hostScores: Record<string, string>;
   /** anchorIdStr -> {displayId, nickName, avatarUrl}。相手が analytics 未登録でも取れる */
@@ -197,7 +194,6 @@ export function collectHosts(data: Record<string, unknown>) {
     }
   }
 
-  const hostDisplayIds: string[] = [];
   const hostProfiles: HostProfiles = {};
   for (const info of toEntries(data.anchorInfo)) {
     // simplifyObject が足す battleUsers ではなく、生の anchorInfo を読む。
@@ -205,9 +201,6 @@ export function collectHosts(data: Record<string, unknown>) {
     // TikTok ハンドルとして使える値であることを確認済み(2026-08-27)。
     const user = asRecord(info.user) ?? info;
     const displayId = nonEmptyString(user.displayId);
-    if (displayId !== null && !hostDisplayIds.includes(displayId)) {
-      hostDisplayIds.push(displayId);
-    }
     // **TikTok の生 payload のフィールド名は `userId`。** sidestage の principalId ではない。
     const tiktokUid = nonEmptyString(user.userId);
     if (tiktokUid !== null && !hostTiktokUids.includes(tiktokUid)) hostTiktokUids.push(tiktokUid);
@@ -221,7 +214,7 @@ export function collectHosts(data: Record<string, unknown>) {
     }
   }
 
-  return { hostTiktokUids, hostDisplayIds, hostScores, hostProfiles, hostTeams };
+  return { hostTiktokUids, hostScores, hostProfiles, hostTeams };
 }
 
 /**
@@ -400,7 +393,6 @@ export type BattleRecordState = {
   endedAt: Date | null;
   durationSec: number | null;
   hostTiktokUids: string[];
-  hostDisplayIds: string[];
   hostScores: Record<string, string>;
   hostProfiles: HostProfiles;
   hostTeams: HostTeams;
@@ -498,7 +490,6 @@ export function mergeBattleState(
     endedAt,
     durationSec: parsed.durationSec ?? existing?.durationSec ?? null,
     hostTiktokUids: mergeIds(existing?.hostTiktokUids ?? [], parsed.hostTiktokUids),
-    hostDisplayIds: mergeIds(existing?.hostDisplayIds ?? [], parsed.hostDisplayIds),
     // スコアは最新の値で上書きする(増えていくので最後の観測が正しい)。
     hostScores: { ...(existing?.hostScores ?? {}), ...parsed.hostScores },
     hostProfiles: mergeHostProfiles(existing?.hostProfiles ?? {}, parsed.hostProfiles),

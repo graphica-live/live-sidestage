@@ -395,8 +395,6 @@ avatarThumb, displayId }` で `uniqueId` フィールドが存在せず、`simpl
 undefined になる**。
 
 照合は `battleId` でグループ化した roomId の集合で行う（`src/event/match-detect.ts`）。
-`hostDisplayIds` に入る `displayId` はハンドル相当と思われるが**実 payload で未検証**なので、
-照合の根拠にはしていない。検証できたら 2vs2 のサイド構成の裏取りに使える。
 
 ### 自動確定の条件を緩めない
 

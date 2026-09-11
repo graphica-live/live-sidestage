@@ -12,6 +12,7 @@ import '../../core/plan_gate.dart';
 import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
 import '../../models/gift_breakdown.dart';
+import '../../models/gift_ranking_entry.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/diamond_format.dart';
@@ -185,13 +186,23 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         _dirty = false;
       });
 
-      // Batch 05: REST取得成功時、RankingSyncStore へversion をリセット。
-      // 今後の push は新しい version 列から開始される。
+      // Batch 06: REST取得成功時、RankingSyncStore へsnapshotとversionを反映。
+      // (Batch 05時点では空Mapを渡すバグと reset() による version欠損誤判定バグがあった)
       if (!mounted) return;
       final store = context.read<RankingSyncStore>();
       store.acknowledgeResync(
-        snapshot: {},
+        snapshot: {
+          'entities': result.users.map((u) => u.toMap()).toList(),
+          'order': result.users.map((u) => u.tiktokUid).toList(),
+          'total': {
+            'giftCount': result.total.giftCount,
+            'totalDiamonds': result.total.totalDiamonds,
+          },
+        },
         period: _selection.period.apiValue,
+        bootId: result.bootId,
+        epoch: result.epoch,
+        version: result.version,
       );
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
@@ -341,7 +352,12 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    final users = result?.users ?? const [];
+    // Batch 06: RankingSyncStore が保持するsnapshotを実際の描画ソースにする。
+    // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
+    final snapshotEntities = context.watch<RankingSyncStore>().getSnapshot()?['entities'];
+    final users = snapshotEntities is List
+        ? snapshotEntities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
+        : result?.users ?? const [];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     return RefreshIndicator(
