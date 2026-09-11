@@ -14,8 +14,10 @@ import 'core/background_task_handler.dart';
 import 'core/battle_activity.dart';
 import 'core/battle_filter_store.dart';
 import 'core/billing_service.dart';
+import 'core/comment_feed.dart';
 import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
+import 'core/realtime_sync.dart';
 import 'core/session_controller.dart';
 import 'core/theme_mode_store.dart';
 import 'core/version_compare.dart';
@@ -210,6 +212,12 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
         // バトル終了(またはEND後のスコア確定)をバトル履歴タブへ伝えるだけの通知。
         ChangeNotifierProvider(create: (_) => BattleActivityNotifier()),
+        // 貢献・ギフト・バトルタブ用のsync機能(リアルタイム更新)。
+        // CommentFeedはconnect()を呼ばず、未接続のまま登録する。接続確立はBatch02の対象。
+        ChangeNotifierProvider(create: (_) => CommentFeed()),
+        ChangeNotifierProvider(create: (_) => RankingSyncStore()),
+        ChangeNotifierProvider(create: (_) => GiftHistorySyncStore()),
+        ChangeNotifierProvider(create: (_) => BattleHistorySyncStore()),
       ],
       child: Builder(
         builder: (context) {

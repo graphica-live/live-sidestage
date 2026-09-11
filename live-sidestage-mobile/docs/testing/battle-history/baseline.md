@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: battle-history-tab
-last_updated: 2026-09-11
-last_risk: HIGH
-last_reviewers: DeepSeek + Codex(terra, medium) — realtime-sync刷新(Batch01-06)分
+last_updated: 2026-09-12
+last_risk: LOW
+last_reviewers: DeepSeek(現行選定モデル、high)。Provider登録漏れ修正分
 ---
 
 # テストベースライン: battle-history-tab
@@ -44,6 +44,7 @@ last_reviewers: DeepSeek + Codex(terra, medium) — realtime-sync刷新(Batch01-
 
 | TC-BH-022 | Socket.IOで正常なbattle-history upsert pushを受信すると、REST再取得を待たず該当バトルの表示(進行中スコア等)が更新される | `BattleHistoryTab.build` + `BattleHistorySyncStore` | 正常/回帰 | `BattleHistorySyncStore`が`canApply`な`chat:battle-history:upsert`を受信(version整合) | `store.getBattles()`に最新状態(新規または上書き)が反映され、`build()`がそれを`allBattles`のソースとして描画する(RESTの`_result`のみに依存しない) | コードレビュー(`build()`が`context.watch<BattleHistorySyncStore>().getBattles()`を`BattleSummary.tryParse`で復元して参照していることを確認) + `flutter test`/`flutter analyze` | PASS(コードレビュー確認、Codexレビューで検出されたHIGH不具合の修正) | Batch06で修正。修正前は`needsResync`時のみ`_load()`が呼ばれ、正常push受信時は画面が一切更新されない不具合があった |
 | TC-BH-023 | REST取得直後、サーバーの現在versionを反映しないまま次のpushを欠損と誤判定しない | `BattleHistorySyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが3、直後に届くpushがversion 4 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, version: 3)`でtrackerを実版数へ同期するため、version 4のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | Batch06で修正。修正前は`acknowledgeResync`が常に`VersionTracker.reset()`(=0)していたため、次のpushが恒久的にversion欠損と誤判定されREST再取得が無限に続くおそれがあった(Codexレビューで検出) |
+| TC-BH-024 | アプリ起動時に`BattleHistorySyncStore`/`CommentFeed`のProvider登録漏れが無く、バトルタブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `BattleHistoryTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<BattleHistorySyncStore>`等が`ProviderNotFoundException`を投げない。実機ではバトルタブが履歴一覧(または空状態文言)を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS(2026-09-12、実機で貢献/ギフト/バトル3タブとも正常表示を確認。当日はバトル無しのため空状態文言の表示で確認) | 2026-09-11のBatch05でこれら4クラスをMultiProviderへ登録し忘れ、3タブが`initState`で例外を投げて真っ白になっていた不具合の再発防止ケース。TC-BH-022/023は「コードレビュー確認」でPASS済みとしていたが、実際にはこの登録漏れによりバトルタブ自体が起動直後に例外でクラッシュしており、push反映機能は実行されていなかった |
 
 ## Quality Gate
 

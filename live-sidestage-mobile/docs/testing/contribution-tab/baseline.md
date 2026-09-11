@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
-last_updated: 2026-09-11
-last_risk: HIGH
-last_reviewers: DeepSeek + Codex(terra, medium)。貢献ランキング期間シェアボタン追加分は[Code Mode]Codex-terra(medium)+DeepSeek(high)、[TestCase Mode]DeepSeek(high)
+last_updated: 2026-09-12
+last_risk: LOW
+last_reviewers: DeepSeek(現行選定モデル、high)。Provider登録漏れ修正分
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
@@ -38,6 +38,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-018 | REST取得直後、サーバーの現在versionより1小さいversionのpushを欠損と誤判定しない | `RankingSyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが7、直後に届くpushがversion 8 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, epoch, version: 7)`でtrackerを実際のREST版数へ同期するため、version 8のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | Batch06で修正。修正前は`acknowledgeResync`が常に`VersionTracker.reset()`(=0)していたため、次のpushが恒久的にversion欠損(mismatch)と誤判定されREST再取得が無限に続くおそれがあった(Codexレビューで検出) |
 | TC-CT-019 | 貢献タブの期間ナビ行にシェアアイコン(バトル履歴と同じ共有アイコン)が表示される | `ContributionTab`(`_shareGiftRanking` の `IconButton`) | UI/正常 | 貢献タブを開く | 期間ナビ行の右端に `Icons.share` のアイコンボタンが表示される | 実機確認(Pixel 7a、`33071JEHN14416`) | PASS(2026-09-11、実機screenshot) | ランキングの読込状態(ロード中/エラー)に関わらず常に表示される(`_result` を条件にしていない) |
 | TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗をSnackBarで通知する | `ContributionTab._shareGiftRanking` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後「コピーしました」のSnackBar (b)「コピーに失敗しました」のSnackBar | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: ローカルdevバックエンド(192.168.2.129:3000)への実機到達がWindowsファイアウォールでブロックされ(Privateプロファイルにport 3000の受信許可ルールが無く、管理者権限が必要なため本セッションでは追加不能)、実機からの成功パス実測は今回できず。(b)PASS(2026-09-11、実機で「サーバーが混み合っている」エラー表示を確認。ネットワーク到達不可時の既存エラーハンドリングが新規シェア導線でも機能することを確認) | 成功パスのAPI契約自体は`[unit-int]`(analytics側 `route.integration.test.ts` TC-CS-006、5/5 PASS、実PostgreSQL+実JWTで検証済み)で担保。状態機械はバトル履歴の`ShareButton`から抽出した既存ロジック(`ShareLinkButton.tsx`、web版)と同型で、web側は実ブラウザで成功パスを確認済み(`docs/testing/contribution-share/baseline.md` TC-CS-011) |
+| TC-CT-021 | アプリ起動時に`RankingSyncStore`/`CommentFeed`のProvider登録漏れが無く、貢献タブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `ContributionTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<RankingSyncStore>`等が`ProviderNotFoundException`を投げない。実機では貢献タブがランキング一覧を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS(2026-09-12、実機で貢献/ギフト/バトル3タブとも正常表示を確認) | 2026-09-11のBatch05でこれら4クラスをMultiProviderへ登録し忘れ、3タブが`initState`で例外を投げて真っ白になっていた不具合の再発防止ケース。テストは別建てのMultiProviderではなく本物の`LiveSidestageApp`から解決することで、main.dart側の登録漏れを直接検知する |
 
 ## Quality Gate
 
