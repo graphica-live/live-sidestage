@@ -6,10 +6,10 @@
 // **色はここで決めない。** クライアントが既存の `assignFactionColors` を使い、一覧・詳細と
 // 完全に一致させる(サーバーが色を返すと2箇所で定義が割れる)。
 
-import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { resolveAvatarUrls } from "./avatar-storage";
+import { generateShareToken } from "./share-token";
 import {
   BATTLE_REPLAY_VERSION,
   MAX_REPLAY_EVENTS,
@@ -47,11 +47,6 @@ export function isReplayable(input: ReplayEligibility): ReplayAvailability {
     return { available: false, reason: "participants_invalid" };
   }
   return { available: true, reason: null };
-}
-
-/** `Streamer.overlayToken` と同じ 192bit。cuid 等の推測可能な識別子は使わない。 */
-function generateShareToken(): string {
-  return crypto.randomBytes(24).toString("hex");
 }
 
 /**
