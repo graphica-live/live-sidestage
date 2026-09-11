@@ -517,6 +517,7 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _speechQueue.fixedStyleId = effective.fixedStyleId;
     _speechQueue.volume = effective.ttsVolume;
     _speechQueue.speed = effective.ttsSpeed;
+    _speechQueue.duplicateSkipEnabled = effective.duplicateSpeechSkipEnabled;
 
     // **無音キープアライブはサービスの稼働ではなく「音を出す機能」に紐づける。**
     //

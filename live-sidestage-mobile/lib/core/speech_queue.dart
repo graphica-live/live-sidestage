@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/comment.dart';
 import '../models/voice_catalog.dart';
 import 'comment_feed.dart';
+import 'duplicate_comment_filter.dart';
 import 'tts_engine.dart';
 import 'voice_pool.dart';
 
@@ -18,6 +19,7 @@ class SpeechQueueController extends ChangeNotifier {
   final TtsEngine _engine = TtsEngine();
   final AudioPlayer _player = AudioPlayer();
   final Queue<Comment> _queue = Queue();
+  final DuplicateCommentFilter _duplicateFilter = DuplicateCommentFilter();
 
   VoicePool? _voicePool;
   StreamSubscription<Comment>? _subscription;
@@ -123,6 +125,9 @@ class SpeechQueueController extends ChangeNotifier {
   /// 読み上げ速度(%)。50-200。合成時に渡すので、**先読み済みの1件には効かない**。
   int speed = 100;
 
+  /// 重複コメントをスキップするか。
+  bool duplicateSkipEnabled = true;
+
   int get volume => _volume;
 
   set volume(int value) {
@@ -181,6 +186,8 @@ class SpeechQueueController extends ChangeNotifier {
     // **_processQueue 側ではなくここで止めること。** 先読み合成は次の1件を先に
     // 合成するので、向こうで弾いても空文字が合成へ渡る経路が残る。
     if (comment.speechText.isEmpty) return;
+    // 重複判定（FREEプランクールダウン判定の前に実行）
+    if (duplicateSkipEnabled && _duplicateFilter.shouldSuppress(comment)) return;
     // FREEプランのクールダウン中は新規コメントを読み上げない(既存キューに積まず無視する)。
     if (_isFreePlan && _intervalActive) return;
     _queue.add(comment);
