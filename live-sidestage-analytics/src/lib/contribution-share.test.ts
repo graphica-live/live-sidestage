@@ -197,7 +197,7 @@ describe("queryContributionRankingByShareToken", () => {
     expect(result).toEqual({ ok: false });
   });
 
-  it("公開payloadはverified/tiktokUid/tiktokHandleを含まない(nickname/profileImageUrl/集計値のみ)", async () => {
+  it("公開payloadはverifiedを含まない(tiktokUid/tiktokHandleは公開する)", async () => {
     findUniqueTokenMock.mockResolvedValue({
       roomId: "room1",
       period: "day",
@@ -229,6 +229,8 @@ describe("queryContributionRankingByShareToken", () => {
     if (!result.ok) throw new Error("unreachable");
     expect(result.payload.users).toEqual([
       {
+        tiktokUid: "secret-uid",
+        tiktokHandle: "secret-handle",
         nickname: "リスナーA",
         profileImageUrl: "https://example.com/a.png",
         giftCount: 3,
@@ -237,12 +239,10 @@ describe("queryContributionRankingByShareToken", () => {
       },
     ]);
     for (const user of result.payload.users) {
-      expect(user).not.toHaveProperty("tiktokUid");
-      expect(user).not.toHaveProperty("tiktokHandle");
       expect(user).not.toHaveProperty("verified");
     }
     expect(result.payload.streamer).toEqual({ nickname: "配信者A", profileImageUrl: "https://example.com/host.png" });
-    // streamer側にもtiktokHandle/tiktokUidを含めない。
+    // streamer側にはtiktokHandle/tiktokUidを含めない(配信者情報は表示名・アイコンのみ)。
     expect(result.payload.streamer).not.toHaveProperty("tiktokHandle");
     expect(result.payload.streamer).not.toHaveProperty("tiktokUid");
   });

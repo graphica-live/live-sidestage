@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-11
 last_risk: HIGH
-last_reviewers: [Code Mode]Codex-terra(medium)+DeepSeek(high)、[TestCase Mode]DeepSeek(high)、2026-09-11 新規実装
+last_reviewers: [Code Mode]Codex-terra(medium)+DeepSeek(high)、[TestCase Mode]DeepSeek(high)、フォローアップ[Code Mode]DeepSeek(high、bs8s2hpzn)。tiktokUid/tiktokHandle公開方針への転換とギフト内訳アコーディオン追加を反映(2026-09-11)
 ---
 
 # ギフト貢献ランキングの公開シェア機能
@@ -41,7 +41,10 @@ last_reviewers: [Code Mode]Codex-terra(medium)+DeepSeek(high)、[TestCase Mode]D
 | TC-CS-005 | 管理者向け発行エンドポイントは認可・404境界を守る | `POST /api/admin/rooms/[roomId]/analytics/gifts/share` | 異常/認可/境界 | (a)未ログイン (b)存在しないroomId | (a)401 (b)404 | `[route]` | PASS(2026-09-11) | `/api/admin/.../battles/[battleId]/share`と同じ設計 |
 | TC-CS-006 | mobile向け発行エンドポイントは認証・room未接続境界を守り、既発行トークンを再利用する | `POST /api/mobile/analytics/gifts/share` | 異常/認可/回帰 | (a)トークン無し (b)room未接続JWT (c)同一期間で2回POST | (a)(b)404、(c)2回目も同じURL | `[int]` | PASS(2026-09-11) | Web版と同じ`ensureContributionShareToken`の冪等性 |
 | TC-CS-007 | 存在しないトークンは404。理由コードや「無効なトークン」等の文言を出さない | `/api/public/contribution/[token]` / `/c/[token]` | negative/セキュリティ | 未知の48桁トークンで開く | HTTP 404。レスポンス本文・ページ表示のどちらも実在有無を区別しない | `[route]`, `[anon]` | PASS(2026-09-11、実ブラウザ確認: `UNKNOWN_TOKEN_STATUS 404`) | トークンの実在有無を漏らすと総当たりで判定できる |
-| TC-CS-008 | 公開payloadはverified/tiktokUid/tiktokHandleを含まず、nickname/profileImageUrl/集計値のみを返す | `queryContributionRankingByShareToken` | セキュリティ/回帰 | シードの配信者・視聴者データ | レスポンスJSONに`tiktokUid`/`tiktokHandle`/`verified`キーが一切現れない | `[unit]` | PASS(2026-09-11、実ブラウザ確認: 公開ページ本文にニックネームのみ表示、ハンドル非表示) | `GiftAnalyticsUser`を素通しせず`PublicContributionUser`へ明示的にマップし直す設計 |
+| TC-CS-008 | 公開payloadは`verified`を含まないが`tiktokUid`/`tiktokHandle`は含む(所有者向けと同じ情報量) | `queryContributionRankingByShareToken` | セキュリティ/回帰 | シードの配信者・視聴者データ | レスポンスJSONの各userキー集合が`giftCount,lastGiftAt,nickname,profileImageUrl,tiktokHandle,tiktokUid,totalDiamonds`に一致(`verified`は含まない) | `[unit]` | PASS(2026-09-11) | ユーザー指示によりtiktokUid/tiktokHandle非公開化方針を撤回(所有者向けRankingRowと同等の情報を公開する)。除外するのは`verified`のみ |
+| TC-CS-008a | 公開ページの各行にtiktokHandleが表示され、TikTokプロフィールへのリンクになる。ハンドル未取得の視聴者はリンク無しでニックネームのみ表示する | `PublicContributionClient`(`PublicRankingRow`) | 正常/欠損 | (a)tiktokHandleありの視聴者 (b)tiktokHandleがnullの視聴者 | (a)`@handle`表示があり、アバター・ニックネームが`https://www.tiktok.com/@handle`へのリンクになる (b)リンクが無くニックネームのみのプレーン表示 | `[pw]` | PASS(2026-09-11、実ブラウザ確認) | `tiktokProfileUrl`は所有者向け`RankingRow`と共通の`battle-types.ts`を使う |
+| TC-CS-008b | 各行をクリックするとギフト内訳アコーディオンが開き、`/api/public/contribution/[token]/breakdown`から取得したギフト明細(ギフト名・回数・合計ダイヤ)を表示する。再クリックで閉じる。90日超で明細が無い期間は「内訳は残っていない」を表示する | `PublicContributionClient` / `GET /api/public/contribution/[token]/breakdown` | 正常/データ欠損/回帰 | (a)明細が残っている視聴者行 (b)90日超で`coverage.detailAvailable=false`の期間 | (a)展開後ギフト行(名前・×回数・合計ダイヤ)が表示される (b)「この期間の内訳は残っていない(ギフト明細は90日で削除される)」を表示 | `[unit]`(`breakdown/route.test.ts`), `[pw]` | PASS(2026-09-11、実ブラウザ確認: アコーディオン展開でギフト内訳表示) | 所有者向け`queryGiftBreakdown`をそのまま呼ぶ公開トークン版。`tiktokUid`クエリパラメータ必須、`resolveContributionShareRange`でトークン→期間解決を`queryContributionRankingByShareToken`と共通化 |
+| TC-CS-008c | 内訳アコーディオンは同一行の連続クリックで二重フェッチしない(初回取得後はキャッシュ済みstateを再利用) | `PublicContributionClient`(`toggleBreakdown`) | 境界/並行処理 | 同一行を開く→閉じる→素早く再度開くを連続操作 | 2回目の展開では`/breakdown`への再フェッチが起きず、`breakdownsRef`経由の最新state判定で二重取得を回避する | `[unit]`(ロジックはコンポーネント内、`useRef`によるstale closure対策を実コードで確認) | PASS(2026-09-11、code-review DeepSeekのstale closure指摘への修正を実コードで確認) | `setOpenTiktokUid`の関数型更新内で`breakdownsRef.current`を参照する設計 |
 | TC-CS-009 | 公開ページと公開APIは検索索引の対象にせず、その旨をHTTPヘッダ・meta両方に出す | `generateMetadata` / `/api/public/contribution/[token]` | セキュリティ/回帰 | 公開URLを開いて`<head>`とレスポンスヘッダを見る | `<meta name="robots">`相当が`index:false,follow:false`、APIレスポンスヘッダに`X-Robots-Tag: noindex`と`Cache-Control: private, no-store` | `[route]`, `[anon]` | PASS(2026-09-11、route.test.tsでヘッダ確認済み) | URLを知る人向けであってSEO対象ではない |
 | TC-CS-010 | 共有ページと公開APIだけが認証を免除され、似た前置のパスは保護されたまま | `src/middleware.ts` | 回帰/認可/境界 | `/c/abc123` `/c/abc123/` `/api/public/contribution/abc123` / `/billing` `/chat` `/cx` | 前3つは認証なしで通る。後3つは保護されたまま | `[unit-mw]` | PASS(2026-09-11) | 境界`(?:/|$)`を落とすと想定しない前置パスまで公開される |
 | TC-CS-011 | シェアボタンは発行したURLをクリップボードへ入れる。非secure contextではURLを選択可能なテキストで出す | `ShareLinkButton` | 正常/異常/境界 | (a)通常環境でシェア (b)`navigator.clipboard`が無い環境 | (a)クリップボードに`<origin>/c/<token>`が入りコピー成功表示 (b)readonly入力欄にURLが出てフォーカスで全選択 | `[pw]` | PASS(2026-09-11、実ブラウザ確認: `SHARE_URL http://localhost:3201/c/<token>`をクリップボードから取得成功) | `BattleDetailModal`の`ShareButton`から抽出した状態機械を流用(既存動作は`docs/testing/battle-replay-share/baseline.md`のTC-BRS-012が保証済み)。(b)はheadless clipboard権限の制約でこのセッションでは実測せず、既存共通ロジックの流用として`[unit]`カバレッジに委ねる |
@@ -50,7 +53,7 @@ last_reviewers: [Code Mode]Codex-terra(medium)+DeepSeek(high)、[TestCase Mode]D
 ## Quality Gate
 
 - `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-11)
-- `npm run test:unit` → 1592 tests PASS(2026-09-11、TestCaseレビュー反映後の境界ケース追加込み)
+- `npm run test:unit` → 1595 tests PASS(2026-09-11、内訳アコーディオン追加分含む全体実行で確認)
 - `npm run test:integration` → 960 tests PASS(2026-09-11)
 
 ## Out of Scope
