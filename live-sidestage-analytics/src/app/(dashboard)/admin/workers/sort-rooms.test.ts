@@ -17,7 +17,9 @@ function room(overrides: Partial<AssignedRoom> = {}): AssignedRoom {
     watchCount: 0,
     eventMonitored: false,
     consecutiveBlockedCount: 0,
+    signatureUsage24hCount: null,
     weeklyEulerSignUsageCount: null,
+    collabSignatureUsage24hCount: null,
     monitoringSuspended: false,
     specialWatch: false,
     ...overrides,
@@ -67,6 +69,32 @@ describe("sortAssignedRooms", () => {
     ];
     const desc = sortAssignedRooms(rooms, "weeklyEulerSignUsageCount", "desc");
     expect(desc.map((r) => r.roomId)).toEqual(["1", "3", "2"]);
+  });
+
+  it("signatureUsage24hCountの昇順・降順に並べ、nullは末尾に固定される", () => {
+    const rooms = [
+      room({ roomId: "1", signatureUsage24hCount: 5 }),
+      room({ roomId: "2", signatureUsage24hCount: null }),
+      room({ roomId: "3", signatureUsage24hCount: 0 }),
+      room({ roomId: "4", signatureUsage24hCount: 1 }),
+    ];
+    const asc = sortAssignedRooms(rooms, "signatureUsage24hCount", "asc");
+    expect(asc.map((r) => r.roomId)).toEqual(["3", "4", "1", "2"]);
+    const desc = sortAssignedRooms(rooms, "signatureUsage24hCount", "desc");
+    expect(desc.map((r) => r.roomId)).toEqual(["1", "4", "3", "2"]);
+  });
+
+  it("collabSignatureUsage24hCountの昇順・降順に並べ、nullは末尾に固定される", () => {
+    const rooms = [
+      room({ roomId: "1", collabSignatureUsage24hCount: 5 }),
+      room({ roomId: "2", collabSignatureUsage24hCount: null }),
+      room({ roomId: "3", collabSignatureUsage24hCount: 0 }),
+      room({ roomId: "4", collabSignatureUsage24hCount: 1 }),
+    ];
+    const asc = sortAssignedRooms(rooms, "collabSignatureUsage24hCount", "asc");
+    expect(asc.map((r) => r.roomId)).toEqual(["3", "4", "1", "2"]);
+    const desc = sortAssignedRooms(rooms, "collabSignatureUsage24hCount", "desc");
+    expect(desc.map((r) => r.roomId)).toEqual(["1", "4", "3", "2"]);
   });
 
   it("元の配列を破壊しない", () => {

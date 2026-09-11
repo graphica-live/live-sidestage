@@ -348,6 +348,12 @@ model TiktokRoom {
   // (以後同じroomが別経路で再検知されても上書きしない。tiktok-room.ts参照)。
   watchSource       String?
   watchSourceAt     DateTime?
+  // このroomが直近どのroomのコラボ/バトル検知によって監視対象へ引き込まれたか(発見元roomのID)。
+  // watchSourceと異なり「直近の引き金」を毎回上書きする(watchSourceは「最初の発見経路」で不変)。
+  // FK無し(発見元roomが後で削除されても残骸として残るだけで無害。EulerSignUsageの
+  // スナップショット列と同じ設計判断)。/admin/workers「コラボ署名消費」列の集計専用。
+  lastCollabSourceRoomId String?
+  lastCollabSourceAt     DateTime?
   // 開発用フラグ。trueのroomは、コラボ相手・バトル相手発見(recordCollabGroupChange/
   // watchBattleOpponents)のキック条件をStreamer購読と無関係に満たす(tiktok-listener.ts参照)。
   // 管理画面(/admin/workers)の「特別監視」トグルからのみ変更する。監視対象自体の判定
@@ -460,6 +466,8 @@ model TiktokRoom {
   @@index([listenerStatus, unhealthySince])
   // 運用調査用(psqlからハンドルで引く)。**アプリコードの同一性判定には使わない**。
   @@index([tiktokHandle])
+  // /admin/workers「コラボ署名消費」列の集計用(lastCollabSourceRoomId IN (...)で絞り込む)。
+  @@index([lastCollabSourceRoomId])
   @@schema("public")
 }
 

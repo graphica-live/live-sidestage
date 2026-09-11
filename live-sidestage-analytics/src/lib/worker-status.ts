@@ -73,6 +73,10 @@ export type AssignedRoom = {
   consecutiveBlockedCount: number;
   /** includeWeeklyEulerUsage未指定時はnull(「0件」と区別するため)。 */
   weeklyEulerSignUsageCount: number | null;
+  /** includeSignatureUsage24h未指定時はnull(「0件」と区別するため)。 */
+  signatureUsage24hCount: number | null;
+  /** includeSignatureUsage24h未指定時はnull。このroomのコラボ/バトル検知が引き金となり、非購読の別roomが消費した署名数(直近24時間)。 */
+  collabSignatureUsage24hCount: number | null;
   /** true=管理者が監視解除(一時停止)した部屋。ログイン等で自動的にfalseへ戻りうる(reviveSuspendedMonitoring()参照)。 */
   monitoringSuspended: boolean;
   /** 開発用「特別監視」フラグ。trueならStreamer購読が無くてもコラボ・バトル相手発見のキック元になれる(tiktok-listener.ts参照)。 */
@@ -180,6 +184,8 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
     eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: null,
+    signatureUsage24hCount: null,
+    collabSignatureUsage24hCount: null,
     monitoringSuspended: r.monitoringSuspended,
     specialWatch: r.specialWatch,
   }));
@@ -190,6 +196,12 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
 // 上限なしに全件返すと本番の部屋数増加とともに一覧描画・週間集計クエリが際限なく重くなるため、
 // 直近の listener 活動が新しい順に打ち切る(review-auto Code Mode Fable finding反映)。
 const ADMIN_ROOM_LIST_LIMIT = 1000;
+
+// 「コラボ署名消費」集計の防御的上限。lastCollabSourceRoomIdは発見元roomの数だけ増えうる
+// (page内最大ADMIN_ROOM_LIST_LIMIT件それぞれが複数roomを発見しうる)ため、ADMIN_ROOM_LIST_LIMIT
+// とは別に上限を持たせ、DB負荷・応答遅延を防ぐ(review-auto Code Mode Codex finding反映)。
+const COLLAB_DISCOVERED_ROOM_LIMIT = 5000;
+const COLLAB_USAGE_QUERY_LIMIT = 20000;
 
 /**
  * /admin/workers 管理画面の一覧表示専用。fetchAssignedRooms() は watchedRoomFilter() を通すため、
@@ -203,7 +215,7 @@ const ADMIN_ROOM_LIST_LIMIT = 1000;
  */
 export async function fetchAdminRoomList(
   now: Date = new Date(),
-  options: { includeWeeklyEulerUsage?: boolean } = {}
+  options: { includeWeeklyEulerUsage?: boolean; includeSignatureUsage24h?: boolean } = {}
 ): Promise<AssignedRoom[]> {
   const rooms = await prisma.tiktokRoom.findMany({
     where: { workerId: { not: null } },
@@ -240,6 +252,65 @@ export async function fetchAdminRoomList(
     usageByRoomId = new Map(grouped.map((g) => [g.roomId, g._count._all]));
   }
 
+  let usage24hByRoomId: Map<string, number> | null = null;
+  let collabUsageBySourceRoomId: Map<string, number> | null = null;
+  if (options.includeSignatureUsage24h) {
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const grouped24h = await prisma.eulerSignUsage.groupBy({
+      by: ["roomId"],
+      where: { roomId: { in: rooms.map((r) => r.id) }, createdAt: { gte: oneDayAgo } },
+      _count: { _all: true },
+    });
+    usage24hByRoomId = new Map(grouped24h.map((g) => [g.roomId, g._count._all]));
+
+    // コラボ署名消費の集計：このroom(page内のroomId)がコラボ/バトル検知の引き金となって
+    // 別roomが消費した署名数を集計する。ADMIN_ROOM_LIST_LIMITはpage内のroom数(=検索条件の件数)
+    // にしか効かず、発見先room数・その署名消費件数には別途上限が要る(review-auto Code Mode Codex finding反映)。
+    const pageRoomIds = rooms.map((r) => r.id);
+    const discovered = await prisma.tiktokRoom.findMany({
+      where: { lastCollabSourceRoomId: { in: pageRoomIds } },
+      select: { id: true, lastCollabSourceRoomId: true },
+      take: COLLAB_DISCOVERED_ROOM_LIMIT,
+    });
+    const sourceByDiscoveredRoomId = new Map(
+      discovered.map((d) => [d.id, d.lastCollabSourceRoomId as string])
+    );
+    const discoveredRoomIds = [...sourceByDiscoveredRoomId.keys()];
+
+    const collabUsage = discoveredRoomIds.length
+      ? await prisma.eulerSignUsage.findMany({
+          where: { roomId: { in: discoveredRoomIds }, createdAt: { gte: oneDayAgo } },
+          select: {
+            roomId: true,
+            streamerPrincipalIds: true,
+            agencyIds: true,
+            roomMonitorUntil: true,
+            requestedAt: true,
+          },
+          take: COLLAB_USAGE_QUERY_LIMIT,
+        })
+      : [];
+
+    collabUsageBySourceRoomId = new Map<string, number>();
+    for (const u of collabUsage) {
+      // 記録時点で非購読(Streamer登録0件 かつ AgencyWatch登録0件 かつ
+      // イベント監視期限が切れているかそもそも無い)だった消費だけを数える。
+      // specialWatchはEulerSignUsageにスナップショットされていないため、この判定には含められない
+      // (既知の近似。画面に注記)。
+      const nonSubscribedAtUsage =
+        u.streamerPrincipalIds.length === 0 &&
+        u.agencyIds.length === 0 &&
+        (u.roomMonitorUntil === null || u.roomMonitorUntil <= u.requestedAt);
+      if (!nonSubscribedAtUsage) continue;
+      const sourceRoomId = sourceByDiscoveredRoomId.get(u.roomId);
+      if (!sourceRoomId) continue;
+      collabUsageBySourceRoomId.set(
+        sourceRoomId,
+        (collabUsageBySourceRoomId.get(sourceRoomId) ?? 0) + 1
+      );
+    }
+  }
+
   const display = await resolveTikTokUserDisplay(rooms.map((r) => r.hostTiktokUid));
 
   return rooms.map((r) => ({
@@ -255,6 +326,10 @@ export async function fetchAdminRoomList(
     eventMonitored: r.monitorUntil != null && r.monitorUntil > now,
     consecutiveBlockedCount: r.consecutiveBlockedCount,
     weeklyEulerSignUsageCount: usageByRoomId ? usageByRoomId.get(r.id) ?? 0 : null,
+    signatureUsage24hCount: usage24hByRoomId ? usage24hByRoomId.get(r.id) ?? 0 : null,
+    collabSignatureUsage24hCount: options.includeSignatureUsage24h
+      ? collabUsageBySourceRoomId!.get(r.id) ?? 0
+      : null,
     monitoringSuspended: r.monitoringSuspended,
     specialWatch: r.specialWatch,
   }));

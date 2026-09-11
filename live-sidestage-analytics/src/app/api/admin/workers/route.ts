@@ -47,7 +47,7 @@ export async function GET() {
   // 消えてしまうため、buildWorkerReport()用のroomsとは別に取得する(worker-status.ts参照)。
   let adminRoomList: AssignedRoom[] = [];
   try {
-    adminRoomList = await fetchAdminRoomList(now, { includeWeeklyEulerUsage: true });
+    adminRoomList = await fetchAdminRoomList(now, { includeWeeklyEulerUsage: true, includeSignatureUsage24h: true });
   } catch (err) {
     console.error("[admin/workers] adminRoomList 取得に失敗:", err);
   }
