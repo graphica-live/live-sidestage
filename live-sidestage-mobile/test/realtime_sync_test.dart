@@ -166,6 +166,49 @@ void main() {
       expect(tracker.lastVersion, equals(0));
     });
 
+    test('acknowledge()はresetと異なり、渡した値をそのまま反映する', () {
+      final tracker = VersionTracker(
+        lastBootId: 'boot-1',
+        lastEpoch: 0,
+        lastVersion: 5,
+      );
+
+      // REST取得時点でサーバーのversionが既に7まで進んでいたケースを想定。
+      tracker.acknowledge(bootId: 'boot-1', epoch: 0, version: 7);
+
+      expect(tracker.lastBootId, equals('boot-1'));
+      expect(tracker.lastEpoch, equals(0));
+      expect(tracker.lastVersion, equals(7));
+
+      // reset()なら0/nullに戻るところ、acknowledge()は指定値を保持するため、
+      // 次に届くversion=8のpushはそのまま適用できる(欠損判定にならない)。
+      final nextEnvelope = SyncEnvelope<Map<String, dynamic>>(
+        schemaVersion: 1,
+        streamerId: 'test-streamer',
+        kind: 'append',
+        bootId: 'boot-1',
+        epoch: 0,
+        version: 8,
+        payload: {},
+      );
+      final result = tracker.check(nextEnvelope);
+      expect(result.canApply, isTrue);
+    });
+
+    test('acknowledge()はbootId不一致のREST応答を受けても、渡されたbootIdをそのまま採用する', () {
+      final tracker = VersionTracker(
+        lastBootId: 'boot-1',
+        lastEpoch: 0,
+        lastVersion: 5,
+      );
+
+      // web再起動後にRESTを叩き直した場合、REST応答のbootIdは新しいものになる。
+      tracker.acknowledge(bootId: 'boot-2', epoch: 0, version: 1);
+
+      expect(tracker.lastBootId, equals('boot-2'));
+      expect(tracker.lastVersion, equals(1));
+    });
+
     test('複数streamerId間での独立性確認', () {
       final tracker1 = VersionTracker(lastVersion: 5);
       final tracker2 = VersionTracker(lastVersion: 100);
