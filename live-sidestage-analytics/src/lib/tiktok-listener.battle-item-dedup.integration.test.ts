@@ -4,8 +4,9 @@
 //   1. listenerインスタンス内のFIFO(recentBattleItemMsgIds) — 同一プロセスへの再送を落とす
 //   2. saveBattleItemUse()のDB照会(直近5分window) — 別プロセスが既に書いた行を見つける
 import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
+import type { WebcastLinkMicBattleItemCard } from "TLC-sidestage";
 import { prisma } from "./prisma";
-import { startListener, stopListener } from "./tiktok-listener";
+import { startListener, stopListener, saveGift, saveBattleItemUse } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 import { makeTiktokUid } from "./__fixtures__/gift";
 
@@ -129,6 +130,22 @@ function gloveCardPayload(msgId: string | null, createTime: number, overrides: R
   };
 }
 
+// non-combo Gift側のテストと同じフィクスチャ形(Different kindテストで使う)。
+function nonComboGift(msgId: string | null, createTime: number) {
+  return {
+    userId: makeTiktokUid("user_dk"),
+    uniqueId: "user_dk",
+    nickname: "種別分離テスト",
+    giftType: 0,
+    giftId: 5655,
+    giftName: "Heart Me",
+    repeatCount: 1,
+    diamondCount: 1,
+    createTime,
+    ...(msgId === null ? {} : { msgId }),
+  };
+}
+
 function powerUpSummaryPayload(createTime: number) {
   return {
     battleId: "7123456789012345678",
@@ -140,6 +157,10 @@ function powerUpSummaryPayload(createTime: number) {
 
 async function battleItemUseCount(roomId: string) {
   return prisma.tiktokBattleItemUse.count({ where: { roomId } });
+}
+
+async function giftCount(roomId: string) {
+  return prisma.gift.count({ where: { roomId } });
 }
 
 beforeEach(() => {
@@ -245,6 +266,147 @@ describe("バトルアイテム使用ログの保存とmsgId dedup", () => {
       });
       const rows = await prisma.tiktokBattleItemUse.findMany({ where: { roomId: ctx.roomId } });
       expect(rows.every((r) => r.msgId === null)).toBe(true);
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
+  it("時刻窓(5分)より古い同一msgIdは弾かない — 将来の再利用でデータを落とさないため", async () => {
+    const ctx = await setupRoom("window");
+    try {
+      const msgId = newMsgId();
+      const base = Date.now();
+
+      ctx.conn.fire("linkMicBattleItemCard", gloveCardPayload(msgId, base));
+      await vi.waitFor(async () => {
+        expect(await battleItemUseCount(ctx.roomId)).toBe(1);
+      });
+
+      await stopListener(ctx.roomId);
+      await startListener(ctx.roomId, ctx.tiktokHandle, [ctx.streamerId]);
+      const fresh = MockConnection.instances[MockConnection.instances.length - 1];
+
+      // 10分後の同一msgId。窓の外なので正当なイベントとして保存される。
+      fresh.fire("linkMicBattleItemCard", gloveCardPayload(msgId, base + 10 * 60_000));
+      await vi.waitFor(async () => {
+        expect(await battleItemUseCount(ctx.roomId)).toBe(2);
+      });
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
+  it("同じmsgIdでも部屋が違えば別イベントとして保存される", async () => {
+    const a = await setupRoom("room-a");
+    const b = await setupRoom("room-b");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+
+      a.conn.fire("linkMicBattleItemCard", gloveCardPayload(msgId, createTime));
+      b.conn.fire("linkMicBattleItemCard", gloveCardPayload(msgId, createTime));
+
+      await vi.waitFor(async () => {
+        expect(await battleItemUseCount(a.roomId)).toBe(1);
+        expect(await battleItemUseCount(b.roomId)).toBe(1);
+      });
+    } finally {
+      await teardownRoom(a);
+      await teardownRoom(b);
+    }
+  });
+
+  // Codex design-review指摘(2026-09-11)により追加。listener経由の「同一tick」テストは
+  // インスタンス内FIFOが先に1件を落とすため、advisory lock自体の効果を検証できない。
+  // saveBattleItemUse()を直接Promise.allで真に同時実行し、DBレベルのraceを検証する。
+  it("[Concurrent duplicate] 同一msgIdへのsaveBattleItemUse()同時呼び出しはDB行1件・saved/duplicateが1件ずつ", async () => {
+    const ctx = await setupRoom("concurrent");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+      const message = gloveCardPayload(msgId, createTime) as unknown as WebcastLinkMicBattleItemCard;
+
+      const [r1, r2] = await Promise.all([
+        saveBattleItemUse(ctx.roomId, message, new Date(createTime)),
+        saveBattleItemUse(ctx.roomId, message, new Date(createTime)),
+      ]);
+
+      expect(await battleItemUseCount(ctx.roomId)).toBe(1);
+      const results = [r1, r2].sort();
+      expect(results).toEqual(["duplicate", "saved"]);
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
+  // Business insert failure: tx.tiktokBattleItemUse.create を1回だけ失敗させても、
+  // lockはtx rollbackとともに解放され、同一msgIdでの再試行が正しく通ることを確認する。
+  it("[Business insert failure] create失敗後の同一msgId再試行は正常に保存される", async () => {
+    const ctx = await setupRoom("insert-failure");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+      const message = gloveCardPayload(msgId, createTime) as unknown as WebcastLinkMicBattleItemCard;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const realTransaction = prisma.$transaction.bind(prisma);
+      const writeSpy = vi
+        .spyOn(prisma, "$transaction")
+        .mockImplementationOnce(((arg: unknown, opts: unknown) => {
+          const run = arg as (tx: unknown) => unknown;
+          return (realTransaction as (a: unknown, o: unknown) => unknown)(
+            (tx: Record<string, unknown>) =>
+              run(
+                new Proxy(tx, {
+                  get(target, prop) {
+                    if (prop === "tiktokBattleItemUse") {
+                      return {
+                        ...(target[prop as string] as object),
+                        create: () => Promise.reject(new Error("simulated battle item insert failure")),
+                      };
+                    }
+                    return target[prop as string];
+                  },
+                })
+              ),
+            opts
+          );
+        }) as never);
+
+      const first = await saveBattleItemUse(ctx.roomId, message, new Date(createTime));
+      expect(first).toBe("error");
+      expect(await battleItemUseCount(ctx.roomId)).toBe(0);
+      writeSpy.mockRestore();
+
+      const second = await saveBattleItemUse(ctx.roomId, message, new Date(createTime));
+      expect(second).toBe("saved");
+      expect(await battleItemUseCount(ctx.roomId)).toBe(1);
+
+      errorSpy.mockRestore();
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
+  // Different kind: 同一(roomId, msgId)をGiftとBattleItemへ同時投入しても、lock keyが
+  // "gift:"/"battle_item:" prefixで異なるため互いにブロックされず、両方とも独立して保存される。
+  it("[Different kind] 同一(roomId, msgId)のGiftとBattleItemは互いにブロックせず独立して保存される", async () => {
+    const ctx = await setupRoom("different-kind");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+      const giftData = nonComboGift(msgId, createTime);
+      const battleMessage = gloveCardPayload(msgId, createTime) as unknown as WebcastLinkMicBattleItemCard;
+
+      const [giftResult, battleResult] = await Promise.all([
+        saveGift(ctx.roomId, giftData, 1, new Date(createTime), "tiktok"),
+        saveBattleItemUse(ctx.roomId, battleMessage, new Date(createTime)),
+      ]);
+
+      expect(giftResult).toBe("saved");
+      expect(battleResult).toBe("saved");
+      expect(await giftCount(ctx.roomId)).toBe(1);
+      expect(await battleItemUseCount(ctx.roomId)).toBe(1);
     } finally {
       await teardownRoom(ctx);
     }
