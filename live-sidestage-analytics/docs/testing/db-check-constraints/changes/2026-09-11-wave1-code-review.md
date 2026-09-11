@@ -34,5 +34,6 @@ RoomMonitorLease削除)のcode-review。ここでは`db-check-constraints`機能
 
 ## Remaining risks
 
-- 本番DBへの実際の適用(`VALIDATE CONSTRAINT`含む)は未実施。`prisma migrate deploy`運用への移行、または
-  手動psql適用が別途必要(DEPLOY BLOCKED、Wave1の範囲外)
+- (解消済み、2026-09-11追記) 本番DBへの実際の適用は`npx prisma db execute --url <DATABASE_PUBLIC_URL>`で
+  実施済み。違反件数0件確認後、5制約とも`VALIDATE CONSTRAINT`実行し`convalidated=true`を確認(TC-CHK-102参照)。
+  DEPLOY BLOCKED解除
