@@ -5,6 +5,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { prisma } from "@/lib/prisma";
 import { jstDateKey } from "@/lib/overlay/day-key";
 import { parseRangeQuery, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
+import { currentVersion } from "@/lib/realtime-sync/version-store";
 
 const buildUnregisteredResponse = () =>
   NextResponse.json({
@@ -30,6 +31,11 @@ export async function GET(req: NextRequest) {
   });
   if (planDenied) return planDenied;
 
+  // version取得をDBクエリの前に行う(race condition対策)。
+  // version取得後にDB保存されたイベントは「snapshotに含まれないが、
+  // 後続pushでより大きいversionとして届く」形になり欠落しない。
+  const { bootId, version } = currentVersion("battle-history", ctx.streamer.id);
+
   let range: { start: Date; end: Date };
   let dateRange: { start: string; end: string };
   if (query.value.mode === "custom") {
@@ -51,6 +57,8 @@ export async function GET(req: NextRequest) {
       dateRange,
       hasMore,
       verified: ctx.streamer.verified,
+      bootId,
+      version,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

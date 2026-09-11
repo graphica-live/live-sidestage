@@ -9,6 +9,7 @@ import {
   clampGiftHistoryDayRange,
   clampGiftHistoryDatetimeRange,
 } from "@/lib/gift-history-range";
+import { currentVersion } from "@/lib/realtime-sync/version-store";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -41,6 +42,11 @@ export async function GET(req: NextRequest) {
     listenerQuery: listenerQuery.value,
   });
   if (planDenied) return planDenied;
+
+  // version取得をDBクエリの前に行う(race condition対策)。
+  // version取得後にDB保存されたイベントは「snapshotに含まれないが、
+  // 後続pushでより大きいversionとして届く」形になり欠落しない。
+  const { bootId, version } = currentVersion("gift-history", ctx.streamer.id);
 
   let where: Parameters<typeof queryGiftHistory>[1];
   let dateRange: { start: string; end: string };
@@ -75,6 +81,8 @@ export async function GET(req: NextRequest) {
       total,
       hasMore,
       verified: ctx.streamer.verified,
+      bootId,
+      version,
     },
     { headers: { "Cache-Control": "no-store" } }
   );
