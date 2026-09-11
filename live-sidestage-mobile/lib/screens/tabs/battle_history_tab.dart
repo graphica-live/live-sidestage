@@ -72,6 +72,10 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     // CommentFeed の battle-history upsert stream を購読。
     final store = context.read<BattleHistorySyncStore>();
     final commentFeed = context.read<CommentFeed>();
+    // Storeはアプリ生存中は破棄されない(このタブはtiktokIdをkeyにして
+    // 再生成される)ため、新しい配信者向けに使い始める前に前回のデータを
+    // クリアする(配信者切替時に前配信者のデータが一瞬残るのを防ぐ)。
+    store.resetForNewSession();
     store.initialize(
       battleHistoryUpsertStream: commentFeed.onBattleHistoryUpsert,
       onResyncRequired: () {

@@ -103,6 +103,15 @@ class CommentSpeechTaskHandler extends TaskHandler {
 
   StreamSubscription<ListenerStatus>? _listenerSub;
   StreamSubscription<void>? _connectedSub;
+
+  /// 貢献ランキング/ギフト履歴/バトル履歴のpush中継(方式A)用購読。
+  /// メインIsolate側は別の(未接続の)CommentFeedインスタンスなので、
+  /// ここで受信したenvelopeを `FlutterForegroundTask.sendDataToMain()` で
+  /// 転送し、`home_screen.dart` がメインIsolate側CommentFeedへ注入する。
+  StreamSubscription<Map<String, dynamic>>? _rankingSnapshotSub;
+  StreamSubscription<Map<String, dynamic>>? _giftHistoryAppendSub;
+  StreamSubscription<Map<String, dynamic>>? _battleHistoryUpsertSub;
+
   Timer? _reconcileTimer;
 
   /// 進行中/予約済みのリコンサイルを識別する。onDestroy 後に返ってきた応答を捨て、
@@ -228,6 +237,20 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _listenerSub = _commentFeed.onListener.listen(_applyListener);
     // socket が張り直るたびに取り直す。切れている間の push は受け取れていない。
     _connectedSub = _commentFeed.onConnected.listen((_) => _scheduleReconcile(Duration.zero));
+
+    // 貢献ランキング/ギフト履歴/バトル履歴のpush中継(方式A)。
+    // メインIsolate側のCommentFeedは接続を持たないため、ここで受信した
+    // envelopeをそのまま(加工せず)メインIsolateへ転送する。
+    // typeキー + envelope本体、という既存の_pushComment等と同じ慣習に合わせる。
+    _rankingSnapshotSub = _commentFeed.onRankingSnapshot.listen((envelope) {
+      FlutterForegroundTask.sendDataToMain({'type': 'rankingSnapshot', ...envelope});
+    });
+    _giftHistoryAppendSub = _commentFeed.onGiftHistoryAppend.listen((envelope) {
+      FlutterForegroundTask.sendDataToMain({'type': 'giftHistoryAppend', ...envelope});
+    });
+    _battleHistoryUpsertSub = _commentFeed.onBattleHistoryUpsert.listen((envelope) {
+      FlutterForegroundTask.sendDataToMain({'type': 'battleHistoryUpsert', ...envelope});
+    });
 
     // **接続より先にコールバックを差し込む。** 逆順だと、最初のハンドシェイクが
     // TOKEN_EXPIRED で弾かれたときに再発行が走らず、接続できないまま止まる。
@@ -589,6 +612,9 @@ class CommentSpeechTaskHandler extends TaskHandler {
     _reconcileTimer = null;
     await _listenerSub?.cancel();
     await _connectedSub?.cancel();
+    await _rankingSnapshotSub?.cancel();
+    await _giftHistoryAppendSub?.cancel();
+    await _battleHistoryUpsertSub?.cancel();
 
     // 停止したら無音ループも確実に止める。残すとバッテリーを食い続けるうえ、
     // 「可聴コンテンツのためのバックグラウンド音声」という位置づけからも外れる。

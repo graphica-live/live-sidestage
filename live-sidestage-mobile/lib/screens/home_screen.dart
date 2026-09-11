@@ -10,7 +10,7 @@ import '../core/api_client.dart' show LiveAnalyticsApi, giftLabelJaMap;
 import '../core/account_status_store.dart';
 import '../core/app_config_store.dart';
 import '../core/battle_activity.dart';
-import '../core/comment_feed.dart' show SocketStatus;
+import '../core/comment_feed.dart' show CommentFeed, SocketStatus;
 import '../core/feature_status.dart';
 import '../core/gift_activity.dart';
 import '../core/gift_name_ja.dart';
@@ -631,6 +631,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (startedAt != null) {
           context.read<BattleActivityNotifier>().onBattleTick(jstDateKeyOf(startedAt));
         }
+      // 背景Isolateが中継したpush envelope(方式A)。メインIsolate側の
+      // CommentFeedは接続を持たないため、ここで受け取った生データを
+      // そのまま(加工せず)注入する。パース・version整合性チェックは
+      // 注入先のStream購読者(RankingSyncStore等)が行う。
+      case 'rankingSnapshot':
+        context.read<CommentFeed>().injectRankingSnapshot(map);
+      case 'giftHistoryAppend':
+        context.read<CommentFeed>().injectGiftHistoryAppend(map);
+      case 'battleHistoryUpsert':
+        context.read<CommentFeed>().injectBattleHistoryUpsert(map);
       case 'status':
         setState(() {
           _status = SocketStatus.values.firstWhere(

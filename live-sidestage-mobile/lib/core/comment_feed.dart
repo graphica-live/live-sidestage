@@ -105,6 +105,36 @@ class CommentFeed extends ChangeNotifier {
   /// バトル履歴のupsert受信。ペイロードは呼び出し側でパースする。
   Stream<Map<String, dynamic>> get onBattleHistoryUpsert => _battleHistoryUpsertController.stream;
 
+  // ── 背景Isolateからの中継注入(方式A) ────────────────────────────────────
+  //
+  // メインIsolate側のこのインスタンスはsocket接続を持たない(`.connect()`を
+  // 呼ばない未接続のまま登録される)。実際の受信は背景Isolate
+  // (background_task_handler.dart の専用 CommentFeed インスタンス)が行い、
+  // `FlutterForegroundTask.sendDataToMain()` で中継されたenvelopeを
+  // `home_screen.dart` がこのメソッド経由でこのインスタンスへ注入する。
+  //
+  // dispose 後(StreamController close後)に届いた注入は例外にせず無視する。
+  // Provider は基本的にアプリ生存中は破棄されないが、テストや将来の
+  // widget tree 変更で dispose 後に届く可能性を潰しておく。
+
+  /// 背景Isolateが中継したranking snapshot envelopeを注入する。
+  void injectRankingSnapshot(Map<String, dynamic> envelope) {
+    if (_rankingSnapshotController.isClosed) return;
+    _rankingSnapshotController.add(envelope);
+  }
+
+  /// 背景Isolateが中継したgift-history append envelopeを注入する。
+  void injectGiftHistoryAppend(Map<String, dynamic> envelope) {
+    if (_giftHistoryAppendController.isClosed) return;
+    _giftHistoryAppendController.add(envelope);
+  }
+
+  /// 背景Isolateが中継したbattle-history upsert envelopeを注入する。
+  void injectBattleHistoryUpsert(Map<String, dynamic> envelope) {
+    if (_battleHistoryUpsertController.isClosed) return;
+    _battleHistoryUpsertController.add(envelope);
+  }
+
   /// socket が繋がった（張り直した）タイミング。
   ///
   /// 接続直後は listener の現在値を持っていない。サーバーは接続時にスナップショットを

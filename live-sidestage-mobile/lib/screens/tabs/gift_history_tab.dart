@@ -55,6 +55,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     // CommentFeed の gift-history append stream を購読。
     final store = context.read<GiftHistorySyncStore>();
     final commentFeed = context.read<CommentFeed>();
+    // Storeはアプリ生存中は破棄されない(このタブはtiktokIdをkeyにして
+    // 再生成される)ため、新しい配信者向けに使い始める前に前回のデータを
+    // クリアする(配信者切替時に前配信者のデータが一瞬残るのを防ぐ)。
+    store.resetForNewSession();
     store.initialize(
       giftHistoryAppendStream: commentFeed.onGiftHistoryAppend,
       onResyncRequired: () {

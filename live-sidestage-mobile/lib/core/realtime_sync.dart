@@ -243,7 +243,24 @@ class RankingSyncStore extends ChangeNotifier {
     VoidCallback? onResyncRequired,
   }) {
     _onResyncRequired = onResyncRequired;
+    // タブ再生成(配信者切替等)のたびにinitialize()が呼ばれうる。前回の
+    // subscriptionをcancelせずに上書きするとリークし、同じイベントが
+    // 複数リスナーで重複処理される(mismatch検知・resync要求の重複を招く)。
+    _subscription?.cancel();
     _subscription = rankingSnapshotStream.listen(_onRankingSnapshot);
+  }
+
+  /// 配信者切替等で新しいセッションとして使い始める前に呼ぶ。
+  ///
+  /// Storeはmain.dartのMultiProviderに登録されアプリ生存中は破棄されない
+  /// (タブWidget自体はtiktokIdをkeyにして再生成される)ため、これを呼ばずに
+  /// 新しい配信者向けの購読を張ると、次のREST応答が返るまでの間、画面に
+  /// 前配信者のsnapshotが一時的に残ってしまう。
+  void resetForNewSession() {
+    _snapshot = null;
+    _needsResync = false;
+    _versionTracker.reset();
+    notifyListeners();
   }
 
   void _onRankingSnapshot(Map<String, dynamic> data) {
@@ -356,7 +373,21 @@ class GiftHistorySyncStore extends ChangeNotifier {
     VoidCallback? onResyncRequired,
   }) {
     _onResyncRequired = onResyncRequired;
+    // タブ再生成(配信者切替等)のたびにinitialize()が呼ばれうる。前回の
+    // subscriptionをcancelせずに上書きするとリークし、同じイベントが
+    // 複数リスナーで重複処理される。
+    _subscription?.cancel();
     _subscription = giftHistoryAppendStream.listen(_onGiftHistoryAppend);
+  }
+
+  /// 配信者切替等で新しいセッションとして使い始める前に呼ぶ。
+  /// (理由はRankingSyncStore.resetForNewSessionのコメント参照)
+  void resetForNewSession() {
+    _history = [];
+    _seenGiftIds.clear();
+    _needsResync = false;
+    _versionTracker.reset();
+    notifyListeners();
   }
 
   void _onGiftHistoryAppend(Map<String, dynamic> data) {
@@ -456,7 +487,21 @@ class BattleHistorySyncStore extends ChangeNotifier {
     VoidCallback? onResyncRequired,
   }) {
     _onResyncRequired = onResyncRequired;
+    // タブ再生成(配信者切替等)のたびにinitialize()が呼ばれうる。前回の
+    // subscriptionをcancelせずに上書きするとリークし、同じイベントが
+    // 複数リスナーで重複処理される。
+    _subscription?.cancel();
     _subscription = battleHistoryUpsertStream.listen(_onBattleHistoryUpsert);
+  }
+
+  /// 配信者切替等で新しいセッションとして使い始める前に呼ぶ。
+  /// (理由はRankingSyncStore.resetForNewSessionのコメント参照)
+  void resetForNewSession() {
+    _battles = {};
+    _battleIds = [];
+    _needsResync = false;
+    _versionTracker.reset();
+    notifyListeners();
   }
 
   void _onBattleHistoryUpsert(Map<String, dynamic> data) {
