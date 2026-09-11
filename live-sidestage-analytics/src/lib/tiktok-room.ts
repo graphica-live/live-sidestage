@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { MAX_LEASE_DAYS } from "./room-lease";
 import { reviveSuspendedMonitoring } from "./mark-last-active";
@@ -42,7 +43,46 @@ export function normalizeTiktokId(raw: string): string {
 // パターン。tiktokHandleが変更された場合(再登録)は、指しているroomのtiktokHandleが現在の値と
 // 食い違うため自己修復的に新しいroomへ付け替える。
 export async function resolveRoomForStreamer(streamerId: string): Promise<string> {
-  const streamer = await prisma.streamer.findUnique({
+  // P2002(同一hostTiktokUidの同時新規作成競合)はtx全体を巻き込んで失敗する。
+  // 従来のupsertRoom()が持っていた「再フェッチで救済」と同じ挙動を保つため、tx全体を1回だけ再試行する
+  // (再試行後も同じ行が無ければ他の要因なので素通しする)。
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { roomId, shouldRevive, commit } = await prisma.$transaction((tx) =>
+        resolveRoomForStreamerInTx(tx, streamerId)
+      );
+      commit();
+      if (shouldRevive) {
+        try {
+          await reviveSuspendedMonitoring(roomId);
+        } catch (err) {
+          console.error("[tiktok-room] 監視復活処理に失敗:", err);
+        }
+      }
+      return roomId;
+    } catch (err) {
+      if (attempt === 0 && (err as { code?: string })?.code === "P2002") {
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * resolveRoomForStreamer()のtransaction内実装。呼び出し元が管理するtxをそのまま使う
+ * (自前でprisma.$transactionを開始しない)ため、識別子更新(Streamer.tiktokUid/tiktokHandle)と
+ * room付替え(Streamer.roomId)を1つのtxへ同居させられる。
+ *
+ * commit(recordTikTokUserのスロットル記録)とreviveSuspendedMonitoring(監視復活)は
+ * どちらも「外側txが確定した後にだけ実行してよい」副作用なので、呼び出し元がtx確定後に
+ * 呼ぶ前提でこの関数からは実行しない。
+ */
+export async function resolveRoomForStreamerInTx(
+  tx: Prisma.TransactionClient,
+  streamerId: string
+): Promise<{ roomId: string; shouldRevive: boolean; commit: () => void }> {
+  const streamer = await tx.streamer.findUnique({
     where: { id: streamerId },
     select: {
       tiktokUid: true,
@@ -52,14 +92,14 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
     },
   });
   if (!streamer) {
-    throw new Error(`resolveRoomForStreamer: streamer ${streamerId} not found`);
+    throw new Error(`resolveRoomForStreamerInTx: streamer ${streamerId} not found`);
   }
 
   // 同一性は uid で判定する。ハンドル一致で判定すると、改名で空いたハンドルを取得した
   // 第三者の room へ紐付きうる。
   //
   // **ハンドルが room の値と食い違っていたら早期 return しない。** 改名では room は割れず
-  // uid も roomId も変わらないので、ここで抜けると `upsertRoom` のハンドル追随
+  // uid も roomId も変わらないので、ここで抜けると `upsertRoomInTx` のハンドル追随
   // (`update: { tiktokHandle, handleStaleAt: null }`)へ二度と到達せず、room が旧ハンドルの
   // まま固定される。TikTok 接続はハンドルで張るので、これは接続先が死ぬということ。
   if (
@@ -67,34 +107,18 @@ export async function resolveRoomForStreamer(streamerId: string): Promise<string
     streamer.room?.hostTiktokUid === streamer.tiktokUid &&
     streamer.room.tiktokHandle === normalizeTiktokId(streamer.tiktokHandle)
   ) {
-    return streamer.roomId;
+    return { roomId: streamer.roomId, shouldRevive: false, commit: () => {} };
   }
 
-  const room = await upsertRoom({
+  const { room, commit } = await upsertRoomInTx(tx, {
     tiktokUid: streamer.tiktokUid,
     tiktokHandle: streamer.tiktokHandle,
     nickname: null,
   });
 
-  // watchedRoomFilter()はもうStreamer有無を見ない(Streamer0人のRoomも低価値クリーンアップの
-  // 判定まで監視を続ける情報プール方針)ため、Streamerを新規に紐付けただけではmonitoringSuspended
-  // は自動で戻らない。ここで明示的に戻さないと、過去に監視停止されたRoomへ新規登録した
-  // ユーザーは、次に markLastActive()(ログイン時)が呼ばれるまでデータが貯まらない。
-  //
-  // reviveSuspendedMonitoring()に寄せる(以前はここだけ独自にmonitoringSuspendedのみを
-  // 戻す実装だった)。NOT_FOUND系フィールド・lastLowValueCheckAt・consecutiveBlockedCount
-  // も同時にリセットされるようになるが、いずれも「監視が復活した」という事実に対して
-  // 一貫してリセットするのが自然で実害はない。streamer.update()と同一transactionには
-  // しない(mark-last-active.tsのmarkLastActive()と同じ理由: revive失敗時にstreamerの
-  // roomId更新まで巻き戻す必要はなく、revive失敗はログのみで握りつぶし次回機会に委ねる)。
-  await prisma.streamer.update({ where: { id: streamerId }, data: { roomId: room.id } });
-  try {
-    await reviveSuspendedMonitoring(room.id);
-  } catch (err) {
-    console.error("[tiktok-room] 監視復活処理に失敗:", err);
-  }
+  await tx.streamer.update({ where: { id: streamerId }, data: { roomId: room.id } });
 
-  return room.id;
+  return { roomId: room.id, shouldRevive: true, commit };
 }
 
 // ============================================================================
@@ -275,27 +299,11 @@ export async function releaseRoomMonitor(roomId: string): Promise<number> {
  */
 export async function upsertRoom(subject: TiktokRoomSubject): Promise<{ id: string }> {
   const tiktokUid = requireTiktokUid(subject);
-  const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
 
   try {
-    return await prisma.$transaction(async (tx) => {
-      const room = await tx.tiktokRoom.upsert({
-        where: { hostTiktokUid: tiktokUid },
-        // ハンドルが変わっていれば追随する。uid が同じなので同一人物であることは保証されている。
-        update: { tiktokHandle, handleStaleAt: null },
-        create: { hostTiktokUid: tiktokUid, tiktokHandle },
-        select: { id: true },
-      });
-      const commit = await recordTikTokUser(tx, {
-        tiktokUid,
-        tiktokHandle,
-        nickname: subject.nickname,
-      });
-      return { room, commit };
-    }).then(({ room, commit }) => {
-      commit();
-      return room;
-    });
+    const { room, commit } = await prisma.$transaction((tx) => upsertRoomInTx(tx, subject));
+    commit();
+    return room;
   } catch (err) {
     // 同時に2リクエストが同じ新規uidをupsertしようとした場合のP2002競合を再フェッチで解決する。
     if ((err as { code?: string })?.code === "P2002") {
@@ -307,6 +315,36 @@ export async function upsertRoom(subject: TiktokRoomSubject): Promise<{ id: stri
     }
     throw err;
   }
+}
+
+/**
+ * upsertRoom()のtransaction内実装。呼び出し元が管理するtxをそのまま使う。
+ * P2002(同一hostTiktokUidの同時新規作成競合)の再フェッチ救済はここでは行わない
+ * (外側txが丸ごと失敗する前提。呼び出し元がリクエスト単位で再試行する)。
+ *
+ * recordTikTokUser()が返すcommitコールバック(スロットル記録)は、外側txが確定した後に
+ * だけ呼んでよい副作用なので、ここでは実行せず呼び出し元へ返す。
+ */
+export async function upsertRoomInTx(
+  tx: Prisma.TransactionClient,
+  subject: TiktokRoomSubject
+): Promise<{ room: { id: string }; commit: () => void }> {
+  const tiktokUid = requireTiktokUid(subject);
+  const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
+
+  const room = await tx.tiktokRoom.upsert({
+    where: { hostTiktokUid: tiktokUid },
+    // ハンドルが変わっていれば追随する。uid が同じなので同一人物であることは保証されている。
+    update: { tiktokHandle, handleStaleAt: null },
+    create: { hostTiktokUid: tiktokUid, tiktokHandle },
+    select: { id: true },
+  });
+  const commit = await recordTikTokUser(tx, {
+    tiktokUid,
+    tiktokHandle,
+    nickname: subject.nickname,
+  });
+  return { room, commit };
 }
 
 /** 呼び出し元の取り違え(ハンドルを uid の位置へ渡す等)を早期に検出する。 */

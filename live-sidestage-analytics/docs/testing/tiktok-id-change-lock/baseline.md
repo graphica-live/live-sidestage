@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: tiktok-id-change-lock
 last_updated: 2026-09-11
 last_risk: HIGH
-last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode), Codex + DeepSeek(Code Mode、ADMIN_EMAIL例外追加), Codex + DeepSeek(Code Mode + TestCase Mode、UID mismatch一時無効化), Codex-terra + DeepSeek(Design Mode + Code Mode + TestCase Mode、mobile PATCHでのtiktokUid同期・room再解決バグ修正), Codex-terra + DeepSeek(Design Mode + Code Mode、web /api/verify/generateでの同型バグ修正)
+last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code Mode), Codex + DeepSeek(Code Mode、ADMIN_EMAIL例外追加), Codex + DeepSeek(Code Mode + TestCase Mode、UID mismatch一時無効化), Codex-terra + DeepSeek(Design Mode + Code Mode + TestCase Mode、mobile PATCHでのtiktokUid同期・room再解決バグ修正), Codex-terra + DeepSeek(Design Mode + Code Mode、web /api/verify/generateでの同型バグ修正), Codex-terra + DeepSeek(Design Mode + Code Mode、Wave1-A: TikTok再紐付けのatomic化)
 ---
 
 # テストベースライン: tiktok-id-change-lock
@@ -60,6 +60,13 @@ last_reviewers: DeepSeek(Code Mode), DeepSeek + Gemini(OpenRouter代理、Code M
 | TC-LOCK-706 | mobile PATCH: チェック有効時でもADMIN_EMAILはtiktokUid不一致で200許可される | 同上 | 例外系 | 環境変数`"0"`、DB上のuser.email=ADMIN_EMAIL、tiktokUid不一致 | 200、DBの`tiktokHandle`が更新される | `route.integration.test.ts:184` | PASS | TC-LOCK-502(7日ロック免除)と対になる |
 | TC-LOCK-707 | web: チェック有効時(`"0"`)でも、tiktokUidが一致(同一アカウントの改名)していれば通常どおり200で許可される | `POST /api/verify/generate` | 正常 | 環境変数`"0"`、実在確認で得たtiktokUidが登録済みと一致 | 200、DBの`tiktokHandle`・`tiktokUid`とも整合して更新 | `route.integration.test.ts` | PASS | チェック有効化時の正常系(一致パス)がexempt/disabledの分岐に紛れて壊れていないことを確認 |
 | TC-LOCK-708 | mobile PATCH: チェック有効時(`"0"`)でも、tiktokUidが一致していれば通常どおり200で許可される | `PATCH /api/mobile/streamer` | 正常 | 環境変数`"0"`、tiktokUidが登録済みと一致 | 200、DBの`tiktokHandle`・`tiktokUid`とも整合して更新 | `route.integration.test.ts` | PASS | |
+| TC-LOCK-801 | 新規room作成: roomId未設定のStreamerがresolveすると新しいTiktokRoomが作られ、roomIdが埋まる | `resolveRoomForStreamer` | 正常 | roomId未設定のStreamer | 新規TiktokRoomが作成され、Streamer.roomIdが埋まる | `tiktok-room.wave1a.integration.test.ts` | PASS | |
+| TC-LOCK-802 | 既存room再利用: 他配信者が既に同一hostTiktokUidのroomを持っていれば、それを再利用しStreamer.roomIdへ紐付ける | 同上 | 正常 | 既存TiktokRoom(同一hostTiktokUid)あり | 新規room作成せず既存roomへ紐付け | 同上 | PASS | |
+| TC-LOCK-803 | 同一UID再設定(冪等): 既に正しいroomへ紐付いている状態で呼んでも無変化(早期return) | 同上 | 正常 | Streamer.roomIdが既に正しいroomを指す | 同じroomIdを返し、DB書込みなし | 同上 | PASS | |
+| TC-LOCK-804 | UID変更: Streamer.tiktokUidが別アカウントへ切り替わると新しいroomへ付け替える | 同上 | 正常 | tiktokUid変更後のresolve呼び出し | Streamer.roomIdが新tiktokUid対応roomへ更新される | 同上 | PASS | |
+| TC-LOCK-805 | atomicity: room解決後、呼び出し元txがロールバックすると、room作成もStreamer.roomId更新も両方消える(stale roomIdが残らない) | `resolveRoomForStreamerInTx` | 並行処理・失敗系 | tx内でresolveRoomForStreamerInTx実行後、txを意図的にロールバック | ロールバック後、TiktokRoom行・Streamer.roomIdとも変更前の状態(中間状態が永続化されない) | 同上 | PASS | Wave1-A(HIGH)の中核保証。tx境界外への副作用(commit()コールバック・reviveSuspendedMonitoring)が無いことも同時に確認 |
+| TC-LOCK-806 | room解決失敗: 存在しないstreamerIdを渡すとエラーを投げ、TiktokRoomを作成しない | 同上 | 異常系 | 存在しないstreamerId | 例外throw、TiktokRoom新規作成なし | 同上 | PASS | |
+| TC-LOCK-807 | upsertRoomInTxはtx内でTiktokRoomを作るが、呼び出し元txがロールバックすれば消える | `upsertRoomInTx` | 並行処理・失敗系 | tx内でupsertRoomInTx実行後、txをロールバック | ロールバック後、TiktokRoom行が存在しない | 同上 | PASS | |
 
 ## Quality Gate
 
