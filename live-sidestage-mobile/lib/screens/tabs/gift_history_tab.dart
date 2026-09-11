@@ -5,8 +5,10 @@ import '../../core/account_status_store.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
+import '../../core/comment_feed.dart';
 import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
+import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
 import '../../core/tiktok_profile.dart';
 import '../widgets/analytics_status.dart';
@@ -47,13 +49,29 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    context.read<GiftActivityNotifier>().addListener(_onGiftActivity);
+
+    // Batch 05: GiftHistorySyncStore を初期化。
+    // CommentFeed の gift-history append stream を購読。
+    final store = context.read<GiftHistorySyncStore>();
+    final commentFeed = context.read<CommentFeed>();
+    store.initialize(
+      giftHistoryAppendStream: commentFeed.onGiftHistoryAppend,
+      onResyncRequired: () {
+        if (widget.active && _resumed) {
+          _load(silent: true);
+        } else {
+          _dirty = true;
+        }
+      },
+    );
+    store.addListener(_onGiftHistoryAppend);
+
     if (widget.active) _load();
   }
 
   @override
   void dispose() {
-    context.read<GiftActivityNotifier>().removeListener(_onGiftActivity);
+    context.read<GiftHistorySyncStore>().removeListener(_onGiftHistoryAppend);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -73,20 +91,32 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
-  void _onGiftActivity() {
+  /// GiftHistorySyncStore から append イベント受信時のコールバック。
+  /// append は既に REST 取得済みなら無視、resync 要求のみ処理。
+  void _onGiftHistoryAppend() {
+    final store = context.read<GiftHistorySyncStore>();
     final customRange = _customRange;
-    switch (giftAutoReloadAction(
-      active: widget.active,
-      resumed: _resumed,
-      containsToday:
-          customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday(),
-    )) {
-      case GiftAutoReloadAction.ignore:
-        break;
-      case GiftAutoReloadAction.defer:
-        _dirty = true;
-      case GiftAutoReloadAction.reload:
-        _load(silent: true);
+    final containsToday =
+        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+
+    // 期間が「今日」を含まない場合は無視。
+    if (!containsToday) return;
+
+    // resync 要求: 画面に応じて即座に取得 or 遅延。
+    // (Batch 05: push受信で即座に反映ではなく、mismatch時のみREST再取得)
+    if (store.needsResync) {
+      switch (giftAutoReloadAction(
+        active: widget.active,
+        resumed: _resumed,
+        containsToday: containsToday,
+      )) {
+        case GiftAutoReloadAction.ignore:
+          break;
+        case GiftAutoReloadAction.defer:
+          _dirty = true;
+        case GiftAutoReloadAction.reload:
+          _load(silent: true);
+      }
     }
   }
 
@@ -96,11 +126,14 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
         customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
     if (!_dirty || !widget.active || !containsNow) return;
     _dirty = false;
+
+    // Batch 05: resync 要求を反映。REST 再取得で最新状態を取得。
     _load(silent: true);
   }
 
-  /// [silent] はギフト受信による自動更新。**読み込み中の表示を出さない。**
-  /// 出すと期間セレクタが `enabled: !_loading` で点滅的に無効化され、操作を邪魔する。
+  /// [silent] はpush受信による自動更新、または resync 遅延後の更新。
+  /// **読み込み中の表示を出さない。** 出すと期間セレクタが `enabled: !_loading` で
+  /// 点滅的に無効化され、操作を邪魔する。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
   Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
@@ -134,7 +167,21 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       setState(() {
         _result = result;
         _loading = false;
+        _dirty = false;
       });
+
+      // Batch 05: REST取得成功時、GiftHistorySyncStore へversion をリセット。
+      // 今後の push は新しい version 列から開始される。
+      if (mounted) {
+        final store = context.read<GiftHistorySyncStore>();
+        // 履歴イベントを Map 形式へ変換(id フィールドで dedup)。
+        final history = result.events
+            .map((e) => {
+                  'id': e.id,
+                })
+            .toList();
+        store.acknowledgeResync(history: history);
+      }
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {

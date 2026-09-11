@@ -5,8 +5,10 @@ import '../../core/account_status_store.dart';
 import '../../core/analytics_period.dart';
 import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
+import '../../core/comment_feed.dart';
 import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
+import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
 import '../../models/gift_breakdown.dart';
 import '../widgets/analytics_status.dart';
@@ -55,13 +57,35 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    context.read<GiftActivityNotifier>().addListener(_onGiftActivity);
+
+    // Batch 05: RankingSyncStore を初期化。
+    // CommentFeed の ranking snapshot stream を購読し、
+    // version 整合性チェック → snapshot 反映 または resync 要求。
+    final store = context.read<RankingSyncStore>();
+    final commentFeed = context.read<CommentFeed>();
+    store.initialize(
+      rankingSnapshotStream: commentFeed.onRankingSnapshot,
+      onResyncRequired: () {
+        if (widget.active && _resumed) {
+          _load(silent: true);
+        } else {
+          _dirty = true;
+        }
+      },
+    );
+    store.addListener(_onRankingSnapshot);
+
+    // 現在の期間を Store へ通知。異なる期間の snapshot は破棄される。
+    final customRange = _customRange;
+    final period = customRange != null ? null : _selection.period.apiValue;
+    store.setCurrentPeriod(period);
+
     if (widget.active) _load();
   }
 
   @override
   void dispose() {
-    context.read<GiftActivityNotifier>().removeListener(_onGiftActivity);
+    context.read<RankingSyncStore>().removeListener(_onRankingSnapshot);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -81,20 +105,32 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
-  void _onGiftActivity() {
+  /// RankingSyncStore から snapshot 受信時のコールバック。
+  /// snapshot は既に REST 取得済みなら無視、resync 要求のみ処理。
+  void _onRankingSnapshot() {
+    final store = context.read<RankingSyncStore>();
     final customRange = _customRange;
-    switch (giftAutoReloadAction(
-      active: widget.active,
-      resumed: _resumed,
-      containsToday:
-          customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday(),
-    )) {
-      case GiftAutoReloadAction.ignore:
-        break;
-      case GiftAutoReloadAction.defer:
-        _dirty = true;
-      case GiftAutoReloadAction.reload:
-        _load(silent: true);
+    final containsToday =
+        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+
+    // 期間が「今日」を含まない場合は無視(既存 giftAutoReloadAction と同じ原則)。
+    if (!containsToday) return;
+
+    // resync 要求: 画面に応じて即座に取得 or 遅延。
+    // (Batch 05: push受信で即座に反映ではなく、mismatch時のみREST再取得)
+    if (store.needsResync) {
+      switch (giftAutoReloadAction(
+        active: widget.active,
+        resumed: _resumed,
+        containsToday: containsToday,
+      )) {
+        case GiftAutoReloadAction.ignore:
+          break;
+        case GiftAutoReloadAction.defer:
+          _dirty = true;
+        case GiftAutoReloadAction.reload:
+          _load(silent: true);
+      }
     }
   }
 
@@ -104,11 +140,14 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
     if (!_dirty || !widget.active || !containsNow) return;
     _dirty = false;
+
+    // Batch 05: resync 要求を反映。REST 再取得で最新状態を取得。
     _load(silent: true);
   }
 
-  /// [silent] はギフト受信による自動更新。**読み込み中の表示を出さない。**
-  /// 出すと期間セレクタが `enabled: !_loading` で点滅的に無効化され、操作を邪魔する。
+  /// [silent] はpush受信による自動更新、または resync 遅延後の更新。
+  /// **読み込み中の表示を出さない。** 出すと期間セレクタが `enabled: !_loading` で
+  /// 点滅的に無効化され、操作を邪魔する。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
   Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
@@ -142,7 +181,17 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       setState(() {
         _result = result;
         _loading = false;
+        _dirty = false;
       });
+
+      // Batch 05: REST取得成功時、RankingSyncStore へversion をリセット。
+      // 今後の push は新しい version 列から開始される。
+      if (!mounted) return;
+      final store = context.read<RankingSyncStore>();
+      store.acknowledgeResync(
+        snapshot: {},
+        period: _selection.period.apiValue,
+      );
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
@@ -188,6 +237,14 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
 
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
     setState(() => _selection = selection);
+
+    // Batch 05: 期間変更時、RankingSyncStore へ新しい期間を通知。
+    // 異なる期間の snapshot は破棄される。
+    final store = context.read<RankingSyncStore>();
+    final customRange = _customRange;
+    final period = customRange != null ? null : selection.period.apiValue;
+    store.setCurrentPeriod(period);
+
     _load();
   }
 
@@ -221,6 +278,14 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       _customRange = result.cleared ? null : result.range;
       _listenerQuery = result.cleared ? null : result.listenerQuery;
     });
+
+    // Batch 05: 期間フィルタ変更時、RankingSyncStore へ通知。
+    // カスタム範囲は period=null で扱う。
+    final store = context.read<RankingSyncStore>();
+    final newCustomRange = _customRange;
+    final period = newCustomRange != null ? null : _selection.period.apiValue;
+    store.setCurrentPeriod(period);
+
     _load();
   }
 

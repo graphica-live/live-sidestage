@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 
 /// Socket.IO push用のenvelope型。
 ///
@@ -191,3 +194,309 @@ enum _ResultKind {
 const int supportedRankingSchemaVersion = 1;
 const int supportedGiftHistorySchemaVersion = 1;
 const int supportedBattleHistorySchemaVersion = 1;
+
+// ===== Sync Store実装 =====
+// 3つのタブが使う共通のenvelope受信・version整合性チェック・resyncトリガー。
+
+/// 貢献ランキングのpush受信・管理を担当する Store。
+/// CommentFeed から chat:ranking:snapshot イベントを購読し、
+/// VersionTracker で整合性チェック → snapshot更新または resync要求。
+class RankingSyncStore extends ChangeNotifier {
+  /// UI側で表示する集計期間。
+  String? _currentPeriod;
+
+  /// 最新のランキングsnapshotペイロード。型は Map<String, dynamic>
+  /// (analytics側の RankingSnapshot → entities/order)。
+  Map<String, dynamic>? _snapshot;
+
+  /// 受信したenvelopeのmismatch検知・trackingに使う tracker。
+  final VersionTracker _versionTracker = VersionTracker();
+
+  /// mismatchが発生した場合、REST再取得が必要なことを示すフラグ。
+  bool _needsResync = false;
+
+  /// streamControllerへ登録したリスナー(unsubscribeに使う)。
+  StreamSubscription<Map<String, dynamic>>? _subscription;
+
+  /// resyncが必要な場合に呼ぶコールバック。
+  /// UI側の _load() (REST再取得)へ直接つなぐ。
+  VoidCallback? _onResyncRequired;
+
+  /// 初期化時に CommentFeed の ranking snapshot stream を購読。
+  void initialize({
+    required Stream<Map<String, dynamic>> rankingSnapshotStream,
+    VoidCallback? onResyncRequired,
+  }) {
+    _onResyncRequired = onResyncRequired;
+    _subscription = rankingSnapshotStream.listen(_onRankingSnapshot);
+  }
+
+  void _onRankingSnapshot(Map<String, dynamic> data) {
+    try {
+      final envelope = SyncEnvelope<dynamic>.fromMap(data);
+      final result = _versionTracker.check(envelope);
+
+      // schemaVersion検証(簡易)。厳密にはdecodeの責務だが、
+      // mismatch時のログには含める。
+      if (envelope.schemaVersion != supportedRankingSchemaVersion) {
+        debugPrint('[ranking] schemaVersion不一致: ${envelope.schemaVersion}');
+        return;
+      }
+
+      // 受信期間がUI側の選択期間と異なる場合は破棄。
+      final period = envelope.period;
+      if (period != null && period != _currentPeriod) {
+        debugPrint('[ranking] period不一致(期待:$_currentPeriod, 受信:$period)');
+        return;
+      }
+
+      if (result.canApply) {
+        // 通常: snapshot をそのまま反映。
+        _snapshot = envelope.payload as Map<String, dynamic>?;
+        _needsResync = false;
+        notifyListeners();
+      } else if (result.snapshotRequired || result.fullResyncRequired) {
+        // mismatch検知: REST再取得要求。
+        debugPrint('[ranking] resync要求: ${result.reason}');
+        _needsResync = true;
+        _onResyncRequired?.call();
+      } else if (result.ignoreDuplicate) {
+        // 古いversion: 無視。
+        debugPrint('[ranking] 重複無視: ${result.reason}');
+      }
+    } catch (e) {
+      debugPrint('[ranking] envelopeパース失敗: $e');
+    }
+  }
+
+  /// UI側が選択した期間を設定。異なる期間のsnapshotは破棄される。
+  void setCurrentPeriod(String? period) {
+    if (period == _currentPeriod) return;
+    _currentPeriod = period;
+    // 期間が変わった場合、保持中のsnapshotを初期化。
+    _snapshot = null;
+    _needsResync = false;
+    notifyListeners();
+  }
+
+  /// 最新のsnapshotを取得(null = 未受信またはresync待機中)。
+  Map<String, dynamic>? getSnapshot() => _snapshot;
+
+  /// resyncが必要なことをUI側へ伝える。
+  bool get needsResync => _needsResync;
+
+  /// REST再取得成功後、版を更新する。
+  void acknowledgeResync({required Map<String, dynamic> snapshot, required String? period}) {
+    _snapshot = snapshot;
+    _currentPeriod = period;
+    _needsResync = false;
+    _versionTracker.reset();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.dispose();
+  }
+}
+
+/// ギフト履歴のappend受信・管理を担当する Store。
+/// CommentFeed から chat:gift-history:append イベントを購読し、
+/// VersionTracker で整合性チェック → append反映または resync要求。
+class GiftHistorySyncStore extends ChangeNotifier {
+  /// 受信済みギフト行のリスト。append順序を保持。
+  List<Map<String, dynamic>> _history = [];
+
+  /// 受信済みGift.idの集合。append冪等性チェック(重複防止)。
+  final Set<dynamic> _seenGiftIds = {};
+
+  /// version tracker。
+  final VersionTracker _versionTracker = VersionTracker();
+
+  /// mismatchが発生した場合のフラグ。
+  bool _needsResync = false;
+
+  /// streamControllerへ登録したリスナー。
+  StreamSubscription<Map<String, dynamic>>? _subscription;
+
+  /// resync要求コールバック。
+  VoidCallback? _onResyncRequired;
+
+  /// 初期化時に CommentFeed の gift-history append stream を購読。
+  void initialize({
+    required Stream<Map<String, dynamic>> giftHistoryAppendStream,
+    VoidCallback? onResyncRequired,
+  }) {
+    _onResyncRequired = onResyncRequired;
+    _subscription = giftHistoryAppendStream.listen(_onGiftHistoryAppend);
+  }
+
+  void _onGiftHistoryAppend(Map<String, dynamic> data) {
+    try {
+      final envelope = SyncEnvelope<dynamic>.fromMap(data);
+      final result = _versionTracker.check(envelope);
+
+      if (envelope.schemaVersion != supportedGiftHistorySchemaVersion) {
+        debugPrint('[gift-history] schemaVersion不一致: ${envelope.schemaVersion}');
+        return;
+      }
+
+      if (result.canApply) {
+        // append: payloadは単一のGiftHistoryEvent。
+        final event = envelope.payload as Map<String, dynamic>?;
+        if (event != null) {
+          final giftId = event['id'];
+          // 冪等適用: 既に受信済みのidは重複追加しない。
+          if (!_seenGiftIds.contains(giftId)) {
+            _seenGiftIds.add(giftId);
+            _history.insert(0, event); // 時系列に新しい順(リスト先頭)
+            _needsResync = false;
+            notifyListeners();
+          }
+        }
+      } else if (result.snapshotRequired || result.fullResyncRequired) {
+        debugPrint('[gift-history] resync要求: ${result.reason}');
+        _needsResync = true;
+        _onResyncRequired?.call();
+      } else if (result.ignoreDuplicate) {
+        debugPrint('[gift-history] 重複無視: ${result.reason}');
+      }
+    } catch (e) {
+      debugPrint('[gift-history] envelopeパース失敗: $e');
+    }
+  }
+
+  /// 最新の履歴リストを取得。
+  List<Map<String, dynamic>> getHistory() => List.unmodifiable(_history);
+
+  /// resyncが必要なことをUI側へ伝える。
+  bool get needsResync => _needsResync;
+
+  /// REST再取得成功後、版を初期化・リセット。
+  void acknowledgeResync({required List<Map<String, dynamic>> history}) {
+    _history = List.from(history);
+    _seenGiftIds.clear();
+    for (final event in history) {
+      final giftId = event['id'];
+      _seenGiftIds.add(giftId);
+    }
+    _needsResync = false;
+    _versionTracker.reset();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.dispose();
+  }
+}
+
+/// バトル履歴のupsert受信・管理を担当する Store。
+/// CommentFeed から chat:battle-history:upsert イベントを購読し、
+/// VersionTracker で整合性チェック → upsert反映または resync要求。
+class BattleHistorySyncStore extends ChangeNotifier {
+  /// 受信済みバトルのMap。key=battleId, value=BattleSummary相当。
+  Map<String, dynamic> _battles = {};
+
+  /// battleIdのリスト(表示順序保持)。
+  List<String> _battleIds = [];
+
+  /// version tracker。
+  final VersionTracker _versionTracker = VersionTracker();
+
+  /// mismatch フラグ。
+  bool _needsResync = false;
+
+  /// streamControllerへ登録したリスナー。
+  StreamSubscription<Map<String, dynamic>>? _subscription;
+
+  /// resync要求コールバック。
+  VoidCallback? _onResyncRequired;
+
+  /// 初期化時に CommentFeed の battle-history upsert stream を購読。
+  void initialize({
+    required Stream<Map<String, dynamic>> battleHistoryUpsertStream,
+    VoidCallback? onResyncRequired,
+  }) {
+    _onResyncRequired = onResyncRequired;
+    _subscription = battleHistoryUpsertStream.listen(_onBattleHistoryUpsert);
+  }
+
+  void _onBattleHistoryUpsert(Map<String, dynamic> data) {
+    try {
+      final envelope = SyncEnvelope<dynamic>.fromMap(data);
+      final result = _versionTracker.check(envelope);
+
+      if (envelope.schemaVersion != supportedBattleHistorySchemaVersion) {
+        debugPrint('[battle-history] schemaVersion不一致: ${envelope.schemaVersion}');
+        return;
+      }
+
+      if (result.canApply) {
+        // upsert: payloadは単一のBattleSummary。
+        final battle = envelope.payload as Map<String, dynamic>?;
+        if (battle != null) {
+          final battleId = battle['battleId'] as String?;
+          if (battleId != null) {
+            // upsert: 既存なら上書き、無ければ追加。
+            if (!_battles.containsKey(battleId)) {
+              _battleIds.add(battleId);
+            }
+            _battles[battleId] = battle;
+            _needsResync = false;
+            notifyListeners();
+          }
+        }
+      } else if (result.snapshotRequired || result.fullResyncRequired) {
+        debugPrint('[battle-history] resync要求: ${result.reason}');
+        _needsResync = true;
+        _onResyncRequired?.call();
+      } else if (result.ignoreDuplicate) {
+        debugPrint('[battle-history] 重複無視: ${result.reason}');
+      }
+    } catch (e) {
+      debugPrint('[battle-history] envelopeパース失敗: $e');
+    }
+  }
+
+  /// 最新のバトル一覧を取得(battleIds順)。
+  List<Map<String, dynamic>> getBattles() {
+    return _battleIds
+        .map((id) => _battles[id])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  /// 特定のbattleIdを取得。
+  Map<String, dynamic>? getBattle(String battleId) => _battles[battleId];
+
+  /// resyncが必要なことをUI側へ伝える。
+  bool get needsResync => _needsResync;
+
+  /// REST再取得成功後、版を初期化・リセット。
+  void acknowledgeResync({required List<Map<String, dynamic>> battles}) {
+    _battles.clear();
+    _battleIds.clear();
+    for (final battle in battles) {
+      final battleId = battle['battleId'] as String?;
+      if (battleId != null) {
+        _battleIds.add(battleId);
+        _battles[battleId] = battle;
+      }
+    }
+    _needsResync = false;
+    _versionTracker.reset();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _subscription = null;
+    super.dispose();
+  }
+}
