@@ -9,7 +9,7 @@
 import { describe, it, expect, afterAll, beforeEach, vi } from "vitest";
 import { prisma } from "./prisma";
 import { makeTiktokUid } from "./__fixtures__/gift";
-import { startListener, stopListener } from "./tiktok-listener";
+import { startListener, stopListener, saveGift } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 
 const { MockConnection } = vi.hoisted(() => {
@@ -200,6 +200,42 @@ describe("ギフトのmsgId dedup", () => {
     }
   });
 
+  // Codex TestCase-review指摘(2026-09-11)により追加。5分windowは `receivedAt: { gte: ... }`
+  // なので、ちょうど5分前は重複扱い(境界含む)、5分+1msなら新規扱いになるはず。
+  it("[境界] ちょうど5分前の同一msgIdは重複、5分+1msなら新規として保存される", async () => {
+    const ctx = await setupRoom("boundary");
+    try {
+      const msgId = newMsgId();
+      const base = Date.now();
+      const data = nonComboGift(msgId, base);
+
+      const first = await saveGift(ctx.roomId, data, 1, new Date(base), "tiktok");
+      expect(first).toBe("saved");
+
+      const atBoundary = await saveGift(
+        ctx.roomId,
+        nonComboGift(msgId, base),
+        1,
+        new Date(base + 5 * 60_000),
+        "tiktok"
+      );
+      expect(atBoundary).toBe("duplicate");
+      expect(await giftCount(ctx.roomId)).toBe(1);
+
+      const pastBoundary = await saveGift(
+        ctx.roomId,
+        nonComboGift(msgId, base),
+        1,
+        new Date(base + 5 * 60_000 + 1),
+        "tiktok"
+      );
+      expect(pastBoundary).toBe("saved");
+      expect(await giftCount(ctx.roomId)).toBe(2);
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
   it("msgIdが取れないギフトは従来どおり2回とも保存される(dedupキーが無いだけで実際に届いている)", async () => {
     const ctx = await setupRoom("no-msgid");
     try {
@@ -279,6 +315,147 @@ describe("ギフトのmsgId dedup", () => {
     } finally {
       await teardownRoom(a);
       await teardownRoom(b);
+    }
+  });
+
+  // Codex design-review指摘(2026-09-11)により追加。上記の「同一tick」テストはlistenerの
+  // イベントハンドラ経由で awaitを挟まず連続 fire するだけなので、実際には
+  // saveGift()呼び出し自体がすでに1本ずつ直列に実行されており、
+  // advisory lock導入前でもインスタンス内FIFOが先に1件を落としてしまう。
+  // ここではlistener/MockConnectionを経由せず saveGift() を直接 Promise.all で
+  // 真に同時実行し、advisory lockが無いと再現できないDBレベルのraceを検証する。
+  it("[Concurrent duplicate] 同一msgIdへのsaveGift()同時呼び出しはDB行1件・saved/duplicateが1件ずつ", async () => {
+    const ctx = await setupRoom("concurrent");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+      const data = nonComboGift(msgId, createTime);
+
+      const [r1, r2] = await Promise.all([
+        saveGift(ctx.roomId, data, 1, new Date(createTime), "tiktok"),
+        saveGift(ctx.roomId, data, 1, new Date(createTime), "tiktok"),
+      ]);
+
+      expect(await giftCount(ctx.roomId)).toBe(1);
+      const results = [r1, r2].sort();
+      expect(results).toEqual(["duplicate", "saved"]);
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
+  // Business insert failure: tx.gift.create を1回だけ失敗させても、lockはtx rollbackと
+  // ともに解放され、同一msgIdでの再試行が正しく通ることを確認する。
+  it("[Business insert failure] create失敗後の同一msgId再試行は正常に保存される", async () => {
+    const ctx = await setupRoom("insert-failure");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+      const data = nonComboGift(msgId, createTime);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const realTransaction = prisma.$transaction.bind(prisma);
+      const writeSpy = vi
+        .spyOn(prisma, "$transaction")
+        .mockImplementationOnce(((arg: unknown, opts: unknown) => {
+          const run = arg as (tx: unknown) => unknown;
+          return (realTransaction as (a: unknown, o: unknown) => unknown)(
+            (tx: Record<string, unknown>) =>
+              run(
+                new Proxy(tx, {
+                  get(target, prop) {
+                    if (prop === "gift") {
+                      return {
+                        ...(target[prop as string] as object),
+                        create: () => Promise.reject(new Error("simulated gift insert failure")),
+                      };
+                    }
+                    return target[prop as string];
+                  },
+                })
+              ),
+            opts
+          );
+        }) as never);
+
+      const first = await saveGift(ctx.roomId, data, 1, new Date(createTime), "tiktok");
+      expect(first).toBe("error");
+      expect(await giftCount(ctx.roomId)).toBe(0);
+      writeSpy.mockRestore();
+
+      const second = await saveGift(ctx.roomId, data, 1, new Date(createTime), "tiktok");
+      expect(second).toBe("saved");
+      expect(await giftCount(ctx.roomId)).toBe(1);
+
+      errorSpy.mockRestore();
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
+  // Codex TestCase-review指摘(2026-09-11)により追加。onSavedはcommit後・成功時のみ・
+  // 保存済みGift IDで1回だけ呼ばれる契約(1533-1536行)を直接検証する。
+  it("[onSaved契約] 新規保存でのみ保存済みGift IDで1回呼ばれ、duplicate/errorでは呼ばれない", async () => {
+    const ctx = await setupRoom("onsaved");
+    try {
+      const msgId = newMsgId();
+      const createTime = Date.now();
+      const data = nonComboGift(msgId, createTime);
+      const onSaved = vi.fn();
+
+      const saved = await saveGift(ctx.roomId, data, 1, new Date(createTime), "tiktok", onSaved);
+      expect(saved).toBe("saved");
+      const row = await prisma.gift.findFirst({ where: { roomId: ctx.roomId, msgId } });
+      expect(row).not.toBeNull();
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(onSaved).toHaveBeenCalledWith(row!.id);
+
+      onSaved.mockClear();
+      const duplicate = await saveGift(ctx.roomId, data, 1, new Date(createTime), "tiktok", onSaved);
+      expect(duplicate).toBe("duplicate");
+      expect(onSaved).not.toHaveBeenCalled();
+
+      onSaved.mockClear();
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const realTransaction = prisma.$transaction.bind(prisma);
+      const writeSpy = vi
+        .spyOn(prisma, "$transaction")
+        .mockImplementationOnce(((arg: unknown, opts: unknown) => {
+          const run = arg as (tx: unknown) => unknown;
+          return (realTransaction as (a: unknown, o: unknown) => unknown)(
+            (tx: Record<string, unknown>) =>
+              run(
+                new Proxy(tx, {
+                  get(target, prop) {
+                    if (prop === "gift") {
+                      return {
+                        ...(target[prop as string] as object),
+                        create: () => Promise.reject(new Error("simulated gift insert failure")),
+                      };
+                    }
+                    return target[prop as string];
+                  },
+                })
+              ),
+            opts
+          );
+        }) as never);
+
+      const failed = await saveGift(
+        ctx.roomId,
+        nonComboGift(newMsgId(), createTime),
+        1,
+        new Date(createTime),
+        "tiktok",
+        onSaved
+      );
+      expect(failed).toBe("error");
+      expect(onSaved).not.toHaveBeenCalled();
+
+      writeSpy.mockRestore();
+      errorSpy.mockRestore();
+    } finally {
+      await teardownRoom(ctx);
     }
   });
 });

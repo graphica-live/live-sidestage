@@ -1439,9 +1439,11 @@ function buildGiftRow(
  * 別の判断で、Webプロセス側(emitChatGift)が独自にdedupする。
  * ここで抑えるのはDBの行とオーバーレイ更新だけ。
  */
-type GiftSaveResult = "saved" | "duplicate" | "error";
+export type GiftSaveResult = "saved" | "duplicate" | "error";
 
-async function saveGift(
+// exportはテスト専用(真の同時実行を作るため関数を直接importして呼ぶ。Concurrent duplicateテスト参照)。
+// 呼び出し元(本番コード)は依然としてリスナーのイベントハンドラ経由でのみ呼ぶ。
+export async function saveGift(
   roomId: string,
   data: Record<string, unknown>,
   count: number,
@@ -1475,47 +1477,64 @@ async function saveGift(
     const dayKey = jstDateKey(receivedAt);
     const diamondCount = Number(data.diamondCount) || 0;
 
-    // msgIdが取れているときだけ効く。resolveMsgId()がprotobufの既定値を弾いてnullに
-    // した場合は従来どおりそのまま保存する(dedupキーが無いだけで、ギフト自体は
-    // 実際に届いているため、捨てるとダイヤ数がそのまま失われる)。
-    if (msgId) {
-      const duplicate = await prisma.gift.findFirst({
-        where: {
-          roomId,
-          msgId,
-          receivedAt: { gte: new Date(receivedAt.getTime() - GIFT_DEDUP_WINDOW_MS) },
-        },
-        select: { id: true },
-      });
-      if (duplicate) {
-        console.log(
-          `[gift] dedup: msgId=${msgId} は直近${GIFT_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, gift=${String(data.giftName || "")})`
-        );
-        return "duplicate";
-      }
-    }
+    // クロージャ内での代入をTSが追跡できないので、saveComboGift()と同じくホルダー越しに
+    // 受け渡す(1832-1834行付近と同じパターン)。
+    const giftCommit: { fn: (() => void) | null } = { fn: null };
+    const giftIdHolder: { value: string | null } = { value: null };
 
-    const { commit, giftId } = await prisma.$transaction(async (tx) => {
-      const created = await tx.gift.create({
-        data: buildGiftRow(roomId, tiktokUid, data, count, receivedAt, timeSource, {
-          orderId,
-          groupId,
-          msgId,
-        }),
-        select: { id: true },
-      });
-      const commit = await recordTikTokUser(tx, {
-        tiktokUid,
-        tiktokHandle: normalizeDisplayValue(data.uniqueId),
-        nickname: normalizeDisplayValue(data.nickname),
-      });
-      return { commit, giftId: created.id };
-    });
-    commit();
+    const result = await prisma.$transaction<GiftSaveResult>(
+      async (tx) => {
+        // msgIdが取れているときだけ効く。resolveMsgId()がprotobufの既定値を弾いてnullに
+        // した場合は従来どおりそのまま保存する(dedupキーが無いだけで、ギフト自体は
+        // 実際に届いているため、捨てるとダイヤ数がそのまま失われる)。
+        if (msgId) {
+          // 同一(roomId, msgId)への同時書き込みを直列化する。comboのlock key(groupId単体)
+          // とは別の値空間になるよう "gift:" プレフィックスを付ける(kindによる種別分離)。
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${roomId}), hashtext(${"gift:" + msgId}))`;
+
+          const duplicate = await tx.gift.findFirst({
+            where: {
+              roomId,
+              msgId,
+              receivedAt: { gte: new Date(receivedAt.getTime() - GIFT_DEDUP_WINDOW_MS) },
+            },
+            select: { id: true },
+          });
+          if (duplicate) {
+            console.log(
+              `[gift] dedup: msgId=${msgId} は直近${GIFT_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, gift=${String(data.giftName || "")})`
+            );
+            return "duplicate";
+          }
+        }
+
+        const created = await tx.gift.create({
+          data: buildGiftRow(roomId, tiktokUid, data, count, receivedAt, timeSource, {
+            orderId,
+            groupId,
+            msgId,
+          }),
+          select: { id: true },
+        });
+        giftCommit.fn = await recordTikTokUser(tx, {
+          tiktokUid,
+          tiktokHandle: normalizeDisplayValue(data.uniqueId),
+          nickname: normalizeDisplayValue(data.nickname),
+        });
+        giftIdHolder.value = created.id;
+        return "saved";
+      },
+      // Prismaの既定(maxWait=2s / timeout=5s)はadvisory lockの待ち行列には短すぎる
+      // (saveComboGift()と同じ値を流用)。
+      { maxWait: COMBO_TX_MAX_WAIT_MS, timeout: COMBO_TX_TIMEOUT_MS }
+    );
     // トランザクションが正常にresolveした時点でDBへ確定コミット済み(Prisma interactive
     // transactionの契約)。onSavedはこの後で呼ぶ = 「DB保存完了後にpushする」invariantを満たす。
-    onSaved?.(giftId);
-    return "saved";
+    if (result === "saved" && giftIdHolder.value) {
+      giftCommit.fn?.();
+      onSaved?.(giftIdHolder.value);
+    }
+    return result;
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
       // どのunique制約で弾かれたかを残す。現状効きうるのは (roomId, orderId) だけだが、
@@ -1607,7 +1626,7 @@ function pickProfilePictureUrl(urls: readonly string[] | undefined): string | nu
   );
 }
 
-type BattleItemSaveResult = "saved" | "duplicate" | "error";
+export type BattleItemSaveResult = "saved" | "duplicate" | "error";
 
 // バトルアイテム使用ログの保存。comboのような累計tickではなく「使用ごとに1回」の
 // 離散イベントなので、saveComboGiftのようなdelta計算は不要 — saveGift(non-combo)と同型。
@@ -1706,7 +1725,9 @@ async function saveBattleBonusMission(
   }
 }
 
-async function saveBattleItemUse(
+// exportはテスト専用(真の同時実行を作るため関数を直接importして呼ぶ。Concurrent duplicateテスト参照)。
+// 呼び出し元(本番コード)は依然としてリスナーのイベントハンドラ経由でのみ呼ぶ。
+export async function saveBattleItemUse(
   roomId: string,
   message: WebcastLinkMicBattleItemCard,
   receivedAt: Date
@@ -1738,46 +1759,62 @@ async function saveBattleItemUse(
   const msgId = resolveMsgId(message as unknown as Record<string, unknown>);
 
   try {
-    if (msgId) {
-      const duplicate = await prisma.tiktokBattleItemUse.findFirst({
-        where: {
-          roomId,
-          msgId,
-          receivedAt: { gte: new Date(receivedAt.getTime() - BATTLE_ITEM_DEDUP_WINDOW_MS) },
-        },
-        select: { id: true },
-      });
-      if (duplicate) {
-        console.log(
-          `[battle-item] dedup: msgId=${msgId} は直近${BATTLE_ITEM_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, cardType=${message.cardType})`
-        );
-        return "duplicate";
-      }
-    }
+    // クロージャ内での代入をTSが追跡できないので、saveGift()/saveComboGift()と同じく
+    // ホルダー越しに受け渡す。commit()はtxがresolveした後(DB確定コミット後)にのみ呼ぶ
+    // (recordTikTokUser()のスロットル記録はtx rollback時に呼ぶと実際のupsertより先に
+    // マークされてしまうため)。
+    const battleItemCommit: { fn: (() => void) | null } = { fn: null };
 
     // 表示名の正本は TikTokUser。アイテムカードしか使っていない送信者はここでしか
     // 記録されないので、item-use の INSERT と同一トランザクションで upsert する。
-    const commit = await prisma.$transaction(async (tx) => {
-      await tx.tiktokBattleItemUse.create({
-        data: {
-          roomId,
-          battleId: message.battleId,
-          cardType: message.cardType,
-          senderTiktokUid,
-          senderProfilePictureUrl: pickProfilePictureUrl(sender.profilePicture?.url),
-          targetHostTiktokUid: card.targetHostUserId,
-          msgId,
-          receivedAt,
-        },
-      });
-      return recordTikTokUser(tx, {
-        tiktokUid: senderTiktokUid,
-        tiktokHandle: senderTiktokHandle,
-        nickname: senderNickname,
-      });
-    });
-    commit();
-    return "saved";
+    const result = await prisma.$transaction<BattleItemSaveResult>(
+      async (tx) => {
+        if (msgId) {
+          // 同一(roomId, msgId)への同時書き込みを直列化する。lock keyは "battle_item:" を
+          // 付けてGift("gift:")・combo(groupId単体)と別の値空間にする(kindによる種別分離)。
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${roomId}), hashtext(${"battle_item:" + msgId}))`;
+
+          const duplicate = await tx.tiktokBattleItemUse.findFirst({
+            where: {
+              roomId,
+              msgId,
+              receivedAt: { gte: new Date(receivedAt.getTime() - BATTLE_ITEM_DEDUP_WINDOW_MS) },
+            },
+            select: { id: true },
+          });
+          if (duplicate) {
+            console.log(
+              `[battle-item] dedup: msgId=${msgId} は直近${BATTLE_ITEM_DEDUP_WINDOW_MS / 60_000}分に保存済み (room=${roomId}, cardType=${message.cardType})`
+            );
+            return "duplicate";
+          }
+        }
+
+        await tx.tiktokBattleItemUse.create({
+          data: {
+            roomId,
+            battleId: message.battleId,
+            cardType: message.cardType,
+            senderTiktokUid,
+            senderProfilePictureUrl: pickProfilePictureUrl(sender.profilePicture?.url),
+            targetHostTiktokUid: card.targetHostUserId,
+            msgId,
+            receivedAt,
+          },
+        });
+        battleItemCommit.fn = await recordTikTokUser(tx, {
+          tiktokUid: senderTiktokUid,
+          tiktokHandle: senderTiktokHandle,
+          nickname: senderNickname,
+        });
+        return "saved";
+      },
+      // Prismaの既定(maxWait=2s / timeout=5s)はadvisory lockの待ち行列には短すぎる
+      // (saveComboGift()と同じ値を流用)。
+      { maxWait: COMBO_TX_MAX_WAIT_MS, timeout: COMBO_TX_TIMEOUT_MS }
+    );
+    if (result === "saved") battleItemCommit.fn?.();
+    return result;
   } catch (err: unknown) {
     console.error("[listener] battle item use save error:", { roomId, msgId, cardType: message.cardType, err });
     return "error";
