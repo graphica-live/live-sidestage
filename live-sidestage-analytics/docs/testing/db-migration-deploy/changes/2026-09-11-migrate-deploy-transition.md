@@ -97,7 +97,26 @@ schema.prismaに表現できず反映されなかったため顕在化してい�
   → `migrate diff --exit-code`（差分なし）→ `migrate status`（up to date）: PASS
 - `npm run typecheck`: PASS
 
+## 追記（2026-09-12 本番baseline registration実施）
+
+main マージ後、ユーザー承認のもと本番DBへ以下を実施（`Section C-2`）。
+
+1. `migrate diff --exit-code`（事前確認）→ 差分あり（`room_monitor_leases`等4件、wave1_cleanup分）
+2. 削除対象4件のデータ有無を確認（読み取りのみ）: `room_monitor_leases`（0行）・
+   `DetectedBattle.hostDisplayIds`（0件 non-null）・`EventMatch.scheduledStartAt/EndAt`（0件
+   non-null）は空。**`tiktok_battles.hostDisplayIds` のみ実データ827件（非空配列）残存**を発見
+3. ユーザーへ確認 → 「バックアップなしで削除続行」を明示選択（表示専用データ、コード側は
+   b9801edeで読み書き完全停止済みとの判断）
+4. `_prisma_migrations` 現状確認 → テーブル不存在（db push運用のため未作成、想定通り）
+5. `migrate resolve --applied 0_init` 実行 → baseline登録
+6. Wave1-B CHECK制約5件が既に手動psqlで本番適用済み（`convalidated=t`）であることを確認
+   → `migrate resolve --applied 20260911160000_add_wave1b_check_constraints` で記録
+7. `migrate deploy` 実行 → `20260911180000_wave1_cleanup_unused_schema_elements` を実適用
+   （`room_monitor_leases`テーブル削除、`tiktok_battles.hostDisplayIds`含む4列削除）
+8. 最終検証: `migrate diff --exit-code`（差分なし）・`migrate status`（up to date）: PASS
+
 ## remaining risks
 
-- Section C（本番baseline registration・cutover）はこのセッションのスコープ外。ユーザーが別途手動実行する
-- Pre-Deploy Commandはダッシュボード限定設定のまま（IaC化は将来改善候補、runbook記載済み）
+- Pre-Deploy Command設定（Railwayダッシュボード限定、AI側に操作経路なし）はユーザー手動実行が必要
+- `tiktok_battles.hostDisplayIds` の827件（非空配列データ）はバックアップなしで削除した。
+  再取得手段はコード側に残っていない（b9801ede Wave1-Cで完全除去済み）
