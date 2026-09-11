@@ -449,6 +449,7 @@ model TiktokRoom {
   battleArmiesSnapshots TiktokBattleArmiesSnapshot[]
   battleTapPoints       TiktokBattleTapPoint[]
   battleHistories       BattleHistory[]
+  contributionShareTokens ContributionShareToken[]
   watches               AgencyWatch[]
   monitorLeases         RoomMonitorLease[]
   connectionIntervals   RoomConnectionInterval[]
@@ -1300,6 +1301,38 @@ model BattleHistory {
   @@unique([roomId, battleId])
   @@index([roomId, windowStart])
   @@map("battle_histories")
+  @@schema("public")
+}
+
+// 貢献ランキング(期間集計)の公開シェアリンク。BattleHistory.shareTokenと違い「特定の行」への
+// 紐付けが無い(period定義そのものを指す)ため専用モデルにする。無期限・平文トークン
+// (Streamer.overlayToken / BattleHistory.shareTokenと同じ方式)。
+model ContributionShareToken {
+  id     String @id @default(cuid())
+  token  String @unique
+  roomId String
+
+  // period="day"|"week"|"month"|"year"|"custom"。custom時はdate=nullでstart/endを使う。
+  // rangeKeyは `${period}|${date}` または `custom|${startISO}|${endISO}` の正規化文字列で、
+  // 同一room×同一期間定義の再発行を防ぐ冪等キー(Postgresのunique制約はNULL列を区別できないため
+  // 4列複合uniqueではなくrangeKey 1列に正規化する)。
+  // **正規化ルール**: date/startDatetime/endDatetimeはすべてUTCのISO 8601(ミリ秒まで、`Z`終端)に
+  // 統一してから文字列化する。web/mobile双方でこの関数を共有できないため、両者が同じ入力(period,
+  // 絶対date文字列 or 絶対start/end)をサーバーへ送り、正規化自体はサーバー(buildRangeKey)側の
+  // 1箇所でのみ行う(クライアント側でキーを計算・比較しない)。
+  period        String
+  date          String?
+  startDatetime DateTime?
+  endDatetime   DateTime?
+  rangeKey      String
+
+  createdAt DateTime @default(now())
+
+  // BattleHistory/Giftと同じくTiktokRoomへrelationを張り、room削除時はカスケード削除する。
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, rangeKey])
+  @@map("contribution_share_tokens")
   @@schema("public")
 }
 
