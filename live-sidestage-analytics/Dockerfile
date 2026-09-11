@@ -34,5 +34,5 @@ EXPOSE 3000
 #
 # 【重要】このイメージは baseline(`0_init`)未登録の DB に対しては旧スキーマのまま起動し、
 # Prisma クエリが失敗しうる。baseline 未実施の本番環境へこのコードをデプロイしないこと
-# (docs/deploy/prisma-migration-runbook.md の Section C 完了が前提)。
+# (docs/deploy/prisma-migration-runbook.md の「Baseline Registration」節完了が前提)。
 CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && node server.js"]

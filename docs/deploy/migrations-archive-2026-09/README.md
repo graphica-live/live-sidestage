@@ -6,6 +6,7 @@
 
 - **これらのmigrationは本番の `_prisma_migrations` テーブルに一度も適用されていません**
 - **baseline migration（`0_init`）がこれら33件の全ての変更を内包しており、以後Prismaのいかなるコマンドからも参照されることはありません**
+- Wave1-B の CHECK 制約 migration（`20260911160000_add_wave1b_check_constraints`）は分岐後追加のため、このアーカイブには含まれず、`prisma/migrations/` に残って `migrate deploy` の対象となります
 - このディレクトリは履歴ドキュメント専用です
 - migrate deployコマンドの対象パスから除外されています
 

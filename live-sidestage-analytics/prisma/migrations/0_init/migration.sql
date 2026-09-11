@@ -230,19 +230,6 @@ CREATE TABLE "public"."tiktok_room_admin_audit_logs" (
 );
 
 -- CreateTable
-CREATE TABLE "public"."room_monitor_leases" (
-    "id" TEXT NOT NULL,
-    "roomId" TEXT NOT NULL,
-    "reason" TEXT NOT NULL,
-    "referenceId" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "releasedAt" TIMESTAMP(3),
-
-    CONSTRAINT "room_monitor_leases_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "public"."room_connection_intervals" (
     "id" TEXT NOT NULL,
     "roomId" TEXT NOT NULL,
@@ -560,7 +547,6 @@ CREATE TABLE "public"."tiktok_battles" (
     "endedAt" TIMESTAMP(3),
     "durationSec" INTEGER,
     "hostTiktokUids" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "hostDisplayIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "hostScores" JSONB NOT NULL DEFAULT '{}',
     "hostProfiles" JSONB NOT NULL DEFAULT '{}',
     "hostTeams" JSONB NOT NULL DEFAULT '{}',
@@ -906,8 +892,6 @@ CREATE TABLE "event"."EventMatch" (
     "bracketPosition" INTEGER NOT NULL DEFAULT 0,
     "matchType" TEXT NOT NULL DEFAULT '1V1',
     "sessionId" TEXT NOT NULL,
-    "scheduledStartAt" TIMESTAMP(3),
-    "scheduledEndAt" TIMESTAMP(3),
     "status" TEXT NOT NULL DEFAULT 'SCHEDULED',
     "detectedBattleId" TEXT,
     "detectedStartAt" TIMESTAMP(3),
@@ -1033,7 +1017,6 @@ CREATE TABLE "event"."DetectedBattle" (
     "durationSec" INTEGER,
     "lastAction" INTEGER NOT NULL,
     "hostTiktokUids" TEXT[] DEFAULT ARRAY[]::TEXT[],
-    "hostDisplayIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "hostScores" JSONB NOT NULL DEFAULT '{}',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -1109,12 +1092,6 @@ CREATE INDEX "tiktok_room_admin_audit_logs_roomId_idx" ON "public"."tiktok_room_
 
 -- CreateIndex
 CREATE INDEX "tiktok_room_admin_audit_logs_createdAt_idx" ON "public"."tiktok_room_admin_audit_logs"("createdAt");
-
--- CreateIndex
-CREATE INDEX "room_monitor_leases_roomId_releasedAt_expiresAt_idx" ON "public"."room_monitor_leases"("roomId", "releasedAt", "expiresAt");
-
--- CreateIndex
-CREATE UNIQUE INDEX "room_monitor_leases_roomId_reason_referenceId_key" ON "public"."room_monitor_leases"("roomId", "reason", "referenceId");
 
 -- CreateIndex
 CREATE INDEX "room_connection_intervals_roomId_startedAt_idx" ON "public"."room_connection_intervals"("roomId", "startedAt");
@@ -1382,9 +1359,6 @@ ALTER TABLE "public"."Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY 
 
 -- AddForeignKey
 ALTER TABLE "public"."Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "public"."room_monitor_leases" ADD CONSTRAINT "room_monitor_leases_roomId_fkey" FOREIGN KEY ("roomId") REFERENCES "public"."TiktokRoom"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."room_connection_intervals" ADD CONSTRAINT "room_connection_intervals_roomId_fkey" FOREIGN KEY ("roomId") REFERENCES "public"."TiktokRoom"("id") ON DELETE CASCADE ON UPDATE CASCADE;

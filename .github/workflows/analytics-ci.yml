@@ -75,7 +75,7 @@ jobs:
       - run: npx tsx scripts/check-migration-safety.ts
 
       # Apply baseline migration to test DB.
-      # After Batch 01, prisma/migrations/ contains only 0_init, so migrate deploy applies that.
+      # prisma/migrations/ contains 0_init and Wave1-B CHECK migration, so migrate deploy applies both.
       - run: npx prisma migrate deploy
 
       # Verify no schema drift between applied DB and schema.prisma.

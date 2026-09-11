@@ -89,19 +89,56 @@ npx prisma migrate dev --name "drop_old_column"
 
 ## Baseline Registration（初回本番セットアップ）
 
-**前提条件**: Batch 01（33 migrations をアーカイブ、`prisma/migrations/` が `0_init` のみ）と Batch 02（Dockerfile/package.json の変更）がともにmainへマージ済みであること。
+**前提条件**: Batch 01（33 migrations をアーカイブ、`prisma/migrations/` が `0_init` と `20260911160000_add_wave1b_check_constraints` の2件）と Batch 02（Dockerfile/package.json の変更）がともにmainへマージ済みであること。
+
+### 登録手順
+
+本番DB初回セットアップ時、以下を実行してbaseline と Wave1-B CHECK制約を登録します:
+
+1. 本番DB接続確認:
+   ```bash
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma migrate status
+   ```
+   出力: `No migrations have been applied yet` のメッセージで、未適用状態を確認。
+
+2. `_prisma_migrations` テーブルが存在しないか空を確認:
+   ```bash
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma db execute --stdin < /dev/null <<EOF
+   SELECT COUNT(*) FROM public._prisma_migrations;
+   EOF
+   ```
+   出力は `0` または「テーブルが存在しない」。
+
+3. `0_init` baseline を登録:
+   ```bash
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma migrate resolve --applied 0_init
+   ```
+
+4. Wave1-B CHECK制約を登録（2026-09-11 に手動適用済みのため）:
+   ```bash
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma migrate resolve --applied 20260911160000_add_wave1b_check_constraints
+   ```
+
+5. 登録確認:
+   ```bash
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma migrate status
+   ```
+   出力: `No pending migrations!` で完了。
+
+6. その後、Railway Pre-Deploy Command を設定してサービスを起動（既存の自動デプロイが開始）。
 
 ### リカバリ手順（baseline 登録誤り時）
 
 baseline を誤った内容で登録してしまった場合、以下のステップで取り消せます:
 
-1. 他に `_prisma_migrations` テーブルに行が無いことを確認する（手順2を参照）
+1. 他に `_prisma_migrations` テーブルに行が無いことを確認する（登録手順の手順2を参照）
 2. 以下で登録を取り消す:
    ```sql
    DELETE FROM public._prisma_migrations WHERE migration_name = '0_init';
+   DELETE FROM public._prisma_migrations WHERE migration_name = '20260911160000_add_wave1b_check_constraints';
    ```
 3. `migrate status` でpending が0件になったことを確認
-4. 再度 `migrate resolve --applied 0_init` で登録
+4. 再度登録手順の手順3〜5を実行
 
 **必ず実行前に `_prisma_migrations` 全行を確認し、他の migration 行を巻き込まないこと。**
 
