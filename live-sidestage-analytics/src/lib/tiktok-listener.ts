@@ -2184,6 +2184,10 @@ function tryGetOwnWorkerIndex(logPrefix: string): number | undefined {
  * ensureRoomWatchedForCollab()でDB行を用意し、このプロセスが新規作成できた場合のみ
  * 即接続キックする。
  *
+ * `sourceRoomId` は呼び出し元(発見の引き金になったroom)のID。ensureRoomWatchedForCollab()へ
+ * そのまま渡し、`TiktokRoom.lastCollabSourceRoomId`へ記録させる(/admin/workers「コラボ署名
+ * 消費」列の集計専用。購読判定・接続キック判定には一切使わない)。
+ *
  * `created===true`のときだけ即キックする。この分岐は「その部屋のTiktokRoom行を
  * このプロセスが初めて作った」場合にのみ通り、以後同じtiktokHandleへ何度呼ばれても
  * ensureRoomWatchedForCollab()は既存行(existing)分岐に落ちてcreated:falseを返す
@@ -2203,7 +2207,8 @@ async function watchDiscoveredRooms(
   subjects: TiktokRoomSubject[],
   ownTiktokHandle: string,
   source: CollabWatchSource,
-  ownWorkerIndex: number | undefined
+  ownWorkerIndex: number | undefined,
+  sourceRoomId: string
 ): Promise<Map<string, CollabWatchResult | null>> {
   const targets = new Map<string, TiktokRoomSubject>();
   for (const subject of subjects) {
@@ -2220,7 +2225,7 @@ async function watchDiscoveredRooms(
       const tiktokUid = subject.tiktokUid;
       const tiktokHandle = subject.tiktokHandle;
       try {
-        const result = await ensureRoomWatchedForCollab(subject, ownWorkerIndex, source);
+        const result = await ensureRoomWatchedForCollab(subject, ownWorkerIndex, source, sourceRoomId);
         if (result?.created && ownWorkerIndex !== undefined) {
           await startListener(result.roomId, result.tiktokHandle, []).catch((err) => {
             console.error(`[${source}] 新規roomの即時接続に失敗。次のreconcileで拾われる`, {
@@ -2291,7 +2296,7 @@ function recordCollabGroupChange(roomId: string, ownTiktokHandle: string, data: 
   if (!shouldWatchCollabSnapshot(parsed)) return;
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("collab");
-  void watchDiscoveredRooms(parsed.subjects, ownTiktokHandle, "collab", ownWorkerIndex);
+  void watchDiscoveredRooms(parsed.subjects, ownTiktokHandle, "collab", ownWorkerIndex, roomId);
 }
 
 /**
@@ -2361,7 +2366,7 @@ function watchBattleOpponents(roomId: string, ownTiktokHandle: string, parsed: P
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("battle-watch");
 
-  watchDiscoveredRooms([...opponentsByTiktokUid.values()], ownTiktokHandle, "battle_start", ownWorkerIndex)
+  watchDiscoveredRooms([...opponentsByTiktokUid.values()], ownTiktokHandle, "battle_start", ownWorkerIndex, roomId)
     .then((results) => {
       const entries: OpponentWatch = {};
       for (const [tiktokUid, subject] of opponentsByTiktokUid) {

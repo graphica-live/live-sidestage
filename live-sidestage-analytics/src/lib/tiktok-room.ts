@@ -343,6 +343,11 @@ export type CollabWatchResult = {
 const MAX_COLLAB_DISCOVERED_ROOMS = 500;
 
 /**
+ * `sourceRoomId` は呼び出し元(発見の引き金になったroom)のID。既存room分岐・新規作成分岐の
+ * 両方で `lastCollabSourceRoomId`/`lastCollabSourceAt` へ無条件(毎回上書き)で記録する
+ * (`watchSource`とは異なり「直近の引き金」を残す設計。/admin/workers「コラボ署名消費」列の
+ * 集計専用で、購読判定・接続キック判定には一切使わない)。
+ *
  * コラボ(linkMic)相手・バトル相手を監視対象へ入れる。tiktok-listener.ts の linkLayer
  * ハンドラ(コラボ承諾検知、source:"collab")と linkMicBattle ハンドラ(バトル開始検知、
  * source:"battle_start")の両方から呼ぶ。呼び出し元room側の歯止め(Streamer購読または
@@ -380,7 +385,8 @@ const MAX_COLLAB_DISCOVERED_ROOMS = 500;
 export async function ensureRoomWatchedForCollab(
   subject: TiktokRoomSubject,
   workerId: number | undefined,
-  source: CollabWatchSource
+  source: CollabWatchSource,
+  sourceRoomId: string
 ): Promise<CollabWatchResult | null> {
   const tiktokUid = normalizeTikTokUserId(subject.tiktokUid);
   if (!tiktokUid) return null;
@@ -401,6 +407,8 @@ export async function ensureRoomWatchedForCollab(
         data: {
           tiktokHandle,
           handleStaleAt: null,
+          lastCollabSourceRoomId: sourceRoomId,
+          lastCollabSourceAt: new Date(),
           ...(resumedCount > 0 && watchSource === null
             ? { watchSource: source, watchSourceAt: new Date() }
             : {}),
@@ -432,6 +440,8 @@ export async function ensureRoomWatchedForCollab(
           tiktokHandle,
           watchSource: source,
           watchSourceAt: new Date(),
+          lastCollabSourceRoomId: sourceRoomId,
+          lastCollabSourceAt: new Date(),
           ...(workerId !== undefined ? { workerId } : {}),
         },
         select: { id: true },
@@ -448,7 +458,7 @@ export async function ensureRoomWatchedForCollab(
   } catch (err) {
     // findUnique と create の間に別リクエストが同じ部屋を作った場合。
     if ((err as { code?: string })?.code === "P2002") {
-      return ensureRoomWatchedForCollab(subject, workerId, source);
+      return ensureRoomWatchedForCollab(subject, workerId, source, sourceRoomId);
     }
     throw err;
   }
