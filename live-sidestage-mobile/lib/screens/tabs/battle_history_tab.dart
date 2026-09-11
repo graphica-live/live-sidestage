@@ -424,7 +424,14 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     final result = _result;
     // Batch 06: BattleHistorySyncStore が保持するバトル一覧を実際の描画ソースにする。
     // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
-    final storeBattles = context.watch<BattleHistorySyncStore>().getBattles();
+    //
+    // Batch 02(design-review指摘): pushは常に「現在進行中」のバトルなので、Storeへは
+    // 選択中の期間・カスタム範囲に関係なく積まれる。「今日」を含まない期間・
+    // カスタム範囲を表示中はStoreを描画ソースにせず、RESTの結果をそのまま使う
+    // (Storeを描画ソースにすると、選択中の範囲データがpushで完全に隠蔽される)。
+    final customRange = _customRange;
+    final containsToday = customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+    final storeBattles = containsToday ? context.watch<BattleHistorySyncStore>().getBattles() : const <Map<String, dynamic>>[];
     final allBattles = storeBattles.isNotEmpty
         ? storeBattles.map(BattleSummary.tryParse).whereType<BattleSummary>().toList()
         : result?.battles ?? const <BattleSummary>[];

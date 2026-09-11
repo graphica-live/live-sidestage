@@ -267,7 +267,15 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     final result = _result;
     // Batch 06: GiftHistorySyncStore が保持する履歴を実際の描画ソースにする。
     // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
-    final storeHistory = context.watch<GiftHistorySyncStore>().getHistory();
+    //
+    // Batch 02(design-review指摘): pushは常に「現在」のギフトなので、Storeへは
+    // 選択中の期間・カスタム範囲に関係なく積まれる。「今日」を含まない期間・
+    // カスタム範囲を表示中はStoreを描画ソースにせず、RESTの結果をそのまま使う
+    // (Storeを描画ソースにすると、選択中の範囲データがpushで完全に隠蔽される)。
+    final customRange = _customRange;
+    final containsToday =
+        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+    final storeHistory = containsToday ? context.watch<GiftHistorySyncStore>().getHistory() : const <Map<String, dynamic>>[];
     final events = storeHistory.isNotEmpty
         ? storeHistory.map(GiftHistoryEvent.tryParse).whereType<GiftHistoryEvent>().toList()
         : result?.events ?? const [];
