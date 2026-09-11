@@ -60,6 +60,43 @@ HIGH（全体）。Batch02（Dockerfile/package.json変更）がHIGH、Section C
 - ローカルテストDB（localhost:5433）での `migrate resolve --applied 0_init` → `migrate deploy` → `migrate status`
   （「0 pending migrations」）: PASS（Batch01実装時にworker側で実施済み）
 
+## 追記（2026-09-11 baseline再生成）
+
+本番baseline登録の事前確認（`migrate diff --exit-code`）で、Wave1整理コミット（b9801ede）が
+コード側からは削除済みだが本番へ未反映（db push運用停止により反映経路が一時的に失われていた）の
+オブジェクト（`room_monitor_leases`テーブル、`hostDisplayIds`/`scheduledStartAt`/`scheduledEndAt`カラム）
+を検出。ユーザー承認を得て、本番introspect結果から`0_init`を再生成し、独立migration
+`20260911180000_wave1_cleanup_unused_schema_elements`でこれらを削除する方針とした。
+
+### code-review（baseline再生成分）
+
+- **Codex HIGH**（`0_init`書き換えと`_prisma_migrations`チェックサム不整合懸念）: **ALREADY_HANDLED**。
+  本番はまだ`migrate resolve --applied`未実施（このセッションでは実行しない）。計画Section C-2手順3で
+  baseline登録前に本番`_prisma_migrations`が空であることを事前確認する設計が既に明記済み
+- **Codex MEDIUM**（DROP COLUMN/DROP TABLEのACCESS EXCLUSIVEロック、lock_timeout未設定）: **VALID**。
+  `20260911180000_wave1_cleanup_unused_schema_elements/migration.sql`冒頭に
+  `SET LOCAL lock_timeout = '5s';`を追加して修正
+- **DeepSeek**: OpenRouterクレジット不足（HTTP 402）で2回とも実行不能。ユーザー確認の上、
+  Gemini（Antigravity経由、`agy/gemini-3.7-flash-medium`）で代替。findings 0件（NO ISSUES）
+
+### 副次的に発覚した既存バグ（integrationテストとCHECK制約の不整合）
+
+pre-commit hookのintegrationテストで、`match-detail.integration.test.ts`/
+`match-contributions.integration.test.ts`が4件FAILした。原因はこのbaseline再生成ではなく、
+既存commit b9801ede（Wave1-B、マージ済み）で追加したCHECK制約
+`EventMatchBattleCandidate_group_requires_selected`（`combinedGroupId`非null時は
+`organizerSelected`もtrue必須）と、テストヘルパーが`selected`列（実効ゲーム集合、別列）しか
+設定せず`organizerSelected`列を設定していなかったことの不整合。旧`db push`運用ではCHECK制約が
+schema.prismaに表現できず反映されなかったため顕在化していなかった。`migrate deploy`で初めて
+実DBへ適用され今回発覚。テストヘルパー側に`organizerSelected`設定を追加して修正（VALID、実装
+コード側の不具合ではない）。
+
+### 検証（baseline再生成分）
+
+- ローカルテストDB（localhost:5434）: スキーマDROP CASCADEでリセット → `migrate deploy`（3migration全適用成功）
+  → `migrate diff --exit-code`（差分なし）→ `migrate status`（up to date）: PASS
+- `npm run typecheck`: PASS
+
 ## remaining risks
 
 - Section C（本番baseline registration・cutover）はこのセッションのスコープ外。ユーザーが別途手動実行する

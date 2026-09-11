@@ -609,6 +609,9 @@ describe("loadMatchContributions", () => {
         endedAtSource: "observed",
         confidence: "exact",
         selected: true,
+        // CHECK制約 EventMatchBattleCandidate_group_requires_selected 対応
+        // (src/event/CLAUDE.md「combinedGroupId」節)。
+        organizerSelected: true,
         combinedGroupId: groupId,
       },
     });
@@ -621,6 +624,7 @@ describe("loadMatchContributions", () => {
         endedAtSource: "observed",
         confidence: "exact",
         selected: true,
+        organizerSelected: true,
         combinedGroupId: groupId,
       },
     });
