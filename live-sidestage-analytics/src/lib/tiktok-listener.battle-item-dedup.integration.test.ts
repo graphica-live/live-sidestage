@@ -296,6 +296,29 @@ describe("バトルアイテム使用ログの保存とmsgId dedup", () => {
     }
   });
 
+  // Codex TestCase-review指摘(2026-09-11)により追加。TC-TED-003(Gift側)と同型の境界値検証。
+  it("[境界] ちょうど5分前の同一msgIdは重複、5分+1msなら新規として保存される", async () => {
+    const ctx = await setupRoom("boundary");
+    try {
+      const msgId = newMsgId();
+      const base = Date.now();
+      const message = gloveCardPayload(msgId, base) as unknown as WebcastLinkMicBattleItemCard;
+
+      const first = await saveBattleItemUse(ctx.roomId, message, new Date(base));
+      expect(first).toBe("saved");
+
+      const atBoundary = await saveBattleItemUse(ctx.roomId, message, new Date(base + 5 * 60_000));
+      expect(atBoundary).toBe("duplicate");
+      expect(await battleItemUseCount(ctx.roomId)).toBe(1);
+
+      const pastBoundary = await saveBattleItemUse(ctx.roomId, message, new Date(base + 5 * 60_000 + 1));
+      expect(pastBoundary).toBe("saved");
+      expect(await battleItemUseCount(ctx.roomId)).toBe(2);
+    } finally {
+      await teardownRoom(ctx);
+    }
+  });
+
   it("同じmsgIdでも部屋が違えば別イベントとして保存される", async () => {
     const a = await setupRoom("room-a");
     const b = await setupRoom("room-b");
