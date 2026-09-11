@@ -9,6 +9,7 @@ services:
       POSTGRES_USER: liveanalytics
       POSTGRES_PASSWORD: liveanalytics
       POSTGRES_DB: liveanalytics_test
+      POSTGRES_INITDB_ARGS: "-c max_connections=200"
     ports:
       - "5433:5432"
     volumes:
