@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/account_status_store.dart';
@@ -224,6 +225,39 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     _load();
   }
 
+  /// ギフト貢献ランキング(現在の期間指定)のシェアURLを発行してクリップボードにコピーする。
+  Future<void> _shareGiftRanking() async {
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
+    if (token == null) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final customRange = _customRange;
+
+    try {
+      final url = await withTokenRefresh(
+        call: (t) => _api.fetchGiftRankingShareUrl(
+          period: _selection.period.apiValue,
+          date: _selection.date,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
+        ),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted) return;
+      await Clipboard.setData(ClipboardData(text: url));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('コピーしました')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('コピーに失敗しました')),
+      );
+    }
+  }
+
   String get _rangeLabel {
     final range = _result?.dateRange;
     if (range != null && range.start.isNotEmpty) {
@@ -275,6 +309,16 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             onOpenCustomRangeFilter: _openCustomRangeFilter,
             onShiftCustomRange: _shiftOutOfCustomRange,
             extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: _shareGiftRanking,
+              ),
+            ),
           ),
           if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
           if (_loading && result == null)

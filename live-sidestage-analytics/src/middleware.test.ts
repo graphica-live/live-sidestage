@@ -79,6 +79,26 @@ describe("middleware の matcher", () => {
     }
   });
 
+  it("貢献ランキングのシェアページと公開APIは認証なしで通る", () => {
+    for (const path of [
+      "/c/abc123",
+      "/c/abc123/",
+      "/api/public/contribution/abc123",
+    ]) {
+      expect(isProtected(path), `${path} は公開されるべき`).toBe(false);
+    }
+  });
+
+  it("貢献ランキングのシェアページと似た文字列のパスは保護されたままになる", () => {
+    for (const path of [
+      "/calendar", // `c` に食われてはいけない(境界が無いと想定しないパスまで公開される)
+      "/checkout",
+      "/cx",
+    ]) {
+      expect(isProtected(path), `${path} は保護されるべき(前置一致の漏れ)`).toBe(true);
+    }
+  });
+
   it("既存の公開パスをイベント追加で巻き込んでいない", () => {
     for (const path of [
       "/login",

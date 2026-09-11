@@ -69,6 +69,7 @@ export default async function middleware(req: NextRequest) {
 //   e                 — イベントの公開ページ(URLを知っていれば誰でも閲覧可)
 //   b                 — バトル再生のシェアページ(shareToken を知っていれば誰でも閲覧可)。
 //                       境界が無いと /billing まで公開されるので `b(?:/|$)` から縮めないこと
+//   c                 — 貢献ランキング共有リンク(閲覧のみ)。今後 `/c` 配下を他用途で使わないこと
 //   api/public        — 上記が読む公開API
 //   api/auth          — NextAuth(配信者/管理者)
 //   api/agency-auth   — NextAuth(事務所)
@@ -93,6 +94,6 @@ export default async function middleware(req: NextRequest) {
 // 変更したら src/middleware.test.ts も更新すること(matcher を直接評価している)。
 export const config = {
   matcher: [
-    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|overlays/login(?:/|$)|e(?:/|$)|b(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/webhooks/google-play(?:/|$)|api/webhooks/apple(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|terms(?:/|$)|invite(?:/|$)|api/ambassador/invite(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
+    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|overlays/login(?:/|$)|e(?:/|$)|b(?:/|$)|c(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/webhooks/google-play(?:/|$)|api/webhooks/apple(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|terms(?:/|$)|invite(?:/|$)|api/ambassador/invite(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
   ],
 };
