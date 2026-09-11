@@ -11,7 +11,12 @@ last_reviewers: Codex-terra + DeepSeek(Code Mode、Wave1-B: 5件のCHECK制約�
 Wave1-Bで追加した5件のPostgreSQL CHECK制約。Prisma 5.22には`@@check`属性が無いため
 `prisma/migrations/20260911160000_add_wave1b_check_constraints/migration.sql`に手書きSQLとして存在し、
 `schema.prisma`のどのモデル定義からも自動生成されない。本番デプロイは`prisma db push --accept-data-loss`
-のままで、このmigrationは**適用されない**(`db push`はmigrationsフォルダを読まない)。
+のままで、このmigrationは通常のデプロイフローでは**適用されない**(`db push`はmigrationsフォルダを読まない)。
+
+**2026-09-11、本番Postgresへ手動適用済み。** `npx prisma db execute --url <DATABASE_PUBLIC_URL> --file migration.sql`
+でNOT VALID方式のCHECK制約5件を追加し、違反件数0件を確認後、5件とも`VALIDATE CONSTRAINT`を実行して
+`pg_constraint.convalidated = true`を確認済み。以後の本番デプロイ(`db push`)では制約はDROPされない
+(`db push`はCHECK制約を認識しないため、schema.prisma側に対応物が無くても削除差分の対象にならない)。
 
 制約はcode-review(Codex, HIGH finding, VALID採用)を受けて`NOT VALID`方式に修正済み: 既存行を即時検証せず、
 新規INSERT/UPDATEのみ即時強制する。既存データの違反有無は`VALIDATE CONSTRAINT`実行時に確認する
@@ -27,6 +32,7 @@ Wave1-Bで追加した5件のPostgreSQL CHECK制約。Prisma 5.22には`@@check`
 | TC-CHK-004 | overlay_timer_stateはrunning=trueのときendsAt必須 | 制約`overlay_timer_state_running_requires_endsAt` | 異常系 | running=true, endsAt=NULLをINSERT | 制約違反でエラー、running=false(endsAt任意)・running=true+endsAt付きは成功 | 同上 | PASS | |
 | TC-CHK-005 | EventMatchBattleCandidate.combinedGroupIdが非nullならorganizerSelectedも true | 制約`EventMatchBattleCandidate_group_requires_selected` | 異常系 | combinedGroupId非null, organizerSelected=falseをINSERT | 制約違反でエラー、combinedGroupId=NULL・またはorganizerSelected=trueの組合せは成功 | 同上 | PASS | src/event/CLAUDE.mdの候補調整モード不変条件をDBレベルでも強制 |
 | TC-CHK-101 | NOT VALID方式でも新規行への即時強制は変わらない | migration.sql全体 | 回帰 | TC-CHK-001〜005を`NOT VALID`修正後に再実行 | 全件PASS(既存行検証スキップは新規行の強制と無関係) | 同上 | PASS | Codex finding(HIGH: db push経路では反映されない→コメントで既存明記済みALREADY_HANDLED、MEDIUM: NOT VALID段階導入→VALID採用)を反映した後の回帰確認 |
+| TC-CHK-102 | 本番Postgresへ5件とも適用され`convalidated=true`になる | 本番DB(`pg_constraint`) | 本番検証 | `prisma db execute`でmigration.sql適用→違反件数SELECT→`VALIDATE CONSTRAINT`5件実行 | 適用時エラーなし、違反件数は5制約とも0件、VALIDATE後`pg_constraint.convalidated`が5件ともtrue | Node.js($queryRawUnsafe経由、スクラッチスクリプト) | PASS | 2026-09-11実施。DEPLOY BLOCKED解除 |
 
 ## Quality Gate
 
@@ -35,5 +41,5 @@ Wave1-Bで追加した5件のPostgreSQL CHECK制約。Prisma 5.22には`@@check`
 
 ## Out of Scope
 
-- 本番DBへの実際の適用・`VALIDATE CONSTRAINT`実行・既存データの違反件数確認 — `prisma migrate deploy`運用への移行が別途必要で、Wave1の範囲外。DEPLOY BLOCKEDとして最終報告に明記
 - `combinedGroupId`関連の候補調整モード自体のロジック・UI — 本baselineはDBレベルのCHECK制約のみを対象とする
+- `prisma migrate deploy`運用への恒久移行(`db push`からの切替自体) — 今回は本番DBへ直接手動適用したのみで、デプロイフロー自体の変更は別件
