@@ -197,6 +197,12 @@ export async function fetchAssignedRooms(now: Date = new Date()): Promise<Assign
 // 直近の listener 活動が新しい順に打ち切る(review-auto Code Mode Fable finding反映)。
 const ADMIN_ROOM_LIST_LIMIT = 1000;
 
+// 「コラボ署名消費」集計の防御的上限。lastCollabSourceRoomIdは発見元roomの数だけ増えうる
+// (page内最大ADMIN_ROOM_LIST_LIMIT件それぞれが複数roomを発見しうる)ため、ADMIN_ROOM_LIST_LIMIT
+// とは別に上限を持たせ、DB負荷・応答遅延を防ぐ(review-auto Code Mode Codex finding反映)。
+const COLLAB_DISCOVERED_ROOM_LIMIT = 5000;
+const COLLAB_USAGE_QUERY_LIMIT = 20000;
+
 /**
  * /admin/workers 管理画面の一覧表示専用。fetchAssignedRooms() は watchedRoomFilter() を通すため、
  * 管理者が監視解除(monitoringSuspended:true)してAgencyWatch/monitorUntilも無い部屋は
@@ -258,11 +264,13 @@ export async function fetchAdminRoomList(
     usage24hByRoomId = new Map(grouped24h.map((g) => [g.roomId, g._count._all]));
 
     // コラボ署名消費の集計：このroom(page内のroomId)がコラボ/バトル検知の引き金となって
-    // 別roomが消費した署名数を集計する。
+    // 別roomが消費した署名数を集計する。ADMIN_ROOM_LIST_LIMITはpage内のroom数(=検索条件の件数)
+    // にしか効かず、発見先room数・その署名消費件数には別途上限が要る(review-auto Code Mode Codex finding反映)。
     const pageRoomIds = rooms.map((r) => r.id);
     const discovered = await prisma.tiktokRoom.findMany({
       where: { lastCollabSourceRoomId: { in: pageRoomIds } },
       select: { id: true, lastCollabSourceRoomId: true },
+      take: COLLAB_DISCOVERED_ROOM_LIMIT,
     });
     const sourceByDiscoveredRoomId = new Map(
       discovered.map((d) => [d.id, d.lastCollabSourceRoomId as string])
@@ -279,6 +287,7 @@ export async function fetchAdminRoomList(
             roomMonitorUntil: true,
             requestedAt: true,
           },
+          take: COLLAB_USAGE_QUERY_LIMIT,
         })
       : [];
 
