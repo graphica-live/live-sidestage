@@ -7,8 +7,10 @@ import '../../core/api_client.dart';
 import '../../core/api_retry.dart';
 import '../../core/battle_activity.dart';
 import '../../core/battle_filter_store.dart';
+import '../../core/comment_feed.dart';
 import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
+import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
 import '../../models/battle_summary.dart';
 import '../../models/battle_team_contributors.dart';
@@ -65,6 +67,23 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // Batch 05: BattleHistorySyncStore を初期化。
+    // CommentFeed の battle-history upsert stream を購読。
+    final store = context.read<BattleHistorySyncStore>();
+    final commentFeed = context.read<CommentFeed>();
+    store.initialize(
+      battleHistoryUpsertStream: commentFeed.onBattleHistoryUpsert,
+      onResyncRequired: () {
+        if (widget.active && _resumed) {
+          _load(silent: true);
+        } else {
+          _dirty = true;
+        }
+      },
+    );
+    store.addListener(_onBattleHistoryUpsert);
+
     context.read<BattleActivityNotifier>().addListener(_onBattleActivity);
     // _listenerQueryは常にnullで始まるため、GiftActivityNotifierへはここでは購読しない
     // (_openCustomRangeFilterで空⇄非空が切り替わったときにだけ購読/解除する)。
@@ -73,6 +92,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
 
   @override
   void dispose() {
+    context.read<BattleHistorySyncStore>().removeListener(_onBattleHistoryUpsert);
     context.read<BattleActivityNotifier>().removeListener(_onBattleActivity);
     // 購読していなくてもremoveListenerは安全にno-opになるため、現在の購読有無を問わず呼べる。
     context.read<GiftActivityNotifier>().removeListener(_onListenerFilterGiftActivity);
@@ -119,6 +139,36 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     }
   }
 
+  /// BattleHistorySyncStore から upsert イベント受信時のコールバック。
+  /// upsert は既に REST 取得済みなら無視、resync 要求のみ処理。
+  void _onBattleHistoryUpsert() {
+    final store = context.read<BattleHistorySyncStore>();
+    final customRange = _customRange;
+
+    // resync 要求: 画面に応じて即座に取得 or 遅延。
+    // (Batch 05: push受信で即座に反映ではなく、mismatch時のみREST再取得)
+    if (store.needsResync) {
+      final startedDateKey = context.read<BattleActivityNotifier>().lastStartedDateKey;
+      final containsStartedDate = customRange != null
+          ? customRangeContainsNow(customRange)
+          : startedDateKey != null && _selection.containsJstToday(today: startedDateKey);
+
+      switch (battleAutoReloadAction(
+        active: widget.active,
+        resumed: _resumed,
+        containsStartedDate: containsStartedDate,
+      )) {
+        case BattleAutoReloadAction.ignore:
+          break;
+        case BattleAutoReloadAction.defer:
+          _dirty = true;
+        case BattleAutoReloadAction.reload:
+          _load(silent: true);
+      }
+    }
+  }
+
+
   /// ギフト到着起点。リスナー名フィルタが有効で、かつ直前の結果に進行中バトルが
   /// 含まれる場合のみ意味を持つ(それ以外はギフトが届いても一覧の中身は変わりようがない)。
   void _onListenerFilterGiftActivity() {
@@ -146,6 +196,8 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     if (!battleShouldFlush && !giftShouldFlush) return;
     _dirty = false;
     _giftDirty = false;
+
+    // Batch 05: resync 要求を反映。REST 再取得で最新状態を取得。
     _load(silent: true);
   }
 
@@ -184,7 +236,22 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
       setState(() {
         _result = result;
         _loading = false;
+        _dirty = false;
       });
+
+      // Batch 05: REST取得成功時、BattleHistorySyncStore へversion をリセット。
+      // 今後の push は新しい version 列から開始される。
+      if (mounted) {
+        final store = context.read<BattleHistorySyncStore>();
+        // REST result から Store の acknowledgeResync() へ Map として変換。
+        final battles = result.battles
+            .map((b) => {
+                  'battleId': b.battleId,
+                  'status': _battleStatusToString(b.status),
+                })
+            .toList();
+        store.acknowledgeResync(battles: battles);
+      }
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
@@ -195,6 +262,20 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
         _error = e.message;
         _loading = false;
       });
+    }
+  }
+
+  // Helper method to convert BattleStatus to string.
+  String _battleStatusToString(BattleStatus status) {
+    switch (status) {
+      case BattleStatus.live:
+        return 'live';
+      case BattleStatus.finished:
+        return 'finished';
+      case BattleStatus.cutShort:
+        return 'cut_short';
+      case BattleStatus.unknown:
+        return 'unknown';
     }
   }
 

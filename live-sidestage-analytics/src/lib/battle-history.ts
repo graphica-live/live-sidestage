@@ -1147,6 +1147,40 @@ export async function queryBattles(
   return { battles, hasMore };
 }
 
+/**
+ * 単一battleId向けのサマリー構築。**push専用の入口**
+ * (realtime-sync/dispatch.tsのapplyBattleHistorySyncTriggerから呼ぶ)。
+ *
+ * queryBattlesと同じ`buildBattleListItems`をそのまま1件だけに絞って再利用する
+ * (確定済み/未確定どちらの状態でも同じ変換ロジックを通る)。該当行が無ければnull。
+ */
+export async function buildBattleSummaryById(
+  roomId: string,
+  battleId: string,
+  now: Date = new Date()
+): Promise<BattleListItem | null> {
+  const [selfRoom, ownBattle] = await Promise.all([
+    prisma.tiktokRoom.findUnique({
+      where: { id: roomId },
+      select: { hostTiktokUid: true, tiktokHandle: true },
+    }),
+    prisma.tiktokBattle.findUnique({
+      where: { roomId_battleId: { roomId, battleId } },
+      select: BATTLE_SELECT,
+    }),
+  ]);
+  if (!ownBattle) return null;
+
+  const selfHostTiktokUid = selfRoom?.hostTiktokUid ?? null;
+  const selfTiktokHandle = selfRoom?.tiktokHandle ?? null;
+
+  // viewerStreamerIdはbuildBattleListItems内では未使用(queryGifts経由の閲覧者非依存集計と同じ理由、
+  // gift-analytics.tsのqueryGiftsコメント参照)。pushはviewer(閲覧端末)を持たないためroomIdを
+  // プレースホルダとして渡す。
+  const battles = await buildBattleListItems([ownBattle], roomId, roomId, selfHostTiktokUid, selfTiktokHandle, now);
+  return battles[0] ?? null;
+}
+
 export type BattleContributor = GiftAnalyticsUser;
 
 export type BattleContributorGiftEvent = {

@@ -3,11 +3,18 @@ import {
   emitChatComment,
   emitChatFollow,
   emitChatGift,
+  emitChatRankingSnapshot,
+  emitChatGiftHistoryAppend,
+  emitChatBattleHistoryUpsert,
   __resetChatFeedStateForTest,
   type ChatCommentPayload,
   type ChatGiftInput,
   type ChatGiftPayload,
 } from "./chat-feed";
+import { __resetVersionStoreForTest } from "./realtime-sync/version-store";
+import type { RankingSnapshot } from "./chat-ranking";
+import type { GiftHistoryEvent } from "./gift-history";
+import type { BattleListItem } from "./battle-history";
 
 interface Emitted {
   room: string;
@@ -76,6 +83,7 @@ function giftPayloads(): ChatGiftPayload[] {
 beforeEach(() => {
   emitted = [];
   __resetChatFeedStateForTest();
+  __resetVersionStoreForTest();
   installIo();
 });
 
@@ -371,5 +379,107 @@ describe("emitChatFollow", () => {
     expect(emitted[0].event).toBe("chat:follow");
     expect(emitted[0].room).toBe("chat:streamer_1");
     expect((emitted[0].payload as { schemaVersion: number }).schemaVersion).toBe(1);
+  });
+});
+
+function makeRankingSnapshot(): RankingSnapshot {
+  return {
+    period: "today",
+    dateRange: { start: "2026-09-11", end: "2026-09-11" },
+    entities: [],
+    order: [],
+    total: { giftCount: 0, totalDiamonds: 0 },
+  };
+}
+
+function makeGiftHistoryEvent(overrides: Partial<GiftHistoryEvent> = {}): GiftHistoryEvent {
+  return {
+    id: "gift_1",
+    tiktokUid: "7100000000000000001",
+    tiktokHandle: "user_x",
+    nickname: "ユーザーX",
+    profileImageUrl: null,
+    giftId: 5655,
+    giftName: "rose",
+    giftPictureUrl: null,
+    repeatCount: 1,
+    totalDiamonds: 1,
+    receivedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeBattleListItem(overrides: Partial<BattleListItem> = {}): BattleListItem {
+  return {
+    battleId: "battle_1",
+    startedAt: new Date().toISOString(),
+    status: "finished",
+    opponent: null,
+    selfTeam: null,
+    opponentTeam: null,
+    teams: null,
+    selfScore: null,
+    opponentScore: null,
+    selfTotalDiamonds: 0,
+    replay: { available: false, reason: "not_finalized" },
+    ...overrides,
+  };
+}
+
+describe("realtime-sync push(ranking/gift-history/battle-history)", () => {
+  it("emitChatRankingSnapshotはSyncEnvelope(kind: snapshot)をchat:ranking:snapshotとして配信する", async () => {
+    const ok = await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot());
+    expect(ok).toBe(true);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].event).toBe("chat:ranking:snapshot");
+    expect(emitted[0].room).toBe("chat:streamer_1");
+    const envelope = emitted[0].payload as { kind: string; version: number; streamerId: string };
+    expect(envelope.kind).toBe("snapshot");
+    expect(envelope.version).toBe(1);
+    expect(envelope.streamerId).toBe("streamer_1");
+  });
+
+  it("emitChatRankingSnapshotは呼ぶたびにversionを単調増加させる(streamerId単位)", async () => {
+    await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot());
+    await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot());
+    const versions = emitted.map((e) => (e.payload as { version: number }).version);
+    expect(versions).toEqual([1, 2]);
+  });
+
+  it("emitChatGiftHistoryAppendはSyncEnvelope(kind: append)をchat:gift-history:appendとして配信する", async () => {
+    const ok = await emitChatGiftHistoryAppend("streamer_1", makeGiftHistoryEvent());
+    expect(ok).toBe(true);
+    expect(emitted[0].event).toBe("chat:gift-history:append");
+    const envelope = emitted[0].payload as { kind: string; payload: GiftHistoryEvent };
+    expect(envelope.kind).toBe("append");
+    expect(envelope.payload.id).toBe("gift_1");
+  });
+
+  it("emitChatBattleHistoryUpsertはSyncEnvelope(kind: upsert)をchat:battle-history:upsertとして配信する", async () => {
+    const ok = await emitChatBattleHistoryUpsert("streamer_1", makeBattleListItem());
+    expect(ok).toBe(true);
+    expect(emitted[0].event).toBe("chat:battle-history:upsert");
+    const envelope = emitted[0].payload as { kind: string; payload: BattleListItem };
+    expect(envelope.kind).toBe("upsert");
+    expect(envelope.payload.battleId).toBe("battle_1");
+  });
+
+  it("io未初期化時はいずれもfalseを返し、何も配信しない", async () => {
+    removeIo();
+    expect(await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot())).toBe(false);
+    expect(await emitChatGiftHistoryAppend("streamer_1", makeGiftHistoryEvent())).toBe(false);
+    expect(await emitChatBattleHistoryUpsert("streamer_1", makeBattleListItem())).toBe(false);
+    expect(emitted).toHaveLength(0);
+  });
+
+  it("ranking/gift-history/battle-historyのversionは互いに独立したnamespaceを持つ", async () => {
+    await emitChatGiftHistoryAppend("streamer_1", makeGiftHistoryEvent());
+    await emitChatBattleHistoryUpsert("streamer_1", makeBattleListItem());
+    const rankingEnvelope = emitted.find((e) => e.event === "chat:ranking:snapshot");
+    expect(rankingEnvelope).toBeUndefined();
+    await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot());
+    const versions = emitted.map((e) => (e.payload as { version: number }).version);
+    // gift-history=1, battle-history=1, ranking=1 (互いに影響しない独立カウンタ)
+    expect(versions).toEqual([1, 1, 1]);
   });
 });
