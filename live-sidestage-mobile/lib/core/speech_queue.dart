@@ -173,6 +173,27 @@ class SpeechQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// テスト用: `_enqueue`がキューに積んだ件数を確認するための公開アクセサ。
+  @visibleForTesting
+  int get debugQueueLength => _queue.length;
+
+  /// テスト用: 実際のVOICEVOX初期化を経ずに`_enqueue`の判定ロジックだけを検証するための入口。
+  /// `_processQueue`(実際の合成・再生)は`_voicePool`が未初期化だと例外になるため走らせない。
+  @visibleForTesting
+  bool debugSkipProcessing = false;
+
+  @visibleForTesting
+  void debugEnqueue(Comment comment) => _enqueue(comment);
+
+  /// テスト用: FREEプランのクールダウン中の状態を直接作る(判定順序の回帰確認用)。
+  @visibleForTesting
+  void debugStartFreeIntervalCooldown() {
+    _isFreePlan = true;
+    _intervalCooldownWatch
+      ..reset()
+      ..start();
+  }
+
   void _enqueue(Comment comment) {
     if (!initialized || !enabled) return;
     // 読み上げる中身が無いコメントはVOICEVOXに渡さない。エモートだけの発言、
@@ -191,7 +212,7 @@ class SpeechQueueController extends ChangeNotifier {
     // FREEプランのクールダウン中は新規コメントを読み上げない(既存キューに積まず無視する)。
     if (_isFreePlan && _intervalActive) return;
     _queue.add(comment);
-    unawaited(_processQueue());
+    if (!debugSkipProcessing) unawaited(_processQueue());
   }
 
   Future<void> _processQueue() async {
