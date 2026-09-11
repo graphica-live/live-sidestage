@@ -485,4 +485,131 @@ describe("fetchAdminRoomList", () => {
     // 24時間以内の1件だけを数える
     expect(found!.collabSignatureUsage24hCount).toBe(1);
   });
+
+  it("includeSignatureUsage24h:trueで、記録時点でAgencyWatch購読中(agencyIdsが非空)の消費はコラボ署名消費に含めない", async () => {
+    const now = new Date("2026-08-22T12:00:00.000Z");
+    const sourceRoom = await makeRoom({ tag: "collabsrc7", workerId: 0 });
+    const discoveredRoom = await makeRoom({ tag: "collabdisc5", workerId: 0 });
+
+    await prisma.tiktokRoom.update({
+      where: { id: discoveredRoom.id },
+      data: { lastCollabSourceRoomId: sourceRoom.id, lastCollabSourceAt: now },
+    });
+
+    const agency = await prisma.agency.create({
+      data: { email: `itest-ws-agency-${suffix()}@local.test`, name: "itest事務所" },
+      select: { id: true },
+    });
+    agencyIds.push(agency.id);
+
+    const within = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    await prisma.eulerSignUsage.create({
+      data: {
+        roomId: discoveredRoom.id,
+        tiktokHandle: discoveredRoom.tiktokHandle,
+        trigger: "start",
+        reason: null,
+        role: "worker",
+        workerIndex: 0,
+        listenerEpoch: null,
+        credentialMode: "anonymous",
+        streamerPrincipalIds: [],
+        agencyIds: [agency.id], // AgencyWatch購読状態
+        eventIds: [],
+        roomMonitorUntil: null,
+        requestedAt: within,
+        createdAt: within,
+        outcome: "success",
+      },
+    });
+
+    const rooms = await fetchAdminRoomList(now, { includeSignatureUsage24h: true });
+    const found = rooms.find((r) => r.roomId === sourceRoom.id);
+    // AgencyWatch購読状態での消費は含めないので0
+    expect(found!.collabSignatureUsage24hCount).toBe(0);
+  });
+
+  it("includeSignatureUsage24h:trueで、roomMonitorUntilがrequestedAtと完全一致する境界は非購読扱いとして計上する", async () => {
+    const now = new Date("2026-08-22T12:00:00.000Z");
+    const sourceRoom = await makeRoom({ tag: "collabsrc8", workerId: 0 });
+    const discoveredRoom = await makeRoom({ tag: "collabdisc6", workerId: 0 });
+
+    await prisma.tiktokRoom.update({
+      where: { id: discoveredRoom.id },
+      data: { lastCollabSourceRoomId: sourceRoom.id, lastCollabSourceAt: now },
+    });
+
+    const within = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    await prisma.eulerSignUsage.create({
+      data: {
+        roomId: discoveredRoom.id,
+        tiktokHandle: discoveredRoom.tiktokHandle,
+        trigger: "start",
+        reason: null,
+        role: "worker",
+        workerIndex: 0,
+        listenerEpoch: null,
+        credentialMode: "anonymous",
+        streamerPrincipalIds: [],
+        agencyIds: [],
+        eventIds: [],
+        roomMonitorUntil: within, // requestedAtと完全一致(境界)
+        requestedAt: within,
+        createdAt: within,
+        outcome: "success",
+      },
+    });
+
+    const rooms = await fetchAdminRoomList(now, { includeSignatureUsage24h: true });
+    const found = rooms.find((r) => r.roomId === sourceRoom.id);
+    // roomMonitorUntil <= requestedAt の等号を含む仕様どおり、境界は非購読として計上する
+    expect(found!.collabSignatureUsage24hCount).toBe(1);
+  });
+
+  it("includeSignatureUsage24h:trueで、発見元roomが上書きされた後は旧発見元時点の消費も新しい発見元へ遡及して計上される(近似仕様)", async () => {
+    const now = new Date("2026-08-22T12:00:00.000Z");
+    const oldSourceRoom = await makeRoom({ tag: "collabsrc9old", workerId: 0 });
+    const newSourceRoom = await makeRoom({ tag: "collabsrc9new", workerId: 0 });
+    const discoveredRoom = await makeRoom({ tag: "collabdisc7", workerId: 0 });
+
+    // 旧発見元での消費を記録した時点ではlastCollabSourceRoomIdはoldSourceRoom
+    const beforeSwitch = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+    await prisma.tiktokRoom.update({
+      where: { id: discoveredRoom.id },
+      data: { lastCollabSourceRoomId: oldSourceRoom.id, lastCollabSourceAt: beforeSwitch },
+    });
+    await prisma.eulerSignUsage.create({
+      data: {
+        roomId: discoveredRoom.id,
+        tiktokHandle: discoveredRoom.tiktokHandle,
+        trigger: "start",
+        reason: null,
+        role: "worker",
+        workerIndex: 0,
+        listenerEpoch: null,
+        credentialMode: "anonymous",
+        streamerPrincipalIds: [],
+        agencyIds: [],
+        eventIds: [],
+        roomMonitorUntil: null,
+        requestedAt: beforeSwitch,
+        createdAt: beforeSwitch,
+        outcome: "success",
+      },
+    });
+
+    // 直後、lastCollabSourceRoomIdがnewSourceRoomへ上書きされる(既存の仕様: 毎回上書き)
+    await prisma.tiktokRoom.update({
+      where: { id: discoveredRoom.id },
+      data: { lastCollabSourceRoomId: newSourceRoom.id, lastCollabSourceAt: now },
+    });
+
+    const rooms = await fetchAdminRoomList(now, { includeSignatureUsage24h: true });
+    const foundOld = rooms.find((r) => r.roomId === oldSourceRoom.id);
+    const foundNew = rooms.find((r) => r.roomId === newSourceRoom.id);
+    // lastCollabSourceRoomIdは履歴を持たず現在値のみで集計するため、上書き前の消費も
+    // 新しい発見元へ遡及して計上される(近似。baseline.md記載のユーザー承認済み設計判断)
+    expect(foundOld!.collabSignatureUsage24hCount).toBe(0);
+    expect(foundNew!.collabSignatureUsage24hCount).toBe(1);
+  });
 });

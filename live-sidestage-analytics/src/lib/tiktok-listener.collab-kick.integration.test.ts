@@ -181,6 +181,8 @@ describe("recordCollabGroupChange: 新規コラボroomの自己割当+即キッ�
     // テスト環境は WORKER_COUNT=1 / WORKER_INDEX=0 (.env.local.test)。
     expect(partnerRoom.workerId).toBe(Number(process.env.WORKER_INDEX));
     expect(MockConnection.instances[1].connectCalls).toBe(1);
+    // recordCollabGroupChange()から実際のroomId(ownRoomId)がlastCollabSourceRoomIdへ伝播することを確認
+    expect(partnerRoom.lastCollabSourceRoomId).toBe(ownRoomId);
 
     // 同一コラボ通知の再送(TikTokは短時間に何度も送りうる)。
     ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));

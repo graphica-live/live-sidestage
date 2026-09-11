@@ -1,6 +1,6 @@
 // ローカルテストDBが必要。`npm run test:integration` 経由で実行すること。
 // ensureRoomWatchedForCollab() の3分岐(未登録→新規作成/監視中→無変更/休止中→ON書き換え)を実DBで検証する。
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { ensureRoomWatchedForCollab } from "./tiktok-room";
 
@@ -309,6 +309,38 @@ describe("ensureRoomWatchedForCollab", () => {
       const afterSecond = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: room.id } });
       expect(afterSecond.watchSource).toBe("collab"); // 不変
       expect(afterSecond.lastCollabSourceRoomId).toBe(secondSourceRoomId); // 新しい発見元へ更新
+    });
+
+    it("新規作成中にP2002競合が起きても、リトライ後の既存room分岐でlastCollabSourceRoomIdが正しく設定される", async () => {
+      const subject = makeSubject("p2002");
+      const sourceRoomId = "itest-source-room-p2002";
+
+      // findUniqueの1回目だけ「未登録」を偽装してcreate分岐へ進ませ、
+      // create実行前に別プロセスが同じhostTiktokUidでroomを作った状況(P2002)を再現する。
+      const originalFindUnique = prisma.tiktokRoom.findUnique.bind(prisma.tiktokRoom);
+      const findUniqueSpy = vi.spyOn(prisma.tiktokRoom, "findUnique");
+      let firstCall = true;
+      findUniqueSpy.mockImplementation((...args: Parameters<typeof originalFindUnique>) => {
+        if (firstCall) {
+          firstCall = false;
+          return Promise.resolve(null) as ReturnType<typeof originalFindUnique>;
+        }
+        return originalFindUnique(...args);
+      });
+
+      const racingRoom = await prisma.tiktokRoom.create({
+        data: { hostTiktokUid: subject.tiktokUid, tiktokHandle: subject.tiktokHandle },
+      });
+      roomIds.push(racingRoom.id);
+
+      const result = await ensureRoomWatchedForCollab(subject, undefined, "collab", sourceRoomId);
+      findUniqueSpy.mockRestore();
+
+      expect(result).not.toBeNull();
+      expect(result!.created).toBe(false); // P2002後のリトライで既存room分岐に入る
+      expect(result!.roomId).toBe(racingRoom.id);
+      const room = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: racingRoom.id } });
+      expect(room.lastCollabSourceRoomId).toBe(sourceRoomId);
     });
   });
 });
