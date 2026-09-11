@@ -67,4 +67,21 @@ class GiftHistoryEvent {
       receivedAt: DateTime.tryParse(value['receivedAt'] as String? ?? ''),
     );
   }
+
+  /// [GiftHistorySyncStore.acknowledgeResync]へ渡すMap形式。[tryParse]の逆変換。
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'tiktokUid': tiktokUid,
+      'tiktokHandle': tiktokHandle,
+      'nickname': nickname,
+      'profileImageUrl': profileImageUrl,
+      'giftId': giftId,
+      'giftName': giftName,
+      'giftPictureUrl': giftPictureUrl,
+      'repeatCount': repeatCount,
+      'totalDiamonds': totalDiamonds,
+      'receivedAt': receivedAt?.toIso8601String(),
+    };
+  }
 }

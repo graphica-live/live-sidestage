@@ -50,4 +50,17 @@ class GiftRankingEntry {
       lastGiftAt: DateTime.tryParse(value['lastGiftAt'] as String? ?? ''),
     );
   }
+
+  /// [RankingSyncStore.acknowledgeResync]へ渡すMap形式。[tryParse]の逆変換。
+  Map<String, dynamic> toMap() {
+    return {
+      'tiktokUid': tiktokUid,
+      'tiktokHandle': tiktokHandle,
+      'nickname': nickname,
+      'profileImageUrl': profileImageUrl,
+      'giftCount': giftCount,
+      'totalDiamonds': totalDiamonds,
+      'lastGiftAt': lastGiftAt?.toIso8601String(),
+    };
+  }
 }
