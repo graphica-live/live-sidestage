@@ -144,4 +144,34 @@ describe("queryGiftBreakdown", () => {
     const result = await queryGiftBreakdown(roomId, LISTENER_D, { dayKey: DAY }, NOW);
     expect(result.gifts[0].giftName).toBe("ドーナツ");
   });
+
+  it("ギフト種類数が上限(100)を超えたら上位100件のみ返し、合計は全件ベースのまま", async () => {
+    const LISTENER_E = makeTiktokUid("itest_breakdown_listener_e");
+    for (let i = 0; i < 101; i++) {
+      await makeGift({
+        tiktokUid: LISTENER_E,
+        giftId: 20_000 + i,
+        giftName: `Gift${i}`,
+        repeatCount: 1,
+        diamondCount: 1,
+        totalDiamonds: i + 1, // 全件ユニークな値にして、上位100件の判定を検証しやすくする
+      });
+    }
+
+    const result = await queryGiftBreakdown(roomId, LISTENER_E, { dayKey: DAY }, NOW);
+
+    expect(result.truncated).toBe(true);
+    expect(result.gifts).toHaveLength(100);
+    // 降順ソートなので、切り捨てられるのは最小値(totalDiamonds=1)の1件だけ。
+    expect(result.gifts.some((g) => g.totalDiamonds === 1)).toBe(false);
+    // 合計は絞り込み前の全101件ベース(1..101の和)のまま。
+    expect(result.total).toEqual({ repeatCount: 101, totalDiamonds: 5151 });
+  });
+
+  it("上限以下のときは truncated が false", async () => {
+    await makeGift({ giftId: 41, giftName: "Rose", totalDiamonds: 10 });
+
+    const result = await queryGiftBreakdown(roomId, LISTENER_A, { dayKey: DAY }, NOW);
+    expect(result.truncated).toBe(false);
+  });
 });

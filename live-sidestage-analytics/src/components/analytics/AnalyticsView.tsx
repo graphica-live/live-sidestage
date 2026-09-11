@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Fragment, memo, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
@@ -50,6 +50,7 @@ interface GiftBreakdownData {
   gifts: GiftBreakdownEntry[];
   total: { repeatCount: number; totalDiamonds: number };
   coverage: { detailAvailable: boolean; rawFrom: string | null; partial: boolean };
+  truncated?: boolean;
   dateRange: { start: string; end: string };
 }
 
@@ -383,6 +384,148 @@ function BreakdownMessage({ title, body }: { title: string; body?: string }) {
   );
 }
 
+// ranking行1本ぶん。sortedFiltered.mapの中でインライン定義していると、内訳の開閉(setOpenTiktokUid /
+// setBreakdowns)のたびにAnalyticsView全体が再レンダーされ、視聴者数が多い配信者ではdiffコストが
+// 行数に比例して重くなる(ギフト内訳の件数とは無関係)。memoで切り出し、実際に変化した行だけ
+// (以前開いていた行と新しく開いた行)を再レンダー対象にする。
+const RankingRow = memo(function RankingRow({
+  user,
+  idx,
+  open,
+  breakdownState,
+  toggleBreakdown,
+  fetchBreakdown,
+}: {
+  user: GiftUser & { rank: number };
+  idx: number;
+  open: boolean;
+  breakdownState: BreakdownState | undefined;
+  toggleBreakdown: (tiktokUid: string) => void;
+  fetchBreakdown: (tiktokUid: string, opts?: { silent?: boolean }) => Promise<void>;
+}) {
+  const panelId = `gift-breakdown-${idx}`;
+  const name = displayNameOf(user);
+  // TikTokUser 未観測ならハンドルが無く、プロフィールURLを作れない。
+  const profileUrl = user.tiktokHandle ? tiktokProfileUrl(user.tiktokHandle) : null;
+
+  return (
+    <Fragment>
+      <tr
+        // 行全体をポインタでの展開トリガにする。行内のリンク・ボタン
+        // (プロフィールリンク、チェブロン)を押したときは展開しない。
+        // 個々の子要素の stopPropagation に頼ると、後から要素を足したときに
+        // 黙って展開が誤発火するため、ここで一括して弾く。
+        // キーボード操作はチェブロンの <button> が担う(行に role/tabIndex を
+        // 足すとネストしたインタラクティブ要素になり、かえってa11yが壊れる)。
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("a,button")) return;
+          toggleBreakdown(user.tiktokUid);
+        }}
+        className={`border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer ${
+          open ? "bg-row-hover" : idx === 0 ? "bg-yellow-500/5" : ""
+        }`}
+      >
+        <td className="py-[9px] px-3 text-right text-muted font-mono text-xs">
+          {user.rank}
+        </td>
+        <td className="py-[9px] px-3">
+          <div className="flex items-center gap-2 min-w-0">
+            {profileUrl ? (
+              <a
+                href={profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="TikTokプロフィールを開く"
+                className="shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Avatar src={user.profileImageUrl} alt={name} />
+              </a>
+            ) : (
+              <span className="shrink-0">
+                <Avatar src={user.profileImageUrl} alt={name} />
+              </span>
+            )}
+            <div className="min-w-0">
+              {profileUrl ? (
+                <a
+                  href={profileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="TikTokプロフィールを開く"
+                  className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {name}
+                </a>
+              ) : (
+                <span className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none block">
+                  {name}
+                </span>
+              )}
+              {user.tiktokHandle && profileUrl && (
+                <div className="flex items-center gap-1 text-xs text-muted">
+                  <span className="truncate max-w-[100px]">
+                    @{user.tiktokHandle}
+                  </span>
+                  <a
+                    href={profileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted hover:text-brand transition-colors shrink-0"
+                    title="TikTokプロフィールを開く"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLinkIcon />
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </td>
+        <td className="py-[9px] px-3 text-right font-mono font-bold text-strong">
+          {user.totalDiamonds.toLocaleString()}
+        </td>
+        <td className="py-[9px] px-3 text-right text-muted hidden sm:table-cell">
+          {user.giftCount.toLocaleString()}
+        </td>
+        <td className="py-[9px] px-3 text-right text-muted text-xs hidden md:table-cell">
+          {formatRelativeTime(user.lastGiftAt)}
+        </td>
+        <td className="py-[9px] px-0 text-center">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={panelId}
+            aria-label={`${name} のギフト内訳を${open ? "閉じる" : "開く"}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleBreakdown(user.tiktokUid);
+            }}
+            className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-lg motion-safe:transition-transform duration-150 ${
+              open ? "text-brand rotate-180" : "text-muted"
+            }`}
+          >
+            <ChevronDownIcon />
+          </button>
+        </td>
+      </tr>
+      {open && (
+        <tr className="border-b border-row-border">
+          <td id={panelId} colSpan={6} className="p-0 bg-panel">
+            <div className="breakdown-enter pt-2.5 pb-3 px-3 sm:pl-[52px]">
+              <GiftBreakdownPanel
+                state={breakdownState}
+                onRetry={() => void fetchBreakdown(user.tiktokUid)}
+              />
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+});
+
 function GiftBreakdownPanel({
   state,
   onRetry,
@@ -425,7 +568,7 @@ function GiftBreakdownPanel({
     );
   }
 
-  const { gifts, coverage } = state.data;
+  const { gifts, coverage, truncated } = state.data;
 
   if (!coverage.detailAvailable) {
     return (
@@ -446,6 +589,9 @@ function GiftBreakdownPanel({
         {coverage.partial && coverage.rawFrom && (
           <span className="ml-auto text-[.68rem] text-muted">{coverage.rawFrom} 以降のみ</span>
         )}
+        {truncated && (
+          <span className="ml-auto text-[.68rem] text-muted">上位{gifts.length}件のみ表示</span>
+        )}
       </div>
 
       {gifts.length === 0 ? (
@@ -461,6 +607,8 @@ function GiftBreakdownPanel({
                 <img
                   src={g.giftPictureUrl}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="w-6 h-6 shrink-0 object-contain rounded-md"
                   style={{ backgroundColor: GIFT_TILE_BG }}
                 />
@@ -628,6 +776,8 @@ export function AnalyticsView({
     prevDataRef.current = data;
     if (!hadPrevious) return; // 初回ロードには捨てるキャッシュが無い
     const open = openTiktokUidRef.current;
+    // 閉じていて(open無し)、かつキャッシュも既に空なら、空→空の付け替えでも再レンダーを起こさない。
+    if (!open && Object.keys(breakdownsRef.current).length === 0) return;
     setBreakdowns((prev) => (open && prev[open] ? { [open]: prev[open] } : {}));
     if (open) void fetchBreakdown(open, { silent: true });
   }, [data, fetchBreakdown]);
@@ -1263,131 +1413,17 @@ export function AnalyticsView({
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedFiltered.map((user, idx) => {
-                    const open = openTiktokUid === user.tiktokUid;
-                    const panelId = `gift-breakdown-${idx}`;
-                    const name = displayNameOf(user);
-                    // TikTokUser 未観測ならハンドルが無く、プロフィールURLを作れない。
-                    const profileUrl = user.tiktokHandle
-                      ? tiktokProfileUrl(user.tiktokHandle)
-                      : null;
-                    return (
-                    <Fragment key={user.tiktokUid}>
-                    <tr
-                      // 行全体をポインタでの展開トリガにする。行内のリンク・ボタン
-                      // (プロフィールリンク、チェブロン)を押したときは展開しない。
-                      // 個々の子要素の stopPropagation に頼ると、後から要素を足したときに
-                      // 黙って展開が誤発火するため、ここで一括して弾く。
-                      // キーボード操作はチェブロンの <button> が担う(行に role/tabIndex を
-                      // 足すとネストしたインタラクティブ要素になり、かえってa11yが壊れる)。
-                      onClick={(e) => {
-                        if ((e.target as HTMLElement).closest("a,button")) return;
-                        toggleBreakdown(user.tiktokUid);
-                      }}
-                      className={`border-b border-row-border hover:bg-row-hover transition-colors cursor-pointer ${
-                        open ? "bg-row-hover" : idx === 0 ? "bg-yellow-500/5" : ""
-                      }`}
-                    >
-                      <td className="py-[9px] px-3 text-right text-muted font-mono text-xs">
-                        {user.rank}
-                      </td>
-                      <td className="py-[9px] px-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {profileUrl ? (
-                            <a
-                              href={profileUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="TikTokプロフィールを開く"
-                              className="shrink-0"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Avatar src={user.profileImageUrl} alt={name} />
-                            </a>
-                          ) : (
-                            <span className="shrink-0">
-                              <Avatar src={user.profileImageUrl} alt={name} />
-                            </span>
-                          )}
-                          <div className="min-w-0">
-                            {profileUrl ? (
-                              <a
-                                href={profileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="TikTokプロフィールを開く"
-                                className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none hover:text-brand transition-colors block"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {name}
-                              </a>
-                            ) : (
-                              <span className="font-semibold text-strong truncate max-w-[140px] sm:max-w-none block">
-                                {name}
-                              </span>
-                            )}
-                            {user.tiktokHandle && profileUrl && (
-                              <div className="flex items-center gap-1 text-xs text-muted">
-                                <span className="truncate max-w-[100px]">
-                                  @{user.tiktokHandle}
-                                </span>
-                                <a
-                                  href={profileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-muted hover:text-brand transition-colors shrink-0"
-                                  title="TikTokプロフィールを開く"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <ExternalLinkIcon />
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-[9px] px-3 text-right font-mono font-bold text-strong">
-                        {user.totalDiamonds.toLocaleString()}
-                      </td>
-                      <td className="py-[9px] px-3 text-right text-muted hidden sm:table-cell">
-                        {user.giftCount.toLocaleString()}
-                      </td>
-                      <td className="py-[9px] px-3 text-right text-muted text-xs hidden md:table-cell">
-                        {formatRelativeTime(user.lastGiftAt)}
-                      </td>
-                      <td className="py-[9px] px-0 text-center">
-                        <button
-                          type="button"
-                          aria-expanded={open}
-                          aria-controls={panelId}
-                          aria-label={`${name} のギフト内訳を${open ? "閉じる" : "開く"}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleBreakdown(user.tiktokUid);
-                          }}
-                          className={`w-[26px] h-[26px] inline-flex items-center justify-center rounded-lg motion-safe:transition-transform duration-150 ${
-                            open ? "text-brand rotate-180" : "text-muted"
-                          }`}
-                        >
-                          <ChevronDownIcon />
-                        </button>
-                      </td>
-                    </tr>
-                    {open && (
-                      <tr className="border-b border-row-border">
-                        <td id={panelId} colSpan={6} className="p-0 bg-panel">
-                          <div className="breakdown-enter pt-2.5 pb-3 px-3 sm:pl-[52px]">
-                            <GiftBreakdownPanel
-                              state={breakdowns[user.tiktokUid]}
-                              onRetry={() => void fetchBreakdown(user.tiktokUid)}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </Fragment>
-                    );
-                  })}
+                  {sortedFiltered.map((user, idx) => (
+                    <RankingRow
+                      key={user.tiktokUid}
+                      user={user}
+                      idx={idx}
+                      open={openTiktokUid === user.tiktokUid}
+                      breakdownState={breakdowns[user.tiktokUid]}
+                      toggleBreakdown={toggleBreakdown}
+                      fetchBreakdown={fetchBreakdown}
+                    />
+                  ))}
                 </tbody>
               </table>
             </div>
