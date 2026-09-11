@@ -15,6 +15,11 @@ import {
   type ChatListenerInput,
 } from "@/lib/chat-feed";
 import { normalizeTikTokUserId } from "@/lib/tiktok-user";
+import {
+  applyRankingSyncTrigger,
+  applyGiftHistorySyncTrigger,
+  applyBattleHistorySyncTrigger,
+} from "@/lib/realtime-sync/dispatch";
 
 // Worker(worker.js)からWeb(server.js/global.__io)へgift/chatイベントを転送するための内部API。
 // Railway private networking経由でのみ叩かれる想定 — INTERNAL_API_SECRET必須。
@@ -203,6 +208,10 @@ export async function POST(req: NextRequest) {
     listenerEvent?: unknown;
     likeEvent?: unknown;
     battleEvent?: unknown;
+    syncTrigger?: "ranking" | "gift-history" | "battle-history";
+    roomId?: string;
+    giftId?: string;
+    battleId?: string;
   } | null;
 
   if (!body) {
@@ -325,6 +334,47 @@ export async function POST(req: NextRequest) {
         return true;
       });
       if (!delivered) return ioUnavailable();
+    }
+  }
+
+  // realtime-sync(貢献ランキング/ギフト履歴/バトル履歴)のトリガー転送。
+  // worker側は「何が起きたか」の軽量トリガーだけを送り、DB読み取り・payload組み立ては
+  // 常にここ(web側)で行う(既存emitOverlayの{streamerId, emitOverlay: true}と同じ
+  // 「トリガー転送+web側で組み立て」パターン)。
+  if (body.syncTrigger !== undefined) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    if (!streamerIds) {
+      return NextResponse.json({ error: "Invalid syncTrigger" }, { status: 400 });
+    }
+
+    if (body.syncTrigger === "ranking") {
+      if (!isNonEmptyString(body.roomId)) {
+        return NextResponse.json({ error: "Invalid syncTrigger" }, { status: 400 });
+      }
+      // drop許容(scheduleRankingSnapshotEmit自体がthrottleで間引く設計)。
+      applyRankingSyncTrigger(body.roomId, streamerIds);
+    } else if (body.syncTrigger === "gift-history") {
+      if (!isNonEmptyString(body.giftId)) {
+        return NextResponse.json({ error: "Invalid syncTrigger" }, { status: 400 });
+      }
+      // dropしない経路。呼び出し元(tiktok-listener.tsの専用キュー)が有限回リトライするため、
+      // ここでのfalse(io未初期化)は503として返し、リトライを促す。
+      const delivered = await applyGiftHistorySyncTrigger(streamerIds, body.giftId).catch((err) => {
+        console.error("[internal/gift-event] gift-history sync trigger error:", err);
+        return true;
+      });
+      if (!delivered) return ioUnavailable();
+    } else if (body.syncTrigger === "battle-history") {
+      if (!isNonEmptyString(body.roomId) || !isNonEmptyString(body.battleId)) {
+        return NextResponse.json({ error: "Invalid syncTrigger" }, { status: 400 });
+      }
+      const delivered = await applyBattleHistorySyncTrigger(streamerIds, body.roomId, body.battleId).catch((err) => {
+        console.error("[internal/gift-event] battle-history sync trigger error:", err);
+        return true;
+      });
+      if (!delivered) return ioUnavailable();
+    } else {
+      return NextResponse.json({ error: "Invalid syncTrigger" }, { status: 400 });
     }
   }
 
