@@ -14,6 +14,7 @@ import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
 import { resolveAvatarUrls } from "@/lib/avatar-storage";
 import { generateShareToken } from "@/lib/share-token";
 import { MAX_RANGE_DAYS } from "@/lib/range-limits";
+import { GIFT_RETENTION_DAYS } from "@/lib/gift-retention-window";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -224,7 +225,19 @@ export async function queryContributionRankingByShareToken(
 
   if (row.period === "custom") {
     if (row.startDatetime === null || row.endDatetime === null) return { ok: false };
-    where = { receivedAt: { gte: row.startDatetime, lte: row.endDatetime } };
+    // 保持期間(90日)より古い部分は queryGifts が日次ロールアップ(dayKey粒度)へ切り替えるため、
+    // 時刻指定のままだと日境界外のデータまで拾ってしまう。古い側の境界だけUTC日境界へ丸めて渡す
+    // (dateRangeの表示上の期間は元の指定値のまま。実集計だけ日単位に広がることを許容する)。
+    const retentionCutoffMs = Date.now() - GIFT_RETENTION_DAYS * MS_PER_DAY;
+    const queryStart =
+      row.startDatetime.getTime() < retentionCutoffMs
+        ? new Date(`${row.startDatetime.toISOString().slice(0, 10)}T00:00:00.000Z`)
+        : row.startDatetime;
+    const queryEnd =
+      row.endDatetime.getTime() < retentionCutoffMs
+        ? new Date(`${row.endDatetime.toISOString().slice(0, 10)}T23:59:59.999Z`)
+        : row.endDatetime;
+    where = { receivedAt: { gte: queryStart, lte: queryEnd } };
     dateRange = { start: row.startDatetime.toISOString(), end: row.endDatetime.toISOString() };
   } else {
     if (row.date === null) return { ok: false };

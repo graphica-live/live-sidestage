@@ -601,8 +601,8 @@ class LiveAnalyticsApi {
   }) async {
     final body = <String, String>{'period': period};
     if (date != null) body['date'] = date;
-    if (startDatetime != null) body['startDatetime'] = startDatetime.toIso8601String();
-    if (endDatetime != null) body['endDatetime'] = endDatetime.toIso8601String();
+    if (startDatetime != null) body['startDatetime'] = startDatetime.toUtc().toIso8601String();
+    if (endDatetime != null) body['endDatetime'] = endDatetime.toUtc().toIso8601String();
     final data = await _send(
       'POST',
       '/api/mobile/analytics/gifts/share',

@@ -267,6 +267,139 @@ describe("queryContributionRankingByShareToken", () => {
     );
   });
 
+  it("custom rangeが90日保持期間より古い場合はreceivedAt境界をUTC日境界へ丸めてqueryGiftsへ渡す(dateRange表示は元の値を保つ)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"));
+    try {
+      findUniqueTokenMock.mockResolvedValue({
+        roomId: "room1",
+        period: "custom",
+        date: null,
+        // 2026-09-11から見て90日超前(2026-06-01T15:00Z 〜 2026-06-02T09:00Z)
+        startDatetime: new Date("2026-06-01T15:00:00.000Z"),
+        endDatetime: new Date("2026-06-02T09:00:00.000Z"),
+      });
+      queryGiftsMock.mockResolvedValue({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+      findUniqueRoomMock.mockResolvedValue(null);
+
+      const result = await queryContributionRankingByShareToken("t");
+
+      expect(queryGiftsMock).toHaveBeenCalledWith(
+        "room1",
+        "room1",
+        {
+          receivedAt: {
+            gte: new Date("2026-06-01T00:00:00.000Z"),
+            lte: new Date("2026-06-02T23:59:59.999Z"),
+          },
+        }
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.payload.dateRange).toEqual({
+          start: "2026-06-01T15:00:00.000Z",
+          end: "2026-06-02T09:00:00.000Z",
+        });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("custom rangeでstartのみ90日より古い場合はqueryStartだけ日境界に丸める(endは保持期間内なのでそのまま)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"));
+    try {
+      findUniqueTokenMock.mockResolvedValue({
+        roomId: "room1",
+        period: "custom",
+        date: null,
+        startDatetime: new Date("2026-06-01T15:00:00.000Z"),
+        endDatetime: new Date("2026-09-10T12:00:00.000Z"),
+      });
+      queryGiftsMock.mockResolvedValue({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+      findUniqueRoomMock.mockResolvedValue(null);
+
+      await queryContributionRankingByShareToken("t");
+
+      expect(queryGiftsMock).toHaveBeenCalledWith(
+        "room1",
+        "room1",
+        {
+          receivedAt: {
+            gte: new Date("2026-06-01T00:00:00.000Z"),
+            lte: new Date("2026-09-10T12:00:00.000Z"),
+          },
+        }
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("custom rangeでendのみ90日より古い場合はqueryEndだけ日境界に丸める(startは保持期間内なのでそのまま)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"));
+    try {
+      findUniqueTokenMock.mockResolvedValue({
+        roomId: "room1",
+        period: "custom",
+        date: null,
+        startDatetime: new Date("2026-09-10T12:00:00.000Z"),
+        endDatetime: new Date("2026-06-02T09:00:00.000Z"),
+      });
+      queryGiftsMock.mockResolvedValue({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+      findUniqueRoomMock.mockResolvedValue(null);
+
+      await queryContributionRankingByShareToken("t");
+
+      expect(queryGiftsMock).toHaveBeenCalledWith(
+        "room1",
+        "room1",
+        {
+          receivedAt: {
+            gte: new Date("2026-09-10T12:00:00.000Z"),
+            lte: new Date("2026-06-02T23:59:59.999Z"),
+          },
+        }
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("custom rangeでstart/endが保持期間境界と同じかそれより新しい場合は丸めない(境界値は`<`なので丸め対象外)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"));
+    try {
+      // 90日前ちょうど = 2026-06-13T12:00:00.000Z (retentionCutoffMs と同値)
+      findUniqueTokenMock.mockResolvedValue({
+        roomId: "room1",
+        period: "custom",
+        date: null,
+        startDatetime: new Date("2026-06-13T12:00:00.000Z"),
+        endDatetime: new Date("2026-06-14T12:00:00.000Z"),
+      });
+      queryGiftsMock.mockResolvedValue({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+      findUniqueRoomMock.mockResolvedValue(null);
+
+      await queryContributionRankingByShareToken("t");
+
+      expect(queryGiftsMock).toHaveBeenCalledWith(
+        "room1",
+        "room1",
+        {
+          receivedAt: {
+            gte: new Date("2026-06-13T12:00:00.000Z"),
+            lte: new Date("2026-06-14T12:00:00.000Z"),
+          },
+        }
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("period+dateはgetDateRange経由のdayKeyでqueryGiftsへ渡す", async () => {
     findUniqueTokenMock.mockResolvedValue({
       roomId: "room1",

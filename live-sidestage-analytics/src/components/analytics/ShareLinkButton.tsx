@@ -33,7 +33,7 @@ export function ShareLinkButton({
       const body = buildRequestBody?.();
       const res = await fetch(postUrl, {
         method: "POST",
-        ...(body !== undefined
+        ...(body !== undefined && body !== null
           ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
           : {}),
       });
