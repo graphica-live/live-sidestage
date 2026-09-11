@@ -31,11 +31,14 @@ vi.mock("@/lib/tiktok-existence", () => ({
   formatExistenceGateError: () => ({ error: "not used", status: 400 }),
 }));
 
+let actualResolveRoomForStreamer: (streamerId: string) => Promise<string>;
+
 vi.mock("@/lib/tiktok-room", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/tiktok-room")>();
+  actualResolveRoomForStreamer = actual.resolveRoomForStreamer;
   return {
     ...actual,
-    resolveRoomForStreamer: async () => "dummy-room-id",
+    resolveRoomForStreamer: vi.fn(async () => "dummy-room-id"),
   };
 });
 
@@ -193,8 +196,8 @@ describe("POST /api/verify/generate — TikTok ID変更7日ロック", () => {
 
       const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
       expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}new`);
-      // UID mismatchチェックが無効化されているだけで、tiktokUid自体は更新しない不変条件は維持。
-      expect(reloaded.tiktokUid).toBe(makeTiktokUid(`${TID_PREFIX}other`));
+      // UID mismatchチェックが無効化されているため同一ハンドル変更は200。tiktokUidは実在確認で得た新しい値へ追従。
+      expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
     });
 
     it("チェック有効時(\"0\")でも、ADMIN_EMAILのセッションはtiktokUid不一致でも200で許可される", async () => {
@@ -252,6 +255,8 @@ describe("POST /api/verify/generate — TikTok ID変更7日ロック", () => {
     const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
     // 冪等リトライではtiktokHandleChangedAtは更新されない
     expect(reloaded.tiktokHandleChangedAt?.getTime()).toBe(changedAt.getTime());
+    // 同一アカウントなのでtiktokUidは実質無変化(モック値 = DB既存値)
+    expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
   });
 
   it("新規登録は7日ロックの対象外で、即座にtiktokHandleChangedAtがセットされる", async () => {
@@ -289,6 +294,84 @@ describe("POST /api/verify/generate — TikTok ID変更7日ロック", () => {
     // ロック免除であっても他の副作用(tiktokHandleChangedAt更新・verifiedリセット)は通常経路と同じ。
     expect(reloaded.tiktokHandleChangedAt!.getTime()).toBeGreaterThan(changedAt.getTime());
     expect(reloaded.verified).toBe(false);
+  });
+
+  it("TC-LOCK-106: ハンドル変更後、Streamer.roomIdは新tiktokUidに対応する既存roomへ正しく付け替わる", async () => {
+    // room再解決の実証: resolveRoomForStreamerを実実装へ委譲し、
+    // ハンドル変更時にroom A(旧tiktokUid)からroom B(新tiktokUid)へ付け替わることを検証する。
+    const { user, streamer } = await createUserWithStreamer({
+      tiktokHandle: `${TID_PREFIX}oldhandle`,
+      tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      tiktokUid: makeTiktokUid(`${TID_PREFIX}olduid`),
+    });
+
+    // 旧tiktokUid対応のroom A(既に存在)
+    const roomA = await prisma.tiktokRoom.create({
+      data: {
+        tiktokHandle: `${TID_PREFIX}oldaccount`,
+        hostTiktokUid: makeTiktokUid(`${TID_PREFIX}olduid`),
+      },
+    });
+
+    // Streamer.roomIdをroom Aへ紐付け
+    await prisma.streamer.update({
+      where: { id: streamer.id },
+      data: { roomId: roomA.id },
+    });
+
+    // 新tiktokUid対応のroom B(ハンドル変更時に対応させる)
+    const roomB = await prisma.tiktokRoom.create({
+      data: {
+        tiktokHandle: `${TID_PREFIX}newaccount`,
+        hostTiktokUid: MOCK_TIKTOK_UID, // モックが返すtiktokUid
+      },
+    });
+
+    auth.principalId = user.id;
+
+    // resolveRoomForStreamerを実実装へ委譲するmockImplementationOnceを設定
+    // (モックのデフォルトは"dummy-room-id"を返すが、このテストだけ実装へ委譲)
+    const { resolveRoomForStreamer } = await import("@/lib/tiktok-room");
+    vi.mocked(resolveRoomForStreamer).mockImplementationOnce(
+      actualResolveRoomForStreamer
+    );
+
+    try {
+      const res = await verifyGeneratePost(req(`${TID_PREFIX}newhandle`));
+      expect(res.status).toBe(200);
+
+      const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+      // ハンドル変更後、roomIdが新tiktokUidに対応するroom Bへ付け替わることを検証
+      expect(reloaded.roomId).toBe(roomB.id);
+      expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
+    } finally {
+      // cleanup: このテストで作成したroom A・Bは明示的に削除
+      // (既存cleanup()はStreamer/Principalのみ削除しroomを扱わないため。assertion失敗時も
+      // 確実に削除しテストDBへのroom leakを防ぐ)
+      await prisma.tiktokRoom.deleteMany({ where: { id: { in: [roomA.id, roomB.id] } } });
+    }
+  });
+
+  it("TC-LOCK-107: 大文字小文字のみ変更した場合、冪等分岐を通ってtiktokUidがmocker値へ更新される", async () => {
+    // 大文字小文字のみ異なるハンドルを送信すると、normalizeTiktokId()がnormalize後に
+    // 値が変わらないと判定し冪等分岐を通る。その時もtiktokUidは実在確認モックの値へ更新される。
+    const { user, streamer } = await createUserWithStreamer({
+      tiktokHandle: `${TID_PREFIX}Sample`,
+      tiktokHandleChangedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+      // モック値と異なる別のtiktokUid(書き込まれたことを明確に検証するため)
+      tiktokUid: makeTiktokUid(`${TID_PREFIX}other`),
+    });
+    auth.principalId = user.id;
+
+    // 大文字小文字のみ異なる値を送信
+    const res = await verifyGeneratePost(req(`${TID_PREFIX}sample`)); // lowercaseに変更
+    expect(res.status).toBe(200);
+
+    const reloaded = await prisma.streamer.findUniqueOrThrow({ where: { id: streamer.id } });
+    // 大文字小文字の違いは正規化後に消えるため、tiktokHandleは正規化後の値(小文字)が保存される
+    expect(reloaded.tiktokHandle).toBe(`${TID_PREFIX}sample`);
+    // tiktokUidは事前値(makeTiktokUid other)からmocker値へ更新される
+    expect(reloaded.tiktokUid).toBe(MOCK_TIKTOK_UID);
   });
 });
 // ADMIN_EMAIL経路のCAS(楽観的排他)自体は通常経路と同一コードパスを通る

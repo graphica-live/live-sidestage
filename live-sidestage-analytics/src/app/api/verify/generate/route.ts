@@ -128,20 +128,31 @@ export async function POST(req: NextRequest) {
     }
 
     const currentNormalized = normalizeTiktokId(current.tiktokHandle);
+
+    // UID mismatchチェックは現在一時的に無効化されており(isTiktokUidMismatchCheckDisabled()参照)、
+    // lockExempt(ADMIN_EMAIL)以外の通常ユーザーも別アカウントへの付け替えが通る状態にある
+    // (別件、本修正では変更しない)。tiktokUid は resolveRoomForStreamer() がroom解決のキーに
+    // 使うため、検証済みの現在値(registerTiktokUid)へ常に追従させる。冪等リトライ(ハンドル
+    // 正規化後不変)でも実在確認はPOST入口で完了済みのため、通常変更分岐と同じくここでチェックする
+    // (このチェックを飛ばすと、無効化フラグが有効化された将来にも冪等分岐だけmismatch検知を
+    // すり抜ける経路が残ってしまう)。
+    if (!checkTiktokUidMatch({ tiktokUid: current.tiktokUid }, registerTiktokUid, { exempt: lockExempt }).ok) {
+      return { kind: "uid_mismatch" as const };
+    }
+
     if (currentNormalized === normalized) {
       // 冪等リトライ: tiktokHandleは実質変わらない。ロック判定・tiktokHandleChangedAt更新はしない。
       const updated = await tx.streamer.update({
         where: { id: current.id },
-        data: { tiktokHandle: clean, verificationCode: code, verified: false, verifiedAt: null },
+        data: {
+          tiktokUid: registerTiktokUid,
+          tiktokHandle: clean,
+          verificationCode: code,
+          verified: false,
+          verifiedAt: null,
+        },
       });
       return { kind: "ok" as const, streamer: updated };
-    }
-
-    // 同一アカウントの改名だけを許す想定だが、UID mismatchチェックは現在一時的に無効化されて
-    // おり(isTiktokUidMismatchCheckDisabled()参照)、lockExempt(ADMIN_EMAIL)以外の通常ユーザーも
-    // 別アカウントへの付け替えが通る状態にある。tiktokUid は不変なので更新もしない。
-    if (!checkTiktokUidMatch({ tiktokUid: current.tiktokUid }, registerTiktokUid, { exempt: lockExempt }).ok) {
-      return { kind: "uid_mismatch" as const };
     }
 
     if (!lockExempt) {
@@ -158,6 +169,7 @@ export async function POST(req: NextRequest) {
     const { count } = await tx.streamer.updateMany({
       where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
       data: {
+        tiktokUid: registerTiktokUid,
         tiktokHandle: clean,
         verificationCode: code,
         verified: false,
