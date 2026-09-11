@@ -592,6 +592,25 @@ class LiveAnalyticsApi {
     return data['url'] as String;
   }
 
+  /// ギフト貢献ランキング(期間集計)の公開シェアURLを遅延発行する(既発行なら同じURLを返す)。
+  Future<String> fetchGiftRankingShareUrl({
+    required String period,
+    String? date,
+    DateTime? startDatetime,
+    DateTime? endDatetime,
+  }) async {
+    final body = <String, String>{'period': period};
+    if (date != null) body['date'] = date;
+    if (startDatetime != null) body['startDatetime'] = startDatetime.toIso8601String();
+    if (endDatetime != null) body['endDatetime'] = endDatetime.toIso8601String();
+    final data = await _send(
+      'POST',
+      '/api/mobile/analytics/gifts/share',
+      body,
+    );
+    return data['url'] as String;
+  }
+
   /// TikTok Live 接続の状態。socket の `chat:listener` が落ちても収束させるための保険。
   ///
   /// 背景 Isolate から呼ぶが、認証は他の API と同じ access token（JWT）で行う。
