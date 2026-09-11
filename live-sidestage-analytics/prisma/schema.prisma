@@ -457,7 +457,6 @@ model TiktokRoom {
   battleHistories       BattleHistory[]
   contributionShareTokens ContributionShareToken[]
   watches               AgencyWatch[]
-  monitorLeases         RoomMonitorLease[]
   connectionIntervals   RoomConnectionInterval[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
@@ -488,35 +487,6 @@ model TiktokRoomAdminAuditLog {
   @@index([roomId])
   @@index([createdAt])
   @@map("tiktok_room_admin_audit_logs")
-  @@schema("public")
-}
-
-// Roomの監視理由を独立管理する(TiktokRoom.monitorUntilの単一値では
-// EVENT監視とCOLLAB監視が同じroomへ同時発行された場合に競合・誤解放しうるため新設)。
-//
-// **release操作は必ずreason+referenceIdで絞り込むこと。** roomId単独で操作すると
-// 他reasonのleaseを誤って消してしまう。
-//
-// referenceIdはEVENT用途では既存Event.id。COLLAB用途は**決定的な値**にする
-// (例: `${selfRoomId}:${counterpartTiktokUid}`)。内部採番の乱数idにしない —
-// 別Workerが同一コラボを両側から検知した場合でも、upsertが同じキーへ収束するようにするため。
-//
-// 移行期間中はTiktokRoom.monitorUntilへのデュアルライトを維持する(euler-usage.ts /
-// tiktok-low-value-cleanup.ts / worker-status.tsの既存の読み手3箇所が動き続けるように)。
-model RoomMonitorLease {
-  id          String    @id @default(cuid())
-  roomId      String
-  reason      String // "EVENT" | "COLLAB"
-  referenceId String
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime
-  releasedAt  DateTime? // null=有効
-
-  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-
-  @@unique([roomId, reason, referenceId])
-  @@index([roomId, releasedAt, expiresAt])
-  @@map("room_monitor_leases")
   @@schema("public")
 }
 
@@ -1084,7 +1054,6 @@ model TiktokBattle {
   endedAt        DateTime?
   durationSec    Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
   hostTiktokUids String[]  @default([]) // tiktokUid(TLC raw の anchorIdStr。数値文字列)
-  hostDisplayIds String[]  @default([]) // anchorInfo[].user.displayId(ハンドル相当・実データで検証済み。ただしhostTiktokUidsとインデックス対応しない)
   hostScores     Json      @default("{}") // tiktokUid -> hostScore(stringのまま)
   // tiktokUid -> {displayId, avatarUrl}。tiktok-battle.tsのHostProfiles。
   // **nickName は持たない** — 表示名の正本は TikTokUser で、hostProfiles 観測時に recordTikTokUser() が記録する。
@@ -1771,12 +1740,6 @@ model EventMatch {
   // 既存行の穴埋めは scripts/migrate-match-session.ts が db push の前に済ませる
   // (db push は「既存データのある非NULL列の追加」を実行できないため)。
   sessionId        String
-  // **旧: 主催者が指定した個別の時間枠。読まない。** 書き込みだけは当面続ける
-  // (割り当てた日程の [startAt, endAt) をそのまま入れる) — ローリング更新や
-  // ロールバックで旧コードが同時に動いても、必須列が null で落ちないようにするため。
-  // 旧世代が完全に消えた後の別リリースで、書き込みごと消す。
-  scheduledStartAt DateTime?
-  scheduledEndAt   DateTime?
   // "SCHEDULED"    まだバトルを検知していない
   // "LIVE"         検知して進行中(終了時刻がまだ確定していない暫定関連を含む)
   // "DETECTED"     検知して終了。集計で勝者を決める段階
@@ -2013,7 +1976,6 @@ model DetectedBattle {
   lastAction  Int // 最後に観測した BattleAction(4=OPEN, 5=FINISH, 6=CUT_SHORT)
 
   hostTiktokUids String[] @default([]) // anchorIdStr(数値文字列)
-  hostDisplayIds String[] @default([]) // anchorInfo[].user.displayId(ハンドル相当・未検証)
   hostScores     Json     @default("{}") // tiktokUid -> hostScore。TikTok 側の集計値、参考のみ
 
   createdAt DateTime @default(now())

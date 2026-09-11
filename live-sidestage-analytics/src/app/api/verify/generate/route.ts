@@ -3,7 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateVerificationCode } from "@/lib/tiktok-verify";
-import { normalizeTiktokId, resolveRoomForStreamer } from "@/lib/tiktok-room";
+import { normalizeTiktokId, resolveRoomForStreamerInTx } from "@/lib/tiktok-room";
+import { reviveSuspendedMonitoring } from "@/lib/mark-last-active";
+import type { Streamer } from "@prisma/client";
 import { isValidNormalizedTiktokHandle } from "@/lib/agency/params";
 import { requireExistingTiktokAccount, formatExistenceGateError } from "@/lib/tiktok-existence";
 import {
@@ -108,81 +110,101 @@ export async function POST(req: NextRequest) {
   // tiktokHandleの変更にはCAS(楽観的排他)を使う: read(現在のtiktokHandleChangedAt)→判定→
   // updateManyのwhereに読み取り時点の値を条件として含める。同時リクエストが同じ値を読んで
   // 両方ロック判定を通過しても、後勝ちのupdateManyは0件になり競合として検知できる。
-  const result = await prisma.$transaction(async (tx) => {
-    const current = await tx.streamer.findUnique({
-      where: { principalId: session.user.id },
-      select: { id: true, tiktokUid: true, tiktokHandle: true, tiktokHandleChangedAt: true },
-    });
+  // P2002(TiktokRoom.hostTiktokUidの同時新規作成競合)はtx全体を巻き込んで失敗する。
+  // upsertRoom()が単体で持っていた「再フェッチで救済」と同じ挙動を保つため、tx全体を1回だけ再試行する。
+  let result:
+    | { kind: "uid_mismatch" }
+    | { kind: "locked"; retryAfter: Date }
+    | { kind: "conflict" }
+    | { kind: "ok"; streamer: Streamer; room: { roomId: string; shouldRevive: boolean; commit: () => void } };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const current = await tx.streamer.findUnique({
+          where: { principalId: session.user.id },
+          select: { id: true, tiktokUid: true, tiktokHandle: true, tiktokHandleChangedAt: true },
+        });
 
-    if (!current) {
-      const created = await tx.streamer.create({
-        data: {
-          principalId: session.user.id,
-          tiktokUid: registerTiktokUid,
-          tiktokHandle: clean,
-          verificationCode: code,
-          tiktokHandleChangedAt: now,
-        },
+        if (!current) {
+          const created = await tx.streamer.create({
+            data: {
+              principalId: session.user.id,
+              tiktokUid: registerTiktokUid,
+              tiktokHandle: clean,
+              verificationCode: code,
+              tiktokHandleChangedAt: now,
+            },
+          });
+          const room = await resolveRoomForStreamerInTx(tx, created.id);
+          return { kind: "ok" as const, streamer: created, room };
+        }
+
+        const currentNormalized = normalizeTiktokId(current.tiktokHandle);
+
+        // UID mismatchチェックは現在一時的に無効化されており(isTiktokUidMismatchCheckDisabled()参照)、
+        // lockExempt(ADMIN_EMAIL)以外の通常ユーザーも別アカウントへの付け替えが通る状態にある
+        // (別件、本修正では変更しない)。tiktokUid は resolveRoomForStreamerInTx() がroom解決のキーに
+        // 使うため、検証済みの現在値(registerTiktokUid)へ常に追従させる。冪等リトライ(ハンドル
+        // 正規化後不変)でも実在確認はPOST入口で完了済みのため、通常変更分岐と同じくここでチェックする
+        // (このチェックを飛ばすと、無効化フラグが有効化された将来にも冪等分岐だけmismatch検知を
+        // すり抜ける経路が残ってしまう)。
+        if (!checkTiktokUidMatch({ tiktokUid: current.tiktokUid }, registerTiktokUid, { exempt: lockExempt }).ok) {
+          return { kind: "uid_mismatch" as const };
+        }
+
+        if (currentNormalized === normalized) {
+          // 冪等リトライ: tiktokHandleは実質変わらない。ロック判定・tiktokHandleChangedAt更新はしない。
+          const updated = await tx.streamer.update({
+            where: { id: current.id },
+            data: {
+              tiktokUid: registerTiktokUid,
+              tiktokHandle: clean,
+              verificationCode: code,
+              verified: false,
+              verifiedAt: null,
+            },
+          });
+          const room = await resolveRoomForStreamerInTx(tx, updated.id);
+          return { kind: "ok" as const, streamer: updated, room };
+        }
+
+        if (!lockExempt) {
+          const check = checkTiktokHandleChangeAllowed(
+            { normalizedTiktokHandle: currentNormalized, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
+            normalized,
+            now
+          );
+          if (!check.ok) {
+            return { kind: "locked" as const, retryAfter: check.retryAfter };
+          }
+        }
+
+        const { count } = await tx.streamer.updateMany({
+          where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
+          data: {
+            tiktokUid: registerTiktokUid,
+            tiktokHandle: clean,
+            verificationCode: code,
+            verified: false,
+            verifiedAt: null,
+            tiktokHandleChangedAt: now,
+          },
+        });
+        if (count === 0) {
+          return { kind: "conflict" as const };
+        }
+        const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
+        const room = await resolveRoomForStreamerInTx(tx, updated.id);
+        return { kind: "ok" as const, streamer: updated, room };
       });
-      return { kind: "ok" as const, streamer: created };
-    }
-
-    const currentNormalized = normalizeTiktokId(current.tiktokHandle);
-
-    // UID mismatchチェックは現在一時的に無効化されており(isTiktokUidMismatchCheckDisabled()参照)、
-    // lockExempt(ADMIN_EMAIL)以外の通常ユーザーも別アカウントへの付け替えが通る状態にある
-    // (別件、本修正では変更しない)。tiktokUid は resolveRoomForStreamer() がroom解決のキーに
-    // 使うため、検証済みの現在値(registerTiktokUid)へ常に追従させる。冪等リトライ(ハンドル
-    // 正規化後不変)でも実在確認はPOST入口で完了済みのため、通常変更分岐と同じくここでチェックする
-    // (このチェックを飛ばすと、無効化フラグが有効化された将来にも冪等分岐だけmismatch検知を
-    // すり抜ける経路が残ってしまう)。
-    if (!checkTiktokUidMatch({ tiktokUid: current.tiktokUid }, registerTiktokUid, { exempt: lockExempt }).ok) {
-      return { kind: "uid_mismatch" as const };
-    }
-
-    if (currentNormalized === normalized) {
-      // 冪等リトライ: tiktokHandleは実質変わらない。ロック判定・tiktokHandleChangedAt更新はしない。
-      const updated = await tx.streamer.update({
-        where: { id: current.id },
-        data: {
-          tiktokUid: registerTiktokUid,
-          tiktokHandle: clean,
-          verificationCode: code,
-          verified: false,
-          verifiedAt: null,
-        },
-      });
-      return { kind: "ok" as const, streamer: updated };
-    }
-
-    if (!lockExempt) {
-      const check = checkTiktokHandleChangeAllowed(
-        { normalizedTiktokHandle: currentNormalized, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
-        normalized,
-        now
-      );
-      if (!check.ok) {
-        return { kind: "locked" as const, retryAfter: check.retryAfter };
+      break;
+    } catch (err) {
+      if (attempt === 0 && (err as { code?: string })?.code === "P2002") {
+        continue;
       }
+      throw err;
     }
-
-    const { count } = await tx.streamer.updateMany({
-      where: { id: current.id, tiktokHandleChangedAt: current.tiktokHandleChangedAt },
-      data: {
-        tiktokUid: registerTiktokUid,
-        tiktokHandle: clean,
-        verificationCode: code,
-        verified: false,
-        verifiedAt: null,
-        tiktokHandleChangedAt: now,
-      },
-    });
-    if (count === 0) {
-      return { kind: "conflict" as const };
-    }
-    const updated = await tx.streamer.findUniqueOrThrow({ where: { id: current.id } });
-    return { kind: "ok" as const, streamer: updated };
-  });
+  }
 
   if (result.kind === "uid_mismatch") {
     return NextResponse.json(formatTiktokUidMismatchError(), { status: 409 });
@@ -198,11 +220,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const streamer = result.streamer;
-
-  // 同じtiktokHandleを共有するTiktokRoomへ即座に紐付ける(Workerのensure loopを待たずに
-  // オーバーレイ/ギフトデータ共有を反映するため)。
-  await resolveRoomForStreamer(streamer.id);
+  // room付替え(TiktokRoomのupsert + Streamer.roomId更新)は上のtx内で確定済み。
+  // ここではtx確定後にだけ実行してよい副作用(スロットル記録・監視復活)を処理する。
+  result.room.commit();
+  if (result.room.shouldRevive) {
+    try {
+      await reviveSuspendedMonitoring(result.room.roomId);
+    } catch (err) {
+      console.error("[verify/generate] 監視復活処理に失敗:", err);
+    }
+  }
 
   return NextResponse.json({ tiktokHandle: clean, code });
 }

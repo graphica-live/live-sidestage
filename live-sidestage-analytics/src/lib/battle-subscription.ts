@@ -17,11 +17,10 @@
  * 後で解除されても watchSource===null のまま残り続ける)。管理者による明示的な監視追加は
  * `ensureRoomWatchedByAdmin`(tiktok-room.ts)が specialWatch を立てることで表現する。
  *
- * 既知の残存リスク: `RoomMonitorLease`(schema.prisma)は将来 reason:"COLLAB" の lease を
- * monitorUntil へデュアルライトする設計コメントを持つが、現状は未実装。実装されると
- * コラボ検知由来の room も monitorUntil を持つようになり、この判定式の
- * monitorUntil 条件が常に true へ倒れて今回のゲートが静かに無効化されうる。
- * `RoomMonitorLease` に COLLAB 発行コードが追加された時点でこの判定式の再検討が必要。
+ * 既知の残存リスク: 将来 COLLAB 監視向けの理由別 lease 管理(reason:"COLLAB")を
+ * monitorUntil とは別に持たせる実装が入ると、コラボ検知由来の room も monitorUntil を
+ * 持つようになりうる。その場合この判定式の monitorUntil 条件が常に true へ倒れて
+ * 今回のゲートが静かに無効化されうるため、その実装が入った時点でこの判定式の再検討が必要。
  */
 export interface BattleSubscriptionRoom {
   streamerCount: number;

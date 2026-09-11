@@ -858,15 +858,10 @@ export async function PATCH(
           }
           // 日程を読むのもロックの内側。日程の変更と同時に走っても、
           // 消された日程へ割り当てたままコミットされることはない。
-          const session = await assertEventSession(tx, params.id, sessionId);
+          await assertEventSession(tx, params.id, sessionId);
           await tx.eventMatch.update({
             where: { id: match.id },
-            data: {
-              sessionId,
-              // 旧列への dual-write(読まない。旧コードとの同居のためだけに入れる)。
-              scheduledStartAt: session.startAt,
-              scheduledEndAt: session.endAt,
-            },
+            data: { sessionId },
           });
           break;
         }

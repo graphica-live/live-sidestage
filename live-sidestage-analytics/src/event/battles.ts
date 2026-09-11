@@ -69,7 +69,6 @@ export async function ingestBattles(
       durationSec: row.durationSec,
       lastAction: row.action,
       hostTiktokUids: row.hostTiktokUids,
-      hostDisplayIds: row.hostDisplayIds,
       hostScores: (row.hostScores ?? {}) as Prisma.InputJsonObject,
     };
     await tx.detectedBattle.upsert({
