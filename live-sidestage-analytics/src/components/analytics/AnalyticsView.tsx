@@ -402,14 +402,14 @@ const RANKING_COLUMN_COUNT = 6;
 
 // history表の仮想化(window virtualizer)で使う定数。
 // HISTORY_ROW_HEIGHT: PC用テーブルの1行(tr)の実測高さ(px)。
-// dev:localでPC幅(1000px程度)の実描画でDevTools測定して確定した値。
-// PCテーブルの行構成: py-2(padding-top/bottom) + text contentの高さ = 実測値
-const HISTORY_ROW_HEIGHT = 40; // TODO: 後述のブラウザ実測で確定値に置き換え
+// dev:local(PC幅1000px)でPlaywrightにより連続する2行の描画位置の差分(top座標の差)を実測して確定した値
+// (2026-09-11実測。隣接行間の距離=行自体の高さで、border等の誤差を含めて吸収している)。
+const HISTORY_ROW_HEIGHT = 53;
 // HISTORY_CARD_HEIGHT: モバイル用カード(div)の実測高さ(px)。
-// 単なるカード自体の高さではなく、gap-2(0.5rem=8px、モバイル用の margin相当)を含めた
-// 「1カードが占める合計高さ」で測ること。これによって仮想化の合計高さ計算が正確になる。
-// dev:localでスマホ幅(390px程度)の実描画でDevTools測定して確定した値。
-const HISTORY_CARD_HEIGHT = 130; // TODO: 後述のブラウザ実測で確定値に置き換え
+// 単なるカード自体の高さ(126px)ではなく、flex gap-2(0.5rem=8px)を含めた
+// 「1カードが占める合計高さ」(連続する2カードの描画位置の差分)で測ること。
+// dev:local(スマホ幅390px)でPlaywrightにより実測して確定した値(2026-09-11)。
+const HISTORY_CARD_HEIGHT = 134;
 // overscan: 可視範囲の前後に余分に実描画しておく行数。体感速度とDOM生成コストのバランス。
 // ranking表の RANKING_OVERSCAN=8 に倣い初期値を8とする。
 const HISTORY_OVERSCAN = 8;
