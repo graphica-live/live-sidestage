@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/comment.dart';
 import '../models/voice_catalog.dart';
 import 'comment_feed.dart';
+import 'duplicate_comment_filter.dart';
 import 'tts_engine.dart';
 import 'voice_pool.dart';
 
@@ -18,6 +19,7 @@ class SpeechQueueController extends ChangeNotifier {
   final TtsEngine _engine = TtsEngine();
   final AudioPlayer _player = AudioPlayer();
   final Queue<Comment> _queue = Queue();
+  final DuplicateCommentFilter _duplicateFilter = DuplicateCommentFilter();
 
   VoicePool? _voicePool;
   StreamSubscription<Comment>? _subscription;
@@ -123,6 +125,9 @@ class SpeechQueueController extends ChangeNotifier {
   /// 読み上げ速度(%)。50-200。合成時に渡すので、**先読み済みの1件には効かない**。
   int speed = 100;
 
+  /// 重複コメントをスキップするか。
+  bool duplicateSkipEnabled = true;
+
   int get volume => _volume;
 
   set volume(int value) {
@@ -168,6 +173,27 @@ class SpeechQueueController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// テスト用: `_enqueue`がキューに積んだ件数を確認するための公開アクセサ。
+  @visibleForTesting
+  int get debugQueueLength => _queue.length;
+
+  /// テスト用: 実際のVOICEVOX初期化を経ずに`_enqueue`の判定ロジックだけを検証するための入口。
+  /// `_processQueue`(実際の合成・再生)は`_voicePool`が未初期化だと例外になるため走らせない。
+  @visibleForTesting
+  bool debugSkipProcessing = false;
+
+  @visibleForTesting
+  void debugEnqueue(Comment comment) => _enqueue(comment);
+
+  /// テスト用: FREEプランのクールダウン中の状態を直接作る(判定順序の回帰確認用)。
+  @visibleForTesting
+  void debugStartFreeIntervalCooldown() {
+    _isFreePlan = true;
+    _intervalCooldownWatch
+      ..reset()
+      ..start();
+  }
+
   void _enqueue(Comment comment) {
     if (!initialized || !enabled) return;
     // 読み上げる中身が無いコメントはVOICEVOXに渡さない。エモートだけの発言、
@@ -181,10 +207,12 @@ class SpeechQueueController extends ChangeNotifier {
     // **_processQueue 側ではなくここで止めること。** 先読み合成は次の1件を先に
     // 合成するので、向こうで弾いても空文字が合成へ渡る経路が残る。
     if (comment.speechText.isEmpty) return;
+    // 重複判定（FREEプランクールダウン判定の前に実行）
+    if (duplicateSkipEnabled && _duplicateFilter.shouldSuppress(comment)) return;
     // FREEプランのクールダウン中は新規コメントを読み上げない(既存キューに積まず無視する)。
     if (_isFreePlan && _intervalActive) return;
     _queue.add(comment);
-    unawaited(_processQueue());
+    if (!debugSkipProcessing) unawaited(_processQueue());
   }
 
   Future<void> _processQueue() async {

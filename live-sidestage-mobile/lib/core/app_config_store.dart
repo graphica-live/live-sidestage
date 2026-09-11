@@ -135,6 +135,10 @@ class AppConfigStore extends ChangeNotifier {
     return _mutate((c) => c.fixedStyleId == value ? null : c.bumped(fixedStyleId: value));
   }
 
+  Future<void> setDuplicateSpeechSkipEnabled(bool value) {
+    return _mutate((c) => c.duplicateSpeechSkipEnabled == value ? null : c.bumped(duplicateSpeechSkipEnabled: value));
+  }
+
   Future<void> setTtsVolume(int value) {
     final clamped = value.clamp(0, 100);
     return _mutate((c) => c.ttsVolume == clamped ? null : c.bumped(ttsVolume: clamped));

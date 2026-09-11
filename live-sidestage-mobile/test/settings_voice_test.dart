@@ -179,6 +179,38 @@ void main() {
     });
   });
 
+  group('定型文の読み上げ制限', () {
+    testWidgets('トグルが表示され、既定でONになっている', (tester) async {
+      final store = await pumpSettings(tester);
+
+      expect(find.text('定型文の読み上げを制限'), findsOneWidget);
+      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
+      final row = find.ancestor(
+        of: find.text('定型文の読み上げを制限'),
+        matching: find.byType(InkWell),
+      );
+      final switchWidget = tester.widget<Switch>(
+        find.descendant(of: row, matching: find.byType(Switch)),
+      );
+      expect(switchWidget.value, isTrue);
+    });
+
+    testWidgets('タップするとstoreのduplicateSpeechSkipEnabledがOFFになる', (tester) async {
+      final store = await pumpSettings(tester);
+
+      final row = find.ancestor(
+        of: find.text('定型文の読み上げを制限'),
+        matching: find.byType(InkWell),
+      );
+      final switchFinder = find.descendant(of: row, matching: find.byType(Switch));
+      await tester.tap(switchFinder);
+      await tester.pumpAndSettle();
+
+      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+      expect(tester.widget<Switch>(switchFinder).value, isFalse);
+    });
+  });
+
   group('音量', () {
     testWidgets('ドラッグ中は保存せず、指を離したときだけ保存する', (tester) async {
       final store = await pumpSettings(tester);
@@ -211,7 +243,12 @@ void main() {
       expect(settingRow(tester, 'すべての効果音の音量').onTap, isNull);
       expect(settingRow(tester, '読み上げの音量').onTap, isNull);
       expect(voiceTile(tester).onTap, isNull);
-      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      // すべてのSwitch(ランダムボイス + 定型文制限)が無効化されていることを確認
+      final switches = find.byType(Switch).evaluate().toList();
+      expect(switches.length, 2);
+      for (final switchElem in switches) {
+        expect((switchElem.widget as Switch).onChanged, isNull);
+      }
     });
   });
 }

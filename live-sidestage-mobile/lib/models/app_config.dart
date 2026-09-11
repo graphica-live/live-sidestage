@@ -586,6 +586,15 @@ class AppConfig {
   /// すると、変更のたびに読み上げが途切れる。
   final int ttsSpeed;
 
+  /// 重複したコメントを読み上げ対象から除外するか。
+  ///
+  /// **新しいキーだが [currentSchemaVersion] は上げない。** 旧バージョンの
+  /// アプリはこのキーを無視するだけで壊れないが、バージョンを上げると
+  /// 旧アプリが未来バージョンと判定して設定の保存を完全に止める
+  /// （そのぶん `ConfigTooNewBanner` が出て開始もできなくなる）。
+  /// [fixedStyleId] / [ttsSpeed] 追加時と同じ方針。
+  final bool duplicateSpeechSkipEnabled;
+
   final SoundConfig sound;
 
   const AppConfig({
@@ -596,6 +605,7 @@ class AppConfig {
     this.fixedStyleId = VoiceCatalog.defaultStyleId,
     this.ttsVolume = 100,
     this.ttsSpeed = 100,
+    this.duplicateSpeechSkipEnabled = true,
     this.sound = SoundConfig.initial,
   });
 
@@ -607,6 +617,7 @@ class AppConfig {
         'fixedStyleId': fixedStyleId,
         'ttsVolume': ttsVolume,
         'ttsSpeed': ttsSpeed,
+        'duplicateSpeechSkipEnabled': duplicateSpeechSkipEnabled,
         'sound': sound.toJson(),
       };
 
@@ -659,6 +670,8 @@ class AppConfig {
         ttsVolume: _clampInt(json['ttsVolume'], min: 0, max: 100, fallback: 100),
         // キーが無い旧設定は等速。追加しただけなのでスキーマ版は上げていない。
         ttsSpeed: _clampInt(json['ttsSpeed'], min: 50, max: 200, fallback: 100),
+        // キーが無い旧設定は true（デフォルトで有効）。スキーマ版は上げていない。
+        duplicateSpeechSkipEnabled: json['duplicateSpeechSkipEnabled'] != false,
         sound: SoundConfig.fromJson(soundJson),
       );
     } catch (_) {
@@ -695,6 +708,7 @@ class AppConfig {
     int? fixedStyleId,
     int? ttsVolume,
     int? ttsSpeed,
+    bool? duplicateSpeechSkipEnabled,
     SoundConfig? sound,
   }) {
     return AppConfig(
@@ -705,6 +719,7 @@ class AppConfig {
       fixedStyleId: fixedStyleId ?? this.fixedStyleId,
       ttsVolume: ttsVolume ?? this.ttsVolume,
       ttsSpeed: ttsSpeed ?? this.ttsSpeed,
+      duplicateSpeechSkipEnabled: duplicateSpeechSkipEnabled ?? this.duplicateSpeechSkipEnabled,
       sound: sound ?? this.sound,
     );
   }
@@ -716,6 +731,7 @@ class AppConfig {
     int? fixedStyleId,
     int? ttsVolume,
     int? ttsSpeed,
+    bool? duplicateSpeechSkipEnabled,
     SoundConfig? sound,
   }) {
     return copyWith(
@@ -725,6 +741,7 @@ class AppConfig {
       fixedStyleId: fixedStyleId,
       ttsVolume: ttsVolume,
       ttsSpeed: ttsSpeed,
+      duplicateSpeechSkipEnabled: duplicateSpeechSkipEnabled,
       sound: sound,
     );
   }

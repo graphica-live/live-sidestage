@@ -102,6 +102,14 @@ class SettingsTab extends StatelessWidget {
                   ? null
                   : () => _showUpgradeRequired(context, 'PRO/ULTRAプランで利用できます'),
             ),
+            _SettingSwitchRow(
+              title: '定型文の読み上げを制限',
+              subtitle: '同じ内容のコメントが短時間に繰り返されたら読み上げを止めます',
+              value: store.config.duplicateSpeechSkipEnabled,
+              enabled: canEdit,
+              onChanged: store.setDuplicateSpeechSkipEnabled,
+              onLockedTap: null,
+            ),
             _VoiceRow(
               styleId: store.config.fixedStyleId,
               randomVoice: store.config.randomVoice,
