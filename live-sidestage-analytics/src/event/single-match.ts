@@ -146,7 +146,7 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
       throw new SingleMatchError("脱落した出場者は対戦に組めません。", "ELIMINATED");
     }
 
-    const session = await assertEventSession(tx, eventId, sessionId);
+    await assertEventSession(tx, eventId, sessionId);
 
     const last = await tx.eventMatch.findFirst({
       where: { eventId },
@@ -162,9 +162,6 @@ export async function createSingleMatch(input: SingleMatchInput): Promise<{ matc
         // **サイドの人数から決める。** チーム戦でもチームの人数ではなく出場人数。
         matchType: sideA.participantIds.length === 2 ? "2V2" : "1V1",
         sessionId,
-        // 旧列への dual-write(読まない。旧コードとの同居のためだけに入れる)。
-        scheduledStartAt: session.startAt,
-        scheduledEndAt: session.endAt,
         status: "SCHEDULED",
       },
     });

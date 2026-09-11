@@ -319,7 +319,6 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
 
     for (const match of bracket.matches) {
       const sessionId = roundSessions.value[match.round - 1];
-      const session = sessionById.get(sessionId)!;
       // 片方が BYE の行は「不戦勝行」として印を残す。静的(相手が確定済みの ENTRANT)・
       // 動的(段階的方式で、相手がまだ勝者未確定の WINNER_OF)のどちらも該当する。
       // match-results.ts の進行処理と [matchId] API の操作ガードがこの印を見る
@@ -332,10 +331,6 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
           bracketPosition: match.position,
           matchType: "1V1",
           sessionId,
-          // **旧列への dual-write。** 読むのは日程だけだが、ローリング更新やロールバックで
-          // 旧コードが同時に動いても必須列が null にならないよう、日程の窓を入れておく。
-          scheduledStartAt: session.startAt,
-          scheduledEndAt: session.endAt,
           status: "SCHEDULED",
           rules: {
             roundLabel: label(match.round, bracket.roundCount),
@@ -392,7 +387,6 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
     for (const block of blocks) {
       for (const match of block.matches) {
         const sessionId = placementSessionByRound.get(`${block.depth}:${match.roundInBlock}`)!;
-        const session = sessionById.get(sessionId)!;
         const created = await tx.eventMatch.create({
           data: {
             eventId,
@@ -400,9 +394,6 @@ export async function createBracket(input: BracketPlanInput): Promise<{ matches:
             bracketPosition: match.position,
             matchType: "1V1",
             sessionId,
-            // 本選と同じく旧列への dual-write。
-            scheduledStartAt: session.startAt,
-            scheduledEndAt: session.endAt,
             status: "SCHEDULED",
             rules: {
               roundLabel: placementRoundLabel(

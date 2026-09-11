@@ -714,8 +714,6 @@ async function reconcilePlacementBlocks(
         bracketPosition: match.position,
         matchType: "1V1",
         sessionId,
-        scheduledStartAt: session.startAt,
-        scheduledEndAt: session.endAt,
         status: "SCHEDULED",
         rules,
       },
