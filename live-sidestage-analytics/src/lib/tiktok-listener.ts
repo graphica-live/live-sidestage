@@ -56,6 +56,11 @@ import {
 import { ensureAvatarCached } from "./avatar-storage";
 import { normalizeTikTokUserId, normalizeDisplayValue, recordTikTokUser, type TikTokUserObservation } from "./tiktok-user";
 import { materializeBattleHistory } from "./battle-history-finalize";
+import {
+  applyRankingSyncTrigger,
+  applyGiftHistorySyncTrigger,
+  applyBattleHistorySyncTrigger,
+} from "./realtime-sync/dispatch";
 import { parseCollabGroupChange, shouldWatchCollabSnapshot } from "./tiktok-collab";
 import {
   ensureRoomWatchedForCollab,
@@ -738,6 +743,195 @@ async function deliverListenerNotify(pending: PendingListenerNotify): Promise<vo
   }
 }
 
+// ── realtime-sync(ギフト履歴/バトル履歴)の転送 ──────────────────────────────
+//
+// **ギフト用のforwardToWebには載せない。** あちらは同時4・待ち行列256で、溢れたら
+// 捨ててreplayしない設計。ギフト履歴/バトル履歴のappend/upsertはdropを許容できない
+// (design-review反映、Codex-terra finding: 静かに欠落したままversionだけ進む状態を
+// 作らない)。listenerNotifyQueue/deliverListenerNotifyと同じ「有限回リトライ、
+// それでも届かなければ次回REST取得で収束させる」設計を踏襲する。
+
+const SYNC_NOTIFY_TIMEOUT_MS = 5000;
+const SYNC_NOTIFY_MAX_ATTEMPTS = 3;
+const SYNC_NOTIFY_RETRY_DELAY_MS = 1000;
+
+interface PendingGiftHistoryNotify {
+  streamerIds: string[];
+  giftId: string;
+}
+
+// **Map(roomId単位で最新1件に上書き)にしない。** ギフト履歴はGift.id単位で複数件を
+// 捨てずに持つ必要がある(1tick=1履歴イベント、ユーザー確定方針)ため、配列(FIFO)にする。
+const giftHistoryNotifyQueue: PendingGiftHistoryNotify[] = [];
+let giftHistoryNotifyRunning = false;
+
+function enqueueGiftHistoryNotify(pending: PendingGiftHistoryNotify): void {
+  if (pending.streamerIds.length === 0) return;
+  giftHistoryNotifyQueue.push(pending);
+  void drainGiftHistoryNotifyQueue();
+}
+
+async function drainGiftHistoryNotifyQueue(): Promise<void> {
+  if (giftHistoryNotifyRunning) return;
+  giftHistoryNotifyRunning = true;
+  try {
+    while (giftHistoryNotifyQueue.length > 0) {
+      const pending = giftHistoryNotifyQueue.shift()!;
+      await deliverGiftHistoryNotify(pending);
+    }
+  } finally {
+    giftHistoryNotifyRunning = false;
+  }
+}
+
+async function deliverGiftHistoryNotify(pending: PendingGiftHistoryNotify): Promise<void> {
+  if (!isWorkerProcess) {
+    await applyGiftHistorySyncTrigger(pending.streamerIds, pending.giftId).catch((err) =>
+      console.error("[gift-history] sync trigger error:", err)
+    );
+    return;
+  }
+
+  for (let attempt = 1; attempt <= SYNC_NOTIFY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+        },
+        body: JSON.stringify({
+          streamerIds: pending.streamerIds,
+          syncTrigger: "gift-history",
+          giftId: pending.giftId,
+        }),
+        signal: AbortSignal.timeout(SYNC_NOTIFY_TIMEOUT_MS),
+      });
+      if (res.ok) return;
+      console.error(
+        "[gift-history] sync trigger forward failed:",
+        res.status,
+        await res.text().catch(() => "")
+      );
+    } catch (err) {
+      console.error("[gift-history] sync trigger forward error:", err);
+    }
+    if (attempt < SYNC_NOTIFY_MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, SYNC_NOTIFY_RETRY_DELAY_MS * attempt));
+    }
+  }
+  // 有限回リトライしても届かなかった。Gift行自体は既にDBへ保存済みなので、
+  // 該当streamerIdの次回REST取得(gift-history route.ts)で必ず最新状態に収束する
+  // (listenerNotifyQueueのstate通知と同じ倒し方)。
+  console.error("[gift-history] sync trigger forward exhausted retries — will converge on next REST fetch", {
+    streamerIds: pending.streamerIds,
+    giftId: pending.giftId,
+  });
+}
+
+interface PendingBattleHistoryNotify {
+  streamerIds: string[];
+  roomId: string;
+  battleId: string;
+}
+
+// battleId(roomId込み)単位で最新1件に上書きするMap。upsertなので、短時間に複数回
+// 積まれても最後の1件を配信すれば内容としては最新状態に収束する(listenerNotifyQueueと同型)。
+const battleHistoryNotifyQueue = new Map<string, PendingBattleHistoryNotify>();
+let battleHistoryNotifyRunning = false;
+
+function enqueueBattleHistoryNotify(key: string, pending: PendingBattleHistoryNotify): void {
+  if (pending.streamerIds.length === 0) return;
+  battleHistoryNotifyQueue.set(key, pending);
+  void drainBattleHistoryNotifyQueue();
+}
+
+async function drainBattleHistoryNotifyQueue(): Promise<void> {
+  if (battleHistoryNotifyRunning) return;
+  battleHistoryNotifyRunning = true;
+  try {
+    while (battleHistoryNotifyQueue.size > 0) {
+      const [key, pending] = battleHistoryNotifyQueue.entries().next().value as [
+        string,
+        PendingBattleHistoryNotify,
+      ];
+      battleHistoryNotifyQueue.delete(key);
+      await deliverBattleHistoryNotify(pending);
+    }
+  } finally {
+    battleHistoryNotifyRunning = false;
+  }
+}
+
+async function deliverBattleHistoryNotify(pending: PendingBattleHistoryNotify): Promise<void> {
+  if (!isWorkerProcess) {
+    await applyBattleHistorySyncTrigger(pending.streamerIds, pending.roomId, pending.battleId).catch((err) =>
+      console.error("[battle-history] sync trigger error:", err)
+    );
+    return;
+  }
+
+  for (let attempt = 1; attempt <= SYNC_NOTIFY_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(`${process.env.WEB_INTERNAL_URL}/api/internal/gift-event`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-secret": process.env.INTERNAL_API_SECRET || "",
+        },
+        body: JSON.stringify({
+          streamerIds: pending.streamerIds,
+          syncTrigger: "battle-history",
+          roomId: pending.roomId,
+          battleId: pending.battleId,
+        }),
+        signal: AbortSignal.timeout(SYNC_NOTIFY_TIMEOUT_MS),
+      });
+      if (res.ok) return;
+      console.error(
+        "[battle-history] sync trigger forward failed:",
+        res.status,
+        await res.text().catch(() => "")
+      );
+    } catch (err) {
+      console.error("[battle-history] sync trigger forward error:", err);
+    }
+    if (attempt < SYNC_NOTIFY_MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, SYNC_NOTIFY_RETRY_DELAY_MS * attempt));
+    }
+  }
+  console.error("[battle-history] sync trigger forward exhausted retries — will converge on next REST fetch", {
+    streamerIds: pending.streamerIds,
+    roomId: pending.roomId,
+    battleId: pending.battleId,
+  });
+}
+
+/** ギフト履歴push(append)を仕掛ける。DB保存成功後(giftId確定後)にのみ呼ぶこと。 */
+function notifyGiftHistorySync(streamerIds: string[], giftId: string): void {
+  if (streamerIds.length === 0) return;
+  enqueueGiftHistoryNotify({ streamerIds, giftId });
+}
+
+/** バトル履歴push(upsert)を仕掛ける。DB保存(persistBattle)完了後にのみ呼ぶこと。 */
+function notifyBattleHistorySync(roomId: string, streamerIds: string[], battleId: string): void {
+  if (streamerIds.length === 0) return;
+  enqueueBattleHistoryNotify(`${roomId}:${battleId}`, { streamerIds, roomId, battleId });
+}
+
+/**
+ * 貢献ランキングpushを仕掛ける。**drop許容**(scheduleRankingSnapshotEmit自体が
+ * throttleで間引く設計のため、既存forwardToWebと同じ扱いでよい)。
+ */
+function notifyRankingSync(roomId: string, streamerIds: string[]): void {
+  if (streamerIds.length === 0) return;
+  if (!isWorkerProcess) {
+    applyRankingSyncTrigger(roomId, streamerIds);
+    return;
+  }
+  void forwardToWeb({ streamerIds, syncTrigger: "ranking", roomId });
+}
+
 function isUserOfflineError(error: unknown): boolean {
   const candidates = [
     error,
@@ -1252,7 +1446,11 @@ async function saveGift(
   data: Record<string, unknown>,
   count: number,
   receivedAt: Date,
-  timeSource: "tiktok" | "fallback"
+  timeSource: "tiktok" | "fallback",
+  // realtime-sync(ギフト履歴push)用。**戻り値の型(GiftSaveResult)は変更しない**
+  // (既存呼び出し元・tiktok-listener.combo.integration.test.tsの契約を壊さないため)。
+  // 保存に成功しGift.idが確定した直後、コミット後にのみ呼ぶ。
+  onSaved?: (giftId: string) => void
 ): Promise<GiftSaveResult> {
   // catch側のログでも参照するのでtryの外で確定させる(いずれも例外を投げない純粋な変換)。
   const orderId = data.orderId ? String(data.orderId) : null;
@@ -1297,21 +1495,26 @@ async function saveGift(
       }
     }
 
-    const commit = await prisma.$transaction(async (tx) => {
-      await tx.gift.create({
+    const { commit, giftId } = await prisma.$transaction(async (tx) => {
+      const created = await tx.gift.create({
         data: buildGiftRow(roomId, tiktokUid, data, count, receivedAt, timeSource, {
           orderId,
           groupId,
           msgId,
         }),
+        select: { id: true },
       });
-      return recordTikTokUser(tx, {
+      const commit = await recordTikTokUser(tx, {
         tiktokUid,
         tiktokHandle: normalizeDisplayValue(data.uniqueId),
         nickname: normalizeDisplayValue(data.nickname),
       });
+      return { commit, giftId: created.id };
     });
     commit();
+    // トランザクションが正常にresolveした時点でDBへ確定コミット済み(Prisma interactive
+    // transactionの契約)。onSavedはこの後で呼ぶ = 「DB保存完了後にpushする」invariantを満たす。
+    onSaved?.(giftId);
     return "saved";
   } catch (err: unknown) {
     if ((err as { code?: string })?.code === "P2002") {
@@ -1608,7 +1811,11 @@ export async function saveComboGift(
   data: Record<string, unknown>,
   currentRepeat: number,
   receivedAt: Date,
-  timeSource: "tiktok" | "fallback"
+  timeSource: "tiktok" | "fallback",
+  // saveGift()と同じ契約: 戻り値の型は変更せず、保存成功(コミット後)にだけ呼ぶ
+  // out-paramとして渡す(既存tiktok-listener.combo.integration.test.tsの呼び出し・
+  // 戻り値契約を壊さないための技術的判断)。
+  onSaved?: (giftId: string) => void
 ): Promise<GiftSaveResult> {
   const msgId = resolveMsgId(data);
   // 送信者のtiktokUidが解決できない = protobufレベルの異常。空文字/"0"を主キー相当へ入れると
@@ -1624,6 +1831,7 @@ export async function saveComboGift(
   }
   // クロージャ内での代入をTSが追跡できないので、ホルダー越しに受け渡す。
   const comboCommit: { fn: (() => void) | null } = { fn: null };
+  const comboGiftId: { value: string | null } = { value: null };
   try {
     const result = await prisma.$transaction<GiftSaveResult>(
       async (tx) => {
@@ -1643,7 +1851,7 @@ export async function saveComboGift(
           return "duplicate";
         }
 
-        await tx.gift.create({
+        const created = await tx.gift.create({
           data: buildGiftRow(roomId, tiktokUid, data, delta, receivedAt, timeSource, {
             // comboの各段に同じorderIdが付くとunique(roomId, orderId)で2段目以降がP2002になる。
             // comboのdedupはgroupId単位の単調増加判定でできているのでorderIdは要らない。
@@ -1651,7 +1859,9 @@ export async function saveComboGift(
             groupId,
             msgId,
           }),
+          select: { id: true },
         });
+        comboGiftId.value = created.id;
         // Gift行と同一トランザクションで記録する(生観測系から表示名列を落としたので、
         // 取りこぼすとランキングに名無しが並ぶ)。markerはcommit後に立てる。
         comboCommit.fn = await recordTikTokUser(tx, {
@@ -1666,6 +1876,8 @@ export async function saveComboGift(
       { maxWait: COMBO_TX_MAX_WAIT_MS, timeout: COMBO_TX_TIMEOUT_MS }
     );
     comboCommit.fn?.();
+    // トランザクションのresolveでDB確定コミット済み。saveGift()と同じくコミット後にのみ呼ぶ。
+    if (result === "saved" && comboGiftId.value) onSaved?.(comboGiftId.value);
     return result;
   } catch (err: unknown) {
     // saveGift()と同じ契約: 例外を外へ出さずGiftSaveResultを返す。呼び出し側は
@@ -1852,12 +2064,22 @@ const BATTLE_FINALIZE_DELAY_MS = 10 * 1000;
  * 失敗・プロセス再起動で取りこぼしても、そのバトルは「未確定」のまま残るだけで、読み出しは
  * 従来どおりライブ集計へ正しくフォールバックする。再試行は行わない
  * (まとめて確定させたいときは scripts/backfill-battle-history.ts を実行する)。
+ *
+ * 確定(materializeBattleHistory)が成功したときは、バトル履歴pushを1回追加で仕掛ける
+ * (design-review反映2 finding4)。購読者は**確定時点で改めて解決する**
+ * (スケジュール時点でクロージャに固定すると、10秒の間に増減した購読者を反映できないため)。
  */
 function scheduleBattleHistoryFinalize(roomId: string, battleId: string): void {
   const timer = setTimeout(() => {
-    void materializeBattleHistory(roomId, battleId, new Date()).catch((err) => {
-      console.error(`[battle-history] 確定処理に失敗 roomId=${roomId} battleId=${battleId}`, err);
-    });
+    void materializeBattleHistory(roomId, battleId, new Date())
+      .then((result) => {
+        if (!result.finalized) return;
+        const streamerIds = Array.from(listeners.get(roomId)?.subscriberIds ?? []);
+        notifyBattleHistorySync(roomId, streamerIds, battleId);
+      })
+      .catch((err) => {
+        console.error(`[battle-history] 確定処理に失敗 roomId=${roomId} battleId=${battleId}`, err);
+      });
   }, BATTLE_FINALIZE_DELAY_MS);
   // 確定は最適化なので、プロセス終了をこのタイマーで引き延ばさない。
   timer.unref?.();
@@ -2146,6 +2368,12 @@ async function persistBattle(
           receivedAt: receivedAt.toISOString(),
         },
       });
+
+      // realtime-sync(バトル履歴upsert)。**"ended"限定にしない** — kindは
+      // "ended"|"score_updated"のどちらも取りうり、END後のスコア訂正もpush対象
+      // (design-review反映2 finding4)。DB書き込み完了後(この関数の先頭で
+      // update/createを済ませた後)にのみ呼んでいる。
+      notifyBattleHistorySync(roomId, streamerIds, parsed.battleId);
     }
   }
 }
@@ -2779,6 +3007,15 @@ async function connectAndAttach(
       }
     };
 
+    // realtime-sync(ギフト履歴append/貢献ランキングsnapshot)のpushトリガー。
+    // saveGift/saveComboGiftのonSavedとして渡し、**DB保存(コミット)成功後にのみ**呼ぶ
+    // (Invariants: Server Authoritative — DB保存前のpushは行わない)。
+    const onGiftSaved = (giftId: string) => {
+      const streamerIds = Array.from(inst.subscriberIds);
+      notifyGiftHistorySync(streamerIds, giftId);
+      notifyRankingSync(roomId, streamerIds);
+    };
+
     // 同一プロセスに同じイベントが2回届いた場合をここで落とす。
     // saveGift()側のDB照会だけでは足りない — このハンドラはsaveGift()をawaitせず
     // .then()で流すので、同じtickに再送が2件届くと双方のfindFirstが「まだ無い」を
@@ -2860,7 +3097,7 @@ async function connectAndAttach(
       notifyGiftLog({ ...baseLog, action: "combo" });
       void comboWrites.run(`${roomId}:${groupId}`, async () => {
         applySaveResult(
-          await saveComboGift(roomId, groupId, data, currentRepeat, eventTime, timeSource)
+          await saveComboGift(roomId, groupId, data, currentRepeat, eventTime, timeSource, onGiftSaved)
         );
       });
       return;
@@ -2885,7 +3122,7 @@ async function connectAndAttach(
       });
       notifyGiftLog({ ...baseLog, action: "combo", reason: "missing_groupId", delta, prevRepeat });
       if (delta > 0) {
-        saveGift(roomId, data, delta, eventTime, timeSource).then(applySaveResult);
+        saveGift(roomId, data, delta, eventTime, timeSource, onGiftSaved).then(applySaveResult);
       }
       return;
     }
@@ -2902,12 +3139,12 @@ async function connectAndAttach(
         giftName: data.giftName,
       });
       notifyGiftLog({ ...baseLog, action: "non-combo", reason: "missing_orderId_and_groupId" });
-      saveGift(roomId, data, currentRepeat, eventTime, timeSource).then(applySaveResult);
+      saveGift(roomId, data, currentRepeat, eventTime, timeSource, onGiftSaved).then(applySaveResult);
       return;
     }
     console.log("[gift/non-combo]", { dedupKey, tiktokHandle: data.uniqueId });
     notifyGiftLog({ ...baseLog, action: "non-combo" });
-    saveGift(roomId, data, currentRepeat, eventTime, timeSource).then(applySaveResult);
+    saveGift(roomId, data, currentRepeat, eventTime, timeSource, onGiftSaved).then(applySaveResult);
   });
 
   if (conn.clientParams) {
