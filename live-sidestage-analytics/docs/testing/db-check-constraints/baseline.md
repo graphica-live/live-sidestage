@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: db-check-constraints
-last_updated: 2026-09-11
-last_risk: MEDIUM
-last_reviewers: Codex-terra + DeepSeek(Code Mode、Wave1-B: 5件のCHECK制約追加)
+last_updated: 2026-09-12
+last_risk: LOW
+last_reviewers: Gemini(agy、Code Mode、deadlock解消のロックスコープ是正)
 ---
 
 # テストベースライン: db-check-constraints
@@ -33,6 +33,7 @@ Wave1-Bで追加した5件のPostgreSQL CHECK制約。Prisma 5.22には`@@check`
 | TC-CHK-005 | EventMatchBattleCandidate.combinedGroupIdが非nullならorganizerSelectedも true | 制約`EventMatchBattleCandidate_group_requires_selected` | 異常系 | combinedGroupId非null, organizerSelected=falseをINSERT | 制約違反でエラー、combinedGroupId=NULL・またはorganizerSelected=trueの組合せは成功 | 同上 | PASS | src/event/CLAUDE.mdの候補調整モード不変条件をDBレベルでも強制 |
 | TC-CHK-101 | NOT VALID方式でも新規行への即時強制は変わらない | migration.sql全体 | 回帰 | TC-CHK-001〜005を`NOT VALID`修正後に再実行 | 全件PASS(既存行検証スキップは新規行の強制と無関係) | 同上 | PASS | Codex finding(HIGH: db push経路では反映されない→コメントで既存明記済みALREADY_HANDLED、MEDIUM: NOT VALID段階導入→VALID採用)を反映した後の回帰確認 |
 | TC-CHK-102 | 本番Postgresへ5件とも適用され`convalidated=true`になる | 本番DB(`pg_constraint`) | 本番検証 | `prisma db execute`でmigration.sql適用→違反件数SELECT→`VALIDATE CONSTRAINT`5件実行 | 適用時エラーなし、違反件数は5制約とも0件、VALIDATE後`pg_constraint.convalidated`が5件ともtrue | Node.js($queryRawUnsafe経由、スクラッチスクリプト) | PASS | 2026-09-11実施。DEPLOY BLOCKED解除 |
+| TC-CHK-103 | 他のintegrationテストとのvitest並行実行下でdeadlockしない | `wave1b-check-constraints.integration.test.ts`全体 | 回帰・並行処理 | `npm run test:integration`(全105ファイル並行実行)を連続実行 | `40P01 deadlock detected`が発生しない | `npm run test:integration`を5回連続実行 | PASS | 2026-09-12。旧実装は各it()が無関係4テーブルまでALTER TABLEし1txで5テーブルAccessExclusiveLockを固定順取得、draw-detection.integration.test.ts等とのAccessShareLock競合でdeadlockしていた(原因調査はplanner、静的推定HIGH confidence)。各it()を検証対象1テーブルのみのDROP/ADDへ限定し解消。5回中4回PASS、1回はwave1b無関係の既知flake(readTikTokUser、analytics-worker-status-integration-flake)で40P01は不再現 |
 
 ## Quality Gate
 

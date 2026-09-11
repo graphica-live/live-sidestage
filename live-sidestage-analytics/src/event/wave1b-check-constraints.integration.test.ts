@@ -4,12 +4,19 @@
 // 表現できない(schema.prisma に @@check 属性が無い)ため、このファイルは migration.sql の
 // 内容をテスト内のトランザクションへ直接適用し、違反行が実際に拒否されることを確認する。
 //
-// 各テストは1トランザクション内で「制約追加 → 違反INSERT/UPDATE(拒否されることを期待) →
-// ROLLBACK」を完結させる。commit しないため、他の並行テストファイルの書き込みには一切
-// 影響しない(analytics-vitest-cross-file-interference.md の教訓どおり、グローバルDDLは
-// 同一トランザクション内に閉じ込める)。
+// 各テストは1トランザクション内で「検証対象テーブル1件だけ制約追加 → 違反INSERT/UPDATE
+// (拒否されることを期待) → ROLLBACK」を完結させる。commit しないため、他の並行テスト
+// ファイルの書き込みには一切影響しない(analytics-vitest-cross-file-interference.md の教訓
+// どおり、グローバルDDLは同一トランザクション内に閉じ込める)。
 //
-// 注: CI は `prisma migrate deploy` で制約が既に存在するため、tx 内で各 ADD CONSTRAINT 前に
+// 注意: 各テストが対象テーブル1件だけをALTER TABLE(AccessExclusiveLock)するのは、
+// 無関係な5テーブル全部をALTER TABLEしていた旧実装が、他のintegrationテスト
+// (draw-detection.integration.test.ts 等)とのvitest並行実行下で40P01 deadlockを
+// 起こしたため(2026-09-12調査)。1トランザクションが複数テーブルへ跨ってロックを
+// 取らなければ循環待ちの一辺になり得ない。integrationテストでDDLを使うときは、
+// 単一トランザクションで複数テーブルを跨いでロックしないこと。
+//
+// 注: CI は `prisma migrate deploy` で制約が既に存在するため、tx 内で ADD CONSTRAINT 前に
 // DROP CONSTRAINT IF EXISTS を実行し直す。これにより二重適用による制約名衝突エラーを回避できる。
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -23,52 +30,57 @@ const MIGRATION_SQL = readFileSync(
 
 class RollbackSentinel extends Error {}
 
-const MIGRATION_STATEMENTS = MIGRATION_SQL.split("\n")
-  .filter((line) => !line.trim().startsWith("--"))
-  .join("\n")
-  .split(";")
-  .map((s) => s.trim())
-  .filter(Boolean);
+// migration.sql の各 "ALTER TABLE ... ADD CONSTRAINT ..." 文を schema.table 単位に分解する。
+// テストごとに検証対象の1件だけを取り出すため。
+type TableStatement = { schema: string; table: string; addStmt: string; dropStmt: string | undefined };
 
-// migration.sql から制約削除文を抽出(CI で migrate deploy済みの場合に備えて既存制約を削除)
-const CONSTRAINT_DROP_STATEMENTS = (() => {
-  const lines = MIGRATION_SQL.split("\n");
-  const drops: string[] = [];
+const TABLE_STATEMENTS: TableStatement[] = (() => {
+  const statements = MIGRATION_SQL.split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // ALTER TABLE で始まる行を検出
-    const tableMatch = line.match(/ALTER TABLE\s+"([^"]+)"\.?"([^"]+)"/);
-    if (tableMatch) {
-      const schemaName = tableMatch[1];
-      const tableName = tableMatch[2];
-
-      // 次の行を確認して ADD CONSTRAINT を探す
-      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-        const constraintMatch = lines[j].match(/ADD CONSTRAINT\s+"([^"]+)"/);
-        if (constraintMatch) {
-          const constraintName = constraintMatch[1];
-          drops.push(`ALTER TABLE "${schemaName}"."${tableName}" DROP CONSTRAINT IF EXISTS "${constraintName}"`);
-          break;
-        }
-      }
-    }
+  const results: TableStatement[] = [];
+  for (const stmt of statements) {
+    const tableMatch = stmt.match(/ALTER TABLE\s+"([^"]+)"\.?"([^"]+)"/);
+    const constraintMatch = stmt.match(/ADD CONSTRAINT\s+"([^"]+)"/);
+    if (!tableMatch || !constraintMatch) continue;
+    const [, schema, table] = tableMatch;
+    const [, constraintName] = constraintMatch;
+    results.push({
+      schema,
+      table,
+      addStmt: stmt,
+      dropStmt: `ALTER TABLE "${schema}"."${table}" DROP CONSTRAINT IF EXISTS "${constraintName}"`,
+    });
   }
-
-  return drops;
+  return results;
 })();
 
-async function runInRolledBackTx(fn: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<void>) {
+function statementForTable(schema: string, table: string): TableStatement {
+  const found = TABLE_STATEMENTS.find((s) => s.schema === schema && s.table === table);
+  if (!found) {
+    throw new Error(`migration.sql に ${schema}.${table} への ALTER TABLE ADD CONSTRAINT が見つからない`);
+  }
+  return found;
+}
+
+async function runInRolledBackTx(
+  schema: string,
+  table: string,
+  fn: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<void>
+) {
+  const { addStmt, dropStmt } = statementForTable(schema, table);
   await expect(
     prisma.$transaction(async (tx) => {
       // DROP CONSTRAINT IF EXISTS を先に実行して既存制約を削除(migrate deploy済みの場合)
-      for (const dropStmt of CONSTRAINT_DROP_STATEMENTS) {
+      if (dropStmt) {
         await tx.$executeRawUnsafe(dropStmt);
       }
-      // その後で ADD CONSTRAINT を実行
-      for (const stmt of MIGRATION_STATEMENTS) {
-        await tx.$executeRawUnsafe(stmt);
-      }
+      // その後で対象テーブル1件だけ ADD CONSTRAINT を実行
+      await tx.$executeRawUnsafe(addStmt);
       await fn(tx);
       throw new RollbackSentinel();
     })
@@ -79,7 +91,7 @@ const uid = () => `itest_w1b_${Date.now()}_${Math.random().toString(36).slice(2)
 
 describe("Wave1-B CHECK制約", () => {
   it("battle_history_participants.captureCoverage は 0〜1の範囲外を拒否する", async () => {
-    await runInRolledBackTx(async (tx) => {
+    await runInRolledBackTx("public", "battle_history_participants", async (tx) => {
       const roomId = uid();
       await tx.$executeRaw`
         INSERT INTO public."TiktokRoom" (id, "tiktokHandle", "hostTiktokUid", "createdAt", "monitoringSuspended")
@@ -112,7 +124,7 @@ describe("Wave1-B CHECK制約", () => {
   });
 
   it("EventMatchSide.sideIndex は 0/1 以外を拒否する", async () => {
-    await runInRolledBackTx(async (tx) => {
+    await runInRolledBackTx("event", "EventMatchSide", async (tx) => {
       const eventId = uid();
       const sessionId = uid();
       const matchId = uid();
@@ -143,7 +155,7 @@ describe("Wave1-B CHECK制約", () => {
   });
 
   it("EventLifePoint.current は max を超えられない", async () => {
-    await runInRolledBackTx(async (tx) => {
+    await runInRolledBackTx("event", "EventLifePoint", async (tx) => {
       const eventId = uid();
       await tx.$executeRaw`
         INSERT INTO event."Event"
@@ -166,7 +178,7 @@ describe("Wave1-B CHECK制約", () => {
   });
 
   it("overlay_timer_state は running=true のとき endsAt 必須", async () => {
-    await runInRolledBackTx(async (tx) => {
+    await runInRolledBackTx("public", "overlay_timer_state", async (tx) => {
       const principalId1 = uid();
       const principalId2 = uid();
       await tx.$executeRaw`INSERT INTO "User" (id) VALUES (${principalId1})`;
@@ -198,7 +210,7 @@ describe("Wave1-B CHECK制約", () => {
   });
 
   it("EventMatchBattleCandidate.combinedGroupId が非null なら organizerSelected も true", async () => {
-    await runInRolledBackTx(async (tx) => {
+    await runInRolledBackTx("event", "EventMatchBattleCandidate", async (tx) => {
       const eventId = uid();
       const sessionId = uid();
       const matchId = uid();
