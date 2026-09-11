@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: gift-history
-last_updated: 2026-09-11
-last_risk: HIGH
-last_reviewers: DeepSeek + Codex(terra, medium) — realtime-sync刷新(Batch01-06)分
+last_updated: 2026-09-12
+last_risk: LOW
+last_reviewers: DeepSeek(現行選定モデル、high)。Provider登録漏れ修正分
 ---
 
 # テストベースライン: gift-history (期間制限)
@@ -25,6 +25,7 @@ last_reviewers: DeepSeek + Codex(terra, medium) — realtime-sync刷新(Batch01-
 | TC-GH-005 | Socket.IOで正常なgift-history append pushを受信すると、REST再取得を待たず一覧の先頭に新しいギフト行が追加される | `GiftHistoryTab.build` + `GiftHistorySyncStore` | 正常/回帰 | `GiftHistorySyncStore`が`canApply`な`chat:gift-history:append`を受信(version整合、未受信のGift.id) | `store.getHistory()`が新しい行を含むようになり、`build()`がそれを`events`のソースとして描画する(RESTの`_result`のみに依存しない) | コードレビュー(`build()`が`context.watch<GiftHistorySyncStore>().getHistory()`を`GiftHistoryEvent.tryParse`で復元して参照していることを確認) + `flutter test`/`flutter analyze` | PASS(コードレビュー確認、Codexレビューで検出されたHIGH不具合の修正) | Batch06で修正。修正前は`needsResync`時のみ`_load()`が呼ばれ、正常push受信時は画面が一切更新されない不具合があった |
 | TC-GH-006 | 同一Gift.idのappendが複数回届いても一覧に重複追加されない | `GiftHistorySyncStore._onGiftHistoryAppend` | 境界/negative | 同じ`id`を持つappend payloadが2回届く | 2回目は`_seenGiftIds`により無視され、一覧に重複行が出ない | `flutter test test/realtime_sync_test.dart`(冪等dedupケース) | PASS | |
 | TC-GH-007 | REST取得直後、サーバーの現在versionを反映しないまま次のpushを欠損と誤判定しない | `GiftHistorySyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが5、直後に届くpushがversion 6 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, version: 5)`でtrackerを実版数へ同期するため、version 6のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | Batch06で修正。修正前は`acknowledgeResync`が常に`VersionTracker.reset()`(=0)していたため、次のpushが恒久的にversion欠損と誤判定されREST再取得が無限に続くおそれがあった(Codexレビューで検出) |
+| TC-GH-008 | アプリ起動時に`GiftHistorySyncStore`/`CommentFeed`のProvider登録漏れが無く、ギフトタブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `GiftHistoryTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<GiftHistorySyncStore>`等が`ProviderNotFoundException`を投げない。実機ではギフトタブが履歴一覧を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS(2026-09-12、実機で貢献/ギフト/バトル3タブとも正常表示を確認) | 2026-09-11のBatch05でこれら4クラスをMultiProviderへ登録し忘れ、3タブが`initState`で例外を投げて真っ白になっていた不具合の再発防止ケース。TC-GH-005〜007は「コードレビュー確認」でPASS済みとしていたが、実際にはこの登録漏れによりギフトタブ自体が起動直後に例外でクラッシュしており、push反映機能は実行されていなかった |
 
 ## Quality Gate
 
