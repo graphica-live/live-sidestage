@@ -71,10 +71,7 @@ typecheck / test / build は analytics 共通のものがイベント機能も�
 （`schemas = ["public", "event"]`、`previewFeatures = ["multiSchema"]`）。
 イベント機能のテーブルはすべて `@@schema("event")`、analytics のテーブルは `@@schema("public")`。
 
-**schema.prisma からモデルを消したり `@@schema` を外したりしない。** 本番デプロイは
-`prisma db push --accept-data-loss` なので、schema.prisma に書かれていないテーブルは
-警告なしで削除される。統合前は「event 側の `schemas` に `public` を足すと analytics のテーブルが
-消える」という形で同じ危険があった。1つの schema.prisma が両方を書くことで解消している。
+**schema.prisma からモデルを消したり `@@schema` を外したりするときは必ず `prisma migrate dev` で明示的な drop migration を生成する。** 本番デプロイは `prisma migrate deploy` で、削除差分を含むmigrationファイルが順序通り実行されるため、明確なレビュー対象にする必要がある。統合前は「event 側の `schemas` に `public` を足すと analytics のテーブルが消える」という形で同じ危険があった。1つの schema.prisma が両方を書くことで解消している。
 
 `public` のテーブルを読むのは `src/event/analytics-db.ts` だけ。SQL は必ず
 `public."TiktokRoom"` のように完全修飾する（Prisma の multiSchema は raw SQL を自動修飾しない）。
@@ -95,7 +92,7 @@ typecheck / test / build は analytics 共通のものがイベント機能も�
 （Railway のマネージド Postgres なら既定の `postgres`）で、真の superuser でなくてよい。
 
 `event` スキーマ自体と中のテーブルはそのまま使う（データ移行は不要）。所有者が
-`event_migrator` になっている場合は、analytics の接続ロールが `db push` できるよう
+`event_migrator` になっている場合は、analytics の接続ロールが `migrate deploy` で書き込めるよう
 所有権を移すこと。
 
 ### デプロイ
@@ -109,12 +106,12 @@ start command と環境変数だけを変える。**
 | worker | `npm run worker` | TikTok Webcast 接続の維持（`WORKER_INDEX` / `WORKER_COUNT` が要る） |
 | event-worker | `npm run event-worker` | イベント集計。10秒ごとに再集計 |
 
-**スキーマ反映は build ではなく、web の起動時に走る。** [Dockerfile](../Dockerfile) の CMD が
-`scripts/migrate-*.ts` → `prisma db push --accept-data-loss` → `node server.js` の順で実行する。
+**スキーマ反映は build ではなく、Railway の Pre-Deploy Command で走る。** [Dockerfile](../Dockerfile) の CMD は `node server.js` のみで、Migration は Railway の Pre-Deploy Command（`npm run predeploy:web`）が
+`scripts/migrate-*.ts` → `prisma migrate deploy` → `node server.js` 起動 の順で実行する。
 build（`npx prisma generate && npx next build`）は DB に触らない。
 
-worker と event-worker は start command を上書きするので CMD を通らず、**`db push` を実行しない**。
-スキーマを反映するプロセスが web の1本だけになるようにわざとそうしている。この非対称は
+worker と event-worker は start command を上書きするので Pre-Deploy Command は設定されず、**migration を実行しない**。
+スキーマを反映するプロセスが web（LiveAnalytics）の1本だけになるようにわざとそうしている。この非対称は
 初回デプロイで問題になる（下記）。
 
 ### 初回デプロイ手順
@@ -123,8 +120,8 @@ worker と event-worker は start command を上書きするので CMD を通ら
 
 #### 0. 事前確認（read-only、DB を変更しない）
 
-**`prisma migrate diff` で、本番に対して何が起きるかを先に読む。** web の起動時に走るのは
-`db push --accept-data-loss` で、警告を出さずにテーブルを消す。事前に差分を目で見ておく。
+**`prisma migrate diff` で、本番に対して何が起きるかを先に読む。** web の起動時（Pre-Deploy Command）に走るのは
+`prisma migrate deploy` で、migrationファイルに基づいて変更が実行される。事前に差分を目で見ておく。
 
 ```bash
 npx prisma migrate diff \
@@ -139,13 +136,11 @@ npx prisma migrate diff \
 
 #### 1. web をデプロイする
 
-main へマージして push すると web が入れ替わり、起動時の CMD が
-`prisma db push --accept-data-loss` を実行して `event` スキーマと14テーブルを作る。
+main へマージして push すると web が入れ替わり、Pre-Deploy Command（`npm run predeploy:web`）が
+`prisma migrate deploy` を実行して `event` スキーマと14テーブルを作る。
 
-- `db push` は `CREATE SCHEMA` を含むので、**web の `DATABASE_URL` のロールに対象DBの
-  `CREATE` 権限が要る**。Railway のマネージド Postgres の既定ロール（`postgres`）なら持っている
-- ログに `[startup] PORT=...` の後で Prisma の出力が出る。ここで失敗すると `node server.js` まで
-  進まないので、web が起動しない = すぐ気づける
+- `migrate deploy` は baseline migration（`0_init`）を実行するので、**本番 DB に `_prisma_migrations` テーブルが作られ、baseline が「適用済み」登録される**。詳細な初回setup手順は [docs/deploy/prisma-migration-runbook.md](docs/deploy/prisma-migration-runbook.md) を参照
+- ログに `[startup] PORT=...` の前に `prisma migrate deploy` のログが出る。ここで失敗するとデプロイが止まり、旧イメージが稼働し続ける（Railway の健全性チェック仕様）
 
 この時点で `/events` と `/e/<slug>` は動く。集計だけがまだ回っていない状態。
 
@@ -194,7 +189,7 @@ event-worker サービスを停止するだけでよい。web を戻す必要は
 #### `EventLifeLedger` に FK を足すとき（フェーズ5の変更を既存DBへ入れる場合）
 
 `EventLifeLedger` は当初 `Event` への関連を持っておらず、イベントを削除しても履歴が残った。
-FK（`onDelete: Cascade`）を足したので、**既存DBには孤児行が残っている**。そのまま `db push` すると
+FK（`onDelete: Cascade`）を足したので、**既存DBには孤児行が残っている**。そのまま `migrate deploy` で FK を作ろうとすると
 `EventLifeLedger_eventId_fkey` の作成で失敗するので、先に消す。
 
 ```sql

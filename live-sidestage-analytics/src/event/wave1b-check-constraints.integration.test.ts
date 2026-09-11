@@ -8,6 +8,9 @@
 // ROLLBACK」を完結させる。commit しないため、他の並行テストファイルの書き込みには一切
 // 影響しない(analytics-vitest-cross-file-interference.md の教訓どおり、グローバルDDLは
 // 同一トランザクション内に閉じ込める)。
+//
+// 注: CI は `prisma migrate deploy` で制約が既に存在するため、tx 内で各 ADD CONSTRAINT 前に
+// DROP CONSTRAINT IF EXISTS を実行し直す。これにより二重適用による制約名衝突エラーを回避できる。
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -27,9 +30,42 @@ const MIGRATION_STATEMENTS = MIGRATION_SQL.split("\n")
   .map((s) => s.trim())
   .filter(Boolean);
 
+// migration.sql から制約削除文を抽出(CI で migrate deploy済みの場合に備えて既存制約を削除)
+const CONSTRAINT_DROP_STATEMENTS = (() => {
+  const lines = MIGRATION_SQL.split("\n");
+  const drops: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // ALTER TABLE で始まる行を検出
+    const tableMatch = line.match(/ALTER TABLE\s+"([^"]+)"\.?"([^"]+)"/);
+    if (tableMatch) {
+      const schemaName = tableMatch[1];
+      const tableName = tableMatch[2];
+
+      // 次の行を確認して ADD CONSTRAINT を探す
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const constraintMatch = lines[j].match(/ADD CONSTRAINT\s+"([^"]+)"/);
+        if (constraintMatch) {
+          const constraintName = constraintMatch[1];
+          drops.push(`ALTER TABLE "${schemaName}"."${tableName}" DROP CONSTRAINT IF EXISTS "${constraintName}"`);
+          break;
+        }
+      }
+    }
+  }
+
+  return drops;
+})();
+
 async function runInRolledBackTx(fn: (tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]) => Promise<void>) {
   await expect(
     prisma.$transaction(async (tx) => {
+      // DROP CONSTRAINT IF EXISTS を先に実行して既存制約を削除(migrate deploy済みの場合)
+      for (const dropStmt of CONSTRAINT_DROP_STATEMENTS) {
+        await tx.$executeRawUnsafe(dropStmt);
+      }
+      // その後で ADD CONSTRAINT を実行
       for (const stmt of MIGRATION_STATEMENTS) {
         await tx.$executeRawUnsafe(stmt);
       }

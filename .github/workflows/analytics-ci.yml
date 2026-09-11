@@ -49,7 +49,12 @@ jobs:
       WORKER_INDEX: "0"
 
     steps:
+      # fetch-depth: 0 は scripts/check-migration-safety.ts の
+      # `git diff origin/main...HEAD` が origin/main を解決できるようにするため必須
+      # (既定の shallow clone だと参照が無く、静かに「新規migrationなし」扱いになる)。
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -65,15 +70,26 @@ jobs:
 
       - run: npm run test:unit
 
-      # public と event の両スキーマを作る(multiSchema なのでスキーマ自体も push が作る)。
-      - run: npx prisma db push --skip-generate
+      # Detect and warn about destructive DDL (DROP TABLE, DROP COLUMN, etc) in migration files.
+      # Does not fail CI, only alerts reviewers.
+      - run: npx tsx scripts/check-migration-safety.ts
+
+      # Apply baseline migration to test DB.
+      # prisma/migrations/ contains 0_init and Wave1-B CHECK migration, so migrate deploy applies both.
+      - run: npx prisma migrate deploy
+
+      # Verify no schema drift between applied DB and schema.prisma.
+      # Fails if differences found (exit code 2).
+      - run: npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
 
       # test:integration は .env.local.test を読む script なので、CI では直接叩く
       # (env の DATABASE_URL をそのまま使う)。
       - run: npx vitest run integration
 
       # build は DB に接続しないが、Prisma Client の初期化に URL の形式だけ要る。
-      # npm run build は prisma db push --accept-data-loss を含むので使わない。
+      # 2026-09-11: npm run build の破壊的な db push(--accept-data-loss)ステップは
+      # 除去済み(prisma migrate deploy 移行、docs/deploy/prisma-migration-runbook.md 参照)。
+      # ここでは next build の型・ルーティング検証のみを目的に npx next build を直接使う。
       - run: npx next build
 
   # 6サービス(web/worker1-3/event-worker/worker-guardian)が同じ Dockerfile を

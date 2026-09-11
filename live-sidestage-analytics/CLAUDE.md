@@ -31,9 +31,9 @@ npm run bench:aggregate:local  # イベント集計の性能を実測する（�
 
 **typecheck → docker DB 起動 → db:push:local → npm test** はコミット前に強制される（モノレポルートの `.githooks/pre-commit`、`git config core.hooksPath .githooks` の有効化が前提）。Docker Desktop が動いていないとコミットできない。
 
-**ビルドの検証に `npm run build` を使わない。** build は `prisma db push --accept-data-loss` を含むので、実行した時点で `DATABASE_URL` の指す DB を書き換える。型とルーティングだけ確かめたいときは `npx next build` を使う。
+**`npm run build` は `DATABASE_URL` が設定されていると、`prisma generate` の際にスキーマを読む可能性があるため、ローカル開発時には注意が必要。** 型とルーティングだけ確かめたいときは `.env.local` を無視したうえで `npx next build` を実行するか、別ターミナルで DATABASE_URL を unset した状態で実行する。本番の build は Pre-Deploy Command 前に実行されるため、本番 DB に直接触ることはない。
 
-**`prisma/schema.prisma` は `public` と `event` の両スキーマを1ファイルで管理している**（`schemas = ["public", "event"]`）。モデルを消したり `@@schema` を外したりすると `db push --accept-data-loss` の削除差分になる。イベント機能を触るときは [src/event/CLAUDE.md](src/event/CLAUDE.md) を必ず読むこと。
+**`prisma/schema.prisma` は `public` と `event` の両スキーマを1ファイルで管理している**（`schemas = ["public", "event"]`）。モデルを消したり `@@schema` を外したりするときは必ず `prisma migrate dev` で明示的な drop migration を生成してレビュー対象にすること（削除差分は自動で本番に適用されず、明確なmigrationファイルとして記録される）。イベント機能を触るときは [src/event/CLAUDE.md](src/event/CLAUDE.md) を必ず読むこと。
 
 ## アーキテクチャの要点
 
@@ -141,7 +141,7 @@ grep -rn 'uniqueId\|anchorId\|tiktokId' src scripts prisma \
 
 - コードは `src/event/`（ロジック）/ `src/app/(event)/events/`（管理画面）/ `src/app/(public)/e/`（公開ページ）/ `src/app/api/events/` と `api/public/`（API）/ `event-worker.ts`（集計）
 - **UI は analytics と表向き分離してある。** 管理画面は `(dashboard)` ではなく専用の `(event)` route group に置き、`src/app/(event)/EventHeader.tsx`（ブランドのみ）と専用 metadata を持つ。**`(event)` 配下に analytics の機能・ブランド・導線を持ち込まないこと**（リスナー接続ステータス、貢献リストオーバーレイ設定、`/setup`、`/admin` など）。逆に analytics 側の `DashboardHeader.tsx` からも `/events` への導線は外してある。内部のデータ結合（`src/event/analytics-db.ts`）は分離対象ではないのでそのまま
-- **`prisma/schema.prisma` が `public` と `event` の両方を管理する**（`schemas = ["public", "event"]`、`previewFeatures = ["multiSchema"]`）。モデルを消したり `@@schema` を外したりすると `db push --accept-data-loss` の削除差分になる
+- **`prisma/schema.prisma` が `public` と `event` の両方を管理する**（`schemas = ["public", "event"]`、`previewFeatures = ["multiSchema"]`）。モデルを消したり `@@schema` を外したりするときは必ず `prisma migrate dev` で明示的な drop migration を生成する（削除差分は自動で本番に適用されず、明確なmigrationファイルとしてレビュー対象にする）
 - `public` のテーブルを読むのは [src/event/analytics-db.ts](src/event/analytics-db.ts) だけ。raw SQL は multiSchema でも自動修飾されないので `public."TiktokRoom"` のように完全修飾する。**列は必ず明示する**（`SELECT *` は敏感な列まで持ってくることになる）
 - `TiktokRoom.monitorUntil` の書き込みは [src/lib/tiktok-room.ts](src/lib/tiktok-room.ts) の `ensureRoomForEvent()` / `releaseRoomMonitor()` を通す。**主催者入力がそのまま届く経路なので、tiktokId の形式検証・120日の期限上限・監視中 room 500件の上限を外さないこと**
 - 認証は analytics の NextAuth をそのまま使う（セッション Cookie も共有）。保護範囲は `src/middleware.ts` の除外リストで決まり、**各エントリには境界 `(?:/|$)` が要る**（境界なしの `e` は `/events` まで公開してしまう）。[src/middleware.test.ts](src/middleware.test.ts) が固定している。未ログイン時の**飛び先**は [src/lib/login-path.ts](src/lib/login-path.ts) の `loginPathFor()` が決め、イベント側は analytics の `/login` ではなく `/event/login` へ送る。飛び先を変えても保護範囲は動かない
@@ -152,12 +152,12 @@ grep -rn 'uniqueId\|anchorId\|tiktokId' src scripts prisma \
 
 ### Railway デプロイ
 
-Root Directory を `live-sidestage-analytics` にする。[railway.toml](railway.toml) と [Dockerfile](Dockerfile) はそのディレクトリ基準。**同じイメージを6サービス（web + worker1/2/3 + event-worker + worker-guardian）で使い、start command と環境変数だけを変える** — 未指定（web。Dockerfile の CMD）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る、worker1〜3の3インスタンス）/ `npm run event-worker`（イベント集計）/ `npm run worker-guardian`（worker監視・フェイルオーバー）。**スキーマ反映は build ではなく web の起動時**（CMD が `prisma db push --accept-data-loss` を実行する）。start command を上書きするworker系サービスはCMDを通らないので push しない。本番構成の詳細は auto-memory の `railway-analytics-production-services` を参照。
+Root Directory を `live-sidestage-analytics` にする。[railway.toml](railway.toml) と [Dockerfile](Dockerfile) はそのディレクトリ基準。**同じイメージを6サービス（web + worker1/2/3 + event-worker + worker-guardian）で使い、start command と環境変数だけを変える** — 未指定（web。Dockerfile の CMD）/ `npm run worker`（TikTok 接続、`WORKER_INDEX` が要る、worker1〜3の3インスタンス）/ `npm run event-worker`（イベント集計）/ `npm run worker-guardian`（worker監視・フェイルオーバー）。**スキーマ反映は build ではなく Railway の Pre-Deploy Command**（`npm run predeploy:web` がmigrateを実行してから `node server.js` が起動する）。start command を上書きするworker系サービスはPre-Deploy Commandが設定されていないので migration を実行しない。本番構成の詳細は auto-memory の `railway-analytics-production-services` を参照。
 
-**`prisma/migrations/` は本番では一切実行されない（`db push` はmigrationsフォルダを読まない）。** そのため実運用上はスキーマ変更に対してmigrationファイルを作らなくても本番は動く。`prisma/schema.prisma` にモデル・カラムを足したら、たとえ本番には効かなくても `npx prisma migrate diff --from-url $DATABASE_PUBLIC_URL --to-schema-datamodel prisma/schema.prisma --script` 等で差分を確認し、migrationファイルとして残しておくこと（履歴のドキュメントとして。実行はされない）。
+**`prisma/migrations/` は baseline を含めて本番で `prisma migrate deploy` で実行される（2026-09 以降）。** baseline migration（`0_init`）は開発時に `prisma migrate diff --from-empty --to-schema-datamodel schema.prisma` で生成し、本番では `prisma migrate resolve --applied 0_init` で「適用済み」登録される。Wave1-B の CHECK 制約 migration（`20260911160000_add_wave1b_check_constraints`）も同じく `prisma migrate resolve --applied 20260911160000_add_wave1b_check_constraints` で登録される。その後のスキーマ変更は `prisma migrate dev` で通常のmigrationファイルを生成し、本番は `migrate deploy` で順序通り実行される。今後schema.prisma を変更するときは必ず `prisma migrate dev` で migrationファイルを作り、レビュー後に commit すること（build 段階では実行されず、Pre-Deploy Command で本番に反映される）。
 
-**7サービスは同一イメージの共有ではなく、各サービスが独立に Dockerfile をビルドする。** `next build` を含むので数分かかり、キャッシュや割当の差でサービス間の起動に分単位のずれが出る。**db push を実行するのは web の起動時だけ**なので、`schema.prisma` を含むデプロイでは worker 系が web より先に起動し、**このビルドが要求する列がまだ無いDBを読んで `P2022` で 503 を返し続ける**という窓がある（2026-09-04 worker3 の healthcheck 失敗で実際に発生）。
+**7サービスは同一イメージの共有ではなく、各サービスが独立に Dockerfile をビルドする。** `next build` を含むので数分かかり、キャッシュや割当の差でサービス間の起動に分単位のずれが出る。**migrate deploy を実行するのは web の起動時だけ**（Pre-Deploy Command は `LiveAnalytics` サービスのみに設定）なので、`schema.prisma` を含むデプロイでは worker 系が web より先に起動し、**このビルドが要求する列がまだ無いDBを読んで `P2022` で 503 を返し続ける**という窓がある（2026-09-04 worker3 の healthcheck 失敗で実際に発生）。
 
 これは異常ではなく待ちで、**worker.ts は `UNREADY_RECONCILE_INTERVAL_MS`（5秒）周期の reconcile でスキーマ到着後に自力で ready へ復帰する**。それでも失敗したのは Railway の healthcheckTimeout 既定 300 秒が待ち切れなかったからで、[railway.toml](railway.toml) に `healthcheckTimeout = 1800` を入れて窓を広げてある（旧コンテナは新コンテナが healthy になるまで生きるので、延長にダウンタイムのコストは無い）。worker 側は `P2021` / `P2022` を「スキーマ待ち」と判別して専用のログを出す（`schemaLagMessage()`）ので、素の P2022 スタックトレースが出ていたら別の原因を疑うこと。
 
-**worker 系サービスに db push をさせてはいけない。** `--accept-data-loss` は古い `schema.prisma` を持つイメージが実行すると新しい列・テーブルをデータごと DROP する。単一サービスだけを古いデプロイへロールバックした瞬間に発火し、復旧できない。同じリスクは web のロールバックにも今なお存在する（`db push` は前進のみの保証を持たない）ため、恒久的には `prisma migrate deploy` 運用への移行が望ましい。
+**worker 系サービスに migration を実行させてはいけない。** 複数サービスが同時にマイグレートすると Prisma のロック・race condition・同時実行競合が発生する可能性がある。Pre-Deploy Command は `LiveAnalytics`（web）サービスのみに設定し、他サービスには一切設定しないこと。詳細は [docs/deploy/prisma-migration-runbook.md](docs/deploy/prisma-migration-runbook.md) を参照。
