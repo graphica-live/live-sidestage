@@ -401,6 +401,22 @@ const RANKING_OVERSCAN = 8;
 // ranking表のth列数(#/ユーザー/コイン数/hidden sm/hidden md/展開アイコン)。spacer行・パネル行のcolSpanと揃える。
 const RANKING_COLUMN_COUNT = 6;
 
+// history表の仮想化(window virtualizer)で使う定数。
+// HISTORY_ROW_HEIGHT: PC用テーブルの1行(tr)の実測高さ(px)。
+// dev:local(PC幅1000px)でPlaywrightにより連続する2行の描画位置の差分(top座標の差)を実測して確定した値
+// (2026-09-11実測。隣接行間の距離=行自体の高さで、border等の誤差を含めて吸収している)。
+const HISTORY_ROW_HEIGHT = 53;
+// HISTORY_CARD_HEIGHT: モバイル用カード(div)の実測高さ(px)。
+// 単なるカード自体の高さ(126px)ではなく、flex gap-2(0.5rem=8px)を含めた
+// 「1カードが占める合計高さ」(連続する2カードの描画位置の差分)で測ること。
+// dev:local(スマホ幅390px)でPlaywrightにより実測して確定した値(2026-09-11)。
+const HISTORY_CARD_HEIGHT = 134;
+// overscan: 可視範囲の前後に余分に実描画しておく行数。体感速度とDOM生成コストのバランス。
+// ranking表の RANKING_OVERSCAN=8 に倣い初期値を8とする。
+const HISTORY_OVERSCAN = 8;
+// history表のth列数(時刻/ユーザー/ギフト/コイン数)。spacer行のcolSpanと揃える。
+const HISTORY_COLUMN_COUNT = 4;
+
 // ranking行の通常部分(固定高さ)。sortedFiltered.mapの中でインライン定義していると、内訳の開閉
 // (setOpenTiktokUid / setBreakdowns)のたびにAnalyticsView全体が再レンダーされ、視聴者数が多い
 // 配信者ではdiffコストが行数に比例して重くなる(ギフト内訳の件数とは無関係)。memoで切り出し、
@@ -1043,6 +1059,27 @@ export function AnalyticsView({
     useFlushSync: false,
   });
 
+  // history表のPC用(tr)・モバイル用(div)virtualizerのscrollMargin計測。
+  // ブレークポイント切替直後は非表示側→表示側の遷移でscrollMarginが古いまま一瞬レンダーされうるが、
+  // useLayoutEffectがペイント前に同期補正するため視覚上のちらつきは発生しない。
+  const historyTbodyRef = useRef<HTMLTableSectionElement>(null);
+  const [historyScrollMargin, setHistoryScrollMargin] = useState(0);
+  useLayoutEffect(() => {
+    const el = historyTbodyRef.current;
+    if (!el || el.getClientRects().length === 0) return; // 非表示時はスキップ
+    const next = el.getBoundingClientRect().top + window.scrollY;
+    setHistoryScrollMargin((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+  });
+
+  const historyCardListRef = useRef<HTMLDivElement>(null);
+  const [historyCardScrollMargin, setHistoryCardScrollMargin] = useState(0);
+  useLayoutEffect(() => {
+    const el = historyCardListRef.current;
+    if (!el || el.getClientRects().length === 0) return; // 非表示時はスキップ
+    const next = el.getBoundingClientRect().top + window.scrollY;
+    setHistoryCardScrollMargin((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+  });
+
   const filteredEvents = useMemo(() => {
     if (!historyData) return [];
     const q = filter.toLowerCase();
@@ -1070,6 +1107,24 @@ export function AnalyticsView({
 
     return events;
   }, [historyData, filter, historySortKey, historySortOrder]);
+
+  const historyRowVirtualizer = useWindowVirtualizer({
+    count: filteredEvents.length,
+    estimateSize: () => HISTORY_ROW_HEIGHT,
+    overscan: HISTORY_OVERSCAN,
+    scrollMargin: historyScrollMargin,
+    getItemKey: (i) => filteredEvents[i]?.id ?? i,
+    useFlushSync: false,
+  });
+
+  const historyCardVirtualizer = useWindowVirtualizer({
+    count: filteredEvents.length,
+    estimateSize: () => HISTORY_CARD_HEIGHT,
+    overscan: HISTORY_OVERSCAN,
+    scrollMargin: historyCardScrollMargin,
+    getItemKey: (i) => filteredEvents[i]?.id ?? i,
+    useFlushSync: false,
+  });
 
   const filteredBattles = useMemo(() => {
     if (!battlesData) return [];
@@ -1584,29 +1639,53 @@ export function AnalyticsView({
           ) : (
             <>
               {/* モバイル(sm未満): カード表示。列間引きだけでは長いギフト名が収まらないため */}
-              <div className="sm:hidden space-y-2">
-                {filteredEvents.map((ev) => (
-                    <div key={ev.id} className="rounded-xl border border-border bg-panel p-3 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <SenderIdentity
-                          sender={ev}
-                          nameClassName="font-medium truncate max-w-[160px]"
-                          handleClassName="text-xs text-muted truncate max-w-[160px]"
-                        />
-                        <span className="text-xs text-muted whitespace-nowrap shrink-0">
-                          {formatEventTime(ev.receivedAt, period)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <GiftNameDisplay ev={ev} />
-                      </div>
-                      <div className="flex items-center justify-end">
-                        <span className="font-mono font-medium text-sm">
-                          💎{ev.totalDiamonds.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                ))}
+              <div ref={historyCardListRef} className="sm:hidden flex flex-col gap-2">
+                {(() => {
+                  const virtualCards = historyCardVirtualizer.getVirtualItems();
+                  const totalSize = historyCardVirtualizer.getTotalSize();
+                  const paddingTop =
+                    virtualCards.length > 0 ? virtualCards[0].start - historyCardScrollMargin : 0;
+                  const paddingBottom =
+                    virtualCards.length > 0
+                      ? totalSize + historyCardScrollMargin - virtualCards[virtualCards.length - 1].end
+                      : 0;
+                  return (
+                    <>
+                      {paddingTop > 0 && (
+                        <div aria-hidden="true" style={{ height: paddingTop }} />
+                      )}
+                      {virtualCards.map((virtualCard) => {
+                        const ev = filteredEvents[virtualCard.index];
+                        if (!ev) return null;
+                        return (
+                          <div key={virtualCard.key} className="rounded-xl border border-border bg-panel p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <SenderIdentity
+                                sender={ev}
+                                nameClassName="font-medium truncate max-w-[160px]"
+                                handleClassName="text-xs text-muted truncate max-w-[160px]"
+                              />
+                              <span className="text-xs text-muted whitespace-nowrap shrink-0">
+                                {formatEventTime(ev.receivedAt, period)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <GiftNameDisplay ev={ev} />
+                            </div>
+                            <div className="flex items-center justify-end">
+                              <span className="font-mono font-medium text-sm">
+                                💎{ev.totalDiamonds.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {paddingBottom > 0 && (
+                        <div aria-hidden="true" style={{ height: paddingBottom }} />
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* sm以上: テーブル表示 */}
@@ -1622,32 +1701,60 @@ export function AnalyticsView({
                     </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {filteredEvents.map((ev) => (
-                      <tr
-                        key={ev.id}
-                        className="border-b border-row-border hover:bg-row-hover transition-colors"
-                      >
-                        <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
-                          {formatEventTime(ev.receivedAt, period)}
-                        </td>
-                        <td className="py-2 px-3">
-                          <SenderIdentity
-                            sender={ev}
-                            nameClassName="font-medium truncate max-w-[120px] sm:max-w-[200px]"
-                            handleClassName="text-xs text-muted truncate max-w-[100px]"
-                          />
-                        </td>
-                        <td className="py-2 px-3">
-                          <div className="flex items-center gap-1.5 min-w-0 max-w-[150px] sm:max-w-none">
-                            <GiftNameDisplay ev={ev} />
-                          </div>
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono font-medium">
-                          {ev.totalDiamonds.toLocaleString()}
-                        </td>
-                      </tr>
-                  ))}
+                <tbody ref={historyTbodyRef}>
+                  {(() => {
+                    const virtualRows = historyRowVirtualizer.getVirtualItems();
+                    const totalSize = historyRowVirtualizer.getTotalSize();
+                    const paddingTop =
+                      virtualRows.length > 0 ? virtualRows[0].start - historyScrollMargin : 0;
+                    const paddingBottom =
+                      virtualRows.length > 0
+                        ? totalSize + historyScrollMargin - virtualRows[virtualRows.length - 1].end
+                        : 0;
+                    return (
+                      <>
+                        {paddingTop > 0 && (
+                          <tr aria-hidden="true">
+                            <td colSpan={HISTORY_COLUMN_COUNT} style={{ height: paddingTop, padding: 0, border: 0 }} />
+                          </tr>
+                        )}
+                        {virtualRows.map((virtualRow) => {
+                          const ev = filteredEvents[virtualRow.index];
+                          if (!ev) return null;
+                          return (
+                            <tr
+                              key={virtualRow.key}
+                              className="border-b border-row-border hover:bg-row-hover transition-colors"
+                            >
+                              <td className="py-2 px-3 text-xs text-muted whitespace-nowrap">
+                                {formatEventTime(ev.receivedAt, period)}
+                              </td>
+                              <td className="py-2 px-3">
+                                <SenderIdentity
+                                  sender={ev}
+                                  nameClassName="font-medium truncate max-w-[120px] sm:max-w-[200px]"
+                                  handleClassName="text-xs text-muted truncate max-w-[100px]"
+                                />
+                              </td>
+                              <td className="py-2 px-3">
+                                <div className="flex items-center gap-1.5 min-w-0 max-w-[150px] sm:max-w-none">
+                                  <GiftNameDisplay ev={ev} />
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono font-medium">
+                                {ev.totalDiamonds.toLocaleString()}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {paddingBottom > 0 && (
+                          <tr aria-hidden="true">
+                            <td colSpan={HISTORY_COLUMN_COUNT} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
               </div>
