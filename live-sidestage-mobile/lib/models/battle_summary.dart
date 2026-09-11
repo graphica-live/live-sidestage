@@ -244,4 +244,57 @@ class BattleSummary {
       replay: BattleReplayAvailability.tryParse(value['replay']),
     );
   }
+
+  /// [BattleHistorySyncStore.acknowledgeResync]へ渡すMap形式。[tryParse]の逆変換。
+  Map<String, dynamic> toMap() {
+    return {
+      'battleId': battleId,
+      'startedAt': startedAt?.toIso8601String(),
+      'status': switch (status) {
+        BattleStatus.live => 'live',
+        BattleStatus.finished => 'finished',
+        BattleStatus.cutShort => 'cut_short',
+        BattleStatus.unknown => 'unknown',
+      },
+      'opponent': opponent == null
+          ? null
+          : {
+              'tiktokHandle': opponent!.tiktokHandle,
+              'avatarUrl': opponent!.avatarUrl,
+              'count': opponent!.count,
+            },
+      'selfTeam': selfTeam?.map(_participantToMap).toList(),
+      'opponentTeam': opponentTeam?.map(_participantToMap).toList(),
+      'teams': teams
+          ?.map((t) => {
+                'index': t.index,
+                'isSelf': t.isSelf,
+                'score': t.score,
+                'participants': t.participants.map(_participantToMap).toList(),
+              })
+          .toList(),
+      'selfScore': selfScore,
+      'opponentScore': opponentScore,
+      'replay': {
+        'available': replay.available,
+        'reason': switch (replay.reason) {
+          null => null,
+          BattleReplayUnavailableReason.notFinalized => 'not_finalized',
+          BattleReplayUnavailableReason.noScorePoints => 'no_score_points',
+          BattleReplayUnavailableReason.windowInvalid => 'window_invalid',
+          BattleReplayUnavailableReason.participantsInvalid => 'participants_invalid',
+          BattleReplayUnavailableReason.unknown => 'unknown',
+        },
+      },
+    };
+  }
+
+  static Map<String, dynamic> _participantToMap(BattleParticipant p) {
+    return {
+      'tiktokUid': p.tiktokUid,
+      'avatarUrl': p.avatarUrl,
+      'tiktokHandle': p.tiktokHandle,
+      'nickname': p.nickname,
+    };
+  }
 }

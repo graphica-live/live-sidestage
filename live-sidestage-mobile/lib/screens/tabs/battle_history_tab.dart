@@ -239,18 +239,17 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
         _dirty = false;
       });
 
-      // Batch 05: REST取得成功時、BattleHistorySyncStore へversion をリセット。
-      // 今後の push は新しい version 列から開始される。
+      // Batch 06: REST取得成功時、BattleHistorySyncStore へ完全なフィールドと
+      // versionを反映。(Batch 05時点ではbattleId/statusしか渡さないバグと reset()
+      // による version欠損誤判定バグがあった)
       if (mounted) {
         final store = context.read<BattleHistorySyncStore>();
-        // REST result から Store の acknowledgeResync() へ Map として変換。
-        final battles = result.battles
-            .map((b) => {
-                  'battleId': b.battleId,
-                  'status': _battleStatusToString(b.status),
-                })
-            .toList();
-        store.acknowledgeResync(battles: battles);
+        final battles = result.battles.map((b) => b.toMap()).toList();
+        store.acknowledgeResync(
+          battles: battles,
+          bootId: result.bootId,
+          version: result.version,
+        );
       }
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
@@ -262,20 +261,6 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
         _error = e.message;
         _loading = false;
       });
-    }
-  }
-
-  // Helper method to convert BattleStatus to string.
-  String _battleStatusToString(BattleStatus status) {
-    switch (status) {
-      case BattleStatus.live:
-        return 'live';
-      case BattleStatus.finished:
-        return 'finished';
-      case BattleStatus.cutShort:
-        return 'cut_short';
-      case BattleStatus.unknown:
-        return 'unknown';
     }
   }
 
@@ -433,7 +418,12 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    final allBattles = result?.battles ?? const <BattleSummary>[];
+    // Batch 06: BattleHistorySyncStore が保持するバトル一覧を実際の描画ソースにする。
+    // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
+    final storeBattles = context.watch<BattleHistorySyncStore>().getBattles();
+    final allBattles = storeBattles.isNotEmpty
+        ? storeBattles.map(BattleSummary.tryParse).whereType<BattleSummary>().toList()
+        : result?.battles ?? const <BattleSummary>[];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
     final filter = context.watch<BattleFilterStore>();
     final myTiktokId = context.watch<SessionController>().session?.streamer?.tiktokHandle;

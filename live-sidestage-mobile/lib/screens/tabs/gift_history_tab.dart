@@ -11,6 +11,7 @@ import '../../core/plan_gate.dart';
 import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
 import '../../core/tiktok_profile.dart';
+import '../../models/gift_history_event.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/diamond_format.dart';
@@ -170,17 +171,17 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
         _dirty = false;
       });
 
-      // Batch 05: REST取得成功時、GiftHistorySyncStore へversion をリセット。
-      // 今後の push は新しい version 列から開始される。
+      // Batch 06: REST取得成功時、GiftHistorySyncStore へ履歴全体とversionを反映。
+      // (Batch 05時点では'id'フィールドしか渡さないバグと reset() による version欠損
+      // 誤判定バグがあった)
       if (mounted) {
         final store = context.read<GiftHistorySyncStore>();
-        // 履歴イベントを Map 形式へ変換(id フィールドで dedup)。
-        final history = result.events
-            .map((e) => {
-                  'id': e.id,
-                })
-            .toList();
-        store.acknowledgeResync(history: history);
+        final history = result.events.map((e) => e.toMap()).toList();
+        store.acknowledgeResync(
+          history: history,
+          bootId: result.bootId,
+          version: result.version,
+        );
       }
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
@@ -260,7 +261,12 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    final events = result?.events ?? const [];
+    // Batch 06: GiftHistorySyncStore が保持する履歴を実際の描画ソースにする。
+    // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
+    final storeHistory = context.watch<GiftHistorySyncStore>().getHistory();
+    final events = storeHistory.isNotEmpty
+        ? storeHistory.map(GiftHistoryEvent.tryParse).whereType<GiftHistoryEvent>().toList()
+        : result?.events ?? const [];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     return RefreshIndicator(
