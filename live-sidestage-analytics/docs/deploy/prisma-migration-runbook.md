@@ -93,7 +93,27 @@ npx prisma migrate dev --name "drop_old_column"
 
 ### 登録手順
 
-本番DB初回セットアップ時、以下を実行してbaseline と Wave1-B CHECK制約を登録します:
+本番DB初回セットアップ時、以下を実行してbaseline と Wave1-B CHECK制約を登録します。
+`migrate resolve --applied` は SQL を一切実行せず履歴だけを「適用済み」にするため、**手順0で実DBが本当に `0_init` + Wave1-B 相当であることを確認してから**進めること（確認せずに登録すると、不足分の DDL が永久にスキップされる）:
+
+0. 実DBが `schema.prisma` と一致し、Wave1-B の5制約が実在することを確認:
+   ```bash
+   # 差分が空（exit 0）であること。room_monitor_leases / hostDisplayIds / scheduledStartAt / scheduledEndAt が
+   # まだ残っている等で差分が出た場合は resolve せず、原因を潰してから再確認する
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma migrate diff \
+     --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+   ```
+   ```sql
+   -- 5行返り、すべて convalidated = true であること
+   SELECT conname, convalidated FROM pg_constraint WHERE conname IN (
+     'battle_history_participants_captureCoverage_range',
+     'EventMatchSide_sideIndex_binary',
+     'EventLifePoint_current_le_max',
+     'overlay_timer_state_running_requires_endsAt',
+     'EventMatchBattleCandidate_group_requires_selected'
+   );
+   ```
+   制約が欠けている環境（本番以外の新規DB等）では手順4の `resolve --applied` を行わず、手順3のあと `npx prisma migrate deploy` で Wave1-B を実際に適用し、`migration.sql` 末尾の違反件数確認 → `VALIDATE CONSTRAINT` を実行する。
 
 1. 本番DB接続確認:
    ```bash
@@ -103,7 +123,7 @@ npx prisma migrate dev --name "drop_old_column"
 
 2. `_prisma_migrations` テーブルが存在しないか空を確認:
    ```bash
-   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma db execute --stdin < /dev/null <<EOF
+   DATABASE_URL=<本番PostgreSQL接続URL> npx prisma db execute --stdin <<EOF
    SELECT COUNT(*) FROM public._prisma_migrations;
    EOF
    ```
@@ -137,8 +157,8 @@ baseline を誤った内容で登録してしまった場合、以下のステ�
    DELETE FROM public._prisma_migrations WHERE migration_name = '0_init';
    DELETE FROM public._prisma_migrations WHERE migration_name = '20260911160000_add_wave1b_check_constraints';
    ```
-3. `migrate status` でpending が0件になったことを確認
-4. 再度登録手順の手順3〜5を実行
+3. `migrate status` で `0_init` と `20260911160000_add_wave1b_check_constraints` の2件が pending に戻ったことを確認
+4. 再度登録手順の手順0〜5を実行（手順5で `No pending migrations!` になれば完了）
 
 **必ず実行前に `_prisma_migrations` 全行を確認し、他の migration 行を巻き込まないこと。**
 
