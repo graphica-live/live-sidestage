@@ -54,6 +54,13 @@ String _describeSocketError(dynamic err, String fallbackPrefix) {
 /// chat:comment だけは配信形式を変えていないため schemaVersion を持たない(legacy扱い)。
 const int supportedChatEventSchemaVersion = 1;
 
+/// 新規sync機能(ランキング・ギフト履歴・バトル履歴)のschemaVersion定数。
+/// 既存のsupportedChatEventSchemaVersionと独立している。
+/// 将来的にいずれかの機能だけスキーマを上げたい場合に他を巻き込まないため。
+const int supportedRankingSchemaVersion = 1;
+const int supportedGiftHistorySchemaVersion = 1;
+const int supportedBattleHistorySchemaVersion = 1;
+
 class CommentFeed extends ChangeNotifier {
   io.Socket? _socket;
 
@@ -71,11 +78,32 @@ class CommentFeed extends ChangeNotifier {
       StreamController<ListenerStatus>.broadcast();
   final StreamController<BattleEvent> _battleController = StreamController<BattleEvent>.broadcast();
 
+  /// 新規sync機能: 貢献ランキングのsnapshotイベント。
+  final StreamController<Map<String, dynamic>> _rankingSnapshotController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  /// 新規sync機能: ギフト履歴のappendイベント。
+  final StreamController<Map<String, dynamic>> _giftHistoryAppendController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  /// 新規sync機能: バトル履歴のupsertイベント。
+  final StreamController<Map<String, dynamic>> _battleHistoryUpsertController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
   Stream<Comment> get onComment => _commentController.stream;
   Stream<GiftEvent> get onGift => _giftController.stream;
   Stream<FollowEvent> get onFollow => _followController.stream;
   Stream<ListenerStatus> get onListener => _listenerController.stream;
   Stream<BattleEvent> get onBattle => _battleController.stream;
+
+  /// 貢献ランキングのsnapshot受信。ペイロードは呼び出し側でパースする。
+  Stream<Map<String, dynamic>> get onRankingSnapshot => _rankingSnapshotController.stream;
+
+  /// ギフト履歴のappend受信。ペイロードは呼び出し側でパースする。
+  Stream<Map<String, dynamic>> get onGiftHistoryAppend => _giftHistoryAppendController.stream;
+
+  /// バトル履歴のupsert受信。ペイロードは呼び出し側でパースする。
+  Stream<Map<String, dynamic>> get onBattleHistoryUpsert => _battleHistoryUpsertController.stream;
 
   /// socket が繋がった（張り直した）タイミング。
   ///
@@ -203,6 +231,35 @@ class CommentFeed extends ChangeNotifier {
     socket.on('chat:battle', (data) {
       final battle = _decode(data, BattleEvent.tryParse);
       if (battle != null) _battleController.add(battle);
+    });
+
+    socket.on('chat:ranking:snapshot', (data) {
+      // schemaVersionは機能ごとに独立した検証。既存イベント(chat:gift等)と
+      // 別の定数を使い、将来的な互換性を維持する。
+      final envelope = _decodeRealtime(
+        data,
+        supportedRankingSchemaVersion,
+        'ranking snapshot',
+      );
+      if (envelope != null) _rankingSnapshotController.add(envelope);
+    });
+
+    socket.on('chat:gift-history:append', (data) {
+      final envelope = _decodeRealtime(
+        data,
+        supportedGiftHistorySchemaVersion,
+        'gift-history append',
+      );
+      if (envelope != null) _giftHistoryAppendController.add(envelope);
+    });
+
+    socket.on('chat:battle-history:upsert', (data) {
+      final envelope = _decodeRealtime(
+        data,
+        supportedBattleHistorySchemaVersion,
+        'battle-history upsert',
+      );
+      if (envelope != null) _battleHistoryUpsertController.add(envelope);
     });
 
     socket.onDisconnect((_) {
@@ -389,6 +446,33 @@ class CommentFeed extends ChangeNotifier {
     }
   }
 
+  /// 新規sync機能(ランキング・ギフト履歴・バトル履歴)用のdecode。
+  ///
+  /// 既存の_decodeと同様の構造だが、schemaVersion定数を引数で指定できる。
+  /// これにより機能ごとに独立したバージョン管理が可能。
+  Map<String, dynamic>? _decodeRealtime(
+    Object? data,
+    int supportedSchemaVersion,
+    String eventKind,
+  ) {
+    try {
+      if (data is! Map) return _malformed('$eventKind: not a map');
+
+      final map = Map<String, dynamic>.from(data);
+
+      final version = map['schemaVersion'];
+      if (version is! int) return _malformed('$eventKind: missing schemaVersion');
+      if (version > supportedSchemaVersion) {
+        debugPrint('[feed] 未対応の schemaVersion=$version の$eventKindイベントを無視しました');
+        return null;
+      }
+
+      return map;
+    } catch (e) {
+      return _malformed('$eventKind: $e');
+    }
+  }
+
   T? _malformed<T>(String reason) {
     malformedEventCount++;
     debugPrint('[feed] 不正なイベントを1件破棄しました: $reason');
@@ -420,6 +504,9 @@ class CommentFeed extends ChangeNotifier {
     _listenerController.close();
     _battleController.close();
     _connectedController.close();
+    _rankingSnapshotController.close();
+    _giftHistoryAppendController.close();
+    _battleHistoryUpsertController.close();
     super.dispose();
   }
 }
