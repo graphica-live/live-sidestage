@@ -151,6 +151,61 @@ void main() {
     });
   });
 
+  group('setDuplicateSpeechSkipEnabled', () {
+    test('値を変更するとrevisionが進む', () async {
+      final store = AppConfigStore();
+      await store.load();
+      final before = store.config.revision;
+
+      await store.setDuplicateSpeechSkipEnabled(false);
+
+      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+      expect(store.config.revision, before + 1);
+    });
+
+    test('既定値trueから変更できる', () async {
+      final store = AppConfigStore();
+      await store.load();
+      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
+
+      await store.setDuplicateSpeechSkipEnabled(false);
+
+      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+    });
+
+    test('変化がなければrevisionを進めない', () async {
+      final store = AppConfigStore();
+      await store.load();
+      final before = store.config.revision;
+
+      await store.setDuplicateSpeechSkipEnabled(true); // 既定値と同じ
+
+      expect(store.config.revision, before);
+    });
+
+    test('他の設定は巻き込まない', () async {
+      final store = AppConfigStore();
+      await store.load();
+      await store.setTtsVolume(42);
+
+      await store.setDuplicateSpeechSkipEnabled(false);
+
+      expect(store.config.ttsVolume, 42);
+      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+    });
+
+    test('保存した内容は読み直しても残る', () async {
+      final store = AppConfigStore();
+      await store.load();
+      await store.setDuplicateSpeechSkipEnabled(false);
+
+      final reloaded = AppConfigStore();
+      await reloaded.load();
+
+      expect(reloaded.config.duplicateSpeechSkipEnabled, isFalse);
+    });
+  });
+
   group('resetToDefaults', () {
     // アカウント削除時の後始末。同一端末で別アカウントへログインしたとき、
     // 前アカウントの設定・ForegroundTaskが保持するtoken/refreshTokenを引き継がないようにする。
