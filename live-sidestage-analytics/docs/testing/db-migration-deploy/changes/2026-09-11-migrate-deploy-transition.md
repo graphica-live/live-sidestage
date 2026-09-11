@@ -115,8 +115,24 @@ main マージ後、ユーザー承認のもと本番DBへ以下を実施（`Sec
    （`room_monitor_leases`テーブル削除、`tiktok_battles.hostDisplayIds`含む4列削除）
 8. 最終検証: `migrate diff --exit-code`（差分なし）・`migrate status`（up to date）: PASS
 
+## 追記（2026-09-12 Pre-Deploy Command設定）
+
+Railway CLIの `railway api`（GraphQL、`ServiceInstanceUpdateInput.preDeployCommand`）経由で
+LiveAnalyticsサービスに `npm run predeploy:web` を設定した（ユーザー承認取得済み）。CLIに専用
+サブコマンドは無いが、`service`/`config`（IaC railway.ts、TS SDK未導入のため利用不可）には
+無く、GraphQL API直叩きで設定できることを `railway api search preDeploy` で確認した。
+
+- `preDeployCommand` の型は `[String!]` だが、コマンド全体を要素配列でなく**1要素の文字列**
+  （`["npm run predeploy:web"]`）として渡す必要があった。単語ごとに分割して渡す
+  （`["npm","run","predeploy:web"]`）と `Invalid input` で失敗する
+- worker1/2/3・event-worker・worker-guardianには設定していない（runbook通り、意図的。
+  migrate deployを実行するのはweb起動時のみとする既存方針）
+- 設定後、`serviceInstance` クエリで `preDeployCommand: ["npm run predeploy:web"]` を再確認済み
+- 次回デプロイ（mainブランチのpush）からPre-Deploy Commandとして自動実行される
+
 ## remaining risks
 
-- Pre-Deploy Command設定（Railwayダッシュボード限定、AI側に操作経路なし）はユーザー手動実行が必要
 - `tiktok_battles.hostDisplayIds` の827件（非空配列データ）はバックアップなしで削除した。
   再取得手段はコード側に残っていない（b9801ede Wave1-Cで完全除去済み）
+- Pre-Deploy Command設定後の実デプロイでの動作確認（migrate deployが正常に走ること）は
+  未実施。次回mainへのpushで自動デプロイされた際に確認が必要
