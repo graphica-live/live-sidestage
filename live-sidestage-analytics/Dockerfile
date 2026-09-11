@@ -26,4 +26,13 @@ EXPOSE 3000
 # (旧形の列 47 件を検出して 57 テーブルを TRUNCATE 済み)。以後は対象が0件でスキップされる
 # だけだが、起動のたびに全テーブルを走査するうえ、将来のスキーマ変更で列名が偶然一致すると
 # 本番データを TRUNCATE しうるため残さない。スクリプト本体は監査用に scripts/ へ残してある。
-CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && npx tsx scripts/migrate-match-session.ts && npx prisma db push --accept-data-loss && npx tsx scripts/migrate-match-battle-candidates.ts && node server.js"]
+#
+# prisma db push --accept-data-loss / migrate-match-session.ts / migrate-match-battle-candidates.ts
+# は 2026-09-11 に CMD から除去した(prisma migrate deploy 移行、docs/deploy/prisma-migration-runbook.md
+# 参照)。スキーマ反映は Railway の Pre-Deploy Command(`npm run predeploy:web`)へ分離し、
+# CMD は起動のみを担う。
+#
+# 【重要】このイメージは baseline(`0_init`)未登録の DB に対しては旧スキーマのまま起動し、
+# Prisma クエリが失敗しうる。baseline 未実施の本番環境へこのコードをデプロイしないこと
+# (docs/deploy/prisma-migration-runbook.md の Section C 完了が前提)。
+CMD ["sh", "-c", "echo \"[startup] PORT=$PORT\" && node server.js"]

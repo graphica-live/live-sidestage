@@ -14,7 +14,7 @@
 > **経緯**: この機能はもともと `live-sidestage-event/` という別プロジェクト・別DBロールで、
 > analytics のデータを view 経由で読む構成だった。同じ Postgres・同じ認証・同じユーザーを
 > 共有していて分離の実体がなく、`public` を Prisma の管理下に置けないという制約が
-> 恒久的な事故要因（`db push --accept-data-loss` の削除差分）になっていたため、
+> 恒久的な事故要因（`db push --accept-data-loss` によるテーブル削除の危険性）になっていたため、
 > analytics へ統合した。プロセス分離（TikTok接続 / Web / 集計）は Railway のサービス分割で行う。
 
 ## 絶対に守ること
@@ -56,9 +56,8 @@ uid は所有の根拠にならない。`TikTokUser.tiktokHandle` に unique を
 
 ### 2. `prisma/schema.prisma` は public と event の両方を1ファイルで管理する
 
-`schemas = ["public", "event"]`。**analytics のモデルを消したり `@@schema` を外したりしない。**
-本番デプロイは `prisma db push --accept-data-loss` なので、schema.prisma に書かれていない
-テーブルは警告なしで削除される。
+`schemas = ["public", "event"]`。**analytics のモデルを消したり `@@schema` を外したりするときは `prisma migrate dev` で明示的な drop migration を生成する。**
+本番デプロイは `prisma migrate deploy` で、削除差分を含むmigrationファイルが順序通り実行されるため、明確なレビュー対象にする必要がある。
 
 ### 3. 日時のパースに `new Date("2026-09-01T20:00")` を使わない
 
@@ -1149,9 +1148,9 @@ duration から終了時刻を計算した OPEN 状態のバトルは、`endedAt
 
 ### マイグレーション
 
-`EventMatchBattleCandidate` は新規テーブルなので `prisma db push` 自体は普通に通る。
+`EventMatchBattleCandidate` は新規テーブルなので `prisma migrate deploy` 自体は普通に通る。
 既存 `EventMatch` の検知結果を複製するバックフィル（`scripts/migrate-match-battle-candidates.ts`、
-意味変換つき・冪等）を db push の後・`server.js` 起動の前に Dockerfile CMD で実行する。
+意味変換つき・冪等）を migration の後・`node server.js` 起動の前に Pre-Deploy Command（`npm run predeploy:web`）で実行する。
 **新旧 `event-worker` を同時に動かさないこと**（旧版は「最新候補ミラー1本」だけでシリーズ
 勝者を上書きしうる）。ロジック変更（`detectMatches`/`resolveMatchResults` 書き換え）を含む
 デプロイの前に `event-worker` を一度止めるのが安全。
@@ -1262,7 +1261,7 @@ UI側（`MatchManager.tsx` の `deriveGroupsFromSelection()`）は「checkedIds�
 デプロイは `EVENT_WINNER_FEEDER_SWAP` と同じ2段階パターンを踏襲する
 （feature flag: `EVENT_CANDIDATE_GROUPING`、既定オフ）:
 
-1. **列追加**: `combinedGroupId` を `prisma db push`。既存行は全部 `null`
+1. **列追加**: `combinedGroupId` を `prisma migrate dev` でmigrationを生成。既存行は全部 `null`
 2. **reader配布**: `resolveMatchSeries()` のグループ対応版を event-worker と Web の両方へ
    デプロイ。フラグは未設定(オフ)のまま。DB上は `combinedGroupId` が依然全部 `null` なので、
    `groupByCombinedGroup()` は「候補1件=グループ1件」に退化し、新旧ロジックは出力が完全に
