@@ -211,7 +211,12 @@ void main() {
       expect(settingRow(tester, 'すべての効果音の音量').onTap, isNull);
       expect(settingRow(tester, '読み上げの音量').onTap, isNull);
       expect(voiceTile(tester).onTap, isNull);
-      expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+      // すべてのSwitch(ランダムボイス + 定型文制限)が無効化されていることを確認
+      final switches = find.byType(Switch).evaluate().toList();
+      expect(switches.length, 2);
+      for (final switchElem in switches) {
+        expect((switchElem.widget as Switch).onChanged, isNull);
+      }
     });
   });
 }
