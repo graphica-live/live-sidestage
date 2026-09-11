@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-07
-last_risk: LOW
-last_reviewers: [deepseek-v4-flash]
+last_updated: 2026-09-11
+last_risk: MEDIUM
+last_reviewers: [deepseek-v4-flash, gemini-3.7-flash-medium]
 ---
 
 # 貢献ランキングのギフト内訳展開
@@ -72,6 +72,11 @@ last_reviewers: [deepseek-v4-flash]
 | TC-GRB-024 | PC幅・スマホ幅のどちらでも横スクロールが発生しない | 内訳パネル | デバイス差 | 1000px / 390px | 1000px・390px とも1カラム固定。どちらも横スクロールなし | `[pw]` | PASS | 2026-09-07: ユーザー指摘によりレイアウトを2カラム(sm以上)→1カラム固定へ変更。breakpoint分岐は廃止 |
 | TC-GRB-025 | 実装が凍結済みの視覚契約から外れていない | ranking テーブル + 内訳パネル | 視覚契約 | `comp.png` と同条件（1000px / light・dark） | 余白・タイポ・色・角丸・情報密度が `spec.md` の数値と一致。要素・挙動インベントリに欠落なし。`MAJOR` ゼロ | `[vqa]` | FAIL→修正→PASS | MINOR 2件（スケルトンがパネル幅いっぱいで縞に見える / 再試行ボタンの padding が契約超過）を修正して再撮影。色トークンだけ反映され余白・タイポ・密度が既定へ丸まる乖離を明示的に疑った。2026-09-07: ユーザーフィードバックで要約行削除・1カラム固定へ`spec.md`側を更新(明示承認)、再照合PASS |
 | TC-GRB-029 | 見出し右の要約「N種類・M回・X」を表示しない | `GiftBreakdownPanel` | 回帰 | 展開状態 | パネル見出しは「ギフト内訳」のみ。件数・回数・合計コインの要約テキストは出ない | `[pw]` | PASS | 2026-09-07追加。要約は一覧の合計コイン数と重複情報で、ユーザーから不要指摘 |
+| TC-GRB-030 | ギフト種類数が上限(100)を超えたら上位100件のみ返し、合計は全件ベースのまま | `queryGiftBreakdown` | 境界 | 同一ユーザーが101種類のギフトを送信（`totalDiamonds`をユニーク化） | `truncated: true`、`gifts.length === 100`、最小値(1)の種類が切り捨てられる、`total.totalDiamonds` は101種類分の合計(5151)のまま | `[itest]` | PASS | 2026-09-11追加。視聴者数の多い配信者でギフトカタログ規模(671種類)まで内訳が肥大化する対策 |
+| TC-GRB-031 | ギフト種類数が上限以下のときは truncated が false | `queryGiftBreakdown` | 正常 | ギフト種類数が100以下 | `truncated: false`、全件返る | `[itest]` | PASS | 2026-09-11追加 |
+| TC-GRB-032 | 内訳パネルに「上位N件のみ表示」の注記が出る | `GiftBreakdownPanel` | UI/境界 | API が `truncated: true`（`gifts.length` 件） | パネル上部に「上位{gifts.length}件のみ表示」の注記が表示される。件数はAPI応答由来で固定値をUI側に持たない | `[inject]` | PASS | 2026-09-11追加。サーバー側定数変更時にUI文言が追従しないズレを防ぐため、表示件数は`gifts.length`を参照する実装（DeepSeek/Gemini双方のfinding指摘を反映） |
+| TC-GRB-033 | 上限以下のときは省略注記が出ない | `GiftBreakdownPanel` | 回帰 | API が `truncated: false` | 「上位…のみ表示」の注記は表示されない | `[inject]` | PASS | 2026-09-11追加 |
+| TC-GRB-034 | ランキング行数が多くても、1行の開閉が他行の再レンダーを引き起こさない | `AnalyticsView`(`RankingRow`) | 性能/回帰 | 視聴者数が多い(数千件)ランキング | 行のクリックで開閉した行の内訳パネルのみが表示切替わり、操作が体感できる速度で完了する | `[pw]` | PASS | 2026-09-11追加。「行タップ後に重くなりマウス操作もできなくなる」という不具合報告を受け、`RankingRow`をReact.memo化して開閉時の全行再レンダーを防止 |
 
 ## Quality Gate
 
@@ -87,6 +92,5 @@ last_reviewers: [deepseek-v4-flash]
 
 - 内訳の CSV エクスポートへの反映（この差分に実装が無い。`spec.md` でも「未定義」として凍結）
 - 内訳パネル内での並び替え・フィルタ（同上）
-- ギフト種類が極端に多い場合のスクロール/省略挙動（`spec.md` で「全件表示」と決めたのみで上限を設けていない）
 - `GiftDailyListenerStat` からギフト名別の内訳を復元すること（ロールアップに粒度が無く、
   スキーマ変更なしには不可能。保持期間の仕様自体は `docs/testing/gift-retention/baseline.md`）

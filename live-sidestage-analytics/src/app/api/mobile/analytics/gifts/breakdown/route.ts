@@ -17,6 +17,7 @@ const buildUnregisteredResponse = () =>
     gifts: [],
     total: { repeatCount: 0, totalDiamonds: 0 },
     coverage: { detailAvailable: false, rawFrom: null, partial: false },
+    truncated: false,
     dateRange: { start: "", end: "" },
   });
 

@@ -43,10 +43,19 @@ export type GiftBreakdownResult = {
   gifts: GiftBreakdownEntry[];
   total: { repeatCount: number; totalDiamonds: number };
   coverage: GiftBreakdownCoverage;
+  /** ギフト名の種類数が MAX_BREAKDOWN_GIFT_TYPES を超え、上位のみ返した。 */
+  truncated: boolean;
 };
 
+/**
+ * 内訳に表示するギフト名の種類数の上限。`MAX_CONTRIBUTION_ROWS`(src/event/aggregate.ts)とは
+ * 意味が異なる(あちらは「参加者1人あたりの明細行数」、こちらは「1人あたりのギフト種類数」)ため
+ * 独立させている。
+ */
+const MAX_BREAKDOWN_GIFT_TYPES = 100;
+
 function emptyResult(tiktokUid: string, coverage: GiftBreakdownCoverage): GiftBreakdownResult {
-  return { tiktokUid, gifts: [], total: { repeatCount: 0, totalDiamonds: 0 }, coverage };
+  return { tiktokUid, gifts: [], total: { repeatCount: 0, totalDiamonds: 0 }, coverage, truncated: false };
 }
 
 /**
@@ -99,7 +108,20 @@ export async function queryGiftBreakdown(
 
   if (grouped.length === 0) return emptyResult(tiktokUid, coverage);
 
-  const giftIds = grouped.map((g) => g.giftId);
+  // 合計は絞り込み前の全件(grouped)から出す。既存ランキングタブの totalDiamonds と一致させるため、
+  // 表示件数を絞ってもここは変えない。
+  const total = grouped.reduce(
+    (acc, g) => ({
+      repeatCount: acc.repeatCount + (g._sum.repeatCount ?? 0),
+      totalDiamonds: acc.totalDiamonds + (g._sum.totalDiamonds ?? 0),
+    }),
+    { repeatCount: 0, totalDiamonds: 0 }
+  );
+  const truncated = grouped.length > MAX_BREAKDOWN_GIFT_TYPES;
+  // grouped は totalDiamonds 降順(orderBy指定)なので、slice で上位のみ残す。
+  const limited = truncated ? grouped.slice(0, MAX_BREAKDOWN_GIFT_TYPES) : grouped;
+
+  const giftIds = limited.map((g) => g.giftId);
 
   // 名前と画像は「期間内の最新の1行」から採る(giftPictureUrl は TikTok 側で差し替わりうる)。
   // aggregateGiftUsers() の nickname 補完と同じ二段構え。
@@ -121,7 +143,7 @@ export async function queryGiftBreakdown(
     catalogRows.filter((c) => c.labelJa).map((c) => [c.giftId, c.labelJa as string])
   );
 
-  const gifts: GiftBreakdownEntry[] = grouped.map((g) => {
+  const gifts: GiftBreakdownEntry[] = limited.map((g) => {
     const latest = latestByGiftId.get(g.giftId);
     return {
       giftId: g.giftId,
@@ -134,15 +156,7 @@ export async function queryGiftBreakdown(
     };
   });
 
-  const total = gifts.reduce(
-    (acc, g) => ({
-      repeatCount: acc.repeatCount + g.repeatCount,
-      totalDiamonds: acc.totalDiamonds + g.totalDiamonds,
-    }),
-    { repeatCount: 0, totalDiamonds: 0 }
-  );
-
-  return { tiktokUid, gifts, total, coverage };
+  return { tiktokUid, gifts, total, coverage, truncated };
 }
 
 /**
