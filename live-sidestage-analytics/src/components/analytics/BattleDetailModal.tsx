@@ -19,6 +19,7 @@ import {
 import type { ReplayUnavailableReason } from "@/lib/battle-replay-contract";
 import { BattleReplayView } from "./battle-replay/BattleReplayView";
 import { formatClock, replayTitleOf } from "./battle-replay/replay-format";
+import { ShareLinkButton } from "./ShareLinkButton";
 
 /** 再生できない理由の文言。サーバーは理由コードだけを返す(契約は battle-replay-contract.ts)。 */
 const REPLAY_UNAVAILABLE_LABEL: Record<ReplayUnavailableReason, string> = {
@@ -157,7 +158,13 @@ export function BattleDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute right-3 top-3 flex items-center gap-1">
-          {canShare && <ShareButton key={mode} battleId={battle.battleId} view={mode} base={base} />}
+          {canShare && (
+            <ShareLinkButton
+              key={mode}
+              postUrl={`${base ?? "/api/analytics"}/battles/${encodeURIComponent(battle.battleId)}/share`}
+              urlSuffix={`?v=${mode}`}
+            />
+          )}
           <button
             ref={closeButtonRef}
             type="button"
@@ -300,76 +307,6 @@ export function BattleDetailModal({
         </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/**
- * 共有リンクを発行してクリップボードへ入れる。**URLはサーバーが組む**
- * (`canonicalOrigin("analytics")`。`window.location.origin` だと別ホストから発行したときずれる)。
- * `?v=` には押した時点のモードを入れ、共有された側が同じ表示で開くようにする。
- *
- * トークンは遅延発行で、2回目以降は同じトークンが返る(再発行しない)。
- */
-function ShareButton({
-  battleId,
-  view,
-  base,
-}: {
-  battleId: string;
-  view: "list" | "replay";
-  base?: string;
-}) {
-  const [state, setState] = useState<"idle" | "working" | "copied" | "manual" | "error">("idle");
-  const [url, setUrl] = useState<string | null>(null);
-  const apiBase = base ?? "/api/analytics";
-
-  const share = async () => {
-    setState("working");
-    try {
-      const res = await fetch(`${apiBase}/battles/${encodeURIComponent(battleId)}/share`, {
-        method: "POST",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { url: string };
-      const shareUrl = `${data.url}?v=${view}`;
-      setUrl(shareUrl);
-      // 非 secure context では clipboard API が無い。その場合は URL を
-      // 選択可能なテキストで出して手でコピーしてもらう(黙って失敗させない)。
-      if (!navigator.clipboard) {
-        setState("manual");
-        return;
-      }
-      await navigator.clipboard.writeText(shareUrl);
-      setState("copied");
-      window.setTimeout(() => setState("idle"), 2000);
-    } catch {
-      setState("error");
-    }
-  };
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={() => void share()}
-        disabled={state === "working"}
-        aria-label={state === "copied" ? "コピーした" : "共有リンクをコピー"}
-        title={state === "copied" ? "コピーした" : "共有リンクをコピー"}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong disabled:opacity-60"
-      >
-        <ArrowShareIcon />
-      </button>
-      {state === "error" && <span className="text-[10px] text-muted">共有リンクを発行できなかった。</span>}
-      {state === "manual" && url !== null && (
-        <input
-          readOnly
-          value={url}
-          aria-label="共有URL"
-          onFocus={(e) => e.currentTarget.select()}
-          className="w-[210px] rounded-field border border-border bg-surface px-2 py-1 font-mono text-[10px] text-muted"
-        />
-      )}
     </div>
   );
 }
@@ -727,15 +664,6 @@ function CloseIcon() {
   return (
     <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ArrowShareIcon() {
-  return (
-    <svg viewBox="0 0 512 512" width={16} height={16} fill="currentColor" aria-hidden>
-      <path d="M512,255.995L277.045,65.394v103.574c-17.255,0-36.408,0-57.542,0c-208.59,0-249.35,153.44-201.394,266.128
-		c9.586-103.098,142.053-100.701,237.358-100.701c7.247,0,14.446,0,21.578,0v112.211L512,255.995z" />
     </svg>
   );
 }

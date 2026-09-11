@@ -6,6 +6,7 @@ import { BattleDetailModal } from "./BattleDetailModal";
 import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProfileUrl, type BattleListItem, type BattleStatus } from "./battle-types";
 import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
 import { useBattleFilterSettings } from "./useBattleFilterSettings";
+import { ShareLinkButton } from "./ShareLinkButton";
 
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -1255,6 +1256,22 @@ export function AnalyticsView({
                 </button>
               )}
             </>
+          )}
+          {viewMode === "ranking" && (
+            <ShareLinkButton
+              key={period === "custom" ? `custom|${customStart}|${customEnd}` : `${period}|${currentDate}`}
+              postUrl={`${apiBase}/gifts/share`}
+              buildRequestBody={() =>
+                period === "custom"
+                  ? {
+                      period,
+                      startDatetime: new Date(customStart).toISOString(),
+                      endDatetime: new Date(customEnd).toISOString(),
+                    }
+                  : { period, date: currentDate }
+              }
+              ariaLabel="貢献ランキングの共有リンクをコピー"
+            />
           )}
         </div>
 

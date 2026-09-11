@@ -1,0 +1,82 @@
+"use client";
+
+import { useState } from "react";
+import { ArrowShareIcon } from "./icons/ArrowShareIcon";
+
+/**
+ * 共有リンクを発行してクリップボードへ入れる汎用ボタン。**URLはサーバーが組む**
+ * (`canonicalOrigin("analytics")`。`window.location.origin` だと別ホストから発行したときずれる)。
+ *
+ * 元は `BattleDetailModal.tsx` のバトル履歴共有専用だった状態機械
+ * (`idle|working|copied|manual|error`)を `{postUrl, buildRequestBody}` で汎用化したもの。
+ * 貢献ランキングのシェアボタンもこれを使う。
+ */
+export function ShareLinkButton({
+  postUrl,
+  buildRequestBody,
+  urlSuffix,
+  ariaLabel = "共有リンクをコピー",
+}: {
+  postUrl: string;
+  /** POSTボディを組み立てる。省略時はボディ無しでPOSTする(バトル履歴の既存挙動)。 */
+  buildRequestBody?: () => unknown;
+  /** 発行されたURLへ付け足す文字列(バトル履歴の `?v=list|replay` 等)。 */
+  urlSuffix?: string;
+  ariaLabel?: string;
+}) {
+  const [state, setState] = useState<"idle" | "working" | "copied" | "manual" | "error">("idle");
+  const [url, setUrl] = useState<string | null>(null);
+
+  const share = async () => {
+    setState("working");
+    try {
+      const body = buildRequestBody?.();
+      const res = await fetch(postUrl, {
+        method: "POST",
+        ...(body !== undefined
+          ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+          : {}),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { url: string };
+      const shareUrl = urlSuffix ? `${data.url}${urlSuffix}` : data.url;
+      setUrl(shareUrl);
+      // 非 secure context では clipboard API が無い。その場合は URL を
+      // 選択可能なテキストで出して手でコピーしてもらう(黙って失敗させない)。
+      if (!navigator.clipboard) {
+        setState("manual");
+        return;
+      }
+      await navigator.clipboard.writeText(shareUrl);
+      setState("copied");
+      window.setTimeout(() => setState("idle"), 2000);
+    } catch {
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => void share()}
+        disabled={state === "working"}
+        aria-label={state === "copied" ? "コピーした" : ariaLabel}
+        title={state === "copied" ? "コピーした" : ariaLabel}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-row-hover hover:text-strong disabled:opacity-60"
+      >
+        <ArrowShareIcon />
+      </button>
+      {state === "error" && <span className="text-[10px] text-muted">共有リンクを発行できなかった。</span>}
+      {state === "manual" && url !== null && (
+        <input
+          readOnly
+          value={url}
+          aria-label="共有URL"
+          onFocus={(e) => e.currentTarget.select()}
+          className="w-[210px] rounded-field border border-border bg-surface px-2 py-1 font-mono text-[10px] text-muted"
+        />
+      )}
+    </div>
+  );
+}
