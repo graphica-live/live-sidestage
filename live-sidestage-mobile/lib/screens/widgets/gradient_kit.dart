@@ -503,18 +503,19 @@ class KosaiAvatarStack extends StatelessWidget {
 /// グラデーション文字。spec.mdの「タブ見出し」「サマリーカードの合計値」で使う。
 /// Flutter標準の`Text`ではグラデーション文字を表現できないため`ShaderMask`で実現する。
 class GradientText extends StatelessWidget {
-  const GradientText(this.text, {super.key, required this.style, this.gradient = KosaiPalette.badge});
+  const GradientText(this.text, {super.key, required this.style, this.gradient = KosaiPalette.badge, this.textAlign});
 
   final String text;
   final TextStyle style;
   final Gradient gradient;
+  final TextAlign? textAlign;
 
   @override
   Widget build(BuildContext context) {
     return ShaderMask(
       blendMode: BlendMode.srcIn,
       shaderCallback: (bounds) => gradient.createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
-      child: Text(text, style: style.copyWith(color: Colors.white)),
+      child: Text(text, textAlign: textAlign, style: style.copyWith(color: Colors.white)),
     );
   }
 }
