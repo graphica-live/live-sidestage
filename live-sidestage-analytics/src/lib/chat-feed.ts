@@ -1,6 +1,19 @@
 import type { Server as SocketIOServer } from "socket.io";
+import type { SyncEnvelope } from "./realtime-sync/contracts";
+import { nextVersion } from "./realtime-sync/version-store";
+import type { RankingSnapshot } from "./chat-ranking";
+import type { GiftHistoryEvent } from "./gift-history";
+import type { BattleListItem } from "./battle-history";
 
 export const CHAT_EVENT_SCHEMA_VERSION = 1;
+
+// 貢献ランキング/ギフト履歴/バトル履歴のpush(realtime-sync)用schemaVersion。
+// CHAT_EVENT_SCHEMA_VERSIONとは独立したカウンタにする(Batch04 design-review反映、
+// DeepSeek MEDIUM finding: 機能ごとに独立させないと将来どれか1つだけ上げたいときに
+// 他のイベントも巻き込んで壊れる)。
+export const RANKING_SCHEMA_VERSION = 1;
+export const GIFT_HISTORY_SCHEMA_VERSION = 1;
+export const BATTLE_HISTORY_SCHEMA_VERSION = 1;
 
 /** コメントに含まれるエモート(絵文字スタンプ)1件。 */
 export interface ChatCommentEmote {
@@ -481,6 +494,85 @@ export async function emitChatBattle(input: ChatBattleInput): Promise<boolean> {
   if (!isIoReady()) return false;
   const payload: ChatBattlePayload = { schemaVersion: CHAT_EVENT_SCHEMA_VERSION, ...input };
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:battle", payload);
+  return true;
+}
+
+// ── realtime-sync push(貢献ランキング/ギフト履歴/バトル履歴) ──────────────────
+//
+// **常にDB保存完了後に呼ぶこと**(Invariants: Server Authoritative)。既存の
+// emitChatGift/emitChatBattle(トリガー通知)とは別イベント名で、互換のため両方とも残す。
+// バリデーション・DB読み取り・payload組み立ては呼び出し元(realtime-sync/dispatch.ts)の
+// 責務で、ここではversion払い出しとsocket emitのみを行う。
+
+/**
+ * 貢献ランキングのsnapshotを配信する。呼び出し元(chat-ranking.tsのthrottle)が
+ * roomId単位でbuildを1回に絞ってから、購読中の各streamerIdに対してこれを呼ぶ想定。
+ */
+export async function emitChatRankingSnapshot(
+  streamerId: string,
+  snapshot: RankingSnapshot
+): Promise<boolean> {
+  if (!isIoReady()) return false;
+  const { bootId, epoch, version } = nextVersion("ranking", streamerId);
+  const envelope: SyncEnvelope<RankingSnapshot> = {
+    schemaVersion: RANKING_SCHEMA_VERSION,
+    streamerId,
+    kind: "snapshot",
+    bootId,
+    epoch,
+    version,
+    period: snapshot.period,
+    payload: snapshot,
+  };
+  g.__io?.to(`chat:${streamerId}`).emit("chat:ranking:snapshot", envelope);
+  return true;
+}
+
+/**
+ * ギフト履歴1件(保存済みGift行)をappendとして配信する。**dropしない経路
+ * (tiktok-listener.tsの専用非dropキュー)から呼ばれる想定**なので、ここでのio未初期化は
+ * 呼び出し元のリトライ判定に使えるようboolean(配信できたか)を返す。
+ */
+export async function emitChatGiftHistoryAppend(
+  streamerId: string,
+  event: GiftHistoryEvent
+): Promise<boolean> {
+  if (!isIoReady()) return false;
+  const { bootId, epoch, version } = nextVersion("gift-history", streamerId);
+  const envelope: SyncEnvelope<GiftHistoryEvent> = {
+    schemaVersion: GIFT_HISTORY_SCHEMA_VERSION,
+    streamerId,
+    kind: "append",
+    bootId,
+    epoch,
+    version,
+    payload: event,
+  };
+  g.__io?.to(`chat:${streamerId}`).emit("chat:gift-history:append", envelope);
+  return true;
+}
+
+/**
+ * バトル履歴1件のサマリーをupsertとして配信する。score_updated/ended/確定(finalize)後の
+ * いずれからも呼ばれる(呼び出し元は`battleId`単位でcoalescingするので、ここでは
+ * 受け取った内容をそのまま配信するだけでよい)。
+ */
+export async function emitChatBattleHistoryUpsert(
+  streamerId: string,
+  summary: BattleListItem
+): Promise<boolean> {
+  if (!isIoReady()) return false;
+  const { bootId, epoch, version } = nextVersion("battle-history", streamerId);
+  const envelope: SyncEnvelope<BattleListItem> = {
+    schemaVersion: BATTLE_HISTORY_SCHEMA_VERSION,
+    streamerId,
+    kind: "upsert",
+    bootId,
+    epoch,
+    version,
+    payload: summary,
+  };
+  g.__io?.to(`chat:${streamerId}`).emit("chat:battle-history:upsert", envelope);
   return true;
 }
 
