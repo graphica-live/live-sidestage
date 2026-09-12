@@ -44,7 +44,7 @@ export async function loadTapPointsForBattle(battleId: string): Promise<BattleTa
     }),
     prisma.tiktokBattle.findMany({
       where: { battleId },
-      select: { roomId: true, tapPointsTracked: true },
+      select: { roomId: true, tapPointsTracked: true, hostTiktokUids: true },
     }),
   ]);
 
@@ -58,8 +58,11 @@ export async function loadTapPointsForBattle(battleId: string): Promise<BattleTa
   }
 
   // **タップ点が0件でも計測済みなら anchor を tracked に入れる。** 「誰も10タップに到達しなかった」
-  // は正常な観測結果で、差し引き0を適用してよい。行が無いと hostTiktokUid が判らないので、
-  // TiktokBattle.hostTiktokUids ではなくこの経路では拾えない anchor が残るが、その場合は
-  // 差し引かない(= 従来と同じ判定)ので安全側に倒れる。
+  // は正常な観測結果で、差し引き0を適用してよい。
+  for (const battle of battles) {
+    if (!battle.tapPointsTracked) continue;
+    for (const tiktokUid of battle.hostTiktokUids) tapTrackedTiktokUids.add(tiktokUid);
+  }
+
   return { tapPoints, tapTrackedTiktokUids };
 }

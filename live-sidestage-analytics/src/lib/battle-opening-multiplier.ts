@@ -105,8 +105,9 @@ export type OpeningMultiplierResult = {
   confidence: "measured" | "inferred" | "unknown";
   /** 判定に使った最初の候補の Gift.id。unknown なら null。 */
   basisGiftId: string | null;
-  /** **実測できた場合のみ非null。** 現状 TikTok は倍率区間の開始・終了を配信しないので常に null。
-   * 仮定値(OPENING_WINDOW_MS)からは絶対に埋めない。 */
+  /** 再生帯の位置づけ用。`windowStartReliable` かつ倍率が確定したときだけ非null。
+   * 開始はバトル窓先頭(= startTimeMs 由来)。終了は OPENING_WINDOW_MS の仮定(48秒実測)で、
+   * 残り秒数(showCountdown)には使わない。 */
   windowStartedAt: Date | null;
   windowEndedAt: Date | null;
 };
@@ -311,8 +312,7 @@ export function inferOpeningMultiplier(input: {
     multiplier: first.multiplier,
     confidence,
     basisGiftId: first.giftId,
-    // 区間の開始・終了は TikTok が配信してこないため実測できない。仮定値からは埋めない。
-    windowStartedAt: null,
-    windowEndedAt: null,
+    windowStartedAt: input.windowStart,
+    windowEndedAt: new Date(windowEndMs),
   };
 }

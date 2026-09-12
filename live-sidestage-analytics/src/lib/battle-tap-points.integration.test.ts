@@ -25,9 +25,14 @@ async function makeRoom(tag: string) {
   return room;
 }
 
-async function makeBattle(roomId: string, battleId: string, tapPointsTracked: boolean) {
+async function makeBattle(
+  roomId: string,
+  battleId: string,
+  tapPointsTracked: boolean,
+  hostTiktokUids: string[] = []
+) {
   await prisma.tiktokBattle.create({
-    data: { roomId, battleId, action: 5, startedAt: new Date(), endedAt: new Date(), tapPointsTracked },
+    data: { roomId, battleId, action: 5, startedAt: new Date(), endedAt: new Date(), tapPointsTracked, hostTiktokUids },
   });
 }
 
@@ -76,6 +81,17 @@ describe("loadTapPointsForBattle", () => {
     expect(input.tapPoints).toHaveLength(2);
     expect(input.tapPoints.map((t) => t.tiktokUid).sort()).toEqual([selfHostUid, opponentHostUid].sort());
     // 相手 room は tapPointsTracked=false なので差し引き対象にしない。
+    expect(Array.from(input.tapTrackedTiktokUids)).toEqual([selfHostUid]);
+  });
+
+  it("タップ点0件でも計測済み room の host は tracked に入る", async () => {
+    const selfRoom = await makeRoom("self0");
+    const battleId = `b-${Math.random().toString(36).slice(2, 10)}`;
+    const selfHostUid = makeTiktokUid("tap_self_only");
+    await makeBattle(selfRoom.id, battleId, true, [selfHostUid]);
+
+    const input = await loadTapPointsForBattle(battleId);
+    expect(input.tapPoints).toHaveLength(0);
     expect(Array.from(input.tapTrackedTiktokUids)).toEqual([selfHostUid]);
   });
 

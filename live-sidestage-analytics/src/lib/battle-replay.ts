@@ -230,8 +230,8 @@ function buildSegments(row: ReplayRow): ReplaySegment[] {
   const windowLengthMs = row.windowEnd.getTime() - windowStartMs;
   const clamp = (at: Date): number => Math.min(windowLengthMs, Math.max(0, at.getTime() - windowStartMs));
 
-  // 初ギフトx倍。**区間の開始・終了が実測できたときだけ帯にする。**
-  // 逆算の候補窓(60秒)は未確定の仮定値なので、そこから区間を作って画面に見せてはいけない。
+  // 初ギフトx倍。`openingWindow*` が保存されているときだけ帯にする(逆算成功時に確定処理が埋める)。
+  // 終端は OPENING_WINDOW_MS 仮定なので残り秒数(showCountdown)は出さない。
   const confidence = row.openingMultiplierConfidence;
   if (
     (confidence === "measured" || confidence === "inferred") &&
@@ -245,8 +245,8 @@ function buildSegments(row: ReplayRow): ReplaySegment[] {
       endMs: clamp(row.openingWindowEndedAt),
       multiplier: row.openingMultiplier,
       label: `初めてのギフト×${row.openingMultiplier}倍`,
-      // 実測できた区間なのでカウントダウンしてよい。
-      showCountdown: true,
+      // 終端は OPENING_WINDOW_MS 仮定(TikTok は区間終了を配信しない)なので残り秒数は出さない。
+      showCountdown: false,
       confidence,
     });
   }
