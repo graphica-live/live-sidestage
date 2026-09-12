@@ -383,8 +383,12 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     final result = _result;
     // Batch 06: RankingSyncStore が保持するsnapshotを実際の描画ソースにする。
     // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
+    final customRange = _customRange;
+    final containsToday =
+        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
     final snapshotEntities = context.watch<RankingSyncStore>().getSnapshot()?['entities'];
-    final users = snapshotEntities is List
+    // Past dates: do not paint live snapshot into the list (TC-CT-017).
+    final users = containsToday && snapshotEntities is List
         ? snapshotEntities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
         : result?.users ?? const [];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
