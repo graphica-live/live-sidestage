@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isCollabJoinSource, parseCollabGroupChange, shouldWatchCollabSnapshot } from "./tiktok-collab";
+import { isCollabJoinSource, parseCollabGroupChange, shouldWatchCollabSnapshot, isCollabCloseMessage } from "./tiktok-collab";
 
 function userListContent(statuses: number[]) {
   return {
@@ -197,5 +197,30 @@ describe("shouldWatchCollabSnapshot", () => {
   it("subjectsが空なら採用しない", () => {
     const empty = parseCollabGroupChange({ messageType: 18, source: "live_end" });
     expect(shouldWatchCollabSnapshot(empty!)).toBe(false);
+  });
+});
+
+describe("isCollabCloseMessage", () => {
+  it("MessageType:2(TYPE_LINKER_CLOSE)はtrue(2026-09-12 himeka.officialでの実測payload形)", () => {
+    expect(
+      isCollabCloseMessage({
+        MessageType: 2,
+        LinkerId: "7684420823348382481",
+        Scene: 2,
+        roomId: "7684418599158729480",
+      })
+    ).toBe(true);
+  });
+
+  it("MessageType:1(TYPE_LINKER_CREATE)等の他の値はfalse", () => {
+    expect(isCollabCloseMessage({ MessageType: 1, LinkerId: "x" })).toBe(false);
+    expect(isCollabCloseMessage({ MessageType: 6, LinkerId: "x" })).toBe(false);
+  });
+
+  it("MessageTypeが無い/不正なpayloadはfalse(fail-closed)", () => {
+    expect(isCollabCloseMessage({})).toBe(false);
+    expect(isCollabCloseMessage(null)).toBe(false);
+    expect(isCollabCloseMessage("not-an-object")).toBe(false);
+    expect(isCollabCloseMessage({ messageType: 2 })).toBe(false); // 小文字キーは別イベント(linkLayer)用
   });
 });

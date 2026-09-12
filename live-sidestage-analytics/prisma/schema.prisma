@@ -458,6 +458,7 @@ model TiktokRoom {
   contributionShareTokens ContributionShareToken[]
   watches               AgencyWatch[]
   connectionIntervals   RoomConnectionInterval[]
+  collabSources         TiktokRoomCollabSource[]
 
   // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
   // 期限切れの監視要求が蓄積しても30秒ごとのreconcileが重くならないようにする。
@@ -468,6 +469,38 @@ model TiktokRoom {
   @@index([tiktokHandle])
   // /admin/workers「コラボ署名消費」列の集計用(lastCollabSourceRoomId IN (...)で絞り込む)。
   @@index([lastCollabSourceRoomId])
+  @@schema("public")
+}
+
+// コラボ相手roomの監視を「発見元roomがコラボを続けている間」だけ維持するための
+// 多対多リンク(監視対象room × 発見元room)。lastCollabSourceRoomId(TiktokRoom)とは役割が
+// 異なる — あちらは「直近の引き金1件」の集計専用スナップショットで上書き型、こちらは
+// 「現在有効な発見元の集合」を保持し、コラボ解散(TYPE_LINKER_CLOSE)検知で該当行を消す。
+//
+// 前提: 1つのsourceRoomは同時に複数の独立したコラボセッションを保持しない。コラボ検知時点
+// (messageType:18)ではセッションID(channelId)が安定して取得できない(実測: 169件全件で
+// channelIdが自分自身のroomIdと一致)ため、この前提のもとsourceRoomId単位でリンクを扱う。
+// 将来この前提が崩れた場合は{watchedRoomId, sourceRoomId, collabSessionId}のセッション単位
+// 管理へ拡張する必要がある(2026-09-12 himeka.officialでの実測を根拠に採用。tiktok-listener.ts
+// のTYPE_LINKER_CLOSE購読処理・tiktok-collab-source.tsのコメント参照)。
+model TiktokRoomCollabSource {
+  id            String   @id @default(cuid())
+  watchedRoomId String
+  // 発見元roomのID。FK無し(論理参照、lastCollabSourceRoomIdと同じ設計判断) — 発見元roomが
+  // 削除された場合、残ったリンクはlastSeenAtのTTL掃除で消えるだけで、削除済みroomから
+  // TYPE_LINKER_CLOSEは届かないため停止は起きずタイムアウトに委ねられる(安全側)。
+  sourceRoomId  String
+  createdAt     DateTime @default(now())
+  // TTL cleanupの基準はこちら(createdAtではない)。createdAtを基準にすると30分以上継続する
+  // 正常なコラボまでstale扱いになるため、再検知のたびに更新するlastSeenAtを使う。
+  lastSeenAt    DateTime @default(now())
+
+  watchedRoom TiktokRoom @relation(fields: [watchedRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([watchedRoomId, sourceRoomId])
+  @@index([sourceRoomId])
+  @@index([lastSeenAt])
+  @@map("tiktok_room_collab_sources")
   @@schema("public")
 }
 

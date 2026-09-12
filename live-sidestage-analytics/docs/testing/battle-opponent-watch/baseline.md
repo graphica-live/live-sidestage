@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: battle-opponent-watch
-last_updated: 2026-09-07
+last_updated: 2026-09-12
 last_risk: HIGH
-last_reviewers: Design Mode=DeepSeek+Fable(Codex/Geminiともquota切れ、ユーザー承認の上でFableを代理)。Code Mode=DeepSeek+Fable(同上)
+last_reviewers: "Design Mode=Codex-terra+Gemini(agy)並行。Code Mode=Codex-terra(HIGH×HARD、代理チェーン)。修正後round2再レビュー(Codex-terra、直列化キュー導入で対応)"
 ---
 
 # テストベースライン: battle-opponent-watch
@@ -14,12 +14,22 @@ last_reviewers: Design Mode=DeepSeek+Fable(Codex/Geminiともquota切れ、ユ�
 > 手順・判定基準・テストケースの構成自体は有効。
 
 対戦相手ライバーの自動監視(TikTokコラボ承諾検知 `linkLayer` messageType:18 / バトル開始補助検知
-`linkMicBattle` action:4)と、`/analytics` バトル履歴一覧の全陣営スコア表示。
+`linkMicBattle` action:4)と、`/analytics` バトル履歴一覧の全陣営スコア表示。加えて、発見した相手roomの監視を
+「発見元roomがコラボを続けている間」だけ維持し、コラボ解散(`TYPE_LINKER_CLOSE`)検知で即座に停止方向へ倒す
+`TiktokRoomCollabSource`(2026-09-12追加)。
 
 - `src/lib/tiktok-listener.ts` — `recordCollabGroupChange`(主トリガー)、`watchBattleOpponents`(補助トリガー)、
-  共通ヘルパー`watchDiscoveredRooms`、`recordOpponentWatch`
+  共通ヘルパー`watchDiscoveredRooms`(発見時に`recordCollabSourceLink`を呼ぶ)、`recordOpponentWatch`、
+  `linkMessage`イベントハンドラ(`isCollabCloseMessage`検知で`releaseCollabSourceLinksBySource`を呼ぶ)
 - `src/lib/tiktok-room.ts` — `ensureRoomWatchedForCollab`(`source`引数、`TiktokRoom.watchSource`記録)
 - `src/lib/tiktok-battle.ts` — `OpponentWatch`/`OpponentWatchEntry`/`OpponentWatchSource`型
+- `src/lib/tiktok-collab.ts` — `isCollabCloseMessage`(`WebcastLinkMessage.MessageType===2`判定)
+- `src/lib/tiktok-collab-source.ts` — `TiktokRoomCollabSource`のlifecycle管理。`recordCollabSourceLink`(upsert)、
+  `releaseCollabSourceLinksBySource`(CLOSE検知時の解放)、`cleanupStaleCollabSourceLinks`(`lastSeenAt`基準30分TTLの
+  バックストップ)、`applyExpiryToRoomsWithNoLinks`(NOT EXISTSサブクエリ付きatomic conditional UPDATEで
+  race conditionを回避した停止判定)
+- `worker.ts` — `scheduleReconcile`の周期処理から`cleanupStaleCollabSourceLinks`を呼ぶ(スキーマ未到達時は
+  `schemaLagMessage`でログのみ、reconcileループは継続)
 - `src/components/analytics/battle-types.tsx` / `AnalyticsView.tsx` — `BattleScoreLine`(全陣営スコア表示)
 - `src/lib/room-connection-log.ts` — `coverageFromIntervals`(接続区間→被覆率+欠落区間`gaps`)、
   `refineCaptureByScore`(欠落区間で実際に失われた公式スコア量による`captureStatus`の格上げ)
@@ -56,13 +66,27 @@ last_reviewers: Design Mode=DeepSeek+Fable(Codex/Geminiともquota切れ、ユ�
 | TC-BOW-024 | LINKED以外のstatus(`GROUP_STATUS_UNKNOWN=0`・未定義の2等)が混ざるイベントは採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `source:"live_end"`で`userList`が`[3,0]` / `source:"SOURCE_TYPE_RECOMMEND_LIST"`で`[3,2]` | どちらもfalse | 同上 | PASS | 「WAITINGが0」でなく「LINKED以外が0」で判定する。未知statusをWAITING扱いしないと暴走側へ倒れる(Code Modeレビュー Fable指摘) |
 | TC-BOW-025 | `displayIds`がLINKED件数より多い(`userInfos`に`userList`へ居ない人が混ざる)イベントは採用しない | `shouldWatchCollabSnapshot` | 境界/異常 | `userInfos`2人・`userList`が`[3]`(LINKED 1人)、`source:"live_end"` | false | 同上 | PASS | probeログ169件中2件で`userInfos`が`userList`より1人多い実例あり。`displayIds`は重複除去・空文字除去で小さくなる方向にしかずれない |
 
+| TC-BOW-027 | `MessageType:2`(`TYPE_LINKER_CLOSE`)のCLOSEイベントを判別する | `isCollabCloseMessage` | 正常/異常/境界 | 実測payload形(`MessageType:2`)/他の`MessageType`(1,6)/null・非オブジェクト・小文字`messageType`キー(別イベント用) | 実測形はtrue、他の値・不正payload・小文字キーはfalse(fail-closed) | `npm run test:unit -- src/lib/tiktok-collab.test.ts` | PASS | 2026-09-12 himeka.officialでの実測payload形を根拠にする。`WebcastLinkMessage`は`MessageType`/`LinkerId`のPascalCaseで、`linkLayer`の`messageType`(camelCase)と混同しないことをコード側にも明記 |
+| TC-BOW-028 | 同じ発見元からの再検知は`lastSeenAt`を更新するだけで行を増やさない(冪等upsert) | `recordCollabSourceLink` | 正常/回帰 | 同一`{watchedRoomId, sourceRoomId}`を2回呼ぶ | 行は1件のまま、`lastSeenAt`が更新される | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-collab-source.integration.test.ts` | PASS | `createdAt`はTTL判定に使わず作成時刻・デバッグ用途のみ |
+| TC-BOW-029 | 複数の発見元から同時に発見されたroomは、片方が解散しても他方のリンクが残る限り監視を停止方向へ倒さない | `releaseCollabSourceLinksBySource` | 正常 | 2つの`sourceRoomId`からリンクされたwatched roomの片方だけ解放 | 残り1件のリンクが残り、`lastWatchInstructedAt`は変化しない | 同上 | PASS | |
+| TC-BOW-030 | 唯一の発見元が解散(`TYPE_LINKER_CLOSE`検知)すると、リンクが0件になり`lastWatchInstructedAt`が期限切れ方向へ倒れる | `releaseCollabSourceLinksBySource` → `applyExpiryToRoomsWithNoLinks` | 正常 | 単一発見元のみリンクされたwatched roomの発見元を解放 | リンク0件、`lastWatchInstructedAt`が過去へ更新される | 同上 | PASS | 既存30分TTLはバックストップとして残るため、CLOSE検知の取りこぼし時もTC-BOW-032で救済される |
+| TC-BOW-031 | リンク削除後に別workerが新しいリンクを作った場合、後発リンクが生きている限り停止判定を行わない(atomic conditional updateによるrace condition回避) | `applyExpiryToRoomsWithNoLinks`(`NOT EXISTS`付き`$executeRaw`) | 境界/並行処理 | 解放対象と別の発見元からのリンクを先に張った状態で解放を実行 | 後発リンクが存在するため`lastWatchInstructedAt`は変化しない | 同上 | PASS | 「削除→count確認→更新」の3ステップ実装が持つTOCTOUを避けるため、UPDATE文自身にNOT EXISTSを持たせている設計の検証 |
+| TC-BOW-032 | `lastSeenAt`がTTL(30分、`ANONYMOUS_ROOM_AUTO_STOP_TIMEOUT_MS`)より古いリンクのみ削除し、0件になったroomの監視を停止方向へ倒す。新しいリンクは対象にしない | `cleanupStaleCollabSourceLinks` | 正常/境界 | `lastSeenAt`を1時間前に書き換えた行と、書き換えていない行 | 古い行は削除され対応roomの`lastWatchInstructedAt`が倒れる。新しい行は残り対応roomは変化しない | 同上 | PASS | `TYPE_LINKER_CLOSE`取りこぼし(worker再起動・接続断)に対するバックストップ |
+| TC-BOW-033 | リンクが無い`sourceRoomId`の解放はno-op(存在しないroomへの書き込みを試みない) | `releaseCollabSourceLinksBySource` | 異常 | 存在しない`sourceRoomId`を解放 | 例外を投げず正常終了 | 同上 | PASS | |
+| TC-BOW-034 | `specialWatch:true`のroomは、コラボ発見元リンクが0件になっても実際の監視対象判定(`watchedRoomFilter()`)には影響しない | `applyExpiryToRoomsWithNoLinks` / `watchedRoomFilter()`(枝4) | 回帰/不変条件 | `specialWatch:true`のroomのリンクを0件まで解放 | `lastWatchInstructedAt`(枝5の判定材料)は倒れるが、`watchedRoomFilter()`は本関数を変更していないため枝4により監視は維持される | 同上 | PASS | この機能が`watchedRoomFilter()`自体を変更しないことのテストによる裏付け。Streamer登録・AgencyWatch・monitorUntilも同じ理由で影響を受けない |
+| TC-BOW-035 | `releaseCollabSourceLinksBySource`呼び出し開始後(findMany後〜deleteMany前)に同一sourceRoomIdへ新しいコラボが再開されていた場合、その新リンクを誤って削除しない | `releaseCollabSourceLinksBySource`(cutoff付きdeleteMany) | 境界/並行処理 | 呼び出し前に対象リンクの`lastSeenAt`を未来時刻へ書き換え(再検知による更新をシミュレート) | リンクが1件残り、`lastWatchInstructedAt`は変化しない | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-collab-source.integration.test.ts` | PASS | code-review(Codex-terra)指摘のHIGH finding(sourceRoomId単位の無条件deleteManyが同一source再開分まで消すデータ欠損リスク)への修正。cutoff = 呼び出し開始時刻、`lastSeenAt <= cutoff`の行のみ削除対象にする |
+| TC-BOW-036 | `TYPE_LINKER_CLOSE`が実際のconnectorイベント配線(`linkMessage`)経由でリンク解放から監視停止まで届く(2 source→1 sourceのCLOSEでは維持、唯一のsourceのCLOSEでは停止) | `tiktok-listener.ts`の`linkMessage`ハンドラ → `releaseCollabSourceLinksBySource` | 正常/回帰 | source A・Bの2つがpartner roomを監視中にAのconnectionへ`{MessageType:2}`をfire / partner roomがsource1つのみの状態で同様にfire | 前者はAのリンクのみ削除されBのリンクと`lastWatchInstructedAt`は維持、後者はリンク0件になり`lastWatchInstructedAt`が期限切れ方向へ更新 | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.collab-kick.integration.test.ts` | PASS | code-review(Codex-terra)指摘のMEDIUM finding(純粋関数`isCollabCloseMessage`とsource helperの個別testだけでは`linkMessage`のイベント登録漏れ・payload受け渡しミスを検出できない)への対応 |
+| TC-BOW-037 | 検知(`linkLayer`)発火直後(その非同期処理の完了を待たず)にCLOSE(`linkMessage`)が同一sourceRoomIdへ届いても、到着順どおりに処理が完了しリンクが残らない | `tiktok-collab-source.ts`の`enqueueForSource`(sourceRoomIdごとの直列化キュー) | 境界/並行処理 | 同一connectionで`linkLayer`発火の直後(await挟まず)に`linkMessage`(CLOSE)を発火 | 相手roomは作成されるが、CLOSE処理が検知処理より後に完了しリンクは0件のまま残らない | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.collab-kick.integration.test.ts` | PASS | code-review(Codex-terra) round2指摘のHIGH finding(発見処理とCLOSE処理がどちらも非同期fire-and-forgetで直列化されておらず、到着順(検知→CLOSE)なのに完了順が逆転しリンクが残留しうる)への対応。`recordCollabSourceLink`/`releaseCollabSourceLinksBySource`の呼び出し(enqueue自体)を同期ハンドラ内でsourceRoomIdごとのメモリ内Promiseチェーンへ投入することで到着順を保証する |
+
 ## Quality Gate
 
 - `npm run typecheck`(`tsc --noEmit`) — PASS
-- `npx next build`(型・ルーティングのみ。`db push`を伴う`npm run build`は使わない) — PASS
-- `npm run test:unit` — PASS(93 files / 1311 tests、2026-09-07)
-- `npm run test:integration -- tiktok-room.collab.integration.test.ts tiktok-listener.collab-kick.integration.test.ts` — PASS
-- `npx dotenv -e .env.local.test -- vitest run battle-history-finalize.integration battle-history.integration tiktok-listener.battle-armies-snapshot.integration` — PASS(3 files / 37 tests、2026-09-07)
+- `npm run test:unit`(除外: integration) — PASS(127 files / 1679 tests、2026-09-12)
+- `npm run test:integration` — PASS(106 files / 1015 tests、2026-09-12。code-review round1反映のTC-BOW-035/036、
+  round2反映のTC-BOW-037を含む)
+- `npx dotenv -e .env.local.test -- vitest run scripts/worker-watch-patterns/cli.test.ts`(Railway watchPatterns
+  ドリフト検知。新規ファイル`tiktok-collab-source.ts`追加に伴いworker1/2/3のRailway設定と
+  `__fixtures__/watchpatterns-snapshot.json`を更新して解消) — PASS(4/4、2026-09-12)
 
 ## Out of Scope
 
@@ -72,4 +96,18 @@ last_reviewers: Design Mode=DeepSeek+Fable(Codex/Geminiともquota切れ、ユ�
 - **`MAX_COLLAB_DISCOVERED_ROOMS`到達時の挙動**: ガード撤廃により連鎖発見の歯止めがこの上限のみになったが、実際に上限へ到達するケースの検証は本番相当の規模でしか再現できないためOut of Scope(到達時はwarnログを出して新規作成をスキップする実装のみ確認済み)
 - **`BattleDetailModal`側の`opponentWatch`表示**: DB保持のみが今回のスコープで、UIへ表示する変更は含まない
 - **既存の`tiktok-room.ts:238-273`コメント更新・`shared/tiktok-live-connector/BATTLE-EVENTS.md`/`~/.claude/skills/tiktok-probe/KNOWLEDGE.md`のドキュメント訂正**: 本baselineのテスト対象外(ドキュメントのみの変更)
+- **`TiktokRoomCollabSource`のセッション単位管理**: 1つの`sourceRoomId`が同時に複数の独立したコラボセッションを
+  保持しないという前提(コラボ検知時点で安定したセッションIDが取得できないため採用)のもとで実装している。
+  この前提が実測で崩れた場合(1つのsource roomが同時に複数の独立したコラボを持つ実例が観測された場合)は
+  `{watchedRoomId, sourceRoomId, collabSessionId}`のセッション単位管理への拡張が必要になるが、今回は
+  セッションIDの推測・独自生成を行わないためOut of Scope。
+  (code-review round2 MEDIUM finding「CLOSE payloadの`LinkerId`を判定・永続化せずsourceRoomId単位で
+  全リンクを解放するため、同一source roomに複数の独立コラボセッションが存在すると1セッションのCLOSEで
+  他セッションの有効なリンクまで解放されうる」はこの既承認済み前提そのものであり、ALREADY_HANDLEDと判定した。
+  `LinkerId`はコラボ検知時点で安定取得できず、独自のセッションID生成もしない方針のため、現状はこの
+  リスクを受け入れる設計)
+- **`worker.ts`の`cleanupStaleCollabSourceLinks`呼び出し配線自体の実機テスト**: `scheduleReconcile`の
+  `setTimeout`コールバック内という性質上、実際のworkerプロセス起動を伴わないと配線を直接検証できない。
+  `cleanupStaleCollabSourceLinks`関数自体はTC-BOW-032でカバーし、呼び出し側は`.catch()`によるエラー処理
+  (`schemaLagMessage`分岐)をコードレビューで確認するに留める
 - **`reviveSuspendedMonitoring`経路が`MAX_COLLAB_DISCOVERED_ROOMS`の上限判定を通らない件**(Code Modeレビュー、Fable指摘、MEDIUM): ガード撤廃で監視中の全roomからcollab/battle_start検知が起きるようになった結果、低価値クリーンアップ(`tiktok-low-value-cleanup.ts`)が一時停止(`monitoringSuspended:true`)したroomが、コラボ/バトル検知のたび無条件で`reviveSuspendedMonitoring`により復活しうる(`lastLowValueCheckAt`更新により最短7日は再停止されない)。上限判定はroom新規作成時のみに掛かっており、revive経路には掛かっていない(既存コメント「既存roomの監視再開は総数を増やさないため対象外」は意図的な設計だが、ガード撤廃後の運用への影響は未検証)。本番の監視中room総数(上限500に対する余裕)が分からないと閾値を確定できないため、今回のPRでは対応を見送りOut of Scopeとした。次回、本番の監視中room数と低価値クリーンアップの再停止率を確認したうえで、必要なら別対応する

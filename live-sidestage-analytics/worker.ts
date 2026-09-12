@@ -17,6 +17,7 @@ import {
   resolveGiftCatalogSources,
 } from "@/lib/tiktok-listener";
 import { refreshGiftCatalogIfStale } from "@/lib/tiktok-gift-catalog";
+import { cleanupStaleCollabSourceLinks } from "@/lib/tiktok-collab-source";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -219,6 +220,21 @@ function scheduleReconcile() {
       // 内部で例外を握るのでライブ接続には影響しない。複数の自部屋を試して和集合を取る
       // (地域/イベント限定ギフト対策。詳細は resolveGiftCatalogSources() のコメント)。
       if (!shuttingDown) await refreshGiftCatalogIfStale(resolveGiftCatalogSources);
+      // コラボ発見元リンクのTTL cleanup。TYPE_LINKER_CLOSEの取りこぼし(worker再起動・
+      // 接続断でイベント自体を逃した場合)に対するバックストップ。複数workerが同時に
+      // 実行しても冪等(deleteMany + conditional updateのため競合しても安全)。
+      if (!shuttingDown) {
+        await cleanupStaleCollabSourceLinks().catch((err) => {
+          // schema反映前(migrate deploy未実行のweb起動待ち)はP2021(テーブル未作成)になりうる。
+          // ensureAllListenersAlive()と同じ判別でノイズを抑える(生スタックトレースを出さない)。
+          const schemaLag = schemaLagMessage(err);
+          if (schemaLag) {
+            console.warn(`[worker] cleanupStaleCollabSourceLinks: ${schemaLag}`);
+          } else {
+            console.error("[worker] cleanupStaleCollabSourceLinks failed:", err);
+          }
+        });
+      }
       scheduleReconcile();
     },
     ready ? RECONCILE_INTERVAL_MS : UNREADY_RECONCILE_INTERVAL_MS

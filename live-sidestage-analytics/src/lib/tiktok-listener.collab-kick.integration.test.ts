@@ -7,6 +7,7 @@ import { prisma } from "./prisma";
 import { startListener, stopListener, getListenerStatus, ensureAllListenersAlive } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";
 import { makeTiktokUid } from "./__fixtures__/gift";
+import { recordCollabSourceLink } from "./tiktok-collab-source";
 
 // vi.mockのfactoryはファイル先頭へホイストされるため、参照するオブジェクトは
 // vi.hoisted()で明示的にホイストしておく必要がある。tiktok-listener.room.integration.test.ts
@@ -406,6 +407,38 @@ describe("linkLayer: 待機者(status:1)の有無で採用可否を切り替え�
     await cleanupRoom(ownRoomId);
     await cleanupRoom(partnerRoom.id);
   });
+
+  it("検知イベントの直後(await挟まず)にCLOSEイベントが届いても、到着順どおりに処理されリンクが残らない(code-review Codex round2 HIGH指摘、直列化キューの検証)", async () => {
+    const ownTiktokHandle = `itest_linkmsg_race_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_linkmsg_race_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-linkmsg-race");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    // 検知(linkLayer)発火の直後、その非同期処理(room作成+リンク記録)の完了を待たずに
+    // 同一connectionでCLOSE(linkMessage)を発火する。直列化キューが無ければ、CLOSE側の
+    // findManyが先に空振りし、後から検知側がリンクをinsertして残ってしまう
+    // (Codex round2 HIGH指摘の再現条件)。
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
+    ownConn.fire("linkMessage", { MessageType: 2, LinkerId: "x" });
+
+    const partnerRoom = await vi.waitFor(() => findRoomByHandleOrThrow(partnerTiktokHandle));
+
+    // 到着順どおり(検知→CLOSE)に処理が完了していれば、CLOSE処理が検知処理より後に走り
+    // リンクは残らない。
+    await vi.waitFor(async () => {
+      const remaining = await prisma.tiktokRoomCollabSource.count({ where: { watchedRoomId: partnerRoom.id } });
+      expect(remaining).toBe(0);
+    });
+
+    await stopListener(ownRoomId);
+    await stopListener(partnerRoom.id);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+    await cleanupRoom(partnerRoom.id);
+  });
 });
 
 describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める補助トリガー", () => {
@@ -471,6 +504,109 @@ describe("linkMicBattle action:4: コラボ検知の取りこぼしを埋める�
     expect(after.watchSource).toBe("collab"); // 上書きされない
 
     await stopListener(ownRoomId);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+    await cleanupRoom(partnerRoom.id);
+  });
+});
+
+describe("linkMessage: TYPE_LINKER_CLOSEが実配線でリンク解放から監視停止まで届く(code-review Codex指摘、配線自体の検証)", () => {
+  it("TYPE_LINKER_CLOSEを受信すると、当該source room由来のリンクだけ解放される。他sourceのリンクが残る限り監視は停止しない", async () => {
+    const ownTiktokHandle = `itest_linkmsg_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_linkmsg_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-linkmsg");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    // own room(source A)がpartner roomをコラボ発見。TiktokRoomCollabSourceにリンクが作られる。
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
+    const partnerRoom = await vi.waitFor(() => findRoomByHandleOrThrow(partnerTiktokHandle));
+
+    // 別のsource(B)からも同じpartner roomへリンクを追加(2つのsourceに発見されている状況)。
+    await recordCollabSourceLink(partnerRoom.id, "itest-linkmsg-source-b");
+
+    const before = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: partnerRoom.id } });
+
+    // own room(source A)側のconnectionでTYPE_LINKER_CLOSEを受信。
+    ownConn.fire("linkMessage", { MessageType: 2, LinkerId: "x" });
+
+    await vi.waitFor(async () => {
+      const remaining = await prisma.tiktokRoomCollabSource.findMany({ where: { watchedRoomId: partnerRoom.id } });
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].sourceRoomId).toBe("itest-linkmsg-source-b");
+    });
+
+    // source B のリンクが生きているので停止しない。
+    const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: partnerRoom.id } });
+    expect(after.lastWatchInstructedAt.getTime()).toBe(before.lastWatchInstructedAt.getTime());
+
+    await prisma.tiktokRoomCollabSource.deleteMany({ where: { watchedRoomId: partnerRoom.id } });
+    await stopListener(ownRoomId);
+    await stopListener(partnerRoom.id);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+    await cleanupRoom(partnerRoom.id);
+  });
+
+  it("唯一のsourceからTYPE_LINKER_CLOSEを受信すると、リンクが0件になり監視が停止方向へ倒れる", async () => {
+    const ownTiktokHandle = `itest_linkmsg_only_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_linkmsg_only_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-linkmsg-only");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
+    const partnerRoom = await vi.waitFor(() => findRoomByHandleOrThrow(partnerTiktokHandle));
+
+    const before = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: partnerRoom.id } });
+
+    ownConn.fire("linkMessage", { MessageType: 2, LinkerId: "x" });
+
+    await vi.waitFor(async () => {
+      const remaining = await prisma.tiktokRoomCollabSource.count({ where: { watchedRoomId: partnerRoom.id } });
+      expect(remaining).toBe(0);
+      const after = await prisma.tiktokRoom.findUniqueOrThrow({ where: { id: partnerRoom.id } });
+      expect(after.lastWatchInstructedAt.getTime()).toBeLessThan(before.lastWatchInstructedAt.getTime());
+    });
+
+    await stopListener(ownRoomId);
+    await stopListener(partnerRoom.id);
+    await cleanupStreamer(streamer.id);
+    await cleanupRoom(ownRoomId);
+    await cleanupRoom(partnerRoom.id);
+  });
+
+  it("検知イベントの直後(await挟まず)にCLOSEイベントが届いても、到着順どおりに処理されリンクが残らない(code-review Codex round2 HIGH指摘、直列化キューの検証)", async () => {
+    const ownTiktokHandle = `itest_linkmsg_race_own_${Date.now()}`;
+    const partnerTiktokHandle = `itest_linkmsg_race_partner_${Date.now()}`;
+    const streamer = await createStreamer(ownTiktokHandle, "itest-linkmsg-race");
+    const ownRoomId = await resolveRoomForStreamer(streamer.id);
+
+    await startListener(ownRoomId, ownTiktokHandle, [streamer.id]);
+    const ownConn = MockConnection.instances[0];
+
+    // 検知(linkLayer)発火の直後、その非同期処理(room作成+リンク記録)の完了を待たずに
+    // 同一connectionでCLOSE(linkMessage)を発火する。直列化キューが無ければ、CLOSE側の
+    // findManyが先に空振りし、後から検知側がリンクをinsertして残ってしまう
+    // (Codex round2 HIGH指摘の再現条件)。
+    ownConn.fire("linkLayer", groupChangePayload(ownTiktokHandle, partnerTiktokHandle));
+    ownConn.fire("linkMessage", { MessageType: 2, LinkerId: "x" });
+
+    const partnerRoom = await vi.waitFor(() => findRoomByHandleOrThrow(partnerTiktokHandle));
+
+    // 到着順どおり(検知→CLOSE)に処理が完了していれば、CLOSE処理が検知処理より後に走り
+    // リンクは残らない。
+    await vi.waitFor(async () => {
+      const remaining = await prisma.tiktokRoomCollabSource.count({ where: { watchedRoomId: partnerRoom.id } });
+      expect(remaining).toBe(0);
+    });
+
+    await stopListener(ownRoomId);
+    await stopListener(partnerRoom.id);
     await cleanupStreamer(streamer.id);
     await cleanupRoom(ownRoomId);
     await cleanupRoom(partnerRoom.id);
