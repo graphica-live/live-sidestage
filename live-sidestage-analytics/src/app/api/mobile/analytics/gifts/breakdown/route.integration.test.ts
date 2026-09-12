@@ -124,6 +124,11 @@ describe("GET /api/mobile/analytics/gifts/breakdown", () => {
     expect(body.coverage.detailAvailable).toBe(false);
   });
 
+  it("FREEプランはweek期間の内訳取得を拒否される", async () => {
+    const res = await GET(request(`?period=week&date=2026-08-20&tiktokUid=${FAN_A_UID}`, freeToken));
+    expect(res.status).toBe(403);
+  });
+
   it("FREEプランはmonth期間の内訳取得を拒否される", async () => {
     const res = await GET(request(`?period=month&date=2026-08-20&tiktokUid=${FAN_A_UID}`, freeToken));
     expect(res.status).toBe(403);

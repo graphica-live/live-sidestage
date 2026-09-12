@@ -408,6 +408,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     final users = _users;
     final refreshing = _loading && result != null;
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    scheduleClampToDayOnlyHistoryPeriod(
+      mounted: mounted,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      hasCustomRange: _customRange != null,
+      selection: _selection,
+      onClamp: (clamped) => _changePeriod(() => _selection = clamped),
+    );
 
     return RefreshIndicator(
       onRefresh: _load,

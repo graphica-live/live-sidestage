@@ -167,9 +167,14 @@ describe("GET /api/mobile/analytics/ranking", () => {
   });
 
   describe("プラン制限(requireHistoryPlan)", () => {
-    it("FREEユーザーのday/weekは通る(拡張範囲でなければプラン判定を通過する)", async () => {
+    it("FREEユーザーのdayは通る(拡張範囲でなければプラン判定を通過する)", async () => {
       const res = await GET(request("?period=day&date=2026-08-20", freeToken));
       expect(res.status).toBe(200);
+    });
+
+    it("FREEユーザーがweekを指定すると403", async () => {
+      const res = await GET(request("?period=week&date=2026-08-20", freeToken));
+      expect(res.status).toBe(403);
     });
 
     it("FREEユーザーがmonthを指定すると403", async () => {
@@ -189,7 +194,8 @@ describe("GET /api/mobile/analytics/ranking", () => {
       expect(res.status).toBe(403);
     });
 
-    it("PROユーザーのmonth/カスタム範囲/listenerQueryは通る", async () => {
+    it("PROユーザーのweek/month/カスタム範囲/listenerQueryは通る", async () => {
+      expect((await GET(request("?period=week&date=2026-08-20", token))).status).toBe(200);
       expect((await GET(request("?period=month&date=2026-08-20", token))).status).toBe(200);
       expect(
         (

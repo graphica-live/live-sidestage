@@ -436,6 +436,16 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
         ? storeBattles.map(BattleSummary.tryParse).whereType<BattleSummary>().toList()
         : result?.battles ?? const <BattleSummary>[];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    scheduleClampToDayOnlyHistoryPeriod(
+      mounted: mounted,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      hasCustomRange: _customRange != null,
+      selection: _selection,
+      onClamp: (clamped) {
+        setState(() => _selection = clamped);
+        _load();
+      },
+    );
     final filter = context.watch<BattleFilterStore>();
     final myTiktokId = context.watch<SessionController>().session?.streamer?.tiktokHandle;
 
