@@ -113,8 +113,32 @@ class ApiException implements Exception {
   /// 操作でGoogleの無言サインインを繰り返し試みることになる。
   bool get isForbidden => statusCode == 403;
 
+  /// 502/503/504・[_serverBusyMessage] 相当。UI を出す前に無言リトライしてよい一時障害。
+  bool get isTransientServerFailure =>
+      !isUnauthorized &&
+      !isForbidden &&
+      ((statusCode != null && statusCode! >= 500) || message == _serverBusyMessage);
+
   @override
   String toString() => message;
+}
+
+/// TikTok ID 確認など、一時的な 5xx / タイムアウト向けの無言リトライ。
+@visibleForTesting
+Future<T> withTransientServerRetry<T>(
+  Future<T> Function() operation, {
+  int maxRetries = 3,
+  Duration delayBetweenAttempts = const Duration(milliseconds: 800),
+}) async {
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } on ApiException catch (e) {
+      if (!e.isTransientServerFailure || attempt == maxRetries) rethrow;
+      await Future<void>.delayed(delayBetweenAttempts);
+    }
+  }
+  throw StateError('withTransientServerRetry: unreachable');
 }
 
 /// ピッカーに出すギフト候補。
@@ -431,42 +455,48 @@ class LiveAnalyticsApi {
     required String token,
     required String tiktokHandle,
   }) async {
-    final data = await _send(
-      'POST',
-      '/api/mobile/streamer/preview',
-      {'tiktokHandle': tiktokHandle},
-      token: token,
-    );
-    return TiktokAccountPreview.fromJson(data);
+    return withTransientServerRetry(() async {
+      final data = await _send(
+        'POST',
+        '/api/mobile/streamer/preview',
+        {'tiktokHandle': tiktokHandle},
+        token: token,
+      );
+      return TiktokAccountPreview.fromJson(data);
+    });
   }
 
   Future<(String token, StreamerInfo streamer)> registerStreamer({
     required String token,
     required String tiktokHandle,
   }) async {
-    final data = await _send(
-      'POST',
-      '/api/mobile/streamer',
-      {'tiktokHandle': tiktokHandle},
-      token: token,
-    );
-    return (
-      data['token'] as String,
-      StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>),
-    );
+    return withTransientServerRetry(() async {
+      final data = await _send(
+        'POST',
+        '/api/mobile/streamer',
+        {'tiktokHandle': tiktokHandle},
+        token: token,
+      );
+      return (
+        data['token'] as String,
+        StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>),
+      );
+    });
   }
 
   Future<StreamerInfo> updateTiktokHandle({
     required String token,
     required String tiktokHandle,
   }) async {
-    final data = await _send(
-      'PATCH',
-      '/api/mobile/streamer',
-      {'tiktokHandle': tiktokHandle},
-      token: token,
-    );
-    return StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>);
+    return withTransientServerRetry(() async {
+      final data = await _send(
+        'PATCH',
+        '/api/mobile/streamer',
+        {'tiktokHandle': tiktokHandle},
+        token: token,
+      );
+      return StreamerInfo.fromJson(data['streamer'] as Map<String, dynamic>);
+    });
   }
 
   /// 直近に受け取ったギフトの候補一覧。空でもエラーではない
