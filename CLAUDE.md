@@ -76,9 +76,32 @@ git config core.hooksPath .githooks
 
 モノレポ化でビルドコンテキストがリポジトリルートに変わったため、ホスティング側の設定でプロジェクトのサブディレクトリを指定する必要がある。各プロジェクトの具体的なデプロイ設定はそのCLAUDE.mdを参照（[analytics](live-sidestage-analytics/CLAUDE.md) / [TikRIng](TikRIng/CLAUDE.md)）。desktop / TikCaption は electron-builder によるローカルビルド、mobile は `flutter build apk` をディレクトリ内で実行するだけなので、モノレポ化の影響は受けない。
 
+<!-- CODEGRAPH_START -->
+## CodeGraph
+
+モノレポ**ルート**を1プロジェクトとして索引する（サブプロジェクトごとに `init` しない）。`.codegraph/` は gitignore 済みで各開発者のローカルに作る。
+
+**初回セットアップ**（ルートで実行）:
+
+```bash
+npm i -g @colbymchenry/codegraph
+codegraph install --target=cursor,claude --yes --location=local
+codegraph init
+```
+
+Cursor / Claude Code を再起動する。MCP 定義は [`.cursor/mcp.json`](.cursor/mcp.json) と [`.mcp.json`](.mcp.json) にコミット済み。`codegraph install --refresh` でローカル設定を再生成できる（`.claude/settings.json` の auto-allow / prompt-hook は `/.claude/*` で除外されているため、Claude Code 利用者は install を各自で走らせる）。
+
+索引があるリポジトリでは、grep/全文読みより先に CodeGraph を使う:
+
+- **MCP**: `codegraph_explore`（シンボル名・質問を渡す）
+- **CLI**: `codegraph explore "<symbol or question>"`
+
+`.codegraph/` が無い環境では CodeGraph は使わない（索引は各自 `codegraph init`）。
+<!-- CODEGRAPH_END -->
+
 ## 既知の落とし穴
 
-- **旧パス参照が残っている**: 5プロジェクトは以前 `C:\dev\tiktok-app` / `C:\dev\LiveAnalytics` にあり、現在の場所へ移動・改名された。`live-sidestage-desktop/.mcp.json` の `cwd` と `.claude/settings.json` の hooks が `C:\dev\tiktok-app` を、`live-sidestage-analytics/.claude/merge-queue.md` が `C:/dev/LiveAnalytics` を指したままで、**どちらも実在しない**。code-review-graph MCP / hook はこの状態では動かないので、各 CLAUDE.md 冒頭の「まずグラフツールを使え」という指示は現状あてにできない
+- **旧 code-review-graph（desktop 配下）**: `live-sidestage-desktop/.mcp.json` の `cwd` などが統合前パス `C:\dev\tiktok-app` のまま残っている場合があり、**そちらは動かない**。モノレポ全体のコード探索はルートの CodeGraph（上記）を使う。各サブプロジェクト CLAUDE.md 冒頭の旧「グラフツール」指示は desktop 用の名残で、ルート索引と混同しない
 - `live-sidestage-desktop` の `.cursorrules` / `AGENTS.md` / `GEMINI.md` / `QODER.md` は CLAUDE.md 冒頭と同じ code-review-graph ボイラープレートで、固有の指示は入っていない
 - **統合前の旧リポジトリ（LiveAnalytics / TikEffect / TikCaption / frame）は GitHub 上に残してある**。どちらへコミットしているのか取り違えないこと。今後の変更はモノレポ側に入れる
 - `live-sidestage-mobile` は統合前 git remote を持たないローカル専用リポジトリだった。モノレポが唯一のリモートバックアップになる
