@@ -21,13 +21,13 @@ import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 
-/// 貢献タブ(ユーザー別コイン数ランキング)。
+/// 貢献タチEユーザー別コイン数ランキング)、E
 ///
-/// `IndexedStack`で他タブと同時にマウントされるため、[active]になるまで読み込まない
-/// (常駐3タブぶんの無駄なAPI呼び出しを避ける)。
+/// `IndexedStack`で他タブと同時にマウントされるため、[active]になるまで読み込まなぁE
+/// (常駁Eタブ�Eん�E無駁E��API呼び出しを避ける)、E
 ///
-/// ギフトを受け取ると[GiftActivityNotifier]経由で取り直す。**端末側で数字を積まない** —
-/// 数字の正はサーバーの集計だけで、積むとDBと恒久的にズレる(理由はgift_activity.dart)。
+/// ギフトを受け取ると[GiftActivityNotifier]経由で取り直す、E*端末側で数字を積まなぁE*  E
+/// 数字�E正はサーバ�Eの雁E��だけで、積�EとDBと恒乁E��にズレめE琁E��はgift_activity.dart)、E
 class ContributionTab extends StatefulWidget {
   const ContributionTab({super.key, required this.active});
 
@@ -44,15 +44,16 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   DateTimeRange? _customRange;
   String? _listenerQuery;
   GiftRankingResult? _result;
+  List<GiftRankingEntry> _users = const [];
   String? _error;
   bool _loading = false;
 
-  /// 見えていない間に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
+  /// 見えてぁE��ぁE��に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す、E
   bool _dirty = false;
   bool _resumed = true;
 
-  // 期間切替・◀/▶・pull-to-refreshが短時間に連続すると、先に投げたリクエストが
-  // 後から完了して新しい選択結果を上書きしうる。世代が一致する応答だけ反映する。
+  // 期間刁E��・◀/▶・pull-to-refreshが短時間に連続すると、�Eに投げたリクエストが
+  // 後から完亁E��て新しい選択結果を上書きしぁE��。世代が一致する応答だけ反映する、E
   int _requestGeneration = 0;
 
   @override
@@ -60,14 +61,14 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    // Batch 05: RankingSyncStore を初期化。
-    // CommentFeed の ranking snapshot stream を購読し、
-    // version 整合性チェック → snapshot 反映 または resync 要求。
+    // Batch 05: RankingSyncStore を�E期化、E
+    // CommentFeed の ranking snapshot stream を購読し、E
+    // version 整合性チェチE�� ↁEsnapshot 反映 また�E resync 要求、E
     final store = context.read<RankingSyncStore>();
     final commentFeed = context.read<CommentFeed>();
-    // Storeはアプリ生存中は破棄されない(このタブはtiktokIdをkeyにして
-    // 再生成される)ため、新しい配信者向けに使い始める前に前回のデータを
-    // クリアする(配信者切替時に前配信者のデータが一瞬残るのを防ぐ)。
+    // Storeはアプリ生存中は破棁E��れなぁEこ�Eタブ�EtiktokIdをkeyにして
+    // 再生成される)ため、新しい配信老E��けに使ぁE��める前に前回のチE�EタめE
+    // クリアする(配信老E�E替時に前�E信老E�EチE�Eタが一瞬残るのを防ぁE、E
     store.resetForNewSession();
     store.initialize(
       rankingSnapshotStream: commentFeed.onRankingSnapshot,
@@ -81,7 +82,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     );
     store.addListener(_onRankingSnapshot);
 
-    // 現在の期間を Store へ通知。異なる期間の snapshot は破棄される。
+    // 現在の期間めEStore へ通知。異なる期間�E snapshot は破棁E��れる、E
     final customRange = _customRange;
     final period = customRange != null ? null : _selection.period.apiValue;
     store.setCurrentPeriod(period);
@@ -107,23 +108,40 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   @override
   void didUpdateWidget(covariant ContributionTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // **一度きりにしない。** 見ていない間に配信が進んでいるので、タブへ戻るたび取り直す。
+    // **一度きりにしなぁE��E* 見てぁE��ぁE��に配信が進んでぁE��ので、タブへ戻るたび取り直す、E
     if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
-  /// RankingSyncStore から snapshot 受信時のコールバック。
-  /// snapshot は既に REST 取得済みなら無視、resync 要求のみ処理。
+  List<GiftRankingEntry> _parseRankingEntities(Object? entities) {
+    if (entities is! List) return const [];
+    return entities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList();
+  }
+
+  void _applyRankingSnapshotUsers(RankingSyncStore store) {
+    final entities = store.getSnapshot()?['entities'];
+    if (entities == null) return;
+    final parsed = _parseRankingEntities(entities);
+    if (!mounted) return;
+    setState(() => _users = parsed);
+  }
+
+  /// RankingSyncStore から snapshot 受信時�Eコールバック、E
+  /// snapshot は既に REST 取得済みなら無視、resync 要求�Eみ処琁E��E
   void _onRankingSnapshot() {
     final store = context.read<RankingSyncStore>();
     final customRange = _customRange;
     final containsToday =
         customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
 
-    // 期間が「今日」を含まない場合は無視(既存 giftAutoReloadAction と同じ原則)。
+    if (containsToday && store.getSnapshot()?['entities'] != null) {
+      _applyRankingSnapshotUsers(store);
+    }
+
+    // 期間が「今日」を含まなぁE��合�E無要E既孁EgiftAutoReloadAction と同じ原則)、E
     if (!containsToday) return;
 
-    // resync 要求: 画面に応じて即座に取得 or 遅延。
-    // (Batch 05: push受信で即座に反映ではなく、mismatch時のみREST再取得)
+    // resync 要汁E 画面に応じて即座に取征Eor 遁E��、E
+    // (Batch 05: push受信で即座に反映ではなく、mismatch時�EみREST再取征E
     if (store.needsResync) {
       switch (giftAutoReloadAction(
         active: widget.active,
@@ -147,18 +165,17 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     if (!_dirty || !widget.active || !containsNow) return;
     _dirty = false;
 
-    // Batch 05: resync 要求を反映。REST 再取得で最新状態を取得。
+    // Batch 05: resync 要求を反映。REST 再取得で最新状態を取得、E
     _load(silent: true);
   }
 
-  /// [silent] はpush受信による自動更新、または resync 遅延後の更新。
-  /// **読み込み中の表示を出さない。** 出すと期間セレクタが `enabled: !_loading` で
-  /// 点滅的に無効化され、操作を邪魔する。
-  /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
+  /// [silent] はpush受信による自動更新、resync 遁E��後、また�E日付�E替(既存表示あり)の更新、E
+  /// 初回以外�E期間セレクタを無効化しなぁE`enabled`は常にtrue)。取得中は細ぁE�Eログレスのみ、E
+  /// 失敗も黙って捨てめE既存�E表示を残す)  E次のギフトか手動更新で拾ぁE��せる、E
   ///
-  /// [onResult]は期間ナビ操作時のロールバックを駆動するコールバック。成功時に true、
-  /// 非silent失敗時に false を受け取る。silentな失敗、セッション切れ、リクエスト破棄、
-  /// 未マウント時は呼ばれない。
+  /// [onResult]は期間ナビ操作時のロールバックを駁E��するコールバック。�E功時に true、E
+  /// 非silent失敗時に false を受け取る。silentな失敗、セチE��ョン刁E��、リクエスト破棁E��E
+  /// 未マウント時は呼ばれなぁE��E
   Future<void> _load({bool silent = false, void Function(bool success)? onResult}) async {
     final generation = ++_requestGeneration;
 
@@ -171,6 +188,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         _loading = true;
         _error = null;
       });
+    } else if (_result != null) {
+      setState(() => _loading = true);
     }
 
     final customRange = _customRange;
@@ -190,12 +209,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _result = result;
+        _users = result.users;
         _loading = false;
         _dirty = false;
       });
 
-      // Batch 06: REST取得成功時、RankingSyncStore へsnapshotとversionを反映。
-      // (Batch 05時点では空Mapを渡すバグと reset() による version欠損誤判定バグがあった)
+      // Batch 06: REST取得�E功時、RankingSyncStore へsnapshotとversionを反映、E
+      // (Batch 05時点では空Mapを渡すバグと reset() による version欠損誤判定バグがあっぁE
       if (!mounted) return;
       final store = context.read<RankingSyncStore>();
       store.acknowledgeResync(
@@ -216,7 +236,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
-        debugPrint('[contribution] 自動更新に失敗: ${e.message}');
+        debugPrint('[contribution] 自動更新に失敁E ${e.message}');
+        setState(() => _loading = false);
         return;
       }
       setState(() {
@@ -227,7 +248,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     }
   }
 
-  /// [RankingListTile]の`key`に使う、現在の期間指定の署名。
+  /// [RankingListTile]の`key`に使ぁE��現在の期間持E���E署名、E
   String _rangeSignature() {
     final customRange = _customRange;
     if (customRange != null) {
@@ -236,15 +257,15 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     return '${_selection.period.apiValue}_${_selection.date}';
   }
 
-  /// 行展開時のギフト内訳取得。[RankingListTile]の`key`に期間を含めているため、
-  /// 期間が変わった行は再マウントされ、ここは常にそのマウント時点の期間で呼ばれる。
+  /// 行展開時�Eギフト冁E��取得、ERankingListTile]の`key`に期間を含めてぁE��ため、E
+  /// 期間が変わった行�E再�Eウントされ、ここ�E常にそ�Eマウント時点の期間で呼ばれる、E
   ///
-  /// `ApiException` をキャッチして原因を分類してログ出力してから rethrow する。
-  /// 呼び出し元は例外型は変わらずそのまま受け取る。
+  /// `ApiException` をキャチE��して原因を�E類してログ出力してから rethrow する、E
+  /// 呼び出し�Eは例外型は変わらずそ�Eまま受け取る、E
   Future<GiftBreakdownResult> _fetchBreakdown(String tiktokUid) async {
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
-    if (token == null) throw ApiException('ログインが必要です');
+    if (token == null) throw ApiException('ログインが忁E��でぁE);
     final customRange = _customRange;
     try {
       return await withTokenRefresh(
@@ -260,25 +281,25 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         refreshToken: sessions.refreshToken,
       );
     } on ApiException catch (e) {
-      // ApiException を検査して原因を分類してログ出力
+      // ApiException を検査して原因を�E類してログ出劁E
       if (e.isRefreshTokenRejected) {
-        debugPrint('[contribution] ギフト内訳取得: refresh token 失効 (${e.code}), statusCode=${e.statusCode}');
+        debugPrint('[contribution] ギフト冁E��取征E refresh token 失効 (${e.code}), statusCode=${e.statusCode}');
       } else if (e.isUnauthorized) {
-        debugPrint('[contribution] ギフト内訳取得: 401 認可エラー (${e.code}), statusCode=${e.statusCode}');
+        debugPrint('[contribution] ギフト冁E��取征E 401 認可エラー (${e.code}), statusCode=${e.statusCode}');
       } else {
-        debugPrint('[contribution] ギフト内訳取得: エラー (statusCode=${e.statusCode}), ${e.message}');
+        debugPrint('[contribution] ギフト冁E��取征E エラー (statusCode=${e.statusCode}), ${e.message}');
       }
       rethrow;
     }
   }
 
-  /// 期間ナビ操作時のロールバック機構。指定の状態変更を試みた後、REST取得が失敗すれば
-  /// 自動的に変更前の期間・フィルタに戻す。
+  /// 期間ナビ操作時のロールバック機構。指定�E状態変更を試みた後、REST取得が失敗すれ�E
+  /// 自動的に変更前�E期間・フィルタに戻す、E
   ///
-  /// 期間切替(◀/▶・カスタム範囲フィルタ)の失敗時に、`_selection`/`_customRange`/`_listenerQuery`
-  /// が「取得成功済みのデータの期間」のままになるという不変条件を復元する。
-  /// 失敗時の画面表示(古いデータ+エラーバナー)と選択状態の食い違いを防ぎ、
-  /// 行の詳細展開時にギフト内訳の期間が画面表示と一致することを保証する。
+  /// 期間刁E��(◀/▶・カスタム篁E��フィルタ)の失敗時に、`_selection`/`_customRange`/`_listenerQuery`
+  /// が「取得�E功済みのチE�Eタの期間」�EままになるとぁE��不変条件を復允E��る、E
+  /// 失敗時の画面表示(古ぁE��ータ+エラーバナー)と選択状態�E食い違いを防ぎ、E
+  /// 行�E詳細展開時にギフト冁E��の期間が画面表示と一致することを保証する、E
   Future<void> _changePeriod(void Function() applyChange) async {
     final previousSelection = _selection;
     final previousCustomRange = _customRange;
@@ -299,8 +320,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     _changePeriod(() => _selection = selection);
   }
 
-  /// 詳細フィルタ(日時範囲)中に◀/▶が押されたとき。現在の範囲の外へ出て`day`選択に
-  /// 切り替えつつ、日時範囲フィルタだけを解除する(リスナー名フィルタ`_listenerQuery`は維持)。
+  /// 詳細フィルタ(日時篁E��)中に◀/▶が押されたとき。現在の篁E��の外へ出て`day`選択に
+  /// 刁E��替えつつ、日時篁E��フィルタだけを解除する(リスナ�E名フィルタ`_listenerQuery`は維持E、E
   void _shiftOutOfCustomRange(bool forward) {
     final customRange = _customRange;
     if (customRange == null) return;
@@ -330,7 +351,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     });
   }
 
-  /// ギフト貢献ランキング(現在の期間指定)のシェアURLを発行してクリップボードにコピーする。
+  /// ギフト貢献ランキング(現在の期間持E��EのシェアURLを発行してクリチE�Eボ�Eドにコピ�Eする、E
   Future<void> _shareGiftRanking() async {
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
@@ -353,12 +374,12 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       if (!mounted) return;
       await Clipboard.setData(ClipboardData(text: url));
       messenger.showSnackBar(
-        const SnackBar(content: Text('コピーしました')),
+        const SnackBar(content: Text('コピ�Eしました')),
       );
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('コピーに失敗しました')),
+        const SnackBar(content: Text('コピ�Eに失敗しました')),
       );
     }
   }
@@ -371,7 +392,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
           DateTimeRange(start: DateTime.parse(range.start), end: DateTime.parse(range.end)),
         );
       }
-      return range.start == range.end ? range.start : '${range.start} 〜 ${range.end}';
+      return range.start == range.end ? range.start : '${range.start} 、E${range.end}';
     }
     final customRange = _customRange;
     if (customRange != null) return formatDateTimeRangeLabel(customRange);
@@ -381,13 +402,9 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    // Batch 06: RankingSyncStore が保持するsnapshotを実際の描画ソースにする。
-    // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
-    final snapshotEntities = context.watch<RankingSyncStore>().getSnapshot()?['entities'];
-    final users = snapshotEntities is List
-        ? snapshotEntities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
-        : result?.users ?? const [];
+    final users = _users;
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    final refreshing = _loading && result != null;
 
     return RefreshIndicator(
       onRefresh: _load,
@@ -413,11 +430,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                     style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
+                if (refreshing)
+                  const LinearProgressIndicator(minHeight: 2),
                 PeriodSelectorBar(
                   selection: _selection,
                   rangeLabel: _rangeLabel,
                   onChanged: _onPeriodChanged,
-                  enabled: !_loading,
+                  enabled: true,
                   customRangeActive: _customRange != null,
                   filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
                   onOpenCustomRangeFilter: _openCustomRangeFilter,
@@ -449,7 +468,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '表示中の合計 ${users.length}人',
+                            '表示中の合訁E${users.length}人',
                             style: Theme.of(
                               context,
                             ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -473,7 +492,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                     ),
                   ),
                 if (!_loading && result != null && users.isEmpty)
-                  const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
+                  const EmptyListNotice(message: 'こ�E期間はまだギフトを受け取ってぁE��せん'),
               ],
             ),
           ),
@@ -481,8 +500,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
             ListPanelSliver(
               itemCount: users.length,
               itemBuilder: (context, i) => RankingListTile(
-                // 期間をkeyへ含め、期間切替で行が再マウントされるようにする
-                // (前の期間で展開・取得済みのギフト内訳を残さないため)。
+                // 期間をkeyへ含め、期間�E替で行が再�Eウントされるようにする
+                // (前�E期間で展開・取得済みのギフト冁E��を残さなぁE��めE、E
                 key: ValueKey('${users[i].tiktokUid}_${_rangeSignature()}'),
                 rank: i + 1,
                 entry: users[i],

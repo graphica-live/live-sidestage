@@ -3,7 +3,7 @@ project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
 last_updated: 2026-09-12
 last_risk: MEDIUM
-last_reviewers: Gemini(agy、Code Mode、medium)。大規模room固まる不具合修正(Batch01/02、CustomScrollView+ListPanelSliver化)。DeepSeek(TestCase Mode、high)。breakdownエラー原因別表示分離(Batch01)。Gemini(agy/gemini-3.7-flash-medium)単体、Design Mode、medium。期間ナビ失敗時のロールバック機構追加分(finding無し)
+last_reviewers: Gemini(agy、Code Mode、medium)。大規模room固まる不具合修正(Batch01/02、CustomScrollView+ListPanelSliver化)。DeepSeek(TestCase Mode、high)。breakdownエラー原因別表示分離(Batch01)。Gemini(agy/gemini-3.7-flash-medium)単体、Design Mode、medium。期間ナビ失敗時のロールバック機構追加分(finding無し)。日付切替UX/CPU改善(_usersキャッシュ・silent load)。Gemini TestCase Mode(high) baseline照合
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
@@ -27,6 +27,10 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 明示呼び出しを`_onPeriodChanged`等から削除し、期間の反映は`_load()`成功時の`acknowledgeResync`一本化した
 (失敗時にstore側のsnapshotだけ先にクリアされる経路を無くした)。
 
+**2026-09-12(perf follow-up)**: 日付◀/▶・期間切替時に`_load(silent:)`で期間UIを無効化しない。
+一覧は`_users`キャッシュのみ描画(build毎の全件tryParseを廃止)。push snapshotは「今日」を含む期間のみ`_users`へ反映。
+再取得中は`LinearProgressIndicator`(2dp)のみ(初回以外)。
+
 ## テストケース
 
 | ID | 目的 | 対象 | 観点 | 前提・入力 | 期待結果 | 実行方法 | 結果 | 備考 |
@@ -48,12 +52,14 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-014 | `fetchBreakdown` 未指定時(バトル履歴タブ)、順位メダル部分にもタップ領域が残る(退行防止) | `RankingListTile`(バトル履歴タブ) | 回帰 | `fetchBreakdown` 未指定 | 順位メダル部分に `InkWell` が存在する(プロフィール遷移の呼び出し自体はurl_launcherのモック手段が無いため対象外) | `flutter test test/ranking_list_tile_test.dart --plain-name "順位メダル部分にもタップ領域"` | PASS | |
 | TC-CT-015 | `tiktokHandle` が null(TikTokUser 行が無い送信者)の行はプロフィール遷移のタップを受け付けない | `RankingListTile`(バトル履歴タブ) | 異常/データ欠損 | `tiktokHandle: null`、`fetchBreakdown` 未指定 | 行内の `InkWell`・アバターの `GestureDetector` の `onTap` が全て null(`https://www.tiktok.com/@` を組み立てられないため導線を出さない) | `flutter test test/ranking_list_tile_test.dart --plain-name "タップを受け付けない"` | PASS | |
 | TC-CT-016 | `tiktokHandle` が null でも内訳アコーディオンは `tiktokUid` をキーに動作する | `RankingListTile`(貢献タブ) | 境界 | `tiktokHandle: null`、`fetchBreakdown` 指定、名前をタップ | `fetchBreakdown` が `entry.tiktokUid` で1回呼ばれ、内訳が表示される | `flutter test test/ranking_list_tile_test.dart --plain-name "fetchBreakdown指定時は名前タップ"` | PASS | |
-| TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab.build` + `RankingSyncStore` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合) | `store.getSnapshot()`が非nullになり、`build()`がそれを`users`のソースとして描画する(RESTの`_result`のみに依存しない) | コードレビュー(`build()`が`context.watch<RankingSyncStore>().getSnapshot()`を参照し、`entities`を`GiftRankingEntry.tryParse`で復元していることを確認) + `flutter test`/`flutter analyze` | PASS | |
+| TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab._onRankingSnapshot` + `_users` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合)、かつ表示期間が「今日」を含む | `_applyRankingSnapshotUsers`経由で`_users`が更新され一覧が描画される(過去日のみの表示中はlive snapshotで上書きしない) | `flutter test test/realtime_sync_test.dart` + コードレビュー | PASS | 2026-09-12: `containsToday`ガードをsnapshot反映前に追加(Gemini VALID) |
 | TC-CT-018 | REST取得直後、サーバーの現在versionより1小さいversionのpushを欠損と誤判定しない | `RankingSyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが7、直後に届くpushがversion 8 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, epoch, version: 7)`でtrackerを実際のREST版数へ同期するため、version 8のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | |
 | TC-CT-019 | 貢献タブの期間ナビ行にシェアアイコン(バトル履歴と同じ共有アイコン)が表示される | `ContributionTab`(`_shareGiftRanking` の `IconButton`) | UI/正常 | 貢献タブを開く | 期間ナビ行の右端に `Icons.share` のアイコンボタンが表示される | 実機確認(Pixel 7a) | PASS | `SliverToBoxAdapter`化後も表示位置・挙動に変化が無いことを2026-09-12(Batch02)実機で再確認 |
 | TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗をSnackBarで通知する | `ContributionTab._shareGiftRanking` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後「コピーしました」のSnackBar (b)「コピーに失敗しました」のSnackBar | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: ローカルdevバックエンドへの実機到達がファイアウォールでブロック(既存の既知制約) (b)PASS(既存確認済み) | 成功パスのAPI契約自体は`[unit-int]`で担保 |
 | TC-CT-021 | アプリ起動時に`RankingSyncStore`/`CommentFeed`のProvider登録漏れが無く、貢献タブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `ContributionTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<RankingSyncStore>`等が`ProviderNotFoundException`を投げない。実機では貢献タブがランキング一覧を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS | |
-| TC-CT-023 | 大規模room(数百〜約1900人規模)でランキング行を表示しても操作不能になるほど重くならない(画面外の行が即座に全件構築されない) | `ContributionTab`(`CustomScrollView`+`ListPanelSliver`) | 性能/回帰 | 約1900人規模roomの貢献タブを開く | スクロールが実用的な速度で追従する(以前の`ListView`+`ListPanel`全件即時構築では操作不能に近いレベルまで固まっていた) | 実機確認(Pixel 7a) | PASS | 2026-09-12実機確認。約618〜649人規模room(`@yu_ki_nojo`)で1位↔618位(末尾)を連続高速スワイプ双方向で実施、フリーズ・カクつき無し。約1900人規模での確認はできていないが、`SliverChildBuilderDelegate`による遅延構築はroom人数によらず同一機構のため妥当な代表確認と判断 |
+| TC-CT-023 | 大規模room(数百〜約1900人規模)でランキング行を表示しても操作不能になるほど重くならない(画面外の行が即座に全件構築されない) | `ContributionTab`(`CustomScrollView`+`ListPanelSliver`+`_users`) | 性能/回帰 | 約1900人規模roomの貢献タブを開く | スクロールが実用的な速度で追従する。日付◀/▶で別日(約1892人)へ切替後も一覧が表示され操作可能 | 実機確認(Pixel 7a、adb) | PASS | 2026-09-12: `@ayane_0327` 1200人(2026-09-12)→◀→1892人(2026-09-11)表示確認。build毎全件parse廃止 |
+| TC-CT-027 | 既存ランキング表示中の日付◀/▶・期間切替で期間チップ/◀/▶が無効化されず連続操作できる | `ContributionTab._load(silent:)` + `PeriodSelectorBar enabled: true` | 性能/UX | 1200人以上roomで◀を押して再取得中に▶/◀/日チップを触る | 取得中も期間コントロールがグレーアウトされない(世代番号で古い応答は破棄) | 実機確認(Pixel 7a、adb) | PASS | 2026-09-12: 2026-09-12→2026-09-11切替後も日付行・チップが有効のまま |
+| TC-CT-028 | silent再取得失敗時に`LinearProgressIndicator`が永久表示されない | `ContributionTab._load` catch(silent) | 異常/回帰 | `silent: true`かつ`_result != null`でAPI失敗 | `_loading`がfalseに戻りプログレスが消える | コードレビュー(Gemini VALID→修正) | PASS | |
 | TC-CT-024 | 少人数room(約240人規模)でも見た目・動作に変化が無い | `ContributionTab`(`CustomScrollView`+`ListPanelSliver`) | 回帰 | 約240人規模roomの貢献タブを開く | `ListView`版と同じ見た目・スクロール挙動 | 実機確認(Pixel 7a) | NOT RUN: 別配信者アカウント(約240人規模room)が本ラウンドで用意できず未実施 | 残タスク(推奨)として引き継ぎ |
 | TC-CT-025 | pull-to-refreshが`CustomScrollView`化後も機能する | `ContributionTab`(`RefreshIndicator`+`CustomScrollView`) | 回帰 | 貢献タブで下方向スワイプ | `RefreshIndicator`が表示され`_load()`が呼ばれる | 実機確認(Pixel 7a) | PASS | 2026-09-12実機確認。先頭で下スワイプ→円形`RefreshIndicator`のスピナー表示をスクリーンショットで捕捉、直後に表示人数(636→649人)・合計額が更新され`_load()`実行を確認 |
 | TC-CT-026 | `ListPanelSliver`のカード視覚(白カード+角丸18+シャドウ+行間1dp区切り線+余白)が旧`ListPanel`と同一に見える | `ListPanelSliver`(`list_panel.dart`) | UI/回帰 | 貢献タブのランキング一覧を表示 | 角丸・シャドウ・区切り線・余白が`ListPanel`使用時(ギフト履歴タブ等)と同一に見える | 実機確認(Pixel 7a、スクリーンショット比較) | PASS(上端のみ) | 2026-09-12実機確認。カード上端の角丸・境界・行間区切り線・余白は`ListPanel`と同一に見える。末尾行(618位)はbottom navigation barの裏に隠れ底辺角丸は未確認(`DecoratedSliver`のSDK実装(`getMaxPaintRect()`)をソース確認済みのため設計上のリスクは無いと判断) |
@@ -62,7 +68,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 
 ## Quality Gate
 
-- `live-sidestage-mobile`: `flutter analyze` → PASS(2026-09-12、既存info 1件のみ、新規警告なし) / `flutter test` → PASS(569/569)
+- `live-sidestage-mobile`: `flutter analyze` → PASS(2026-09-12、既存info 1件のみ、新規警告なし) / `flutter test test/ranking_list_tile_test.dart test/realtime_sync_test.dart` → PASS(27/27) / `flutter test`(全件) → PASS(569/569、マージ後)
 - `live-sidestage-analytics`: `npm run typecheck` / `npx dotenv -e .env.local.test -- npx vitest run <対象ファイル>`
 
 ## Out of Scope
