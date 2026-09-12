@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-13
 last_risk: LOW
-last_reviewers: test-auto Playwright TC-CS-013 2026-09-13 (code-review Code Mode 2026-09-13)
+last_reviewers: Gemini 3.7 Flash Code Mode 2026-09-13 (client-safe extract; TestCase同時実施)
 ---
 
 # ギフト貢献ランキングの公開シェア機能
@@ -10,7 +10,7 @@ last_reviewers: test-auto Playwright TC-CS-013 2026-09-13 (code-review Code Mode
 `POST /api/admin/rooms/[roomId]/analytics/gifts/share`（管理者）、
 `POST /api/mobile/analytics/gifts/share`（mobile））、公開API `GET /api/public/contribution/[token]`、
 公開ページ `src/app/(public)/c/[token]/`（`page.tsx` / `PublicContributionClient.tsx`）、
-共有ロジック `src/lib/contribution-share.ts` / `src/lib/share-token.ts`、
+共有ロジック `src/lib/contribution-share.ts` / `src/lib/contribution-share-range-label.ts` / `src/lib/share-token.ts`、
 `src/middleware.ts` の除外エントリ `c(?:/|$)`、`ShareLinkButton.tsx`（`BattleDetailModal.tsx` の
 `ShareButton` を汎用化）。
 
@@ -51,13 +51,13 @@ last_reviewers: test-auto Playwright TC-CS-013 2026-09-13 (code-review Code Mode
 | TC-CS-010 | 共有ページと公開APIだけが認証を免除され、似た前置のパスは保護されたまま | `src/middleware.ts` | 回帰/認可/境界 | `/c/abc123` `/c/abc123/` `/api/public/contribution/abc123` / `/billing` `/chat` `/cx` | 前3つは認証なしで通る。後3つは保護されたまま | `[unit-mw]` | PASS(2026-09-11) | 境界`(?:/|$)`を落とすと想定しない前置パスまで公開される |
 | TC-CS-011 | シェアボタンは発行したURLをクリップボードへ入れる。成功時は画面上部に目立つトーストを出す。非secure contextではURLを選択可能なテキストで出す | `ShareLinkButton` | 正常/異常/境界 | (a)通常環境でシェア (b)`navigator.clipboard`が無い環境 | (a)クリップボードに`<origin>/c/<token>`が入り「共有リンクをコピーしました」固定トースト+ボタンcheck表示 (b)readonly入力欄にURLが出てフォーカスで全選択 | `[pw]` | PASS(2026-09-12 test-auto、localhost:3002 Playwright: toast role=status + clipboard `/c/` URL) | トーストは`createPortal`で`document.body`直下。3秒で消える |
 | TC-CS-012 | 公開ページはURLを知っていればログインなしで開ける | `/c/[token]` | 正常/認可 | 発行済みURLを別の匿名コンテキストで開く | `/login`へリダイレクトされず貢献ランキングが表示される | `[anon]` | PASS(2026-09-11、Playwright再確認: 匿名contextで `/c/` のまま表示。PC1280・390px) | |
-| TC-CS-013 | custom期間シェアの公開ページ見出しはJSTでAnalyticsViewと同じ時刻帯を示す(UTC ISO生表示しない) | `formatContributionShareRangeLabel` / `PublicContributionClient` | 回帰/表示 | `2026-09-12T15:00Z〜16:00Z`(JST 9/13 0:00〜1:00)のcustomトークン | 見出しに`9/13`と`0:00`/`1:00`が含まれ、終端が`16:00`(UTC時刻の誤表示)にならない | `[unit]`, `[pw]` | PASS(2026-09-13 unit 26件 / Playwright localhost:3000 匿名390px・1280px: `9/13 00:00:00 〜 9/13 01:00:00`) | 生ISO表示だと終端が16:00に見えていた不具合の再発防止 |
+| TC-CS-013 | custom期間シェアの公開ページ見出しはJSTでAnalyticsViewと同じ時刻帯を示す(UTC ISO生表示しない) | `formatContributionShareRangeLabel`(`contribution-share-range-label.ts`) / `PublicContributionClient` | 回帰/表示 | `2026-09-12T15:00Z〜16:00Z`(JST 9/13 0:00〜1:00)のcustomトークン | 見出しに`9/13`と`0:00`/`1:00`が含まれ、終端が`16:00`(UTC時刻の誤表示)にならない | `[unit]`, `[pw]` | PASS(2026-09-13 unit 26/26。`[pw]` は切り出し前と同ロジックのため当日 Playwright PASSを維持) | 公開ページは Prisma 付き `contribution-share.ts` を関数importしない。生ISO表示だと終端が16:00に見えていた不具合の再発防止 |
 
 ## Quality Gate
 
-- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-13)
-- `npx vitest run` 貢献シェア関連 → PASS(2026-09-13: contribution-share.test.ts 26/26 + route 8/8)
-- `npm run test:unit` 全体 → 未再実行(関連unitのみ)
+- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-13 client-safe切り出し後)
+- `npx vitest run` 貢献シェア関連 → PASS(2026-09-13: contribution-share.test.ts 26/26)
+- `npm run test:unit` 全体 → 未再実行(関連unitのみ。pre-commitで全体実行)
 - `npm run test:integration` → 未再実行(今回API/DB契約変更なし)
 
 ## Out of Scope
