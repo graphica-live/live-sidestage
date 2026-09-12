@@ -676,6 +676,7 @@ class LiveAnalyticsApi {
 
   /// ギフト貢献ランキング(期間集計)の公開シェアURLを遅延発行する(既発行なら同じURLを返す)。
   Future<String> fetchGiftRankingShareUrl({
+    required String token,
     required String period,
     String? date,
     DateTime? startDatetime,
@@ -689,6 +690,7 @@ class LiveAnalyticsApi {
       'POST',
       '/api/mobile/analytics/gifts/share',
       body,
+      token: token,
     );
     return data['url'] as String;
   }

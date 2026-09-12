@@ -366,6 +366,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     try {
       final url = await withTokenRefresh(
         call: (t) => _api.fetchGiftRankingShareUrl(
+          token: t,
           period: _selection.period.apiValue,
           date: _selection.date,
           startDatetime: customRange?.start,
