@@ -3,7 +3,7 @@ project: live-sidestage-mobile
 feature: gift-history
 last_updated: 2026-09-12
 last_risk: HIGH
-last_reviewers: Codex(terra, medium) + Gemini(agy, OmniRoute経由)。Batch02 push駆動リアルタイム同期(方式A)分
+last_reviewers: Codex(terra, medium) + Gemini(agy, OmniRoute経由)。Batch02 push駆動リアルタイム同期(方式A)分。Gemini(agy/gemini-3.7-flash-medium)単体、Code Mode、medium。Batch03 ListView→CustomScrollView+ListPanelSliver仮想化分(finding無し)
 ---
 
 # テストベースライン: gift-history (期間制限)
@@ -13,6 +13,13 @@ last_reviewers: Codex(terra, medium) + Gemini(agy, OmniRoute経由)。Batch02 pu
 制限する。`AnalyticsPeriod`・`PeriodSelectorBar`・カスタム範囲シート(`custom_range_filter_sheet.dart`)
 は貢献タブ・バトル履歴タブと共有しているため、`availablePeriods`/`maxRangeDays`という追加パラメータで
 ギフト履歴タブだけを絞り込む方式にした。他タブ(貢献・バトル履歴、year込み・366日既定)は対象外。
+
+**2026-09-12(Batch03)**: 履歴行の描画方式を`ListView`+`ListPanel`(全件即時Widget構築)から
+`CustomScrollView`+`ListPanelSliver`(`DecoratedSliver`+`SliverList.builder`による遅延構築)へ変更した。
+貢献タブ(Batch01/02)で先行対応した大規模room固まる不具合の同種修正で、既存パターンへの機械的横展開。
+ギフト履歴タブの行widgetはStateless(`InkWell`)のため`ValueKey(event.id)`のみで足り、
+貢献タブのような期間切替時の`_rangeSignature()`付きkeyは不要。視覚(白カード+角丸18+シャドウ+行間区切り線)・
+pull-to-refreshは維持する設計。
 
 ## テストケース
 
@@ -27,6 +34,10 @@ last_reviewers: Codex(terra, medium) + Gemini(agy, OmniRoute経由)。Batch02 pu
 | TC-GH-006 | 同一Gift.idのappendが複数回届いても一覧に重複追加されない | `GiftHistorySyncStore._onGiftHistoryAppend` | 境界/negative | 同じ`id`を持つappend payloadが2回届く | 2回目は`_seenGiftIds`により無視され、一覧に重複行が出ない | `flutter test test/realtime_sync_test.dart`(冪等dedupケース) | PASS | |
 | TC-GH-007 | REST取得直後、サーバーの現在versionを反映しないまま次のpushを欠損と誤判定しない | `GiftHistorySyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが5、直後に届くpushがversion 6 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, version: 5)`でtrackerを実版数へ同期するため、version 6のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | Batch06で修正。修正前は`acknowledgeResync`が常に`VersionTracker.reset()`(=0)していたため、次のpushが恒久的にversion欠損と誤判定されREST再取得が無限に続くおそれがあった(Codexレビューで検出) |
 | TC-GH-008 | アプリ起動時に`GiftHistorySyncStore`/`CommentFeed`のProvider登録漏れが無く、ギフトタブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `GiftHistoryTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<GiftHistorySyncStore>`等が`ProviderNotFoundException`を投げない。実機ではギフトタブが履歴一覧を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS(2026-09-12、実機で貢献/ギフト/バトル3タブとも正常表示を確認) | 2026-09-11のBatch05でこれら4クラスをMultiProviderへ登録し忘れ、3タブが`initState`で例外を投げて真っ白になっていた不具合の再発防止ケース。TC-GH-005〜007は「コードレビュー確認」でPASS済みとしていたが、実際にはこの登録漏れによりギフトタブ自体が起動直後に例外でクラッシュしており、push反映機能は実行されていなかった |
+
+| TC-GH-010 | ギフト履歴一覧を表示しても操作不能になるほど重くならない(画面外の行が即座に全件構築されない) | `GiftHistoryTab`(`CustomScrollView`+`ListPanelSliver`) | 性能/回帰 | ギフト履歴タブを開く | スクロールが実用的な速度で追従する(貢献タブTC-CT-023と同種の仮想化機構) | 実機確認(Pixel 7a) | PASS | 2026-09-12実機確認。実データでの連続スクロールでフリーズ・カクつき無し |
+| TC-GH-011 | pull-to-refreshが`CustomScrollView`化後も機能する | `GiftHistoryTab`(`RefreshIndicator`+`CustomScrollView`) | 回帰 | ギフト履歴タブで下方向スワイプ | `RefreshIndicator`が表示され一覧が再取得される | 実機確認(Pixel 7a) | PASS | 2026-09-12実機確認 |
+| TC-GH-012 | `ListPanelSliver`のカード視覚(白カード+角丸18+シャドウ+行間1dp区切り線+余白)が旧`ListPanel`と同一に見える | `ListPanelSliver`(`list_panel.dart`、貢献タブと共有実装) | UI/回帰 | ギフト履歴タブの一覧を表示 | 角丸・シャドウ・区切り線・余白が旧実装と同一に見える | 実機確認(Pixel 7a、スクリーンショット比較) | PASS | 2026-09-12実機確認 |
 
 ## Quality Gate
 
