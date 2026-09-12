@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
-last_updated: 2026-09-12
+last_updated: 2026-09-13
 last_risk: MEDIUM
-last_reviewers: Gemini Code Mode(medium) @ 8fed9bdc UTF-8復元。Gemini Code Mode(medium) @ snapshot描画containsTodayガード修正。test-auto @ 2026-09-12
+last_reviewers: Gemini Code Mode(medium) @ 8fed9bdc UTF-8復元。Gemini TestCase @ TC-CT-029/030。test-auto @ 2026-09-13
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
