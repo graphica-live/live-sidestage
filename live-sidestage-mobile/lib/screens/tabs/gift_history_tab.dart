@@ -283,114 +283,117 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const KosaiSectionHeading(
-            'ギフト履歴',
-            top: 8,
-            subtitle: '受け取ったギフトの履歴',
-          ),
-          PeriodSelectorBar(
-            selection: _selection,
-            rangeLabel: _rangeLabel,
-            onChanged: _onPeriodChanged,
-            extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
-            enabled: !_loading,
-            customRangeActive: _customRange != null,
-            filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
-            onOpenCustomRangeFilter: _openCustomRangeFilter,
-            onShiftCustomRange: _shiftOutOfCustomRange,
-            // 明細は90日で削除される(gift-retention-window.ts)ため、`year`は選ばせない。
-            availablePeriods: const [AnalyticsPeriod.day, AnalyticsPeriod.week, AnalyticsPeriod.month],
-          ),
-          if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
-          if (_loading && result == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          if (result != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Text(
-                '合計 ${result.total.count}件 / ${formatWithCommas(result.total.diamonds)}コイン'
-                '(LIVE Sidestage登録後データ)',
-                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
-          if (!_loading && result != null && events.isEmpty)
-            const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
-          if (events.isNotEmpty)
-            ListPanel(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final event in events)
-                  // ハンドルが無い行(TikTokUser 未登録)はプロフィール導線を出さない。
-                  // uid では tiktok.com のURLを組み立てられない。
-                  InkWell(
-                    onTap: event.tiktokHandle == null
-                        ? null
-                        : () => openTiktokProfile(context, event.tiktokHandle!),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      child: Row(
+                const KosaiSectionHeading(
+                  'ギフト履歴',
+                  top: 8,
+                  subtitle: '受け取ったギフトの履歴',
+                ),
+                PeriodSelectorBar(
+                  selection: _selection,
+                  rangeLabel: _rangeLabel,
+                  onChanged: _onPeriodChanged,
+                  extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+                  enabled: !_loading,
+                  customRangeActive: _customRange != null,
+                  filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
+                  onOpenCustomRangeFilter: _openCustomRangeFilter,
+                  onShiftCustomRange: _shiftOutOfCustomRange,
+                  // 明細は90日で削除される(gift-retention-window.ts)ため、`year`は選ばせない。
+                  availablePeriods: const [AnalyticsPeriod.day, AnalyticsPeriod.week, AnalyticsPeriod.month],
+                ),
+                if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
+                if (_loading && result == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (result != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: Text(
+                      '合計 ${result.total.count}件 / ${formatWithCommas(result.total.diamonds)}コイン'
+                      '(LIVE Sidestage登録後データ)',
+                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                if (!_loading && result != null && events.isEmpty)
+                  const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
+              ],
+            ),
+          ),
+          if (events.isNotEmpty)
+            ListPanelSliver(
+              itemCount: events.length,
+              itemBuilder: (context, i) => InkWell(
+                onTap: events[i].tiktokHandle == null
+                    ? null
+                    : () => openTiktokProfile(context, events[i].tiktokHandle!),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  child: Row(
+                    children: [
+                      // comp `.r-icon.ring`: グラデーション枠つきのリスナーアイコン。
+                      // **🎁絵文字・ギフト画像は出さない**(comp指示)。ギフト名はテキストで残す。
+                      GradientRing(child: UserAvatar(events[i].profileImageUrl)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              events[i].nickname,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              '${events[i].giftName} ×${events[i].repeatCount}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          // comp `.r-icon.ring`: グラデーション枠つきのリスナーアイコン。
-                          // **🎁絵文字・ギフト画像は出さない**(comp指示)。ギフト名はテキストで残す。
-                          GradientRing(child: UserAvatar(event.profileImageUrl)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  event.nickname,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 1),
-                                Text(
-                                  '${event.giftName} ×${event.repeatCount}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                          Text(
+                            formatDiamonds(events[i].totalDiamonds),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: KosaiPalette.c2,
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                formatDiamonds(event.totalDiamonds),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: KosaiPalette.c2,
-                                ),
-                              ),
-                              const SizedBox(height: 1),
-                              Text(
-                                _formatTime(event.receivedAt),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
+                          const SizedBox(height: 1),
+                          Text(
+                            _formatTime(events[i].receivedAt),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-              ],
+                ),
+              ),
             ),
         ],
       ),
