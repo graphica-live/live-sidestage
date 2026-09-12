@@ -37,6 +37,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
   DateTimeRange? _customRange;
   String? _listenerQuery;
   GiftHistoryResult? _result;
+  List<GiftHistoryEvent> _events = const [];
   String? _error;
   bool _loading = false;
 
@@ -96,6 +97,18 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
+  List<GiftHistoryEvent> _parseHistoryEvents(List<Map<String, dynamic>> history) {
+    return history.map(GiftHistoryEvent.tryParse).whereType<GiftHistoryEvent>().toList();
+  }
+
+  void _applyStoreHistoryEvents(GiftHistorySyncStore store) {
+    final history = store.getHistory();
+    if (history.isEmpty) return;
+    final parsed = _parseHistoryEvents(history);
+    if (!mounted) return;
+    setState(() => _events = parsed);
+  }
+
   /// GiftHistorySyncStore から append イベント受信時のコールバック。
   /// append は既に REST 取得済みなら無視、resync 要求のみ処理。
   void _onGiftHistoryAppend() {
@@ -103,6 +116,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     final customRange = _customRange;
     final containsToday =
         customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+
+    if (containsToday) {
+      _applyStoreHistoryEvents(store);
+    }
 
     // 期間が「今日」を含まない場合は無視。
     if (!containsToday) return;
@@ -136,9 +153,8 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     _load(silent: true);
   }
 
-  /// [silent] はpush受信による自動更新、または resync 遅延後の更新。
-  /// **読み込み中の表示を出さない。** 出すと期間セレクタが `enabled: !_loading` で
-  /// 点滅的に無効化され、操作を邪魔する。
+  /// [silent] はpush受信による自動更新、resync 遅延後、または日付切替(既存表示あり)の更新。
+  /// 初回以外は期間セレクタを無効化しない(`enabled`は常にtrue)。取得中は細いプログレスのみ。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
   Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
@@ -152,6 +168,8 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
         _loading = true;
         _error = null;
       });
+    } else if (_result != null) {
+      setState(() => _loading = true);
     }
 
     final customRange = _customRange;
@@ -171,6 +189,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _result = result;
+        _events = result.events;
         _loading = false;
         _dirty = false;
       });
@@ -191,6 +210,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
         debugPrint('[gift-history] 自動更新に失敗: ${e.message}');
+        setState(() => _loading = false);
         return;
       }
       setState(() {
@@ -202,7 +222,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
 
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
     setState(() => _selection = selection);
-    _load();
+    _load(silent: _result != null);
   }
 
   Future<void> _openCustomRangeFilter() async {
@@ -222,7 +242,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       _customRange = result.cleared ? null : result.range;
       _listenerQuery = result.cleared ? null : result.listenerQuery;
     });
-    _load();
+    _load(silent: _result != null);
   }
 
   /// 詳細フィルタ(日時範囲)中に◀/▶が押されたとき。現在の範囲の外へ出て`day`選択に
@@ -238,7 +258,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       _selection = forward ? anchor.shiftNext() : anchor.shiftPrevious();
       _customRange = null;
     });
-    _load();
+    _load(silent: _result != null);
   }
 
   String get _rangeLabel {
@@ -262,135 +282,126 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     return '${jst.hour.toString().padLeft(2, '0')}:${jst.minute.toString().padLeft(2, '0')}';
   }
 
+  Widget _buildGiftHistoryRow(GiftHistoryEvent event) {
+    return InkWell(
+      onTap: event.tiktokHandle == null ? null : () => openTiktokProfile(context, event.tiktokHandle!),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        child: Row(
+          children: [
+            GradientRing(child: UserAvatar(event.profileImageUrl)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    event.nickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    '${event.giftName} ×${event.repeatCount}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  formatDiamonds(event.totalDiamonds),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: KosaiPalette.c2,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _formatTime(event.receivedAt),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    // Batch 06: GiftHistorySyncStore が保持する履歴を実際の描画ソースにする。
-    // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
-    //
-    // Batch 02(design-review指摘): pushは常に「現在」のギフトなので、Storeへは
-    // 選択中の期間・カスタム範囲に関係なく積まれる。「今日」を含まない期間・
-    // カスタム範囲を表示中はStoreを描画ソースにせず、RESTの結果をそのまま使う
-    // (Storeを描画ソースにすると、選択中の範囲データがpushで完全に隠蔽される)。
-    final customRange = _customRange;
-    final containsToday =
-        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
-    final storeHistory = containsToday ? context.watch<GiftHistorySyncStore>().getHistory() : const <Map<String, dynamic>>[];
-    final events = storeHistory.isNotEmpty
-        ? storeHistory.map(GiftHistoryEvent.tryParse).whereType<GiftHistoryEvent>().toList()
-        : result?.events ?? const [];
+    final events = _events;
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    final refreshing = _loading && result != null;
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const KosaiSectionHeading(
-            'ギフト履歴',
-            top: 8,
-            subtitle: '受け取ったギフトの履歴',
-          ),
-          PeriodSelectorBar(
-            selection: _selection,
-            rangeLabel: _rangeLabel,
-            onChanged: _onPeriodChanged,
-            extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
-            enabled: !_loading,
-            customRangeActive: _customRange != null,
-            filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
-            onOpenCustomRangeFilter: _openCustomRangeFilter,
-            onShiftCustomRange: _shiftOutOfCustomRange,
-            // 明細は90日で削除される(gift-retention-window.ts)ため、`year`は選ばせない。
-            availablePeriods: const [AnalyticsPeriod.day, AnalyticsPeriod.week, AnalyticsPeriod.month],
-          ),
-          if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
-          if (_loading && result == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          if (result != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Text(
-                '合計 ${result.total.count}件 / ${formatWithCommas(result.total.diamonds)}コイン'
-                '(LIVE Sidestage登録後データ)',
-                style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
-          if (!_loading && result != null && events.isEmpty)
-            const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
-          if (events.isNotEmpty)
-            ListPanel(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final event in events)
-                  // ハンドルが無い行(TikTokUser 未登録)はプロフィール導線を出さない。
-                  // uid では tiktok.com のURLを組み立てられない。
-                  InkWell(
-                    onTap: event.tiktokHandle == null
-                        ? null
-                        : () => openTiktokProfile(context, event.tiktokHandle!),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      child: Row(
-                        children: [
-                          // comp `.r-icon.ring`: グラデーション枠つきのリスナーアイコン。
-                          // **🎁絵文字・ギフト画像は出さない**(comp指示)。ギフト名はテキストで残す。
-                          GradientRing(child: UserAvatar(event.profileImageUrl)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  event.nickname,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 1),
-                                Text(
-                                  '${event.giftName} ×${event.repeatCount}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                formatDiamonds(event.totalDiamonds),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: KosaiPalette.c2,
-                                ),
-                              ),
-                              const SizedBox(height: 1),
-                              Text(
-                                _formatTime(event.receivedAt),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                const KosaiSectionHeading(
+                  'ギフト履歴',
+                  top: 8,
+                  subtitle: '受け取ったギフトの履歴',
+                ),
+                if (refreshing) const LinearProgressIndicator(minHeight: 2),
+                PeriodSelectorBar(
+                  selection: _selection,
+                  rangeLabel: _rangeLabel,
+                  onChanged: _onPeriodChanged,
+                  extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+                  enabled: true,
+                  customRangeActive: _customRange != null,
+                  filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
+                  onOpenCustomRangeFilter: _openCustomRangeFilter,
+                  onShiftCustomRange: _shiftOutOfCustomRange,
+                  availablePeriods: const [AnalyticsPeriod.day, AnalyticsPeriod.week, AnalyticsPeriod.month],
+                ),
+                if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
+                if (_loading && result == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (result != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: Text(
+                      '合計 ${result.total.count}件 / ${formatWithCommas(result.total.diamonds)}コイン'
+                      '(LIVE Sidestage登録後データ)',
+                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ),
+                if (!_loading && result != null && events.isEmpty)
+                  const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
               ],
+            ),
+          ),
+          if (events.isNotEmpty)
+            ListPanelSliver(
+              itemCount: events.length,
+              itemBuilder: (context, i) => _buildGiftHistoryRow(events[i]),
             ),
         ],
       ),

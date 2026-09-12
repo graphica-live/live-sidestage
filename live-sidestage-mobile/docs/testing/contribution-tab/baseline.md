@@ -67,4 +67,4 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 - バトル履歴タブの `RankingListTile` 呼び出し2箇所(`fetchBreakdown` 未指定)の `openTiktokProfile`(url_launcher)実呼び出し検証: テスト環境でurl_launcherをモックする既存パターンが無いため対象外。タップ領域の存在(InkWellの構造)まではTC-CT-014で回帰確認する
 - TC-CT-017/018のpush反映は実データ・実配信での実機確認が理想だが、本worktreeには`.mcp.json`(Marionette MCP)が無く`adb`もPATH未導入のため実機確認はNOT RUN。コードレビューと`flutter test`(`realtime_sync_test.dart`のversion整合性ロジック単体テスト)で担保している
 - `fetchGiftRankingShareUrl`(`lib/core/api_client.dart`)自体のFlutter unit test: 既存の`fetchBattleReplayShareUrl`と同様、APIクライアントの薄いラッパー関数はこのプロジェクトの慣行としてFlutter側では単体テストせず、analytics側のroute.integration.test.tsで契約を担保する(既存踏襲)
-- `gift_history_tab.dart`への同種修正(Batch03)は本ラウンドの実装対象外(ユーザー優先度判断待ち)。対象外のため本baselineにケースを追加しない
+- Batch03(`gift_history_tab.dart`)は `docs/testing/gift-history-tab/baseline.md` で別管理(2026-09-12 実施)
