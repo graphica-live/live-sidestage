@@ -2,8 +2,8 @@
 project: live-sidestage-mobile
 feature: onboarding
 last_updated: 2026-09-12
-last_risk: HIGH
-last_reviewers: DeepSeek(TestCase,402)→Gemini(agy)
+last_risk: LOW
+last_reviewers: Gemini(agy,TestCase)
 ---
 
 # テストベースライン: モバイル ログイン後オンボーディング
@@ -32,11 +32,13 @@ last_reviewers: DeepSeek(TestCase,402)→Gemini(agy)
 | TC-MOB-016 | 既登録 principal の preview は409 | `POST /api/mobile/streamer/preview` | 異常 | Streamer 付き principal の JWT | 409「既にTikTokアカウントが登録されています」、TikTok照会0 | `npx vitest run src/app/api/mobile/streamer/preview/route.test.ts` | PASS | |
 | TC-MOB-017 | preview の principal レート制限 | 同上 | 異常 | `isRateLimited` が true | 429、TikTok照会0 | 同上 | PASS | in-memory。分散保証なし |
 | TC-MOB-018 | 確定登録失敗はシート維持 | `OnboardingScreen` | 異常 | preview成功後 `registerStreamer` が ApiException | シート残る。エラー表示。`onboardingRequired` 維持 | `flutter test test/onboarding_screen_test.dart` | PASS | |
+| TC-MOB-019 | preview待ち中のローディング表示 | `OnboardingScreen` `_LinkPage` | UI | 連携ページで確認する→API応答待ち | 「TikTokアカウントを確認しています…」とインジケータ。入力欄 disabled。主CTA busy | `flutter test test/onboarding_screen_test.dart --plain-name "preview中は確認中"` | PASS | リトライ待ちも `isLoading` 継続で同表示 |
+| TC-MOB-020 | TikTok API一時503の無言リトライ | `withTransientServerRetry` / `previewStreamer` 等 | 回帰 | 503が2回→3回目成功 | ユーザー向けエラーなしで成功。4回連続503で混雑文言 | `flutter test test/transient_server_retry_test.dart` | PASS | register/PATCH も同リトライ |
 
 ## Quality Gate
 
-- `flutter analyze`（live-sidestage-mobile）: PASS
-- `flutter test test/onboarding_screen_test.dart test/account_deletion_dialog_test.dart`: PASS
+- `flutter analyze`（live-sidestage-mobile）: PASS（info 1件 `realtime_sync.dart` 既存）
+- `flutter test test/onboarding_screen_test.dart test/account_deletion_dialog_test.dart test/transient_server_retry_test.dart`: PASS
 - analytics: `npx vitest run src/app/api/mobile/streamer/preview/route.test.ts`（worktree の route.test.ts）
 
 ## Out of Scope

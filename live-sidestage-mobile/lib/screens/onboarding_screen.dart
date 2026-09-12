@@ -182,6 +182,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         controller: _tiktokHandleController,
                         userName: controller.session?.userName ?? '',
                         errorMessage: controller.errorMessage,
+                        confirming: controller.isLoading,
                       ),
                   ],
                 ),
@@ -264,12 +265,14 @@ class _LinkPage extends StatelessWidget {
     required this.controller,
     required this.userName,
     required this.errorMessage,
+    required this.confirming,
   });
 
   final GlobalKey<FormState> formKey;
   final TextEditingController controller;
   final String userName;
   final String? errorMessage;
+  final bool confirming;
 
   @override
   Widget build(BuildContext context) {
@@ -292,9 +295,35 @@ class _LinkPage extends StatelessWidget {
             const SizedBox(height: 24),
             TextFormField(
               controller: controller,
+              enabled: !confirming,
               decoration: const InputDecoration(labelText: 'TikTok ID（@なし）'),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'TikTok IDを入力してください' : null,
             ),
+            if (confirming) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'TikTokアカウントを確認しています…',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (errorMessage != null) ...[
               const SizedBox(height: 12),
               Text(

@@ -107,7 +107,7 @@ comp caption:
 
 ## 状態
 
-- **loading (preview/register)**: 主CTA busy。シート確定中もボタン busy
+- **loading (preview/register)**: 主CTA busy。連携ページは入力欄下に 18dp インジケータ +「TikTokアカウントを確認しています…」(13dp sub)。入力欄は disabled。シート確定中もボタン busy
 - **error**: 連携ページのエラー行。シートは閉じる（確定失敗時も）
 - **empty 入力**: validator「TikTok IDを入力してください」
 - **オフライン / 503**: サーバーが返した error 文言をそのまま表示。再試行は同じボタン
