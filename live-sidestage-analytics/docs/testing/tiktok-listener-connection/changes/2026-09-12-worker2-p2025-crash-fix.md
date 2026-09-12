@@ -1,0 +1,13 @@
+- date: 2026-09-12
+- feature: tiktok-listener-connection
+- change summary: worker2の本番クラッシュ(Prisma P2025、`getOrCreateDeviceId`)を修正。原因は`connectInstance()`のtry/finally(catch無し)を`await`する`scheduleReconnect()`のsetTimeoutコールバックがTOCTOU由来のP2025を無防備に投げてunhandled rejectionになっていたこと。`getOrCreateDeviceId`/`resolveProxyForRoom`をupdate→updateMany化し、scheduleReconnectのコールバックへtry-catchを追加した。
+- risk: HIGH(race condition絡み、code-reviewでエスカレーション)
+- reason: 本番でworker2が再起動ループに陥っていた実障害の修正。
+- affected baseline cases: TC-TLC-011, TC-TLC-011b, TC-TLC-012, TC-TLC-013(新規)
+- reviewers: Gemini 3.7 Flash(medium、TestCase+Code) / Codex(terra、medium、Code)
+- important findings:
+  - Codex HIGH: 当初の`scheduleReconnect`のcatchはconsole.errorのみで再試行を予約しない実装だった。クラッシュは防げるが、一時的なDB障害(getOrCreateDeviceId/resolveProxyForRoomの失敗)でroomが再接続タイマーなしのまま無期限に停止する新しいサイレント退行を生んでいた。catch節から`scheduleReconnect(roomId, "connect_failed")`を呼ぶよう修正。
+  - Codex MEDIUM: `resolveProxyForRoom()`のTOCTOU経路(findUnique後・updateMany前の削除)が、既存の統合テストではgetOrCreateDeviceIdが先に失敗するため未到達で未検証だった。単体テスト`tiktok-listener.resolve-proxy.test.ts`を新規追加して直接カバー。
+  - test-auto自己発見(HIGH相当): 修正の初版は`findUnique`がnull(room自体が最初から存在しない)場合と、findUnique後にroomが削除されたTOCTOUの場合を区別していなかった。前者もupdateMany経由でエラーを飲み込んでしまい、「存在しない部屋へのstartListenerは例外になる」という既存仕様(`tiktok-listener.room.integration.test.ts`)を壊す回帰があった。`findUnique`の結果がnullなら明示的に例外を投げるガードを`getOrCreateDeviceId`/`resolveProxyForRoom`両方に追加して解消。
+- verification: typecheck PASS / test:unit 128 files・1682 tests PASS / 全体(integration込み) 235 files・2705 tests PASS(2026-09-12実測、既知のクロスファイル干渉[[analytics-vitest-cross-file-interference]]も今回は再現せず)
+- remaining risks: なし(Codex指摘は全てVALIDと確認し修正済み)

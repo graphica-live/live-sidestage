@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: tiktok-listener-connection
 last_updated: 2026-09-12
 last_risk: MEDIUM
-last_reviewers: Gemini 3.7 Flash / 2026-09-12 watchdog chat markAlive + 輸送フレーム除外(code-review、TestCaseレビューはcode-reviewで同時実施)
+last_reviewers: Gemini 3.7 Flash(medium、TestCase+Code両方でNO ISSUES) / Codex(terra、medium、Code) — 2026-09-12 worker2 P2025クラッシュ修正。CodexがHIGH×2(scheduleReconnectのcatchが再試行を予約せずroomをサイレント無期限停止させる、TC-TLC-011にその回復検証が無い)・MEDIUM×1(resolveProxyForRoomのTOCTOU経路が未検証)を指摘、全てVALIDと確認し修正・テスト追加済み
 ---
 
 # テストベースライン: tiktok-listener-connection
@@ -32,12 +32,16 @@ last_reviewers: Gemini 3.7 Flash / 2026-09-12 watchdog chat markAlive + 輸送�
 | TC-TLC-008 | プロジェクト全体のunit/integrationテストが今回の変更で壊れていない | 全体 | 回帰 | - | 既知の不安定要因(下記備考)を除き全PASS | `npm run test:unit`、`npx dotenv -e .env.local.test -- vitest run`(除外なし) | PASS | 2026-09-11実測: unit 116 files/1554 tests、全体(integration込み) 217 files/2501 tests、いずれも全PASS(既知のクロスファイル干渉[[analytics-vitest-cross-file-interference]]は今回再現せず) |
 | TC-TLC-009 | watchdog強制再接続がゾンビroomを掴んだ場合も、事前チェックがconn.connect()を止める(本修正が解決する実際のシナリオ) | `checkWatchdogs()` → `connectInstance()` → `isReportedOfflineByApiLive()` | 回帰/正常 | 初回オンライン接続成功後、無応答60秒超過。watchdog発火時点でapi-live/user/room/がstatus:4を返す | watchdogが生成した2本目の接続で`connectCalls===0`、`listenerReason==="user_offline"` | `npx dotenv -e .env.local.test --override -- vitest run src/lib/tiktok-listener.offline-precheck.integration.test.ts` | PASS | Fable指摘(LOW: シナリオ結合ケース不在)を受け追加 |
 | TC-TLC-010 | 輸送フレーム(websocketData/msgDetect)だけでは生存更新せずwatchdog強制再接続が発動する | `checkWatchdogs()` | 異常/境界/negative | 接続後50秒で`conn.fire("websocketData")`と`conn.fire("msgDetect")`のみ | 61秒時点で`MockConnection.instances`が2本。輸送フレームが markAlive すると発火しない | `npx dotenv -e .env.local.test --override -- vitest run src/lib/tiktok-listener.watchdog.integration.test.ts` | PASS | Gemini TestCase指摘。hb/ack/プローブでゾンビを隠さない |
+| TC-TLC-011 | 再接続待機中にroom行がDBから削除されても、scheduleReconnectのコールバックがunhandled rejectionでプロセスをクラッシュさせない | `scheduleReconnect()` | 異常/回帰 | disconnected発火でバックオフ再接続をスケジュール後、待機中に`TiktokRoom`行を削除(worker2実クラッシュのTOCTOU再現) | `process`の`unhandledRejection`が0件のまま再接続コールバックの発火猶予を経過する | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.reconnect-backoff.integration.test.ts` | PASS | 2026-09-12 worker2クラッシュ(P2025)の再発防止。原因は`connectInstance()`のtry/finally(catch無し)を`await`する`setTimeout`コールバックが無防備だったこと。`resolveProxyForRoom()`の同型バグも同時修正 |
+| TC-TLC-011b | 再接続時に`connectInstance()`が失敗しても(一時的なDB障害相当)、自動的に次のリトライが予約されlistenerが無期限停止しない | `scheduleReconnect()` | 異常/回帰 | room削除でconnectInstance失敗を誘発→reconnectFailureCountの増加を確認→同じidでroom行を復元 | 失敗のたびに`reconnectFailureCount`が増えバックオフ付きで再試行が続く。room復元後の次のリトライで接続が成功する | 同上(TC-TLC-011) | PASS | code-review Codex指摘(HIGH)。当初の`scheduleReconnect`のcatchはconsole.errorのみで再試行を予約せず、クラッシュは防いだがroomがサイレントに無期限停止する新しい退行があった。catch節から`scheduleReconnect(roomId, "connect_failed")`を呼ぶよう修正 |
+| TC-TLC-012 | `findUnique`と`updateMany`の間にroom行が削除されてもdeviceId解決は例外を投げない(P2025回避)が、room自体が最初から存在しない場合は例外を投げて区別する | `getOrCreateDeviceId()` | 異常/境界/negative | 既存deviceId返却/新規生成/`findUnique`後の削除でupdateManyが0件更新/`findUnique`が最初からnull、の4パターン | 既存deviceIdはDBへ書き込まず返す。新規は19桁数字を生成しupdateManyで保存。TOCTOU(0件更新)は例外を投げず生成したdeviceIdを返す。room自体が存在しない場合は`updateMany`を呼ばず例外を投げる | `npx vitest run src/lib/device-id.test.ts` | PASS | 4 tests pass。当初`findUnique`のnullチェックを省いたため「存在しないroomへのstartListenerは例外になる」という既存仕様(TC-TLC-007の`tiktok-listener.room.integration.test.ts`)を壊す回帰があり、test-auto実行中に発覚し修正 |
+| TC-TLC-013 | `resolveProxyForRoom()`の`findUnique`と`updateMany`の間にroom行が削除されても例外を投げない。room自体が存在しない場合は例外を投げて区別する | `resolveProxyForRoom()` | 異常/境界/negative | proxyKey未設定の新規割当/TOCTOU(updateManyが0件更新)/`findUnique`が最初からnull、の3パターン | 新規割当はハッシュ由来のindexをupdateManyで保存し返す。TOCTOUは例外を投げず選択したproxyを返す。room自体が存在しない場合は例外を投げる | `npx vitest run src/lib/tiktok-listener.resolve-proxy.test.ts` | PASS | 3 tests pass。code-review Codex指摘(MEDIUM)。TC-TLC-011はgetOrCreateDeviceId()が先に失敗するためresolveProxyForRoom()側のTOCTOUに到達せず未検証だった点を単体テストで直接カバー |
 
 ## Quality Gate
 
 - `npm run typecheck` — PASS(エラーなし)
-- `npm run test:unit` — PASS(116 files / 1554 tests)
-- `npx dotenv -e .env.local.test -- vitest run`(全体) — PASS(217 files / 2501 tests)
+- `npm run test:unit` — PASS(128 files / 1682 tests)
+- `npx dotenv -e .env.local.test -- vitest run`(全体) — PASS(235 files / 2705 tests、2026-09-12実測)
 
 ## Out of Scope
 
