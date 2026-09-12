@@ -23,6 +23,12 @@
 
 const GROUP_CHANGE_MESSAGE_TYPE = 18; // LinkLayerMessageType.Linker_Group_Change
 
+// `WebcastLinkMessage.MessageType`(`LinkMessageType`。GROUP_CHANGE_MESSAGE_TYPEとは別enum、
+// どちらも数値18を含むが意味が異なるので混同注意)の`TYPE_LINKER_CLOSE`。コラボセッション自体の
+// 解散を示す。2026-09-12 himeka.officialでの実測(第三者=匿名視聴者としての観測、900秒8431行)で
+// 確認: 解散の瞬間にこれだけが飛び、`messageType:18`(Linker_Group_Change)は飛ばない。
+export const LINK_MESSAGE_TYPE_CLOSE = 2; // LinkMessageType.TYPE_LINKER_CLOSE
+
 /**
  * `groupChangeContent.groupUser.userList[].status`(proto の `GroupStatus`)。
  * 実測で観測できたのはこの2値だけだが、proto には `GROUP_STATUS_UNKNOWN = 0` もある。
@@ -157,4 +163,18 @@ export function parseCollabGroupChange(data: unknown): CollabGroupChange | null 
   }
 
   return { source, subjects, linkedCount, waitingCount, otherCount };
+}
+
+/**
+ * `linkMessage`イベント(`WebcastLinkMessage`)のpayloadが`TYPE_LINKER_CLOSE`(コラボセッションの
+ * 解散)かどうかを判定する。フィールド名はconnector側の型定義どおりPascalCase
+ * (`MessageType`/`LinkerId`。他のイベントの`messageType`/`channelId`とは別スキーマ)。
+ * `LinkerId`(解散したコラボのchannelId)は今回の設計では使わない —
+ * `messageType:18`受信時点でセッションIDが安定して取れないため、sourceRoomId単位で扱う
+ * (`tiktok-collab-source.ts`参照)。呼び出し元がroomId単位で紐付けるための真偽値のみ返す。
+ */
+export function isCollabCloseMessage(data: unknown): boolean {
+  const record = asRecord(data);
+  if (!record) return false;
+  return Number(record.MessageType) === LINK_MESSAGE_TYPE_CLOSE;
 }

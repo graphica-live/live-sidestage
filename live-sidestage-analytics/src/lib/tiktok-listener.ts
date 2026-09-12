@@ -61,7 +61,8 @@ import {
   applyGiftHistorySyncTrigger,
   applyBattleHistorySyncTrigger,
 } from "./realtime-sync/dispatch";
-import { parseCollabGroupChange, shouldWatchCollabSnapshot } from "./tiktok-collab";
+import { parseCollabGroupChange, shouldWatchCollabSnapshot, isCollabCloseMessage } from "./tiktok-collab";
+import { recordCollabSourceLink, releaseCollabSourceLinksBySource, enqueueForSource } from "./tiktok-collab-source";
 import {
   ensureRoomWatchedForCollab,
   markRoomHandleStale,
@@ -2489,6 +2490,18 @@ async function watchDiscoveredRooms(
       const tiktokHandle = subject.tiktokHandle;
       try {
         const result = await ensureRoomWatchedForCollab(subject, ownWorkerIndex, source, sourceRoomId);
+        if (result) {
+          // 発見元roomがこの相手roomを検知した/再検知したことを記録する(TiktokRoomCollabSource)。
+          // 失敗してもコラボ検知自体は成立しているのでベストエフォートで済ませる — 取りこぼしても
+          // 次のコラボ/バトルイベントで再試行される(recordCollabSourceLink()は冪等)。
+          await recordCollabSourceLink(result.roomId, sourceRoomId).catch((err) => {
+            console.error(`[${source}] コラボ発見元リンクの記録に失敗`, {
+              roomId: result.roomId,
+              sourceRoomId,
+              err,
+            });
+          });
+        }
         if (result?.created && ownWorkerIndex !== undefined) {
           await startListener(result.roomId, result.tiktokHandle, []).catch((err) => {
             console.error(`[${source}] 新規roomの即時接続に失敗。次のreconcileで拾われる`, {
@@ -2559,7 +2572,10 @@ function recordCollabGroupChange(roomId: string, ownTiktokHandle: string, data: 
   if (!shouldWatchCollabSnapshot(parsed)) return;
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("collab");
-  void watchDiscoveredRooms(parsed.subjects, ownTiktokHandle, "collab", ownWorkerIndex, roomId);
+  // sourceRoomId(roomId)単位で直列化する — CLOSE処理(releaseCollabSourceLinksBySource)との
+  // 到着順保証のため、enqueue自体をこの同期ハンドラ内(イベント受信直後)で行う
+  // (tiktok-collab-source.tsのenqueueForSourceコメント参照)。
+  void enqueueForSource(roomId, () => watchDiscoveredRooms(parsed.subjects, ownTiktokHandle, "collab", ownWorkerIndex, roomId));
 }
 
 /**
@@ -2629,7 +2645,11 @@ function watchBattleOpponents(roomId: string, ownTiktokHandle: string, parsed: P
 
   const ownWorkerIndex = tryGetOwnWorkerIndex("battle-watch");
 
-  watchDiscoveredRooms([...opponentsByTiktokUid.values()], ownTiktokHandle, "battle_start", ownWorkerIndex, roomId)
+  // sourceRoomId(roomId)単位で直列化する(recordCollabGroupChangeと同じ理由。
+  // tiktok-collab-source.tsのenqueueForSourceコメント参照)。
+  enqueueForSource(roomId, () =>
+    watchDiscoveredRooms([...opponentsByTiktokUid.values()], ownTiktokHandle, "battle_start", ownWorkerIndex, roomId)
+  )
     .then((results) => {
       const entries: OpponentWatch = {};
       for (const [tiktokUid, subject] of opponentsByTiktokUid) {
@@ -2883,6 +2903,24 @@ async function connectAndAttach(
     markAlive();
     if (inst.subscriberIds.size > 0 || inst.specialWatch) {
       recordCollabGroupChange(roomId, inst.state.tiktokHandle, data);
+    }
+  });
+
+  // コラボセッション自体の解散通知(`WebcastLinkMessage`、fork独自追加。linkLayerとは別イベント
+  // ・別enum)。`TYPE_LINKER_CLOSE`を受けたら、このroom(発見元)経由で監視対象へ入れた相手roomの
+  // うち、他に有効な発見元が無いものだけ監視を期限切れ方向へ倒す
+  // (tiktok-collab-source.ts参照)。誰でも発行しうるイベントではなく、subscriberIds/specialWatch
+  // の歯止めをかけない — この room 自身のコラボが終わったことを示すだけで、新規roomの
+  // 発見(資源消費)を一切伴わないため連鎖爆発のリスクが無い。
+  conn.on("linkMessage", (data: unknown) => {
+    markAlive();
+    if (isCollabCloseMessage(data)) {
+      // sourceRoomId(roomId)単位で直列化する — 発見処理(watchDiscoveredRooms)と同じキューを
+      // 使うことで、「検知→CLOSE」の到着順どおりに処理が完了する(code-review Codex round2指摘、
+      // tiktok-collab-source.tsのenqueueForSourceコメント参照)。
+      enqueueForSource(roomId, () => releaseCollabSourceLinksBySource(roomId)).catch((err) => {
+        console.error("[collab] コラボ解散によるリンク解放に失敗", { roomId, err });
+      });
     }
   });
 
