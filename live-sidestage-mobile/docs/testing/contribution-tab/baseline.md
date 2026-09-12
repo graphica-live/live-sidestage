@@ -3,7 +3,7 @@ project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
 last_updated: 2026-09-12
 last_risk: LOW
-last_reviewers: DeepSeek(現行選定モデル、high)。Provider登録漏れ修正分
+last_reviewers: DeepSeek(TestCase Mode、high)。breakdownエラー原因別表示分離(Batch01)
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
@@ -25,7 +25,8 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-005 | ギフト明細が保持期間(90日)を過ぎている期間は「内訳は残っていません」を表示する | `RankingListTile`(貢献タブ) | 境界 | `coverage.detailAvailable: false` | 「この期間の内訳は残っていません(ギフト明細は90日で削除されます)」の文言を表示 | `flutter test test/ranking_list_tile_test.dart --plain-name "明細が残っていない"` | PASS | |
 | TC-CT-006 | 期間切替(day/week/month/カスタム範囲)で行が再マウントされ、前の期間の展開・キャッシュを残さない | `ContributionTab._rangeSignature` + `RankingListTile` の `key` | 回帰 | 貢献タブで1位行を展開(エラー状態)後、期間セレクタを「日」→「週」に切替 | 切替後は展開状態が閉じており、順位・行内容も新しい期間のものに入れ替わる | 実機確認(手動、下記備考) | PASS | 2026-09-09 Pixel 7a(`33071JEHN14416`)、実データ(`@zunda5884`)で確認。自動テストは未整備(DeepSeek(HIGH)・Codex(MEDIUM)が指摘したギャップ、`_rangeSignature`によるkey変更でのState破棄はFlutter標準機構依存のため今回は実機確認のみで担保) |
 | TC-CT-012 | 複数のギフト種別をtotalDiamonds降順で表示する(サーバー返却順をそのまま尊重) | `RankingListTile`(貢献タブ) | 正常 | `fetchBreakdown` が2種別(500pt/300pt)を降順で返す | 両方表示され、500pt側が先に描画される | `flutter test test/ranking_list_tile_test.dart --plain-name "totalDiamonds降順"` | PASS | |
-| TC-CT-013 | 内訳取得失敗時はエラー表示、再試行タップで再取得し成功時は表示が切り替わる | `RankingListTile`(貢献タブ) | 異常/回帰 | `fetchBreakdown` が1回目のみ例外を投げる | 「内訳を取得できませんでした」+「再試行」ボタン表示→再試行タップで再取得、成功後はエラー表示が消え内訳が出る | `flutter test test/ranking_list_tile_test.dart --plain-name "取得失敗"` | PASS | |
+| TC-CT-013 | 内訳取得が通信断・5xx等の一時的失敗の場合はエラー表示、再試行タップで再取得し成功時は表示が切り替わる | `RankingListTile`(貢献タブ) | 異常/回帰 | `fetchBreakdown` が1回目のみ`ApiException`(refresh token失効系以外)を投げる | 「内訳を取得できませんでした」+「再試行」ボタン表示→再試行タップで再取得、成功後はエラー表示が消え内訳が出る | `flutter test test/ranking_list_tile_test.dart --plain-name "取得失敗"` | PASS | |
+| TC-CT-022 | 内訳取得がrefresh token失効(`TOKEN_REUSE_DETECTED`/`INVALID_REFRESH_TOKEN`)で失敗した場合は再ログイン導線を表示する | `RankingListTile`(貢献タブ) | 異常/回帰 | `fetchBreakdown` が`ApiException(statusCode: 401, code: 'TOKEN_REUSE_DETECTED')`または`'INVALID_REFRESH_TOKEN'`を投げる | 「ログインの有効期限が切れました。再ログインしてください」+「ログアウト」ボタン(`performLogout`呼び出し)を表示する。「再試行」ボタンは出さない | `flutter test test/ranking_list_tile_test.dart --plain-name "TOKEN_REUSE_DETECTED"` / `--plain-name "INVALID_REFRESH_TOKEN"` | PASS | 貢献タブbreakdown「内容を取得できませんでした」頻発調査(2026-09-12)を受け追加。原因種別を区別しないエラー表示の診断改善(Batch01) |
 | TC-CT-007 | 未認証(トークン無し)は401 | `GET /api/mobile/analytics/gifts/breakdown` | 異常 | Authorization ヘッダ無し | ステータス401 | `analytics: npx dotenv -e .env.local.test -- npx vitest run src/app/api/mobile/analytics/gifts/breakdown/route.integration.test.ts` | PASS | |
 | TC-CT-008 | `tiktokUid` 未指定は400 | 同上 | 異常 | トークンあり、`tiktokUid` パラメータ無し | ステータス400 | 同上 | PASS | |
 | TC-CT-009 | Streamer は存在するが room 未接続の場合、内訳なしで200 | 同上 | 境界 | room未接続のstreamerトークン | `gifts: []`、`coverage.detailAvailable: false` | 同上 | PASS | |
@@ -47,6 +48,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 
 ## Out of Scope
 
+- TC-CT-022の「ログアウト」ボタンは存在確認のみ行い、タップ後に実際に`performLogout`が実行され`SessionController.logout()`まで到達するかは検証しない: `performLogout`は`context.read<SessionController>()`と`FlutterForegroundTask`のプラットフォームチャンネルに依存し、`ranking_list_tile_test.dart`の`wrap()`はテスト用Providerを供給していない(他画面の既存ログアウトボタンのテストも同水準の存在確認のみ)。テストインフラ投資はBatch01のスコープ外(DeepSeek指摘、MEDIUM、対応保留)
 - バトル履歴タブの `RankingListTile` 呼び出し2箇所(`fetchBreakdown` 未指定)の `openTiktokProfile`(url_launcher)実呼び出し検証: テスト環境でurl_launcherをモックする既存パターンが無いため対象外。タップ領域の存在(InkWellの構造)まではTC-CT-014で回帰確認する
 - TC-CT-017/018のpush反映は実データ・実配信での実機確認が理想だが、本worktreeには`.mcp.json`(Marionette MCP)が無く`adb`もPATH未導入のため実機確認はNOT RUN。コードレビューと`flutter test`(`realtime_sync_test.dart`のversion整合性ロジック単体テスト)で担保している
 - `fetchGiftRankingShareUrl`(`lib/core/api_client.dart`)自体のFlutter unit test: 既存の`fetchBattleReplayShareUrl`と同様、APIクライアントの薄いラッパー関数はこのプロジェクトの慣行としてFlutter側では単体テストせず、analytics側のroute.integration.test.tsで契約を担保する(既存踏襲)

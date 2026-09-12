@@ -232,23 +232,38 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
 
   /// 行展開時のギフト内訳取得。[RankingListTile]の`key`に期間を含めているため、
   /// 期間が変わった行は再マウントされ、ここは常にそのマウント時点の期間で呼ばれる。
-  Future<GiftBreakdownResult> _fetchBreakdown(String tiktokUid) {
+  ///
+  /// `ApiException` をキャッチして原因を分類してログ出力してから rethrow する。
+  /// 呼び出し元は例外型は変わらずそのまま受け取る。
+  Future<GiftBreakdownResult> _fetchBreakdown(String tiktokUid) async {
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
-    if (token == null) return Future.error(ApiException('ログインが必要です'));
+    if (token == null) throw ApiException('ログインが必要です');
     final customRange = _customRange;
-    return withTokenRefresh(
-      call: (t) => _api.fetchGiftBreakdown(
-        token: t,
-        tiktokUid: tiktokUid,
-        period: _selection.period.apiValue,
-        date: _selection.date,
-        startDatetime: customRange?.start,
-        endDatetime: customRange?.end,
-      ),
-      token: token,
-      refreshToken: sessions.refreshToken,
-    );
+    try {
+      return await withTokenRefresh(
+        call: (t) => _api.fetchGiftBreakdown(
+          token: t,
+          tiktokUid: tiktokUid,
+          period: _selection.period.apiValue,
+          date: _selection.date,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
+        ),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+    } on ApiException catch (e) {
+      // ApiException を検査して原因を分類してログ出力
+      if (e.isRefreshTokenRejected) {
+        debugPrint('[contribution] ギフト内訳取得: refresh token 失効 (${e.code}), statusCode=${e.statusCode}');
+      } else if (e.isUnauthorized) {
+        debugPrint('[contribution] ギフト内訳取得: 401 認可エラー (${e.code}), statusCode=${e.statusCode}');
+      } else {
+        debugPrint('[contribution] ギフト内訳取得: エラー (statusCode=${e.statusCode}), ${e.message}');
+      }
+      rethrow;
+    }
   }
 
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
