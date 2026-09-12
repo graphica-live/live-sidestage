@@ -129,10 +129,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Railway 側の source を GitHub repo から Docker Image へ切り替えたサービスだけを
-  # 対象に、新しいイメージへ更新する。まだ切り替えていないサービスの ID を
-  # RAILWAY_ANALYTICS_MANAGED_SERVICE_IDS に含めてはいけない(誤って更新される)。
-  # 段階的ロールアウトの間はこの変数を手で1件ずつ増やす運用。
+  # RAILWAY_ANALYTICS_MANAGED_SERVICE_IDS:
+  # GitHub native deploy ではなく、analytics-ci が build した GHCR image を
+  # serviceConnect(image) で管理する Service ID 一覧(JSON配列)。
+  # 「既に Dashboard で Docker Image へ手動移行済みの ID」ではない。
+  # 次回このジョブが走ると serviceConnect(image) が実行され、
+  # GitHub Source のサービスはそこで Docker Image Source へ切り替わる
+  # (初回=切替+image設定、2回目以降=image tag 更新。mutation は同じ)。
+  # Dashboard での事前 Source 切替は不要。serviceDisconnect も挟まない。
+  # 一度に複数追加せず1件ずつ増やすのは安全なロールアウト策(必須ではない)。
+  # 空 / [] ならこのジョブは skip。DeploymentTrigger は操作しない。
   deploy-railway:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -152,18 +158,51 @@ jobs:
       IMAGE_REF: ghcr.io/graphica-live/live-sidestage-analytics:${{ needs.build-and-push.outputs.image_tag }}
       MANAGED_SERVICE_IDS: ${{ vars.RAILWAY_ANALYTICS_MANAGED_SERVICE_IDS }}
     steps:
-      - name: Update image on migrated Railway services
+      - name: Deploy managed Railway services from GHCR
         run: |
           set -euo pipefail
           if [ -z "${MANAGED_SERVICE_IDS:-}" ] || [ "$MANAGED_SERVICE_IDS" = "[]" ]; then
             echo "no managed services yet, skipping"
             exit 0
           fi
-          echo "$MANAGED_SERVICE_IDS" | jq -r '.[]' | while read -r sid; do
-            resp=$(curl -sS --fail-with-body -X POST https://backboard.railway.com/graphql/v2 \
+          railway_gql() {
+            curl -sS --fail-with-body -X POST https://backboard.railway.com/graphql/v2 \
               -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
-              -d "$(jq -nc --arg sid "$sid" --arg img "$IMAGE_REF" \
-                '{query:"mutation($sid:String!,$img:String!){ serviceConnect(id:$sid, input:{image:$img}) { id } }", variables:{sid:$sid,img:$img}}')")
+              -d "$1"
+          }
+          while IFS= read -r sid; do
+            [ -z "$sid" ] && continue
+            connect_body=$(jq -nc --arg sid "$sid" --arg img "$IMAGE_REF" \
+              '{query:"mutation($sid:String!,$img:String!){ serviceConnect(id:$sid, input:{image:$img}) { id } }", variables:{sid:$sid,img:$img}}')
+            resp=$(railway_gql "$connect_body")
             echo "$resp"
-            echo "$resp" | jq -e '.data.serviceConnect.id' >/dev/null || { echo "::error::failed for $sid"; exit 1; }
-          done
+            echo "$resp" | jq -e '.data.serviceConnect.id' >/dev/null || { echo "::error::serviceConnect failed for $sid"; exit 1; }
+
+            source_body=$(jq -nc --arg sid "$sid" \
+              '{query:"query($sid:String!){ service(id:$sid){ id name serviceInstances { edges { node { environmentId source { image repo } } } } } }", variables:{sid:$sid}}')
+            source_resp=$(railway_gql "$source_body")
+            echo "$source_resp"
+            echo "$source_resp" | jq -e '.data.service' >/dev/null || { echo "::error::source query failed for $sid"; exit 1; }
+
+            echo "$source_resp" | jq -r --arg img "$IMAGE_REF" --arg sid "$sid" '
+              .data.service.serviceInstances.edges[]? as $e
+              | "source check service=\($sid) env=\($e.node.environmentId // "null") image=\($e.node.source.image // "null") repo=\($e.node.source.repo // "null") expected=\($img)"
+            '
+
+            unmatched=$(echo "$source_resp" | jq -r --arg img "$IMAGE_REF" '
+              [
+                .data.service.serviceInstances.edges[]?
+                | select((.node.source.image // "") != $img)
+                | .node.environmentId
+              ] | length
+            ')
+            instance_count=$(echo "$source_resp" | jq -r '.data.service.serviceInstances.edges | length')
+            if [ "$instance_count" = "0" ]; then
+              echo "::error::no serviceInstances returned for $sid"
+              exit 1
+            fi
+            if [ "$unmatched" != "0" ]; then
+              echo "::error::source.image mismatch for $sid ($unmatched instance(s) != $IMAGE_REF)"
+              exit 1
+            fi
+          done < <(echo "$MANAGED_SERVICE_IDS" | jq -r '.[]')
