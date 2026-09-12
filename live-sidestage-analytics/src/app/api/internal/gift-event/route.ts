@@ -8,11 +8,13 @@ import {
   emitChatFollow,
   emitChatGift,
   emitChatListener,
+  emitChatSuperFanJoin,
   type ChatBattleInput,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
   type ChatListenerInput,
+  type ChatSuperFanJoinInput,
 } from "@/lib/chat-feed";
 import { normalizeTikTokUserId } from "@/lib/tiktok-user";
 import {
@@ -75,6 +77,10 @@ function parseGiftEvent(value: unknown): Omit<ChatGiftInput, "streamerId"> | nul
   if (!isOptionalString(v.groupId) || !isOptionalString(v.orderId) || !isOptionalString(v.msgId)) return null;
   if (!isNonEmptyString(v.occurredAt) || !isNonEmptyString(v.receivedAt)) return null;
 
+  const isSuperFan =
+    v.isSuperFan === undefined ? undefined : v.isSuperFan === true ? true : v.isSuperFan === false ? false : null;
+  if (isSuperFan === null) return null;
+
   return {
     tiktokUid,
     tiktokHandle: v.tiktokHandle,
@@ -91,6 +97,35 @@ function parseGiftEvent(value: unknown): Omit<ChatGiftInput, "streamerId"> | nul
     msgId: v.msgId,
     occurredAt: v.occurredAt,
     receivedAt: v.receivedAt,
+    ...(isSuperFan !== undefined ? { isSuperFan } : {}),
+  };
+}
+
+function parseSuperFanJoinEvent(
+  value: unknown
+): Omit<ChatSuperFanJoinInput, "streamerId"> | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+
+  const tiktokUid = normalizeTikTokUserId(v.tiktokUid);
+  if (!tiktokUid) return null;
+  if (!isNonEmptyString(v.tiktokHandle)) return null;
+  if (typeof v.nickname !== "string" || v.nickname.length > MAX_STRING_LENGTH) return null;
+  if (!isOptionalString(v.profilePictureUrl)) return null;
+  if (!isNonEmptyString(v.receivedAt)) return null;
+  if (!isOptionalString(v.msgId)) return null;
+  if (typeof v.barrageDisplayType !== "string" || v.barrageDisplayType.length > MAX_STRING_LENGTH) {
+    return null;
+  }
+
+  return {
+    tiktokUid,
+    tiktokHandle: v.tiktokHandle,
+    nickname: v.nickname,
+    profilePictureUrl: v.profilePictureUrl,
+    receivedAt: v.receivedAt,
+    msgId: v.msgId,
+    barrageDisplayType: v.barrageDisplayType,
   };
 }
 
@@ -205,6 +240,7 @@ export async function POST(req: NextRequest) {
     chatCommentEvent?: Omit<ChatCommentPayload, "streamerId">;
     chatGiftEvent?: unknown;
     chatFollowEvent?: unknown;
+    chatSuperFanJoinEvent?: unknown;
     listenerEvent?: unknown;
     likeEvent?: unknown;
     battleEvent?: unknown;
@@ -288,7 +324,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // listener の接続状態(モバイルの「配信中 / 配信開始待ち」表示用)。
+  if (body.chatSuperFanJoinEvent !== undefined) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    const join = parseSuperFanJoinEvent(body.chatSuperFanJoinEvent);
+    if (!streamerIds || !join) {
+      return NextResponse.json({ error: "Invalid chatSuperFanJoinEvent" }, { status: 400 });
+    }
+    for (const streamerId of streamerIds) {
+      const delivered = await emitChatSuperFanJoin({ streamerId, ...join }).catch((err) => {
+        console.error("[internal/gift-event] superFan join emit error:", err);
+        return true;
+      });
+      if (!delivered) return ioUnavailable();
+    }
+  }
+
+  // listener の接続状態(モバイルの「配信中 / 配信開始待ち」表示用）。
   // ギフト/フォローと違い dedup しない — 後から購読した端末へ現在値を送り直すために
   // 同じ値の再送が要る。
   if (body.listenerEvent !== undefined) {

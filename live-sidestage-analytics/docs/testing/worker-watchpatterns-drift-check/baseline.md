@@ -25,7 +25,7 @@ worker1/2/3 `watchPatterns`（読み取り専用）を突き合わせ、ドリ�
 | TC-WWP-007 | root fileが存在しないとエラーを投げる | `core.ts` buildImportGraph | 異常 | 存在しないパスをrootsに指定 | `root file not found`を含むエラーがthrowされる | 同上 | PASS | |
 | TC-WWP-008 | root fileがディレクトリだとエラーを投げる | `core.ts` buildImportGraph | 異常 | ディレクトリパスをrootsに指定 | `not a regular file`を含むエラーがthrowされる | 同上 | PASS | |
 | TC-WWP-009 | 実リポジトリからimport graphを生成できる(回帰) | `core.ts` + 実`worker.ts`/`tiktok-listener.ts` | 回帰 | roots=実ファイル | libFilesが1件以上、ソート済み、unresolvedは配列 | 同上 | PASS | |
-| TC-WWP-010 | mockデータのみでworker1/2/3全チェックが成功する | CLI `check-worker-watch-patterns.ts` | 正常 | `--mock-railway`に本番70項目相当のsnapshot | 全一致でexit code 0、`All checks passed`を出力 | `npx vitest run scripts/worker-watch-patterns/cli.test.ts`(Test A) | PASS | |
+| TC-WWP-010 | mockデータのみでworker1/2/3全チェックが成功する | CLI `check-worker-watch-patterns.ts` | 正常 | `--mock-railway`に本番71項目相当のsnapshot | 全一致でexit code 0、`All checks passed`を出力 | `npx vitest run scripts/worker-watch-patterns/cli.test.ts`(Test A) | PASS | 2026-09-13: `super-fan-status.ts` 追加で71項目 |
 | TC-WWP-011 | 新規importの追加はmissing検出になる | CLI | 異常 | `--extra-root`で実src/lib配下に新規ファイルを一時追加 | exit code 1、出力に`Missing`を含む | 同上(Test B) | PASS | 一時ファイルは実`src/lib`配下に作成し`finally`で必ず削除 |
 | TC-WWP-012 | 実在しないパスがactualにあるとextra検出になる | CLI | 異常 | mockデータのworker1配列にダミーパスを追加 | exit code 1、出力に`Extra`を含む | 同上(Test C) | PASS | |
 | TC-WWP-013 | worker間で個別に差異があれば該当workerのみ検出する | CLI | 境界 | mockデータのworker2配列から1件削除 | exit code 1、出力に`Missing`と`worker2`を含む | 同上(Test D) | PASS | |
