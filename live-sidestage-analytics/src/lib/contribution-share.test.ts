@@ -29,6 +29,7 @@ import {
   validateShareRequestBody,
   ensureContributionShareToken,
   queryContributionRankingByShareToken,
+  formatContributionShareRangeLabel,
 } from "./contribution-share";
 
 describe("buildRangeKey", () => {
@@ -414,5 +415,30 @@ describe("queryContributionRankingByShareToken", () => {
     await queryContributionRankingByShareToken("t");
 
     expect(queryGiftsMock).toHaveBeenCalledWith("room1", "room1", { dayKey: { gte: "2026-09-01", lte: "2026-09-01" } });
+  });
+});
+
+describe("formatContributionShareRangeLabel", () => {
+  it("customはUTC ISOをJSTの時刻表示へ変換する", () => {
+    const label = formatContributionShareRangeLabel({
+      period: "custom",
+      dateRange: {
+        start: "2026-09-12T15:00:00.000Z",
+        end: "2026-09-12T16:00:00.000Z",
+      },
+    });
+    expect(label).toContain("9/13");
+    expect(label).toMatch(/0:00:00/);
+    expect(label).toMatch(/1:00:00/);
+    expect(label).not.toContain("16:00");
+  });
+
+  it("非customはdateRangeをそのまま結合する", () => {
+    expect(
+      formatContributionShareRangeLabel({
+        period: "week",
+        dateRange: { start: "2026-09-08", end: "2026-09-14" },
+      })
+    ).toBe("2026-09-08 〜 2026-09-14");
   });
 });

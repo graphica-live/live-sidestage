@@ -3,7 +3,10 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Avatar, tiktokProfileUrl } from "@/components/analytics/battle-types";
-import type { PublicContributionPayload } from "@/lib/contribution-share";
+import {
+  formatContributionShareRangeLabel,
+  type PublicContributionPayload,
+} from "@/lib/contribution-share";
 
 const GIFT_TILE_BG = "rgba(127,127,127,.12)";
 const SKELETON_BG = "rgba(127,127,127,.16)";
@@ -135,7 +138,7 @@ export function PublicContributionClient({
                 {payload.streamer.nickname ?? "配信者"}の貢献ランキング
               </h1>
               <div className="font-mono text-[11px] text-muted">
-                {payload.dateRange.start} 〜 {payload.dateRange.end}
+                {formatContributionShareRangeLabel(payload)}
               </div>
             </div>
           </div>
