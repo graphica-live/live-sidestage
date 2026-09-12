@@ -2,8 +2,8 @@
 project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
 last_updated: 2026-09-12
-last_risk: MEDIUM
-last_reviewers: Gemini(agy、Code Mode、medium)。大規模room固まる不具合修正(Batch01/02、CustomScrollView+ListPanelSliver化)。DeepSeek(TestCase Mode、high)。breakdownエラー原因別表示分離(Batch01)。Gemini(agy/gemini-3.7-flash-medium)単体、Design Mode、medium。期間ナビ失敗時のロールバック機構追加分(finding無し)。日付切替UX/CPU改善(_usersキャッシュ・silent load)。Gemini TestCase Mode(high) baseline照合
+last_risk: LOW
+last_reviewers: Gemini(agy, Code Mode, medium, share-copy-ui).test-auto 2026-09-12
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
@@ -54,8 +54,8 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-016 | `tiktokHandle` が null でも内訳アコーディオンは `tiktokUid` をキーに動作する | `RankingListTile`(貢献タブ) | 境界 | `tiktokHandle: null`、`fetchBreakdown` 指定、名前をタップ | `fetchBreakdown` が `entry.tiktokUid` で1回呼ばれ、内訳が表示される | `flutter test test/ranking_list_tile_test.dart --plain-name "fetchBreakdown指定時は名前タップ"` | PASS | |
 | TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab._onRankingSnapshot` + `_users` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合)、かつ表示期間が「今日」を含む | `_applyRankingSnapshotUsers`経由で`_users`が更新され一覧が描画される(過去日のみの表示中はlive snapshotで上書きしない) | `flutter test test/realtime_sync_test.dart` + コードレビュー | PASS | 2026-09-12: `containsToday`ガードをsnapshot反映前に追加(Gemini VALID) |
 | TC-CT-018 | REST取得直後、サーバーの現在versionより1小さいversionのpushを欠損と誤判定しない | `RankingSyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが7、直後に届くpushがversion 8 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, epoch, version: 7)`でtrackerを実際のREST版数へ同期するため、version 8のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | |
-| TC-CT-019 | 貢献タブの期間ナビ行(◀/▶)右端に web と同じ矢印共有アイコンが表示される | `ContributionTab`(`PeriodSelectorBar.dateNavTrailing`) | UI/正常 | 貢献タブを開く | ◀/▶行の右端に `ArrowShareIcon`(16dp)のボタン。独立した縦行は無い | 実機確認(Pixel 7a) | NOT RUN | web `ShareLinkButton`/`ArrowShareIcon`と同一SVG |
-| TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗を目立つ通知で知らせる | `ContributionTab._shareGiftRanking` / `showClipboardCopiedNotice` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後 primary色の floating SnackBar「共有リンクをコピーしました」(check icon付き) (b)「コピーに失敗しました」 | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: ローカルdev到達不可(既知) (b)PASS(既存) | 成功API契約は`[unit-int]` |
+| TC-CT-019 | 貢献タブの期間ナビ行(◀/▶)右端に web と同じ矢印共有アイコンが表示される | `ContributionTab`(`PeriodSelectorBar.dateNavTrailing`) | UI/正常 | 貢献タブを開く | ◀/▶行の右端に `ArrowShareIcon`(16dp)のボタン。独立した縦行は無い | 実機確認(Pixel 7a) | NOT RUN | adb/Marionette MCP未接続。web Playwrightで同一UIパターン確認済 |
+| TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗を目立つ通知で知らせる | `ContributionTab._shareGiftRanking` / `showClipboardCopiedNotice` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後 primary色の floating SnackBar「共有リンクをコピーしました」(check icon付き) (b)「コピーに失敗しました」 | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: 実機→本番APIのみ(既知) (b)PASS(既存) | `[unit-int]` gifts/share 5/5 PASS(2026-09-12 test-auto) |
 | TC-CT-021 | アプリ起動時に`RankingSyncStore`/`CommentFeed`のProvider登録漏れが無く、貢献タブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `ContributionTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<RankingSyncStore>`等が`ProviderNotFoundException`を投げない。実機では貢献タブがランキング一覧を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS | |
 | TC-CT-023 | 大規模room(数百〜約1900人規模)でランキング行を表示しても操作不能になるほど重くならない(画面外の行が即座に全件構築されない) | `ContributionTab`(`CustomScrollView`+`ListPanelSliver`+`_users`) | 性能/回帰 | 約1900人規模roomの貢献タブを開く | スクロールが実用的な速度で追従する。日付◀/▶で別日(約1892人)へ切替後も一覧が表示され操作可能 | 実機確認(Pixel 7a、adb) | PASS | 2026-09-12: `@ayane_0327` 1200人(2026-09-12)→◀→1892人(2026-09-11)表示確認。build毎全件parse廃止 |
 | TC-CT-027 | 既存ランキング表示中の日付◀/▶・期間切替で期間チップ/◀/▶が無効化されず連続操作できる | `ContributionTab._load(silent:)` + `PeriodSelectorBar enabled: true` | 性能/UX | 1200人以上roomで◀を押して再取得中に▶/◀/日チップを触る | 取得中も期間コントロールがグレーアウトされない(世代番号で古い応答は破棄) | 実機確認(Pixel 7a、adb) | PASS | 2026-09-12: 2026-09-12→2026-09-11切替後も日付行・チップが有効のまま |

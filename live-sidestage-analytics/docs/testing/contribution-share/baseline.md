@@ -1,7 +1,7 @@
 ---
-last_updated: 2026-09-11
-last_risk: MEDIUM
-last_reviewers: [Code Mode]Gemini-3.7-flash-medium（初回 HIGH: 閉じた後 measurementsCache 残留 → パネル別仮想アイテムで修正、再レビュー NO ISSUES。TestCase は Code Mode 同時実施）
+last_updated: 2026-09-12
+last_risk: LOW
+last_reviewers: Gemini(agy, Code Mode).test-auto Playwright TC-CS-011 2026-09-12
 ---
 
 # ギフト貢献ランキングの公開シェア機能
@@ -49,7 +49,7 @@ last_reviewers: [Code Mode]Gemini-3.7-flash-medium（初回 HIGH: 閉じた後 m
 | TC-CS-008e | 内訳アコーディオンを閉じたあと、仮想リストの余白・後続行位置が開く前に戻る | `PublicContributionClient`(`useVirtualizer`) | 回帰/表示 | 行を開いて内訳表示後、再度クリックして閉じる | 閉じた行の下が空きにならず、後続行が通常行高さで詰まる | `[pw]` | PASS(2026-09-11、Playwright: 展開時行間304px → 閉じた後19px。大きな空白なし) | 同一仮想アイテムで開閉すると measurementsCache に展開高さが残るため、パネルは挿入/削除する |
 | TC-CS-009 | 公開ページと公開APIは検索索引の対象にせず、その旨をHTTPヘッダ・meta両方に出す | `generateMetadata` / `/api/public/contribution/[token]` | セキュリティ/回帰 | 公開URLを開いて`<head>`とレスポンスヘッダを見る | `<meta name="robots">`相当が`index:false,follow:false`、APIレスポンスヘッダに`X-Robots-Tag: noindex`と`Cache-Control: private, no-store` | `[route]`, `[anon]` | PASS(2026-09-11、route.test.tsでヘッダ確認済み) | URLを知る人向けであってSEO対象ではない |
 | TC-CS-010 | 共有ページと公開APIだけが認証を免除され、似た前置のパスは保護されたまま | `src/middleware.ts` | 回帰/認可/境界 | `/c/abc123` `/c/abc123/` `/api/public/contribution/abc123` / `/billing` `/chat` `/cx` | 前3つは認証なしで通る。後3つは保護されたまま | `[unit-mw]` | PASS(2026-09-11) | 境界`(?:/|$)`を落とすと想定しない前置パスまで公開される |
-| TC-CS-011 | シェアボタンは発行したURLをクリップボードへ入れる。成功時は画面上部に目立つトーストを出す。非secure contextではURLを選択可能なテキストで出す | `ShareLinkButton` | 正常/異常/境界 | (a)通常環境でシェア (b)`navigator.clipboard`が無い環境 | (a)クリップボードに`<origin>/c/<token>`が入り「共有リンクをコピーしました」固定トースト+ボタンcheck表示 (b)readonly入力欄にURLが出てフォーカスで全選択 | `[pw]` | NOT RUN(2026-09-12 UI強化) | トーストは`createPortal`で`document.body`直下。3秒で消える |
+| TC-CS-011 | シェアボタンは発行したURLをクリップボードへ入れる。成功時は画面上部に目立つトーストを出す。非secure contextではURLを選択可能なテキストで出す | `ShareLinkButton` | 正常/異常/境界 | (a)通常環境でシェア (b)`navigator.clipboard`が無い環境 | (a)クリップボードに`<origin>/c/<token>`が入り「共有リンクをコピーしました」固定トースト+ボタンcheck表示 (b)readonly入力欄にURLが出てフォーカスで全選択 | `[pw]` | PASS(2026-09-12 test-auto、localhost:3002 Playwright: toast role=status + clipboard `/c/` URL) | トーストは`createPortal`で`document.body`直下。3秒で消える |
 | TC-CS-012 | 公開ページはURLを知っていればログインなしで開ける | `/c/[token]` | 正常/認可 | 発行済みURLを別の匿名コンテキストで開く | `/login`へリダイレクトされず貢献ランキングが表示される | `[anon]` | PASS(2026-09-11、Playwright再確認: 匿名contextで `/c/` のまま表示。PC1280・390px) | |
 
 ## Quality Gate
