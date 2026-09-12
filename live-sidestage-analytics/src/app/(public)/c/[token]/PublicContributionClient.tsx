@@ -3,8 +3,10 @@
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Avatar, tiktokProfileUrl } from "@/components/analytics/battle-types";
-import { formatContributionShareRangeLabel } from "@/lib/contribution-share-range-label";
-import type { PublicContributionPayload } from "@/lib/contribution-share";
+import {
+  formatContributionShareRangeLabel,
+  type PublicContributionPayload,
+} from "@/lib/contribution-share-range-label";
 
 const GIFT_TILE_BG = "rgba(127,127,127,.12)";
 const SKELETON_BG = "rgba(127,127,127,.16)";
