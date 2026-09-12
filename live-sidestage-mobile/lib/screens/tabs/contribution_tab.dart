@@ -155,7 +155,11 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   /// **読み込み中の表示を出さない。** 出すと期間セレクタが `enabled: !_loading` で
   /// 点滅的に無効化され、操作を邪魔する。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
-  Future<void> _load({bool silent = false}) async {
+  ///
+  /// [onResult]は期間ナビ操作時のロールバックを駆動するコールバック。成功時に true、
+  /// 非silent失敗時に false を受け取る。silentな失敗、セッション切れ、リクエスト破棄、
+  /// 未マウント時は呼ばれない。
+  Future<void> _load({bool silent = false, void Function(bool success)? onResult}) async {
     final generation = ++_requestGeneration;
 
     final sessions = context.read<SessionController>();
@@ -208,6 +212,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         epoch: result.epoch,
         version: result.version,
       );
+      onResult?.call(true);
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
@@ -218,6 +223,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         _error = e.message;
         _loading = false;
       });
+      onResult?.call(false);
     }
   }
 
@@ -266,17 +272,31 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     }
   }
 
+  /// 期間ナビ操作時のロールバック機構。指定の状態変更を試みた後、REST取得が失敗すれば
+  /// 自動的に変更前の期間・フィルタに戻す。
+  ///
+  /// 期間切替(◀/▶・カスタム範囲フィルタ)の失敗時に、`_selection`/`_customRange`/`_listenerQuery`
+  /// が「取得成功済みのデータの期間」のままになるという不変条件を復元する。
+  /// 失敗時の画面表示(古いデータ+エラーバナー)と選択状態の食い違いを防ぎ、
+  /// 行の詳細展開時にギフト内訳の期間が画面表示と一致することを保証する。
+  Future<void> _changePeriod(void Function() applyChange) async {
+    final previousSelection = _selection;
+    final previousCustomRange = _customRange;
+    final previousListenerQuery = _listenerQuery;
+    setState(applyChange);
+    var succeeded = true;
+    await _load(onResult: (success) => succeeded = success);
+    if (!succeeded && mounted) {
+      setState(() {
+        _selection = previousSelection;
+        _customRange = previousCustomRange;
+        _listenerQuery = previousListenerQuery;
+      });
+    }
+  }
+
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
-    setState(() => _selection = selection);
-
-    // Batch 05: 期間変更時、RankingSyncStore へ新しい期間を通知。
-    // 異なる期間の snapshot は破棄される。
-    final store = context.read<RankingSyncStore>();
-    final customRange = _customRange;
-    final period = customRange != null ? null : selection.period.apiValue;
-    store.setCurrentPeriod(period);
-
-    _load();
+    _changePeriod(() => _selection = selection);
   }
 
   /// 詳細フィルタ(日時範囲)中に◀/▶が押されたとき。現在の範囲の外へ出て`day`選択に
@@ -288,11 +308,10 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       period: AnalyticsPeriod.day,
       date: jstDateKeyOf(forward ? customRange.end : customRange.start),
     );
-    setState(() {
+    _changePeriod(() {
       _selection = forward ? anchor.shiftNext() : anchor.shiftPrevious();
       _customRange = null;
     });
-    _load();
   }
 
   Future<void> _openCustomRangeFilter() async {
@@ -305,19 +324,10 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       listenerFilterAllowed: planGate.canUseListenerFilter,
     );
     if (result == null) return;
-    setState(() {
+    await _changePeriod(() {
       _customRange = result.cleared ? null : result.range;
       _listenerQuery = result.cleared ? null : result.listenerQuery;
     });
-
-    // Batch 05: 期間フィルタ変更時、RankingSyncStore へ通知。
-    // カスタム範囲は period=null で扱う。
-    final store = context.read<RankingSyncStore>();
-    final newCustomRange = _customRange;
-    final period = newCustomRange != null ? null : _selection.period.apiValue;
-    store.setCurrentPeriod(period);
-
-    _load();
   }
 
   /// ギフト貢献ランキング(現在の期間指定)のシェアURLを発行してクリップボードにコピーする。
