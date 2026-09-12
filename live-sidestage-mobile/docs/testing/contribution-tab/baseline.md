@@ -63,6 +63,10 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-026 | `ListPanelSliver`のカード視覚(白カード+角丸18+シャドウ+行間1dp区切り線+余白)が旧`ListPanel`と同一に見える | `ListPanelSliver`(`list_panel.dart`) | UI/回帰 | 貢献タブのランキング一覧を表示 | 角丸・シャドウ・区切り線・余白が`ListPanel`使用時(ギフト履歴タブ等)と同一に見える | 実機確認(Pixel 7a、スクリーンショット比較) | PASS(上端のみ) | 2026-09-12実機確認。カード上端の角丸・境界・行間区切り線・余白は`ListPanel`と同一に見える。末尾行(618位)はbottom navigation barの裏に隠れ底辺角丸は未確認(`DecoratedSliver`のSDK実装(`getMaxPaintRect()`)をソース確認済みのため設計上のリスクは無いと判断) |
 | TC-CT-027 | 期間ナビ(◀)操作後、`_load()`が`ClientSocketException`等で失敗した場合、期間セレクタの表示・データが操作前の状態にロールバックされる | `ContributionTab._changePeriod` | 異常/回帰 | 実機でWi-Fi・モバイル通信を無効化し、貢献タブで「◀」をタップして期間を進める | エラーバナー(「サーバーに接続できませんでした。通信環境を確認してください。(_ClientSocketException)」)が表示され、日付・表示中の合計・ランキング内容は操作前のまま変わらない(新しい期間へ進まない) | 実機確認(Pixel 7a) | PASS | 2026-09-12実機確認(`@ayane_0327`、953人規模room)。Wi-Fi/モバイルデータ無効化→「◀」タップ→日付が2026-09-12のまま・表示953人/43,766ptも変化無しを確認。ユーザー報告の「11日より前に戻ろうとするとClientSocketException」を再現した上でのロールバック確認 |
 | TC-CT-028 | TC-CT-027の状態(期間ナビ失敗後)で行を展開しても、タップした行と異なる内訳が表示されない | `ContributionTab._fetchBreakdown` | 異常/回帰 | TC-CT-027のオフライン・エラー状態のまま、1位行(HIDE)をタップして内訳を展開 | `_selection`がロールバック済みのため、内訳取得も同じ(表示中の)期間で行われる。オフラインのため内訳取得自体は「内訳を取得できませんでした」+「再試行」表示になるが、他ユーザー・他期間の内訳が誤って表示されることはない | 実機確認(Pixel 7a) | PASS | 2026-09-12実機確認。修正前は`_selection`が新しい(失敗した)期間へ進んだまま`_fetchBreakdown`がその期間でリクエストするため、表示中の行と異なる期間の内訳が返り得るクリティカルバグがあった(ユーザー報告の「ギフト内訳を開くとまったく違う内訳が表示される」の原因) |
+| TC-CT-029 | FREEプランで週チップをタップしても期間は変わらずアップグレード案内が出る | PeriodSelectorBar | 異常/権限差 | extendedRangeAllowed: false、現在「日」選択 | onChangedは呼ばれない。SnackBarに「週・月・年での表示はPRO/ULTRAプランで利用できます」 | lutter test test/period_selector_bar_test.dart | PASS | 2026-09-13 |
+| TC-CT-030 | FREE相当でweek/month/yearが残っていたら起動後にtodayのdayへクランプ | scheduleClampToDayOnlyHistoryPeriod | 回帰/権限差 | extendedRangeAllowed: false、保存状態がweek | フレーム後にday(today)へonClamp | lutter test test/analytics_period_test.dart --plain-name scheduleClamp | PASS | 貢献/ギフト履歴/バトル履歴タブで共有 |
+
+
 
 ## Quality Gate
 
