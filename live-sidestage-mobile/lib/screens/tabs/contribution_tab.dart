@@ -44,6 +44,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   DateTimeRange? _customRange;
   String? _listenerQuery;
   GiftRankingResult? _result;
+  List<GiftRankingEntry> _users = const [];
   String? _error;
   bool _loading = false;
 
@@ -111,6 +112,19 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     if (!oldWidget.active && widget.active) _load(silent: _result != null);
   }
 
+  List<GiftRankingEntry> _parseRankingEntities(Object? entities) {
+    if (entities is! List) return const [];
+    return entities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList();
+  }
+
+  void _applyRankingSnapshotUsers(RankingSyncStore store) {
+    final entities = store.getSnapshot()?['entities'];
+    if (entities == null) return;
+    final parsed = _parseRankingEntities(entities);
+    if (!mounted) return;
+    setState(() => _users = parsed);
+  }
+
   /// RankingSyncStore から snapshot 受信時のコールバック。
   /// snapshot は既に REST 取得済みなら無視、resync 要求のみ処理。
   void _onRankingSnapshot() {
@@ -118,6 +132,10 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     final customRange = _customRange;
     final containsToday =
         customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
+
+    if (containsToday && store.getSnapshot()?['entities'] != null) {
+      _applyRankingSnapshotUsers(store);
+    }
 
     // 期間が「今日」を含まない場合は無視(既存 giftAutoReloadAction と同じ原則)。
     if (!containsToday) return;
@@ -151,9 +169,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     _load(silent: true);
   }
 
-  /// [silent] はpush受信による自動更新、または resync 遅延後の更新。
-  /// **読み込み中の表示を出さない。** 出すと期間セレクタが `enabled: !_loading` で
-  /// 点滅的に無効化され、操作を邪魔する。
+  /// [silent] はpush受信による自動更新、resync 遅延後、または日付切替(既存表示あり)の更新。
+  /// 初回以外は期間セレクタを無効化しない(`enabled`は常にtrue)。取得中は細いプログレスのみ。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
   ///
   /// [onResult]は期間ナビ操作時のロールバックを駆動するコールバック。成功時に true、
@@ -171,6 +188,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         _loading = true;
         _error = null;
       });
+    } else if (_result != null) {
+      setState(() => _loading = true);
     }
 
     final customRange = _customRange;
@@ -190,6 +209,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _result = result;
+        _users = result.users;
         _loading = false;
         _dirty = false;
       });
@@ -217,6 +237,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
         debugPrint('[contribution] 自動更新に失敗: ${e.message}');
+        setState(() => _loading = false);
         return;
       }
       setState(() {
@@ -381,16 +402,9 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    // Batch 06: RankingSyncStore が保持するsnapshotを実際の描画ソースにする。
-    // (Batch 05時点ではStoreの更新がbuild()に一切反映されないバグがあった)
-    final customRange = _customRange;
-    final containsToday =
-        customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
-    final snapshotEntities = context.watch<RankingSyncStore>().getSnapshot()?['entities'];
-    // Past dates: do not paint live snapshot into the list (TC-CT-017).
-    final users = containsToday && snapshotEntities is List
-        ? snapshotEntities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
-        : result?.users ?? const [];
+    // _users: REST success and _onRankingSnapshot (today only) update list; build() does not parse snapshot.
+    final users = _users;
+    final refreshing = _loading && result != null;
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
 
     return RefreshIndicator(
@@ -417,11 +431,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                     style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
+                if (refreshing)
+                  const LinearProgressIndicator(minHeight: 2),
                 PeriodSelectorBar(
                   selection: _selection,
                   rangeLabel: _rangeLabel,
                   onChanged: _onPeriodChanged,
-                  enabled: !_loading,
+                  enabled: true,
                   customRangeActive: _customRange != null,
                   filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
                   onOpenCustomRangeFilter: _openCustomRangeFilter,
