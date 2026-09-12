@@ -221,4 +221,42 @@ describe("checkWatchdogs()の無応答検知バックオフ", () => {
     await cleanupStreamer(a.id);
     await cleanupRoom(roomId);
   });
+
+  it("chat保存ハンドラ経由の受信でもバックオフが即リセットされる", async () => {
+    const tiktokHandle = `itest_wd_reset_chat_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-wd-reset-chat-a");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    await startListener(roomId, tiktokHandle, [a.id]);
+    const start = Date.now();
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start + SILENCE_MS + 1_000);
+    checkWatchdogs();
+    vi.useRealTimers();
+    await vi.waitFor(() => {
+      expect(MockConnection.instances).toHaveLength(2);
+    });
+
+    // 専用 conn.on("chat", markAlive) は廃止。保存ハンドラ先頭の markAlive() が効くこと。
+    // userId 欠落でも markAlive は dedup/保存より前に走る。
+    const conn = MockConnection.instances[1];
+    conn.fire("chat", {});
+
+    // バックオフがリセットされていなければ、次の10秒はまだskipされるはずの時刻。
+    // リセットされていれば、SILENCE_MS超過分だけ進めた時点で即座に再発動する。
+    const now2 = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now2 + SILENCE_MS + 1_000);
+    checkWatchdogs();
+    vi.useRealTimers();
+
+    await vi.waitFor(() => {
+      expect(MockConnection.instances).toHaveLength(3);
+    });
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+  });
 });

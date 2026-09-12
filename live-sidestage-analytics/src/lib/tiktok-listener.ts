@@ -182,7 +182,7 @@ interface ListenerInstance {
   // 「担当外なので切断」と誤判定しないための猶予に使う(下記コメント参照)。
   createdAt: number;
   // watchdogが「実イベントが届かない」ことを理由に強制再接続を発動した連続回数。
-  // markAlive()(chat/gift/member/roomUser/social/likeのいずれか)が発火すると0にリセットされる。
+  // markAlive()(アプリ層の配信イベント。輸送フレーム・msgDetectは対象外)が発火すると0にリセットされる。
   // scheduleReconnect()側の再接続には一切関与しない(watchdog経由のconnectInstance呼び出しのみが対象)。
   watchdogTriggerCount: number;
   // 次にwatchdog起因の強制再接続を許可するepoch ms。now < この値の間はsilentForが閾値を超えていてもスキップする。
@@ -2791,11 +2791,35 @@ async function connectAndAttach(
     inst.watchdogTriggerCount = 0;
     inst.watchdogBackoffUntil = 0;
   };
-  conn.on("chat", markAlive);
+  // アプリ層の配信活動だけを生存とみなす。websocketData/rawData/decodedData/msgDetect/
+  // enterRoom/controlMessage は輸送・接続制御なので足さない(hb/ack/プローブでゾンビを隠す)。
   conn.on("member", markAlive);
   conn.on("roomUser", markAlive);
   conn.on("social", markAlive);
   conn.on("like", markAlive);
+  conn.on("share", markAlive);
+  conn.on("emote", markAlive);
+  conn.on("envelope", markAlive);
+  conn.on("questionNew", markAlive);
+  conn.on("liveIntro", markAlive);
+  conn.on("hourlyRank", markAlive);
+  conn.on("rankUpdate", markAlive);
+  conn.on("rankText", markAlive);
+  conn.on("goalUpdate", markAlive);
+  conn.on("roomMessage", markAlive);
+  conn.on("captionMessage", markAlive);
+  conn.on("inRoomBanner", markAlive);
+  conn.on("roomPin", markAlive);
+  conn.on("pollMessage", markAlive);
+  conn.on("barrage", markAlive);
+  conn.on("superFan", markAlive);
+  conn.on("imDelete", markAlive);
+  conn.on("unauthorizedMember", markAlive);
+  conn.on("oecLiveShopping", markAlive);
+  conn.on("linkMessage", markAlive);
+  conn.on("linkMicMethod", markAlive);
+  conn.on("linkMicFanTicketMethod", markAlive);
+  conn.on("linkMicBattlePunishFinish", markAlive);
 
   // Like数一覧/Like貢献通知(desktop 5ウィジェット移植)向け。likeCountは「このtickでの増分」
   // であって累計(totalLikeCount)ではない点に注意。tiktokHandleごとに1秒コアレッシングしてから
@@ -2929,6 +2953,7 @@ async function connectAndAttach(
   });
 
   conn.on("chat", (data: Record<string, unknown>) => {
+    markAlive();
     const msgId = resolveMsgId(data);
     if (
       msgId &&
@@ -3725,8 +3750,9 @@ function nextWatchdogBackoffMs(triggerCount: number): number {
 }
 
 // Detects zombie WebSocket connections: status stays "connected" but no
-// events (gift/chat/member/...) have arrived, meaning the socket died
-// without firing disconnected/streamEnd.
+// app-layer webcast events have arrived, meaning the socket died
+// without firing disconnected/streamEnd. Transport frames (hb/ack) and
+// msgDetect (uplink probe) do not count.
 export function checkWatchdogs() {
   const now = Date.now();
   listeners.forEach((inst, roomId) => {
