@@ -3,6 +3,7 @@
 // 1〜3位だけ順位数字をグラデーションメダル(光彩)にする。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:live_sidestage_mobile/core/api_client.dart';
 import 'package:live_sidestage_mobile/models/gift_breakdown.dart';
 import 'package:live_sidestage_mobile/models/gift_ranking_entry.dart';
 import 'package:live_sidestage_mobile/screens/widgets/gradient_kit.dart';
@@ -319,5 +320,74 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.textContaining('内訳は残っていません'), findsOneWidget);
+  });
+
+  testWidgets('fetchBreakdown指定時、refresh token 失効(TOKEN_REUSE_DETECTED)で「再ログインしてください」と「ログアウト」ボタンを表示する',
+      (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (tiktokUid) async {
+            // refresh token 失効を示す ApiException（statusCode=401, code=TOKEN_REUSE_DETECTED）
+            await Future<void>.delayed(Duration.zero);
+            throw ApiException(
+              'refresh token が無効です',
+              statusCode: 401,
+              code: 'TOKEN_REUSE_DETECTED',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pumpAndSettle();
+
+    // refresh token 失効用のメッセージが表示される
+    expect(find.text('ログインの有効期限が切れました。再ログインしてください'), findsOneWidget);
+
+    // 「ログアウト」ボタンが表示される
+    expect(find.widgetWithText(TextButton, 'ログアウト'), findsOneWidget);
+
+    // 従来の「再試行」ボタンは表示されない
+    expect(find.widgetWithText(TextButton, '再試行'), findsNothing);
+
+    // 従来のエラー文言「内訳を取得できませんでした」は表示されない
+    expect(find.text('内訳を取得できませんでした'), findsNothing);
+  });
+
+  testWidgets('fetchBreakdown指定時、refresh token 失効(INVALID_REFRESH_TOKEN)でも「再ログインしてください」と「ログアウト」ボタンを表示する',
+      (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        RankingListTile(
+          rank: 1,
+          entry: _entry,
+          fetchBreakdown: (tiktokUid) async {
+            // refresh token 失効を示す ApiException（statusCode=401, code=INVALID_REFRESH_TOKEN）
+            await Future<void>.delayed(Duration.zero);
+            throw ApiException(
+              'refresh token が無効です',
+              statusCode: 401,
+              code: 'INVALID_REFRESH_TOKEN',
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('テストユーザー'));
+    await tester.pumpAndSettle();
+
+    // refresh token 失効用のメッセージが表示される
+    expect(find.text('ログインの有効期限が切れました。再ログインしてください'), findsOneWidget);
+
+    // 「ログアウト」ボタンが表示される
+    expect(find.widgetWithText(TextButton, 'ログアウト'), findsOneWidget);
+
+    // 従来の「再試行」ボタンは表示されない
+    expect(find.widgetWithText(TextButton, '再試行'), findsNothing);
   });
 }

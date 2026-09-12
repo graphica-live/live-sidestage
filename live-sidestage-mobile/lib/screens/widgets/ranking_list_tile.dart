@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api_client.dart';
+import '../../core/logout.dart';
 import '../../core/tiktok_profile.dart';
 import '../../models/gift_breakdown.dart';
 import '../../models/gift_ranking_entry.dart';
@@ -152,20 +154,47 @@ class _GiftBreakdownPanel extends StatelessWidget {
           );
         }
         if (snapshot.hasError) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '内訳を取得できませんでした',
-                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error),
+          // refresh token 失効（再ログインが必須）vs その他エラー（再試行で直る可能性がある）を区別
+          final error = snapshot.error;
+          final isRefreshTokenExpired =
+              error is ApiException && error.isRefreshTokenRejected;
+
+          if (isRefreshTokenExpired) {
+            // refresh token 失効: ログアウト導線を提示
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'ログインの有効期限が切れました。再ログインしてください',
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error),
+                    ),
                   ),
-                ),
-                TextButton(onPressed: onRetry, child: const Text('再試行', style: TextStyle(fontSize: 12))),
-              ],
-            ),
-          );
+                  TextButton(
+                    onPressed: () => performLogout(context),
+                    child: const Text('ログアウト', style: TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            // その他のエラー（通信断・5xx・タイムアウト等）: 再試行ボタンを提示
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '内訳を取得できませんでした',
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                  TextButton(onPressed: onRetry, child: const Text('再試行', style: TextStyle(fontSize: 12))),
+                ],
+              ),
+            );
+          }
         }
 
         final result = snapshot.data!;
