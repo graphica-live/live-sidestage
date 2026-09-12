@@ -184,30 +184,13 @@ export async function ensureContributionShareToken(
   }
 }
 
-/** 公開ページに載せる貢献者1人分。verifiedは含まない(所有者向け表示制御のため無意味)。 */
-export type PublicContributionUser = {
-  tiktokUid: string;
-  tiktokHandle: string | null;
-  nickname: string | null;
-  profileImageUrl: string | null;
-  giftCount: number;
-  totalDiamonds: number;
-  lastGiftAt: string;
-};
+import {
+  formatContributionShareRangeLabel,
+  type PublicContributionPayload,
+  type PublicContributionUser,
+} from "@/lib/contribution-share-range-label";
 
-export type PublicContributionPayload = {
-  period: string;
-  date: string | null;
-  startDatetime: string | null;
-  endDatetime: string | null;
-  dateRange: { start: string; end: string };
-  users: PublicContributionUser[];
-  total: { giftCount: number; totalDiamonds: number };
-  /** 誰の集計かを示すための配信者情報。tiktokHandle/tiktokUidは含めない。 */
-  streamer: { nickname: string | null; profileImageUrl: string | null };
-};
-
-export { formatContributionShareRangeLabel } from "@/lib/contribution-share-range-label";
+export { formatContributionShareRangeLabel, type PublicContributionPayload, type PublicContributionUser };
 
 export type ContributionRankingQueryResult =
   | { ok: true; payload: PublicContributionPayload }

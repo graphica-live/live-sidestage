@@ -1,8 +1,33 @@
-﻿/** Client-safe: 公開ページ見出しの期間ラベル。server-onlyの contribution-share.ts から分離。 */
+﻿/** Client-safe: 公開ページが import してよい唯一の貢献シェアモジュール。
+ * `contribution-share.ts` は prisma/sharp を引くのでクライアントから import しない。
+ */
 
 export type ContributionShareRangeLabelInput = {
   period: string;
   dateRange: { start: string; end: string };
+};
+
+/** 公開ページに載せる貢献者1人分。verifiedは含まない(所有者向け表示制御のため無意味)。 */
+export type PublicContributionUser = {
+  tiktokUid: string;
+  tiktokHandle: string | null;
+  nickname: string | null;
+  profileImageUrl: string | null;
+  giftCount: number;
+  totalDiamonds: number;
+  lastGiftAt: string;
+};
+
+export type PublicContributionPayload = {
+  period: string;
+  date: string | null;
+  startDatetime: string | null;
+  endDatetime: string | null;
+  dateRange: { start: string; end: string };
+  users: PublicContributionUser[];
+  total: { giftCount: number; totalDiamonds: number };
+  /** 誰の集計かを示すための配信者情報。tiktokHandle/tiktokUidは含めない。 */
+  streamer: { nickname: string | null; profileImageUrl: string | null };
 };
 
 /** customのdateRangeはUTC ISOのため、AnalyticsViewと同様JSTで表示する。 */
