@@ -3,7 +3,7 @@ project: live-sidestage-analytics
 feature: admin-workers-signature-usage
 last_updated: 2026-09-12
 last_risk: MEDIUM
-last_reviewers: Codex(Code Mode)
+last_reviewers: Codex(Code Mode) + Gemini(agy/gemini-3.7-flash-medium, Code+TestCase)
 ---
 
 # テストベースライン: admin-workers-signature-usage
@@ -42,6 +42,7 @@ admin/workers画面の監視対象一覧に「署名消費(24時間)」「コラ
 | TC-AWS-016a | signatureUsage24hCount / collabSignatureUsage24hCount列のソート(0/1/N件・null混在)が正しい順序になる | `sortAssignedRooms` | 境界 | 値0・1・複数・nullが混在する配列 | 昇順・降順ともにnullは末尾固定、数値は正しく順序化される | `npx vitest run "src/app/(dashboard)/admin/workers/sort-rooms.test.ts"` | PASS | TestCaseレビュー(Codex/DeepSeek)反映。既存はweeklyEulerSignUsageCountのみ検証だった |
 | TC-AWS-017 | UI: 15秒ポーリングでエラーなく更新される | `/admin/workers` | UI/回帰 | 画面を開いたまま15秒以上待つ | コンソールエラー・ネットワークエラー無く再描画される。`/api/admin/workers`のみ再取得し、`/api/admin/workers/room-usage`は再取得しない | Playwright | PASS | 2026-09-12 性能: ポーリングから署名消費集計を切り離し |
 | TC-AWS-018 | API: `GET /api/admin/workers`は署名消費列null、`room-usage`で数値 | `route.ts` / `room-usage/route.ts` | 性能/契約 | adminログイン・workerId割当room | ポーリングAPIはweekly/signature/collab列がnull。room-usageは数値 | `npm run test:integration`（`route.integration.test.ts`・`room-usage/route.integration.test.ts`） | PASS | |
+| TC-AWS-019 | UI: 「署名消費を更新」で再取得・時刻・一覧反映 | `/admin/workers` 手動更新ボタン | UI/正常 | 初回表示後にボタンクリック | `room-usage`再リクエスト、ボタン「署名消費取得中...」、完了後「署名消費最終取得」更新 | Playwright(headless) | PASS | code-review TestCase指摘反映。前回セッション実機確認と同条件 |
 
 ## Quality Gate
 
