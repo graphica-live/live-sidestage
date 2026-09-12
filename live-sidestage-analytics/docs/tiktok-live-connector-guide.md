@@ -712,3 +712,12 @@ SELECT MAX(span) FROM (
   GROUP BY "roomId", "groupId" HAVING COUNT(*) > 1
 ) t;
 ```
+
+---
+
+## スーパーファン判別
+
+TikTok LIVE 上のスーパーファン (SF) / 非 SF の判別ロジックと、本リポジトリでの socket 配信フィールドは別ドキュメントにまとめている。
+
+- [tiktok-super-fan-discrimination.md](./tiktok-super-fan-discrimination.md)
+- probe 実測の正本: `~/.cursor/skills/tiktok-probe/KNOWLEDGE.md`（「スーパーファン判別 — 確定」）

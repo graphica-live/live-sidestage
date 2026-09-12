@@ -60,6 +60,11 @@ export interface ChatCommentPayload {
    * 旧アプリはこのフィールドも schemaVersion も読まずに無視する。
    */
   emotes?: ChatCommentEmote[];
+  /**
+   * スーパーファンか（TikTok `userIdentity` + `portraitTag` から listener が付与）。
+   * 判定不能時はフィールド無し。旧クライアントは無視する。
+   */
+  isSuperFan?: boolean;
 }
 
 /** 1コメントあたりのエモート上限。TikTokのUI上これを超える現実的な入力は無い。 */
@@ -151,6 +156,8 @@ export interface ChatGiftInput {
   msgId: string | null;
   occurredAt: string; // TikTokのcreateTime由来
   receivedAt: string; // Workerがイベントを受けたサーバー時刻
+  /** chat と同じ判別ロジック。判定不能時は省略。 */
+  isSuperFan?: boolean;
 }
 
 export interface ChatGiftPayload {
@@ -177,6 +184,23 @@ export interface ChatGiftPayload {
   comboId: string | null;
   occurredAt: string;
   receivedAt: string;
+  isSuperFan?: boolean;
+}
+
+/** SF 加入バナー（`WebcastBarrageMessage` / connector `superFan` イベント） */
+export interface ChatSuperFanJoinInput {
+  streamerId: string;
+  tiktokUid: string;
+  tiktokHandle: string;
+  nickname: string;
+  profilePictureUrl: string | null;
+  receivedAt: string;
+  msgId: string | null;
+  barrageDisplayType: string;
+}
+
+export interface ChatSuperFanJoinPayload extends ChatSuperFanJoinInput {
+  schemaVersion: number;
 }
 
 export interface ChatFollowInput {
@@ -267,7 +291,7 @@ const CHAT_COMMENT_DEDUP_CACHE_SIZE = 3000;
 const COMBO_STATE_TTL_MS = 10 * 60 * 1000;
 const COMBO_STATE_MAX_ENTRIES = 5000;
 
-type DedupNamespace = "comment" | "follow" | "gift";
+type DedupNamespace = "comment" | "follow" | "gift" | "superFanJoin";
 
 // server.js が生成した socket.io サーバーへの参照。overlay.ts と同じ global 経由パターン。
 const g = global as typeof globalThis & {
@@ -397,6 +421,19 @@ export async function emitChatFollow(input: ChatFollowInput): Promise<boolean> {
   return true;
 }
 
+export async function emitChatSuperFanJoin(input: ChatSuperFanJoinInput): Promise<boolean> {
+  if (!isIoReady()) return false;
+  if (input.msgId && isDuplicateChatEvent(input.streamerId, "superFanJoin", input.msgId)) {
+    return true;
+  }
+  const payload: ChatSuperFanJoinPayload = {
+    schemaVersion: CHAT_EVENT_SCHEMA_VERSION,
+    ...input,
+  };
+  g.__io?.to(`chat:${input.streamerId}`).emit("chat:superFanJoin", payload);
+  return true;
+}
+
 /**
  * ギフトtickをモバイル向けに配信する。deltaの導出とdedupをここへ集約している。
  *
@@ -455,6 +492,7 @@ export async function emitChatGift(input: ChatGiftInput): Promise<boolean> {
     comboId,
     occurredAt: input.occurredAt,
     receivedAt: input.receivedAt,
+    ...(input.isSuperFan !== undefined ? { isSuperFan: input.isSuperFan } : {}),
   };
 
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:gift", payload);

@@ -1,5 +1,5 @@
 {
-  "_comment": "Snapshot of Railway watchPatterns for worker1/2/3 (2026-09-12)",
+  "_comment": "Snapshot of Railway watchPatterns for worker1/2/3 (2026-09-13, +super-fan-status.ts)",
   "worker1": [
     "live-sidestage-analytics/worker.ts",
     "live-sidestage-analytics/prisma/**",
@@ -61,6 +61,7 @@
     "live-sidestage-analytics/src/lib/room-lease.ts",
     "live-sidestage-analytics/src/lib/settings.ts",
     "live-sidestage-analytics/src/lib/share-token.ts",
+    "live-sidestage-analytics/src/lib/super-fan-status.ts",
     "live-sidestage-analytics/src/lib/tiktok-battle.ts",
     "live-sidestage-analytics/src/lib/tiktok-collab-source.ts",
     "live-sidestage-analytics/src/lib/tiktok-collab.ts",
@@ -134,6 +135,7 @@
     "live-sidestage-analytics/src/lib/room-lease.ts",
     "live-sidestage-analytics/src/lib/settings.ts",
     "live-sidestage-analytics/src/lib/share-token.ts",
+    "live-sidestage-analytics/src/lib/super-fan-status.ts",
     "live-sidestage-analytics/src/lib/tiktok-battle.ts",
     "live-sidestage-analytics/src/lib/tiktok-collab-source.ts",
     "live-sidestage-analytics/src/lib/tiktok-collab.ts",
@@ -207,6 +209,7 @@
     "live-sidestage-analytics/src/lib/room-lease.ts",
     "live-sidestage-analytics/src/lib/settings.ts",
     "live-sidestage-analytics/src/lib/share-token.ts",
+    "live-sidestage-analytics/src/lib/super-fan-status.ts",
     "live-sidestage-analytics/src/lib/tiktok-battle.ts",
     "live-sidestage-analytics/src/lib/tiktok-collab-source.ts",
     "live-sidestage-analytics/src/lib/tiktok-collab.ts",

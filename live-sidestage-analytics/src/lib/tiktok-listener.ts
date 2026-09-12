@@ -18,13 +18,20 @@ import {
   emitChatFollow,
   emitChatGift,
   emitChatListener,
+  emitChatSuperFanJoin,
   normalizeChatCommentEmotes,
   type ChatBattleInput,
   type ChatCommentPayload,
   type ChatFollowInput,
   type ChatGiftInput,
   type ChatListenerInput,
+  type ChatSuperFanJoinInput,
 } from "./chat-feed";
+import {
+  readBarrageDisplayType,
+  resolveSuperFanJoinUserId,
+  resolveSuperFanStatus,
+} from "./super-fan-status";
 import {
   factsForReconnect,
   FACTS_CONNECTED,
@@ -647,6 +654,35 @@ async function notifyChatFollow(streamerIds: string[], follow: Omit<ChatFollowIn
     return;
   }
   await forwardToWeb({ streamerIds, chatFollowEvent: follow });
+}
+
+async function notifyChatSuperFanJoin(
+  streamerIds: string[],
+  event: Omit<ChatSuperFanJoinInput, "streamerId">
+) {
+  if (streamerIds.length === 0) return;
+
+  if (!isWorkerProcess) {
+    for (const streamerId of streamerIds) {
+      emitChatSuperFanJoin({ streamerId, ...event }).catch((err) =>
+        console.error("[superFan] chat emit error:", err)
+      );
+    }
+    return;
+  }
+  await forwardToWeb(
+    { streamerIds, chatSuperFanJoinEvent: event },
+    { retryOnce: typeof event.msgId === "string" }
+  );
+}
+
+function withOptionalSuperFanFlag<T extends Record<string, unknown>>(
+  data: Record<string, unknown>,
+  base: T
+): T & { isSuperFan?: boolean } {
+  const isSuperFan = resolveSuperFanStatus(data);
+  if (isSuperFan === null) return base;
+  return { ...base, isSuperFan };
 }
 
 // ── listener状態の転送 ────────────────────────────────────────────────────────
@@ -2837,7 +2873,26 @@ async function connectAndAttach(
   conn.on("roomPin", markAlive);
   conn.on("pollMessage", markAlive);
   conn.on("barrage", markAlive);
-  conn.on("superFan", markAlive);
+  conn.on("superFan", (data: Record<string, unknown>) => {
+    markAlive();
+    const tiktokUid = resolveSuperFanJoinUserId(data);
+    if (!tiktokUid) {
+      console.error("[superFan] tiktokUid missing — skipping join notify", { roomId });
+      return;
+    }
+    const { time: eventTime } = resolveEventTime(data);
+    const msgId = resolveMsgId(data);
+    const barrageDisplayType = readBarrageDisplayType(data) ?? "";
+    notifyChatSuperFanJoin(Array.from(inst.subscriberIds), {
+      tiktokUid,
+      tiktokHandle: String(data.uniqueId || ""),
+      nickname: String(data.nickname || ""),
+      profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+      receivedAt: eventTime.toISOString(),
+      msgId,
+      barrageDisplayType,
+    });
+  });
   conn.on("imDelete", markAlive);
   conn.on("unauthorizedMember", markAlive);
   conn.on("oecLiveShopping", markAlive);
@@ -3020,7 +3075,7 @@ async function connectAndAttach(
       console.error("[chat] tiktokUid missing — skipping comment", { roomId, msgId });
       return;
     }
-    const payload = {
+    const payload = withOptionalSuperFanFlag(data, {
       tiktokUid: commentTiktokUid,
       tiktokHandle: String(data.uniqueId || ""),
       nickname: String(data.nickname || ""),
@@ -3029,7 +3084,7 @@ async function connectAndAttach(
       receivedAt: eventTime.toISOString(),
       msgId,
       ...(emotes.length > 0 ? { emotes } : {}),
-    };
+    });
     // 同じ部屋を複数のStreamerが購読している場合、全員分のchatルームへ配信する。
     notifyChatComment(Array.from(inst.subscriberIds), payload);
     // DB保存はsocket配信をブロックしないfire-and-forget(AI傾向分析用の生ログ、30日retention)。
@@ -3175,23 +3230,26 @@ async function connectAndAttach(
     // uid が取れないイベントは配信しない。空文字を配ると端末側の同一性キーが潰れて
     // **全送信者が1人に畳まれる**(chat / follow と同じ判断)。
     if (giftSenderTiktokUid) {
-      notifyChatGift(Array.from(inst.subscriberIds), {
-        tiktokUid: giftSenderTiktokUid,
-        tiktokHandle: String(data.uniqueId || ""),
-        nickname: String(data.nickname || ""),
-        profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
-        giftName: String(data.giftName || "").trim().toLowerCase(),
-        giftId: data.giftId ? String(data.giftId) : null,
-        diamondCount: Number(data.diamondCount) || 0,
-        repeatCount: currentRepeat,
-        isCombo,
-        repeatEnd: Boolean(data.repeatEnd),
-        groupId,
-        orderId: data.orderId ? String(data.orderId) : null,
-        msgId: eventMsgId,
-        occurredAt: eventTime.toISOString(),
-        receivedAt: new Date().toISOString(),
-      });
+      notifyChatGift(
+        Array.from(inst.subscriberIds),
+        withOptionalSuperFanFlag(data, {
+          tiktokUid: giftSenderTiktokUid,
+          tiktokHandle: String(data.uniqueId || ""),
+          nickname: String(data.nickname || ""),
+          profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+          giftName: String(data.giftName || "").trim().toLowerCase(),
+          giftId: data.giftId ? String(data.giftId) : null,
+          diamondCount: Number(data.diamondCount) || 0,
+          repeatCount: currentRepeat,
+          isCombo,
+          repeatEnd: Boolean(data.repeatEnd),
+          groupId,
+          orderId: data.orderId ? String(data.orderId) : null,
+          msgId: eventMsgId,
+          occurredAt: eventTime.toISOString(),
+          receivedAt: new Date().toISOString(),
+        })
+      );
     } else {
       console.error("[gift] tiktokUid missing — skipping chat:gift emit", {
         roomId,
