@@ -80,9 +80,11 @@ void main() {
 
   testWidgets('OnboardingScreenからもアカウント削除の確認ダイアログを開ける', (tester) async {
     final controller = SessionController()..session = _session(onboardingRequired: true);
-    await _pump(tester, controller, const OnboardingScreen());
+    await _pump(tester, controller, const OnboardingScreen(phase: OnboardingPhase.postLoginLink));
 
-    await tester.tap(find.byTooltip('アカウント削除'));
+    await tester.tap(find.byTooltip('その他'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('アカウント削除'));
     await tester.pumpAndSettle();
 
     expect(find.text('アカウントを削除しますか？'), findsOneWidget);

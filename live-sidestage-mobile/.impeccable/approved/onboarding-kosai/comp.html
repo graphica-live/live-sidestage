@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>onboarding-kosai comp</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
+  <style>
+    :root {
+      --bg: #FAF7F5;
+      --card: #FFFFFF;
+      --ink: #2A2130;
+      --sub: #7C7286;
+      --line: #EFE6E9;
+      --track: #E5DFE8;
+      --danger: #E24B4B;
+      --c1: #FF7A59;
+      --c2: #9B6BFF;
+      --c3: #2FC6A0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #ddd;
+      font-family: "Zen Kaku Gothic New", "Noto Sans JP", sans-serif;
+      color: var(--ink);
+    }
+    .row { display: flex; gap: 16px; padding: 16px; }
+    .phone {
+      width: 264px;
+      height: 560px;
+      background: var(--bg);
+      border-radius: 28px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(42, 33, 48, 0.18);
+    }
+    .scr { position: absolute; inset: 12px 8px 12px 8px; display: flex; flex-direction: column; }
+    .top {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 36px; padding: 0 8px;
+    }
+    .skip { font-size: 11px; font-weight: 600; color: var(--sub); }
+    .more { font-size: 18px; color: var(--ink); width: 24px; text-align: right; }
+    .body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 12px; }
+    .hero {
+      width: 72px; height: 72px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--c1), var(--c2));
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 28px;
+    }
+    .hero .material-symbols-rounded { font-size: 44px; }
+    h1 {
+      margin: 18px 0 8px;
+      font-family: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
+      font-size: 16.5px; font-weight: 700; text-align: center;
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    p.copy { margin: 0; font-size: 10px; line-height: 1.45; color: var(--sub); text-align: center; }
+    .foot { padding: 0 12px 8px; }
+    .dots { display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; align-items: center; }
+    .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--track); }
+    .dot.on { width: 14px; background: linear-gradient(90deg, var(--c1), var(--c2)); }
+    .cta {
+      height: 36px; border-radius: 999px; color: #fff;
+      font-family: "Zen Maru Gothic", sans-serif; font-weight: 800; font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      box-shadow: 0 8px 16px -8px rgba(155,107,255,.55);
+    }
+    .link-body { flex: 1; padding: 12px 12px 0; }
+    .link-body h1 { text-align: left; margin: 8px 0 6px; }
+    .welcome { font-size: 10px; color: var(--sub); line-height: 1.4; }
+    .field {
+      margin-top: 16px; border: 1px solid var(--line); border-radius: 8px;
+      padding: 8px 10px; background: var(--card);
+    }
+    .field label { display: block; font-size: 9px; color: var(--sub); }
+    .field .val { font-size: 11px; margin-top: 4px; color: var(--ink); }
+    .note { margin-top: 10px; font-size: 7.5px; color: var(--sub); line-height: 1.4; }
+    .sheet-wrap { position: absolute; inset: 0; background: rgba(42,33,48,.35); display: flex; align-items: flex-end; }
+    .sheet {
+      width: 100%; background: var(--card); border-radius: 16px 16px 0 0; padding: 14px 12px 16px;
+    }
+    .who { display: flex; gap: 10px; align-items: center; }
+    .av {
+      width: 48px; height: 48px; border-radius: 999px;
+      background: linear-gradient(135deg, var(--c1), var(--c2));
+      padding: 1.5px;
+    }
+    .av inner { display: block; width: 100%; height: 100%; border-radius: 999px; background: #c8c0d4; }
+    .nick { font-size: 11px; font-weight: 700; }
+    .handle { font-size: 9px; color: var(--sub); }
+    .stats { display: flex; gap: 6px; margin-top: 12px; }
+    .stat {
+      flex: 1; border: 1px solid var(--line); border-radius: 14px; padding: 8px;
+      text-align: center;
+    }
+    .stat .l { font-size: 8px; color: var(--sub); }
+    .stat .v { font-size: 11px; font-weight: 700; margin-top: 2px; }
+    .sig { margin-top: 8px; font-size: 9px; color: var(--sub); }
+    .cta2 { margin-top: 12px; }
+    .out {
+      margin-top: 6px; height: 32px; border-radius: 999px;
+      border: 1.5px solid var(--c2); color: var(--c2);
+      font-weight: 800; font-size: 11px;
+      display: flex; align-items: center; justify-content: center; background: var(--card);
+    }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <div class="phone" id="p0">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero"><span class="material-symbols-rounded">text_to_speech</span></div>
+          <h1>画面を見ずに、コメントがわかる</h1>
+          <p class="copy">コメントを音声で読み上げるので、配信画面から目を離さずに反応できます。リスナーごとに声を変えて、誰のコメントか聞き分けることもできます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p1">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero">🎁</div>
+          <h1>ギフトが、音と演出に変わる</h1>
+          <p class="copy">ギフトごとに効果音や短い音楽を設定。届いたことを音で把握するだけでなく、ダンスやリアクションなど、ギフト連動の企画にも使えます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p2">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero">〰</div>
+          <h1>配信画面のまま、読み上げも効果音も</h1>
+          <p class="copy">配信するスマートフォンで読み上げと効果音をONにするだけ。1台で「配信」「コメント読み上げ」「ギフト演出」を同時に使えます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p3">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero"><span class="material-symbols-rounded">emoji_events</span></div>
+          <h1>応援してくれた人を、見逃さない</h1>
+          <p class="copy">貢献ランキングとギフト履歴をあとから確認。日付やリスナーで絞り込んで、誰がどれだけ応援してくれたか振り返れます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p4">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero"><span class="material-symbols-rounded">bolt</span></div>
+          <h1>あのバトルを、あとから振り返る</h1>
+          <p class="copy">対戦結果や貢献者だけでなく、バトル中の流れも疑似リプレイで確認。誰が、いつ、どれだけ貢献してくれたかを振り返れます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p5">
+      <div class="scr">
+        <div class="top"><span class="skip" style="visibility:hidden">スキップ</span><span class="more">⋮</span></div>
+        <div class="link-body">
+          <h1>TikTokアカウントの連携</h1>
+          <div class="welcome">ようこそ、配信者さん。あなたのTikTok IDを連携してください。</div>
+          <div class="field"><label>TikTok ID（@なし）</label><div class="val">your_handle</div></div>
+          <div class="note">連携後7日間はIDを変更できません。本人のアカウントか確認してから進めてください。</div>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>
+          <div class="cta">確認する</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p6">
+      <div class="scr">
+        <div class="top"><span class="skip" style="visibility:hidden">スキップ</span><span class="more">⋮</span></div>
+        <div class="link-body">
+          <h1>TikTokアカウントの連携</h1>
+          <div class="welcome">ようこそ、配信者さん。あなたのTikTok IDを連携してください。</div>
+          <div class="field"><label>TikTok ID（@なし）</label><div class="val">your_handle</div></div>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>
+          <div class="cta">確認する</div>
+        </div>
+        <div class="sheet-wrap">
+          <div class="sheet">
+            <div class="who">
+              <div class="av"><span class="inner"></span></div>
+              <div>
+                <div class="nick">ニックネーム</div>
+                <div class="handle">@your_handle</div>
+              </div>
+            </div>
+            <div class="stats">
+              <div class="stat"><div class="l">フォロー</div><div class="v">128</div></div>
+              <div class="stat"><div class="l">フォロワー</div><div class="v">12,340</div></div>
+            </div>
+            <div class="sig">配信者の自己紹介文がここに入ります。</div>
+            <div class="cta cta2">このアカウントで連携する</div>
+            <div class="out">戻る</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

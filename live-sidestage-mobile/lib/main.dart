@@ -18,6 +18,7 @@ import 'core/comment_feed.dart';
 import 'core/gift_activity.dart';
 import 'core/gift_name_ja.dart';
 import 'core/realtime_sync.dart';
+import 'core/intro_onboarding_store.dart';
 import 'core/session_controller.dart';
 import 'core/theme_mode_store.dart';
 import 'core/version_compare.dart';
@@ -206,14 +207,13 @@ class LiveSidestageApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BillingService()),
         ChangeNotifierProvider(create: (_) => AppleBillingService()),
         ChangeNotifierProvider(create: (_) => ThemeModeStore()..load()),
+        ChangeNotifierProvider(create: (_) => IntroOnboardingStore()..load()),
         // バトル履歴の表示フィルタ(小さいバトルを隠す)。背景Isolateへは同期しない。
         ChangeNotifierProvider(create: (_) => BattleFilterStore()..load()),
         // ギフト受信を貢献・ギフト履歴タブへ伝えるだけの通知。数値は持たない。
         ChangeNotifierProvider(create: (_) => GiftActivityNotifier()),
         // バトル終了(またはEND後のスコア確定)をバトル履歴タブへ伝えるだけの通知。
         ChangeNotifierProvider(create: (_) => BattleActivityNotifier()),
-        // 貢献・ギフト・バトルタブ用のsync機能(リアルタイム更新)。
-        // CommentFeedはconnect()を呼ばず、未接続のまま登録する。接続確立はBatch02の対象。
         ChangeNotifierProvider(create: (_) => CommentFeed()),
         ChangeNotifierProvider(create: (_) => RankingSyncStore()),
         ChangeNotifierProvider(create: (_) => GiftHistorySyncStore()),
@@ -269,12 +269,20 @@ class _AuthGateState extends State<AuthGate> {
     final controller = context.watch<SessionController>();
     final configStore = context.watch<AppConfigStore>();
     final accountStatus = context.watch<AccountStatusStore>();
+    final introOnboarding = context.watch<IntroOnboardingStore>();
 
-    if (!controller.initialized) {
+    if (!controller.initialized || !introOnboarding.loaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final session = controller.session;
+    if (session != null && !introOnboarding.completed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<IntroOnboardingStore>().markCompleted();
+      });
+    }
+
     if (session == null) {
       if (_requestedForUserId != null) {
         _requestedForUserId = null;
@@ -284,6 +292,9 @@ class _AuthGateState extends State<AuthGate> {
           context.read<BillingService>().resetSession();
           context.read<AppleBillingService>().resetSession();
         });
+      }
+      if (!introOnboarding.completed) {
+        return const OnboardingScreen(phase: OnboardingPhase.preLoginIntro);
       }
       return const WelcomeScreen();
     }
@@ -321,7 +332,9 @@ class _AuthGateState extends State<AuthGate> {
       });
     }
 
-    if (session.onboardingRequired) return const OnboardingScreen();
+    if (session.onboardingRequired) {
+      return const OnboardingScreen(phase: OnboardingPhase.postLoginLink);
+    }
 
     // HomeScreen 配下だけが AppConfig を編集する。ロード完了前に操作させると、
     // 既定値からの編集がロード結果を上書きしてユーザーの設定を消す。

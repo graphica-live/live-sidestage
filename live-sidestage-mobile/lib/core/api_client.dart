@@ -13,6 +13,7 @@ import '../models/gift_breakdown.dart';
 import '../models/gift_history_event.dart';
 import '../models/gift_ranking_entry.dart';
 import '../models/listener_status.dart';
+import '../models/tiktok_account_preview.dart';
 import 'app_version.dart';
 import 'url_validation.dart';
 
@@ -425,6 +426,20 @@ class LiveAnalyticsApi {
     } catch (e) {
       debugPrint('[api_client] ログアウトのサーバー通知に失敗しました: $e');
     }
+  }
+
+  /// 登録前の実在確認。DB には書き込まない。
+  Future<TiktokAccountPreview> previewStreamer({
+    required String token,
+    required String tiktokHandle,
+  }) async {
+    final data = await _send(
+      'POST',
+      '/api/mobile/streamer/preview',
+      {'tiktokHandle': tiktokHandle},
+      token: token,
+    );
+    return TiktokAccountPreview.fromJson(data);
   }
 
   Future<(String token, StreamerInfo streamer)> registerStreamer({

@@ -9,6 +9,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../models/auth_session.dart';
+import '../models/tiktok_account_preview.dart';
 import 'api_client.dart';
 import 'api_retry.dart';
 import 'session_storage.dart';
@@ -297,6 +298,32 @@ class SessionController extends ChangeNotifier {
     final random = Random.secure();
     final bytes = List<int>.generate(32, (_) => random.nextInt(256));
     return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  /// 登録前確認。セッションは書き換えない。失敗時は [errorMessage]。
+  Future<TiktokAccountPreview?> previewTiktokAccount({required String tiktokHandle}) async {
+    final current = session;
+    if (current == null) return null;
+
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      return await withTokenRefresh(
+        call: (t) => _api.previewStreamer(token: t, tiktokHandle: tiktokHandle),
+        token: current.token,
+        refreshToken: refreshToken,
+      );
+    } on ApiException catch (e) {
+      errorMessage = e.message;
+      return null;
+    } catch (e) {
+      errorMessage = '予期しないエラーが発生しました: $e';
+      return null;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> completeOnboarding({required String tiktokHandle}) {
