@@ -73,6 +73,8 @@ describe("inferOpeningMultiplier", () => {
     expect(result.multiplier).toBe(2);
     expect(result.confidence).toBe("measured");
     expect(result.basisGiftId).toBe("gift-3000");
+    expect(result.windowStartedAt).toEqual(WINDOW_START);
+    expect(result.windowEndedAt).toEqual(new Date(WINDOW_START.getTime() + OPENING_WINDOW_MS));
   });
 
   it("3倍も同様に判定できる", () => {
@@ -268,7 +270,21 @@ describe("inferOpeningMultiplier", () => {
     expect(result.multiplier).toBeNull();
   });
 
-  it("区間の開始・終了は仮定値から埋めない(常にnull)", () => {
+  it("判定不能なら区間も null", () => {
+    const result = inferOpeningMultiplier({
+      windowStart: WINDOW_START,
+      windowStartReliable: false,
+      scorePoints: scoreSeries([{ offsetMs: 5_000, score: 2000 }]),
+      gifts: [gift({ offsetMs: 3_000 })],
+      bonusIntervals: [],
+      tapPoints: [],
+      tapTrackedTiktokUids: new Set(),
+    });
+    expect(result.windowStartedAt).toBeNull();
+    expect(result.windowEndedAt).toBeNull();
+  });
+
+  it("倍率が確定したら再生帯用の区間を windowStart から埋める", () => {
     const result = infer(
       scoreSeries([
         { offsetMs: 5_000, score: 2000 },
@@ -276,8 +292,8 @@ describe("inferOpeningMultiplier", () => {
       ]),
       [gift({ offsetMs: 3_000 }), gift({ offsetMs: 13_000 })]
     );
-    expect(result.windowStartedAt).toBeNull();
-    expect(result.windowEndedAt).toBeNull();
+    expect(result.windowStartedAt).toEqual(WINDOW_START);
+    expect(result.windowEndedAt).toEqual(new Date(WINDOW_START.getTime() + OPENING_WINDOW_MS));
   });
 });
 

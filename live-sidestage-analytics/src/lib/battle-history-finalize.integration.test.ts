@@ -590,7 +590,7 @@ describe("再生用データ(scorePoints / opening / replay*Count)", () => {
     expect(first!.replayGiftEventCount).toBe(1);
     // 候補ギフトが小粒(30ダイヤ)なので逆算はできない。判定不能を明示的に保存する。
     expect(first!.openingMultiplierConfidence).toBe("unknown");
-    // 倍率区間の開始・終了はTikTokが配信しないので、仮定値(60秒)からは絶対に埋めない。
+    // 倍率判定不能なら区間も保存しない。
     expect(first!.openingWindowStartedAt).toBeNull();
     expect(first!.openingWindowEndedAt).toBeNull();
     expect(await prisma.battleHistoryScorePoint.count({ where: { battleHistoryId: first!.id } })).toBe(2);
@@ -843,8 +843,8 @@ describe("初ギフトx倍の逆算(DB経路)", () => {
     expect(row!.openingMultiplierConfidence).toBe("measured");
     // basisGiftId は Gift.id(= BattleHistoryGiftEvent.sourceGiftId)を指す。
     expect(row!.openingMultiplierBasisGiftId).toBe(basis.id);
-    expect(row!.openingWindowStartedAt).toBeNull();
-    expect(row!.openingWindowEndedAt).toBeNull();
+    expect(row!.openingWindowStartedAt).toEqual(STARTED_AT);
+    expect(row!.openingWindowEndedAt).toEqual(new Date(STARTED_AT.getTime() + 48_000));
 
     // attach 経路も同じ入力から同じ結論に到達する。
     expect(await attachReplayData(row!.id)).toEqual({ attached: true, scorePointCount: 4, giftEventCount: 2 });

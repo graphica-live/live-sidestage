@@ -540,7 +540,7 @@ describe("buildPayload の区間(segments)", () => {
     expect(payload.segments).toEqual([]);
   });
 
-  it("openingWindow が実測できていれば帯を作り、カウントダウンを許可する", () => {
+  it("openingWindow が保存されていれば帯を作る(残り秒数は出さない)", () => {
     const payload = buildPayload(
       row({
         openingMultiplier: 2,
@@ -560,7 +560,7 @@ describe("buildPayload の区間(segments)", () => {
         endMs: 48_000,
         multiplier: 2,
         label: "初めてのギフト×2倍",
-        showCountdown: true,
+        showCountdown: false,
         confidence: "measured",
       },
     ]);
