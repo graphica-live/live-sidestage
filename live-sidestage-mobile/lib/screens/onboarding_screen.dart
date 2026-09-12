@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/account_deletion.dart';
+import '../core/intro_onboarding_store.dart';
 import '../core/logout.dart';
 import '../core/session_controller.dart';
 import '../models/tiktok_account_preview.dart';
@@ -9,7 +10,9 @@ import 'widgets/diamond_format.dart';
 import 'widgets/gradient_kit.dart';
 import 'widgets/user_avatar.dart';
 
-const int _linkPageIndex = 5;
+const int _introSlideCount = 5;
+/// [preLoginIntro] ログイン前の紹介5枚のみ。[postLoginLink] ログイン後のTikTok連携のみ。
+enum OnboardingPhase { preLoginIntro, postLoginLink }
 
 class _IntroSlide {
   const _IntroSlide({required this.icon, required this.title, required this.body});
@@ -22,33 +25,35 @@ class _IntroSlide {
 const _introSlides = [
   _IntroSlide(
     icon: Icons.speaker_notes_rounded,
-    title: '画面を見ずに、声で聞く',
-    body: '企画中で画面が見れない時も、配信ソフトから目を離したまま応答できます。リスナーごとに別々の声を割り当てて、読み上げを華やかにすることもできます。',
+    title: '画面を見ずに、コメントがわかる',
+    body: 'コメントを音声で読み上げるので、配信画面から目を離さずに反応できます。リスナーごとに声を変えて、誰のコメントか聞き分けることもできます。',
   ),
   _IntroSlide(
     icon: Icons.card_giftcard,
-    title: 'ギフトが届いたら、音でわかる',
-    body: '受け取ったギフトに合わせた効果音を鳴らせます。配信中も片手で対応表を触れます。',
+    title: 'ギフトが、音と演出に変わる',
+    body: 'ギフトごとに効果音や短い音楽を設定。届いたことを音で把握するだけでなく、ダンスやリアクションなど、ギフト連動の企画にも使えます。',
   ),
   _IntroSlide(
     icon: Icons.graphic_eq,
-    title: '画面オフでも、途切れない',
-    body: '読み上げと効果音はバックグラウンドでも続きます。',
+    title: '配信画面のまま、読み上げも効果音も',
+    body: '配信するスマートフォンで読み上げと効果音をONにするだけ。1台で「配信」「コメント読み上げ」「ギフト演出」を同時に使えます。',
   ),
   _IntroSlide(
     icon: Icons.emoji_events,
-    title: '貢献とギフトを、あとから見る',
-    body: '貢献タブでランキング、ギフト履歴タブで受信一覧を確認できます。日付やリスナー名で絞り込めます。',
+    title: '応援してくれた人を、見逃さない',
+    body: '貢献ランキングとギフト履歴をあとから確認。日付やリスナーで絞り込んで、誰がどれだけ応援してくれたか振り返れます。',
   ),
   _IntroSlide(
     icon: Icons.bolt,
-    title: 'バトル履歴も、ここで確認',
-    body: 'バトルタブに対戦結果が溜まります。タップすると、そのバトルの貢献者も見られます。',
+    title: 'あのバトルを、あとから振り返る',
+    body: '対戦結果や貢献者だけでなく、バトル中の流れも疑似リプレイで確認。誰が、いつ、どれだけ貢献してくれたかを振り返れます。',
   ),
 ];
 
 class OnboardingScreen extends StatefulWidget {
-  const OnboardingScreen({super.key});
+  const OnboardingScreen({super.key, required this.phase});
+
+  final OnboardingPhase phase;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -73,6 +78,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  Future<void> _finishPreLoginIntro() {
+    return context.read<IntroOnboardingStore>().markCompleted();
   }
 
   Future<void> _preview(SessionController controller) async {
@@ -102,7 +111,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<SessionController>();
-    final onLinkPage = _page == _linkPageIndex;
+    final isPreLogin = widget.phase == OnboardingPhase.preLoginIntro;
+    final linkPageIndex = isPreLogin ? -1 : 0;
+    final onLinkPage = !isPreLogin && _page == linkPageIndex;
+    final pageCount = isPreLogin ? _introSlideCount : 1;
+    final showSkip = isPreLogin;
     final sub = Theme.of(context).colorScheme.onSurfaceVariant;
 
     return Scaffold(
@@ -115,9 +128,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 height: 48,
                 child: Row(
                   children: [
-                    if (!onLinkPage)
+                    if (showSkip)
                       TextButton(
-                        onPressed: () => _goTo(_linkPageIndex),
+                        onPressed: _finishPreLoginIntro,
                         child: Text(
                           'スキップ',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: sub),
@@ -126,30 +139,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     else
                       const SizedBox(width: 72),
                     const Spacer(),
-                    PopupMenuButton<String>(
-                      tooltip: 'その他',
-                      icon: Icon(Icons.more_vert, size: 24, color: Theme.of(context).colorScheme.onSurface),
-                      onSelected: (value) async {
-                        if (value == 'logout') {
-                          final confirmed = await confirmLogout(context);
-                          if (!confirmed) return;
-                          if (!context.mounted) return;
-                          await performLogout(context);
-                        } else if (value == 'delete') {
-                          await confirmAndDeleteAccount(context);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(value: 'logout', child: Text('ログアウト')),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Text(
-                            'アカウント削除',
-                            style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    if (!isPreLogin)
+                      PopupMenuButton<String>(
+                        tooltip: 'その他',
+                        icon: Icon(Icons.more_vert, size: 24, color: Theme.of(context).colorScheme.onSurface),
+                        onSelected: (value) async {
+                          if (value == 'logout') {
+                            final confirmed = await confirmLogout(context);
+                            if (!confirmed) return;
+                            if (!context.mounted) return;
+                            await performLogout(context);
+                          } else if (value == 'delete') {
+                            await confirmAndDeleteAccount(context);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(value: 'logout', child: Text('ログアウト')),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text(
+                              'アカウント削除',
+                              style: TextStyle(color: Theme.of(context).colorScheme.error),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      )
+                    else
+                      const SizedBox(width: 48),
                   ],
                 ),
               ),
@@ -158,18 +174,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   controller: _pages,
                   onPageChanged: (i) => setState(() => _page = i),
                   children: [
-                    for (final slide in _introSlides) _IntroPage(slide: slide),
-                    _LinkPage(
-                      formKey: _formKey,
-                      controller: _tiktokHandleController,
-                      userName: controller.session?.userName ?? '',
-                      errorMessage: controller.errorMessage,
-                    ),
+                    if (isPreLogin)
+                      for (final slide in _introSlides) _IntroPage(slide: slide)
+                    else
+                      _LinkPage(
+                        formKey: _formKey,
+                        controller: _tiktokHandleController,
+                        userName: controller.session?.userName ?? '',
+                        errorMessage: controller.errorMessage,
+                      ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
-              _PageDots(count: _linkPageIndex + 1, index: _page),
+              _PageDots(count: pageCount, index: _page),
               const SizedBox(height: 16),
               KosaiPrimaryButton(
                 label: onLinkPage ? '確認する' : '次へ',
@@ -179,6 +197,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     : () {
                         if (onLinkPage) {
                           _preview(controller);
+                        } else if (isPreLogin && _page == _introSlideCount - 1) {
+                          _finishPreLoginIntro();
                         } else {
                           _goTo(_page + 1);
                         }
@@ -266,7 +286,7 @@ class _LinkPage extends StatelessWidget {
             GradientText('TikTokアカウントの連携', style: headingStyle),
             const SizedBox(height: 8),
             Text(
-              'ようこそ、$userNameさん。配信を読み上げるTikTok IDを連携してください。',
+              'ようこそ、$userNameさん。あなたのTikTok IDを連携してください。',
               style: TextStyle(fontSize: 13.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
