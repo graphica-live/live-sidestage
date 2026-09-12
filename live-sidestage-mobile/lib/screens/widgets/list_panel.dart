@@ -45,3 +45,52 @@ class ListPanel extends StatelessWidget {
     );
   }
 }
+
+/// 光彩(Kosai)の一覧パネルの sliver 版。[ListPanel] と同一の視覚(白カード+角丸18+
+/// シャドウ+行間1dp区切り線)を保ちながら、`CustomScrollView` の `slivers` 直下に置くことで
+/// 画面外の行を実際に build しない(真の仮想化)。件数が多い一覧(貢献ランキング等)専用。
+/// 件数が少ない一覧は従来通り [ListPanel] を使う。
+class ListPanelSliver extends StatelessWidget {
+  const ListPanelSliver({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+    this.margin = const EdgeInsets.fromLTRB(16, 4, 16, 4),
+    this.horizontalPadding = 14,
+  });
+
+  final int itemCount;
+  final Widget Function(BuildContext context, int index) itemBuilder;
+  final EdgeInsetsGeometry margin;
+  final double horizontalPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    final divider = kosaiRowDividerColor(context);
+    return SliverPadding(
+      padding: margin,
+      sliver: DecoratedSliver(
+        decoration: BoxDecoration(
+          color: kosaiCardColor(context),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: kosaiPanelShadow,
+        ),
+        sliver: SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (i > 0) Divider(height: 1, thickness: 1, color: divider),
+                  itemBuilder(context, i),
+                ],
+              ),
+              childCount: itemCount,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

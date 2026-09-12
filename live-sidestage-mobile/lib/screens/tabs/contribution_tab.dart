@@ -381,98 +381,103 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
 
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
-            child: GradientText(
-              '貢献',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: Text(
-              'ギフト貢献ランキング',
-              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-          ),
-          PeriodSelectorBar(
-            selection: _selection,
-            rangeLabel: _rangeLabel,
-            onChanged: _onPeriodChanged,
-            enabled: !_loading,
-            customRangeActive: _customRange != null,
-            filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
-            onOpenCustomRangeFilter: _openCustomRangeFilter,
-            onShiftCustomRange: _shiftOutOfCustomRange,
-            extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                icon: const Icon(Icons.share),
-                onPressed: _shareGiftRanking,
-              ),
-            ),
-          ),
-          if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
-          if (_loading && result == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 48),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          if (result != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: GradientBorderCard(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '表示中の合計 ${users.length}人',
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
+                  child: GradientText(
+                    '貢献',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
+                        const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                  child: Text(
+                    'ギフト貢献ランキング',
+                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ),
+                PeriodSelectorBar(
+                  selection: _selection,
+                  rangeLabel: _rangeLabel,
+                  onChanged: _onPeriodChanged,
+                  enabled: !_loading,
+                  customRangeActive: _customRange != null,
+                  filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
+                  onOpenCustomRangeFilter: _openCustomRangeFilter,
+                  onShiftCustomRange: _shiftOutOfCustomRange,
+                  extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: const Icon(Icons.share),
+                      onPressed: _shareGiftRanking,
+                    ),
+                  ),
+                ),
+                if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
+                if (_loading && result == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (result != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: GradientBorderCard(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '表示中の合計 ${users.length}人',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                          GradientText(
+                            formatWithCommas(result.total.totalDiamonds),
+                            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800, letterSpacing: -0.2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (result != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                    child: Text(
+                      'LIVE Sidestage登録後データ',
                       style: Theme.of(
                         context,
-                      ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
-                    GradientText(
-                      formatWithCommas(result.total.totalDiamonds),
-                      style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800, letterSpacing: -0.2),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          if (result != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-              child: Text(
-                'LIVE Sidestage登録後データ',
-                style: Theme.of(
-                  context,
-                ).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
-          if (!_loading && result != null && users.isEmpty)
-            const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
-          if (users.isNotEmpty)
-            ListPanel(
-              children: [
-                for (var i = 0; i < users.length; i++)
-                  RankingListTile(
-                    // 期間をkeyへ含め、期間切替で行が再マウントされるようにする
-                    // (前の期間で展開・取得済みのギフト内訳を残さないため)。
-                    key: ValueKey('${users[i].tiktokUid}_${_rangeSignature()}'),
-                    rank: i + 1,
-                    entry: users[i],
-                    fetchBreakdown: _fetchBreakdown,
                   ),
+                if (!_loading && result != null && users.isEmpty)
+                  const EmptyListNotice(message: 'この期間はまだギフトを受け取っていません'),
               ],
+            ),
+          ),
+          if (users.isNotEmpty)
+            ListPanelSliver(
+              itemCount: users.length,
+              itemBuilder: (context, i) => RankingListTile(
+                // 期間をkeyへ含め、期間切替で行が再マウントされるようにする
+                // (前の期間で展開・取得済みのギフト内訳を残さないため)。
+                key: ValueKey('${users[i].tiktokUid}_${_rangeSignature()}'),
+                rank: i + 1,
+                entry: users[i],
+                fetchBreakdown: _fetchBreakdown,
+              ),
             ),
         ],
       ),
