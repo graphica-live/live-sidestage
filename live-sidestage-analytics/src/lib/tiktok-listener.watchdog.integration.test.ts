@@ -259,4 +259,31 @@ describe("checkWatchdogs()の無応答検知バックオフ", () => {
     await cleanupStreamer(a.id);
     await cleanupRoom(roomId);
   });
+
+  it("websocketData/msgDetectだけでは生存更新せずwatchdogが発動する", async () => {
+    const tiktokHandle = `itest_wd_transport_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-wd-transport-a");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    await startListener(roomId, tiktokHandle, [a.id]);
+    const start = Date.now();
+    const conn = MockConnection.instances[0];
+
+    // 無応答窓の後半で輸送フレームだけ飛ばす。markAliveしていれば t=61s で silentFor<60s になり発火しない。
+    // Date だけ fake のまま fire する（useRealTimers すると lastEventAt が壁時計になり判定が壊れる）。
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start + 50_000);
+    conn.fire("websocketData", {});
+    conn.fire("msgDetect", {});
+    vi.setSystemTime(start + SILENCE_MS + 1_000);
+    checkWatchdogs();
+    vi.useRealTimers();
+    await vi.waitFor(() => {
+      expect(MockConnection.instances).toHaveLength(2);
+    });
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+  });
 });

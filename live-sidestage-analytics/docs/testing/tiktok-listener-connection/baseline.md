@@ -2,8 +2,8 @@
 project: live-sidestage-analytics
 feature: tiktok-listener-connection
 last_updated: 2026-09-12
-last_risk: HIGH
-last_reviewers: Codex-terra+DeepSeek+Gemini / 2026-09-11 TIKTOK_UID_MISMATCH_CHECK_DISABLEDをconnectInstance()のmismatch分岐へ適用(design-review + code-review、TestCaseレビューはcode-reviewで同時実施)
+last_risk: MEDIUM
+last_reviewers: Gemini 3.7 Flash / 2026-09-12 watchdog chat markAlive + 輸送フレーム除外(code-review、TestCaseレビューはcode-reviewで同時実施)
 ---
 
 # テストベースライン: tiktok-listener-connection
@@ -27,10 +27,11 @@ last_reviewers: Codex-terra+DeepSeek+Gemini / 2026-09-11 TIKTOK_UID_MISMATCH_CHE
 | TC-TLC-003 | api-live/user/room/呼び出しが例外(HTTPエラー等)を投げた場合、**接続せず**バックオフ再試行する | `precheckApiLive()` | 異常 | `fetchRoomInfoFromApiLive`がreject | `console.warn`ログを出しつつ`conn.connect()`を呼ばない。`listenerReason==="uid_unverifiable"`で再接続予約 | 同上(TC-TLC-003) | PASS | **2026-09 の識別子統一で fail-open から反転した。**api-liveがタイムアウト/レート制限/応答形式変更になったとき、旧仕様は照合を素通りしてconnect()していた。恒久停止にはせずバックオフ再試行に留める |
 | TC-TLC-004 | 事前チェックのHTTP待機中に`stopListener()`が呼ばれても、待機完了後に`conn.connect()`もEuler消費も発生しない | `connectAndAttach()` | 異常/negative | `isReportedOfflineByApiLive()`のawait中に`stopListener()`が呼ばれ、その後status:4の応答が届く | `connectCalls===0`。`updateState`/`conn.connect()`/`scheduleReconnect`のいずれも走らない | 同上(TC-TLC-004) | PASS | Fable指摘(race condition)により判定結果に関わらずawait直後に共通ガードを通すよう実装修正済み。テスト側の固定20ms待ちがフルintegrationスイート並列実行時に不安定だったため`vi.waitFor`ポーリングへ修正、以後test:integration全体で708/708安定PASSを確認 |
 | TC-TLC-005 | watchdog強制再接続の指数バックオフ数式(数値計算)が回帰していない | `nextReconnectBackoffMs()` | 回帰 | failureCount 1,2,3,10 | 1回目≈BASE_MS、2倍/4倍に伸長、MAX_MSで頭打ち、jitterで揺らぐ | `npx vitest run src/lib/tiktok-listener.backoff.test.ts` | PASS | 5 tests pass |
-| TC-TLC-006 | watchdog無応答検知(60秒無イベント)の強制再接続とそのバックオフが回帰していない | `checkWatchdogs()` | 回帰 | MockConnection使用、無応答60秒超過を複数回シミュレート。リセットはlikeとchatの両方 | 初回は即発火、バックオフ窓内は`skipping forced reconnect`警告でスキップ、窓超過後に再発火。like受信でもchat保存ハンドラ経由でもバックオフリセット | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.watchdog.integration.test.ts` | PASS | 4 tests pass。chatは専用`conn.on("chat", markAlive)`ではなく保存ハンドラ先頭の`markAlive()`で生存更新する |
+| TC-TLC-006 | watchdog無応答検知(60秒無イベント)の強制再接続とそのバックオフが回帰していない | `checkWatchdogs()` | 回帰 | MockConnection使用、無応答60秒超過を複数回シミュレート。リセットはlikeとchatの両方 | 初回は即発火、バックオフ窓内は`skipping forced reconnect`警告でスキップ、窓超過後に再発火。like受信でもchat保存ハンドラ経由でもバックオフリセット | `npx dotenv -e .env.local.test --override -- vitest run src/lib/tiktok-listener.watchdog.integration.test.ts` | PASS | 5 tests pass。chatは専用`conn.on("chat", markAlive)`ではなく保存ハンドラ先頭の`markAlive()`で生存更新する |
 | TC-TLC-007 | 再接続バックオフ・room状態遷移・ブロック検知の統合的な既存挙動が回帰していない | `connectInstance` / `scheduleReconnect` / room状態管理 | 回帰 | 既存integrationスイート | 全ケースPASS | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.reconnect-backoff.integration.test.ts src/lib/tiktok-listener.room.integration.test.ts src/lib/tiktok-listener.unhealthy.integration.test.ts src/lib/tiktok-listener.blocked-attempt.integration.test.ts` | PASS | 28 tests pass。TC-TLC-006と同じ理由で事前チェックはcatch分岐のみ通過 |
 | TC-TLC-008 | プロジェクト全体のunit/integrationテストが今回の変更で壊れていない | 全体 | 回帰 | - | 既知の不安定要因(下記備考)を除き全PASS | `npm run test:unit`、`npx dotenv -e .env.local.test -- vitest run`(除外なし) | PASS | 2026-09-11実測: unit 116 files/1554 tests、全体(integration込み) 217 files/2501 tests、いずれも全PASS(既知のクロスファイル干渉[[analytics-vitest-cross-file-interference]]は今回再現せず) |
-| TC-TLC-009 | watchdog強制再接続がゾンビroomを掴んだ場合も、事前チェックがconn.connect()を止める(本修正が解決する実際のシナリオ) | `checkWatchdogs()` → `connectInstance()` → `isReportedOfflineByApiLive()` | 回帰/正常 | 初回オンライン接続成功後、無応答60秒超過。watchdog発火時点でapi-live/user/room/がstatus:4を返す | watchdogが生成した2本目の接続で`connectCalls===0`、`listenerReason==="user_offline"` | `npx dotenv -e .env.local.test -- vitest run src/lib/tiktok-listener.offline-precheck.integration.test.ts` | PASS | Fable指摘(LOW: シナリオ結合ケース不在)を受け追加 |
+| TC-TLC-009 | watchdog強制再接続がゾンビroomを掴んだ場合も、事前チェックがconn.connect()を止める(本修正が解決する実際のシナリオ) | `checkWatchdogs()` → `connectInstance()` → `isReportedOfflineByApiLive()` | 回帰/正常 | 初回オンライン接続成功後、無応答60秒超過。watchdog発火時点でapi-live/user/room/がstatus:4を返す | watchdogが生成した2本目の接続で`connectCalls===0`、`listenerReason==="user_offline"` | `npx dotenv -e .env.local.test --override -- vitest run src/lib/tiktok-listener.offline-precheck.integration.test.ts` | PASS | Fable指摘(LOW: シナリオ結合ケース不在)を受け追加 |
+| TC-TLC-010 | 輸送フレーム(websocketData/msgDetect)だけでは生存更新せずwatchdog強制再接続が発動する | `checkWatchdogs()` | 異常/境界/negative | 接続後50秒で`conn.fire("websocketData")`と`conn.fire("msgDetect")`のみ | 61秒時点で`MockConnection.instances`が2本。輸送フレームが markAlive すると発火しない | `npx dotenv -e .env.local.test --override -- vitest run src/lib/tiktok-listener.watchdog.integration.test.ts` | PASS | Gemini TestCase指摘。hb/ack/プローブでゾンビを隠さない |
 
 ## Quality Gate
 
