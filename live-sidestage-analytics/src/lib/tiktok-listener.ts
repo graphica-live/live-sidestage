@@ -460,13 +460,18 @@ export async function resolveProxyForRoom(roomId: string): Promise<string | null
     select: { proxyKey: true },
   });
 
-  const existingIdx = room?.proxyKey != null ? Number(room.proxyKey) : NaN;
+  if (!room) {
+    throw new Error(`TiktokRoom not found: ${roomId}`);
+  }
+
+  const existingIdx = room.proxyKey != null ? Number(room.proxyKey) : NaN;
   if (Number.isInteger(existingIdx) && existingIdx >= 0 && existingIdx < pool.length) {
     return pool[existingIdx];
   }
 
   const idx = hashToIndex(roomId, pool.length);
-  await prisma.tiktokRoom.update({
+  // updateMany: getOrCreateDeviceId()と同じ理由(P2025回避)でupdateではなくupdateManyを使う。
+  await prisma.tiktokRoom.updateMany({
     where: { id: roomId },
     data: { proxyKey: String(idx) },
   });
@@ -3383,7 +3388,15 @@ function scheduleReconnect(roomId: string, reason: string, retryAfterMs?: number
 
   inst.reconnectTimer = setTimeout(async () => {
     inst.reconnectTimer = null;
-    await connectInstance(roomId, "scheduled_reconnect");
+    try {
+      await connectInstance(roomId, "scheduled_reconnect");
+    } catch (err) {
+      // ここでunhandled rejectionを防ぐだけで再試行を予約しないと、DBの一時的な
+      // 障害(getOrCreateDeviceId/resolveProxyForRoom等の失敗)がroomを再接続タイマー
+      // なしのまま無期限に停止させてしまう(code-review Codex指摘、TC-TLC-011回帰)。
+      console.error(`[listener] scheduled reconnect failed for ${roomId}:`, err);
+      scheduleReconnect(roomId, "connect_failed");
+    }
   }, delay);
 }
 

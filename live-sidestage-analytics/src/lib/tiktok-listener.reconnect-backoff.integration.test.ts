@@ -201,4 +201,77 @@ describe("scheduleReconnect()の署名取得後失敗バックオフ", () => {
     await cleanupStreamer(a.id);
     await cleanupRoom(roomId);
   });
+
+  it("再接続待機中にroom行が削除されてもunhandled rejectionでプロセスをクラッシュさせない(worker2 P2025回帰)", async () => {
+    const tiktokHandle = `itest_rb_deleted_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-rb-deleted-a");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => unhandledRejections.push(reason);
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      await startListener(roomId, tiktokHandle, [a.id]);
+      MockConnection.instances[0].fire("disconnected");
+      expect(snapshotFor(roomId)?.reconnectFailureCount).toBe(1);
+
+      // worker2実クラッシュのTOCTOU再現: 再接続がスケジュールされた直後にroom行がDBから消える。
+      // scheduleReconnect()のsetTimeoutコールバックがconnectInstance()由来の例外をcatchせず
+      // awaitしていると、ここでunhandled rejectionになりプロセスが落ちる。
+      await cleanupRoom(roomId);
+
+      // スケジュールされた再接続(バックオフ上限80秒+jitter最大12秒のうち、1回目のdelayは
+      // 10秒台)の発火猶予を待つ。プロセスが生きていることの主張は unhandledRejections が
+      // 空のまま経過することそのもの。
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+
+      expect(unhandledRejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+      await stopListener(roomId).catch(() => {});
+      await cleanupStreamer(a.id);
+    }
+  }, 30_000);
+
+  it("再接続時のDBエラーからも自動的に再試行し、listenerが無期限停止しない(code-review Codex指摘、TC-TLC-011回帰の副作用修正)", async () => {
+    const tiktokHandle = `itest_rb_recover_${Date.now()}`;
+    const a = await createStreamer(tiktokHandle, "itest-rb-recover-a");
+    const roomId = await resolveRoomForStreamer(a.id);
+
+    await startListener(roomId, tiktokHandle, [a.id]);
+    MockConnection.instances[0].fire("disconnected");
+    expect(snapshotFor(roomId)?.reconnectFailureCount).toBe(1);
+
+    // 一時的なDB障害を模してroom行を削除する。scheduled reconnectがconnectInstance()の
+    // 失敗をcatchするだけで再試行を予約しないと、このroomは再接続タイマーなしのまま
+    // 無期限に停止する(単に例外を握りつぶすだけの実装が生む新しいサイレント停止)。
+    await cleanupRoom(roomId);
+
+    // 1回目の再接続失敗後、reconnectFailureCountがさらに増えて次のリトライが
+    // 自動的にスケジュールされていることを確認する。
+    await vi.waitFor(
+      () => {
+        expect(snapshotFor(roomId)?.reconnectFailureCount).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 20_000 }
+    );
+
+    // DB障害が解消したことを模して、同じidでroom行を復元する。
+    await prisma.tiktokRoom.create({
+      data: { id: roomId, tiktokHandle, hostTiktokUid: makeTiktokUid(tiktokHandle) },
+    });
+
+    // 次にスケジュールされたリトライで接続が成功し、新しいMockConnectionが作られる。
+    await vi.waitFor(
+      () => {
+        expect(MockConnection.instances.length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 60_000 }
+    );
+
+    await stopListener(roomId);
+    await cleanupStreamer(a.id);
+    await cleanupRoom(roomId);
+  }, 90_000);
 });
