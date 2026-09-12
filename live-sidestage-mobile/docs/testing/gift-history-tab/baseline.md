@@ -3,7 +3,7 @@ project: live-sidestage-mobile
 feature: ギフト履歴タブ(GiftHistoryTab)
 last_updated: 2026-09-12
 last_risk: MEDIUM
-last_reviewers: (code-review 後に更新)
+last_reviewers: Gemini(agy、Code Mode、medium)。Batch03 ListPanelSliver+_events
 ---
 
 # テストベースライン: ギフト履歴タブ(GiftHistoryTab)
@@ -29,8 +29,8 @@ last_reviewers: (code-review 後に更新)
 
 ## Quality Gate
 
-- `flutter analyze lib/screens/tabs/gift_history_tab.dart`
-- `flutter test test/gift_history_event_test.dart test/realtime_sync_test.dart`
+- `flutter analyze lib/screens/tabs/gift_history_tab.dart` → PASS(2026-09-12)
+- `flutter test test/gift_history_event_test.dart test/realtime_sync_test.dart` → PASS(18/18)
 
 ## Out of Scope
 
