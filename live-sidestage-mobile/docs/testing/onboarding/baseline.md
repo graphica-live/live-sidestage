@@ -1,7 +1,7 @@
 ---
 project: live-sidestage-mobile
 feature: onboarding
-last_updated: 2026-09-11
+last_updated: 2026-09-12
 last_risk: HIGH
 last_reviewers: DeepSeek(TestCase,402)→Gemini(agy)
 ---
@@ -16,7 +16,7 @@ last_reviewers: DeepSeek(TestCase,402)→Gemini(agy)
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TC-MOB-001 | 未登録セッションは紹介1枚目から始まる | `OnboardingScreen` | UI | `onboardingRequired: true` | 「画面を見ずに、声で聞く」と「スキップ」「次へ」が出る。入力欄は出ない | `flutter test test/onboarding_screen_test.dart` | PASS | |
 | TC-MOB-002 | スキップで連携ページへ | `OnboardingScreen` | UI | 紹介表示中にスキップ | 「TikTokアカウントの連携」「確認する」。スキップは消える | 同上 | PASS | |
-| TC-MOB-003 | 次へで3枚進んで連携へ | `OnboardingScreen` | UI | 次へを3回 | ギフト→画面オフ→連携ページ | 同上 | PASS | |
+| TC-MOB-003 | 次へで5枚進んで連携へ | `OnboardingScreen` | UI | 次へを5回 | ギフト→画面オフ→貢献/ギフト→バトル→連携ページ | 同上 | PASS | |
 | TC-MOB-004 | 空IDはシートを出さない | `OnboardingScreen` | 異常 | 連携ページで空のまま確認する | インライン「TikTok IDを入力してください」。確認シートなし | 同上 | PASS | |
 | TC-MOB-005 | overflowからアカウント削除確認 | `OnboardingScreen` | UI | その他→アカウント削除 | 削除確認ダイアログ。キャンセルでセッション残る | `flutter test test/account_deletion_dialog_test.dart` | PASS | |
 | TC-MOB-006 | preview 未認証は401 | `live-sidestage-analytics/POST /api/mobile/streamer/preview` | 異常 | Bearerなし | 401、TikTok照会しない | `npx vitest run src/app/api/mobile/streamer/preview/route.test.ts` | PASS | |

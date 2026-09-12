@@ -167,6 +167,14 @@ void main() {
 
     await tester.tap(find.text('次へ'));
     await tester.pumpAndSettle();
+    expect(find.text('貢献とギフトを、あとから見る'), findsOneWidget);
+
+    await tester.tap(find.text('次へ'));
+    await tester.pumpAndSettle();
+    expect(find.text('バトル履歴も、ここで確認'), findsOneWidget);
+
+    await tester.tap(find.text('次へ'));
+    await tester.pumpAndSettle();
     expect(find.text('TikTokアカウントの連携'), findsOneWidget);
   });
 

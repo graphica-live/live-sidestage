@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>onboarding-kosai comp</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0" />
   <style>
     :root {
       --bg: #FAF7F5;
@@ -47,6 +48,7 @@
       display: flex; align-items: center; justify-content: center;
       color: #fff; font-size: 28px;
     }
+    .hero .material-symbols-rounded { font-size: 44px; }
     h1 {
       margin: 18px 0 8px;
       font-family: "Zen Maru Gothic", "Noto Sans JP", sans-serif;
@@ -112,12 +114,12 @@
       <div class="scr">
         <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
         <div class="body">
-          <div class="hero">♪</div>
+          <div class="hero"><span class="material-symbols-rounded">text_to_speech</span></div>
           <h1>画面を見ずに、声で聞く</h1>
-          <p class="copy">TikTok LiveのコメントをVOICEVOXが読み上げます。配信ソフトから目を離さずに応答できます。</p>
+          <p class="copy">企画中で画面が見れない時も、配信ソフトから目を離したまま応答できます。リスナーごとに別々の声を割り当てて、読み上げを華やかにすることもできます。</p>
         </div>
         <div class="foot">
-          <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="dots"><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
           <div class="cta">次へ</div>
         </div>
       </div>
@@ -131,7 +133,7 @@
           <p class="copy">受け取ったギフトに合わせた効果音を鳴らせます。配信中も片手で対応表を触れます。</p>
         </div>
         <div class="foot">
-          <div class="dots"><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="dots"><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
           <div class="cta">次へ</div>
         </div>
       </div>
@@ -142,15 +144,43 @@
         <div class="body">
           <div class="hero">〰</div>
           <h1>画面オフでも、途切れない</h1>
-          <p class="copy">読み上げと効果音はバックグラウンドでも続きます。開始してから60分ライブが無ければ自動で停止します。</p>
+          <p class="copy">読み上げと効果音はバックグラウンドでも続きます。</p>
         </div>
         <div class="foot">
-          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span></div>
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
           <div class="cta">次へ</div>
         </div>
       </div>
     </div>
     <div class="phone" id="p3">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero"><span class="material-symbols-rounded">emoji_events</span></div>
+          <h1>貢献とギフトを、あとから見る</h1>
+          <p class="copy">貢献タブでランキング、ギフト履歴タブで受信一覧を確認できます。日付やリスナー名で絞り込めます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p4">
+      <div class="scr">
+        <div class="top"><span class="skip">スキップ</span><span class="more">⋮</span></div>
+        <div class="body">
+          <div class="hero"><span class="material-symbols-rounded">bolt</span></div>
+          <h1>バトル履歴も、ここで確認</h1>
+          <p class="copy">バトルタブに対戦結果が溜まります。タップすると、そのバトルの貢献者も見られます。</p>
+        </div>
+        <div class="foot">
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span><span class="dot"></span></div>
+          <div class="cta">次へ</div>
+        </div>
+      </div>
+    </div>
+    <div class="phone" id="p5">
       <div class="scr">
         <div class="top"><span class="skip" style="visibility:hidden">スキップ</span><span class="more">⋮</span></div>
         <div class="link-body">
@@ -160,12 +190,12 @@
           <div class="note">連携後7日間はIDを変更できません。本人のアカウントか確認してから進めてください。</div>
         </div>
         <div class="foot">
-          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>
           <div class="cta">確認する</div>
         </div>
       </div>
     </div>
-    <div class="phone" id="p4">
+    <div class="phone" id="p6">
       <div class="scr">
         <div class="top"><span class="skip" style="visibility:hidden">スキップ</span><span class="more">⋮</span></div>
         <div class="link-body">
@@ -174,7 +204,7 @@
           <div class="field"><label>TikTok ID（@なし）</label><div class="val">your_handle</div></div>
         </div>
         <div class="foot">
-          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>
+          <div class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot on"></span></div>
           <div class="cta">確認する</div>
         </div>
         <div class="sheet-wrap">

@@ -9,7 +9,7 @@ import 'widgets/diamond_format.dart';
 import 'widgets/gradient_kit.dart';
 import 'widgets/user_avatar.dart';
 
-const int _linkPageIndex = 3;
+const int _linkPageIndex = 5;
 
 class _IntroSlide {
   const _IntroSlide({required this.icon, required this.title, required this.body});
@@ -21,9 +21,9 @@ class _IntroSlide {
 
 const _introSlides = [
   _IntroSlide(
-    icon: Icons.record_voice_over,
+    icon: Icons.speaker_notes_rounded,
     title: '画面を見ずに、声で聞く',
-    body: 'TikTok LiveのコメントをVOICEVOXが読み上げます。配信ソフトから目を離さずに応答できます。',
+    body: '企画中で画面が見れない時も、配信ソフトから目を離したまま応答できます。リスナーごとに別々の声を割り当てて、読み上げを華やかにすることもできます。',
   ),
   _IntroSlide(
     icon: Icons.card_giftcard,
@@ -33,7 +33,17 @@ const _introSlides = [
   _IntroSlide(
     icon: Icons.graphic_eq,
     title: '画面オフでも、途切れない',
-    body: '読み上げと効果音はバックグラウンドでも続きます。開始してから60分ライブが無ければ自動で停止します。',
+    body: '読み上げと効果音はバックグラウンドでも続きます。',
+  ),
+  _IntroSlide(
+    icon: Icons.emoji_events,
+    title: '貢献とギフトを、あとから見る',
+    body: '貢献タブでランキング、ギフト履歴タブで受信一覧を確認できます。日付やリスナー名で絞り込めます。',
+  ),
+  _IntroSlide(
+    icon: Icons.bolt,
+    title: 'バトル履歴も、ここで確認',
+    body: 'バトルタブに対戦結果が溜まります。タップすると、そのバトルの貢献者も見られます。',
   ),
 ];
 
