@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' show DateTimeRange;
+import 'package:flutter/scheduler.dart';
 
 /// 貢献/ギフト履歴/バトル履歴タブが共有する期間種別。サーバー側 `period` クエリと同じ4値。
 enum AnalyticsPeriod {
@@ -162,4 +163,21 @@ String formatDateTimeRangeLabel(DateTimeRange utcRange) {
 bool customRangeContainsNow(DateTimeRange utcRange) {
   final now = DateTime.now().toUtc();
   return !now.isBefore(utcRange.start) && !now.isAfter(utcRange.end);
+}
+
+/// FREE等で拡張期間(週/月/年)不可のとき、day以外の選択を今日のdayへ戻す。
+void scheduleClampToDayOnlyHistoryPeriod({
+  required bool mounted,
+  required bool extendedRangeAllowed,
+  required bool hasCustomRange,
+  required AnalyticsPeriodSelection selection,
+  required void Function(AnalyticsPeriodSelection clamped) onClamp,
+}) {
+  if (extendedRangeAllowed || hasCustomRange || selection.period == AnalyticsPeriod.day) {
+    return;
+  }
+  SchedulerBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
+    onClamp(AnalyticsPeriodSelection.today());
+  });
 }

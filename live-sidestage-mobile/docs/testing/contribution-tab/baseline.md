@@ -47,7 +47,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-007 | 未認証(トークン無し)は401 | `GET /api/mobile/analytics/gifts/breakdown` | 異常 | Authorization ヘッダ無し | ステータス401 | `analytics: npx dotenv -e .env.local.test -- npx vitest run src/app/api/mobile/analytics/gifts/breakdown/route.integration.test.ts` | PASS | |
 | TC-CT-008 | `tiktokUid` 未指定は400 | 同上 | 異常 | トークンあり、`tiktokUid` パラメータ無し | ステータス400 | 同上 | PASS | |
 | TC-CT-009 | Streamer は存在するが room 未接続の場合、内訳なしで200 | 同上 | 境界 | room未接続のstreamerトークン | `gifts: []`、`coverage.detailAvailable: false` | 同上 | PASS | |
-| TC-CT-010 | FREEプランは month/year/カスタム範囲の内訳取得を拒否される | 同上 + `requireHistoryPlan` | 異常/権限差 | FREEプラントークン、`period=month` | ステータス403 | 同上 | PASS | |
+| TC-CT-010 | FREEプランは week/month/year/カスタム範囲の内訳取得を拒否される | 同上 + `requireHistoryPlan` | 異常/権限差 | FREEプラントークン、`period=week` または `period=month` | ステータス403 | 同上 | PASS | 2026-09-12 weekをFREEから除外 |
 | TC-CT-011 | day期間内のギフトをギフト名別に集計して返す(明細が残っている期間、他ユーザー分は混ざらない) | 同上 + `queryGiftBreakdown` | 正常 | 同一room内 `fan_a`(2ギフト種別)・`fan_b`(別ユーザー) | `fan_a` のみ集計、`total`・`gifts` が totalDiamonds 降順で一致 | 同上 | PASS | |
 | TC-CT-014 | `fetchBreakdown` 未指定時(バトル履歴タブ)、順位メダル部分にもタップ領域が残る(退行防止) | `RankingListTile`(バトル履歴タブ) | 回帰 | `fetchBreakdown` 未指定 | 順位メダル部分に `InkWell` が存在する(プロフィール遷移の呼び出し自体はurl_launcherのモック手段が無いため対象外) | `flutter test test/ranking_list_tile_test.dart --plain-name "順位メダル部分にもタップ領域"` | PASS | |
 | TC-CT-015 | `tiktokHandle` が null(TikTokUser 行が無い送信者)の行はプロフィール遷移のタップを受け付けない | `RankingListTile`(バトル履歴タブ) | 異常/データ欠損 | `tiktokHandle: null`、`fetchBreakdown` 未指定 | 行内の `InkWell`・アバターの `GestureDetector` の `onTap` が全て null(`https://www.tiktok.com/@` を組み立てられないため導線を出さない) | `flutter test test/ranking_list_tile_test.dart --plain-name "タップを受け付けない"` | PASS | |

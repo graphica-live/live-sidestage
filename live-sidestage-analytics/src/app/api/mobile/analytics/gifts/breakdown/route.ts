@@ -9,7 +9,7 @@ import { jstDateKey } from "@/lib/overlay/day-key";
 // Web版 /api/analytics/gifts/breakdown と同じ src/lib/gift-breakdown.ts を使うが、
 // 認証はNextAuthセッションでなくモバイルJWT(resolveMobileAnalyticsContext)。
 // 期間の解釈は貢献/ギフト履歴/バトル履歴と同じ parseRangeQuery を通し、
-// month/year/カスタム範囲は同じ requireHistoryPlan でプラン判定する
+// week/month/year/カスタム範囲は同じ requireHistoryPlan でプラン判定する
 // (breakdownは単独で叩けるエンドポイントなので、ranking側のゲートに依存しない)。
 const buildUnregisteredResponse = () =>
   NextResponse.json({

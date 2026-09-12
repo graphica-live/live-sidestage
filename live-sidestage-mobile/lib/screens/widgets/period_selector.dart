@@ -55,7 +55,7 @@ class PeriodSelectorBar extends StatelessWidget {
   /// [customRangeActive]中は◀/▶を無効化したままにする。
   final ValueChanged<bool>? onShiftCustomRange;
 
-  /// FREEプランではmonth/yearを選べない(履歴の遡り期間制限)。選択自体は拒否せず、
+  /// FREEプランではweek/month/yearを選べない(履歴はdayのみ)。選択自体は拒否せず、
   /// 押されたらアップグレード誘導を出す(§14と同じ「onPressedをnullにしない」方針)。
   final bool extendedRangeAllowed;
 
@@ -64,7 +64,8 @@ class PeriodSelectorBar extends StatelessWidget {
   /// (`AnalyticsPeriod`自体は貢献/バトル履歴タブと共有のため、削除ではなく絞り込みで扱う)。
   final List<AnalyticsPeriod> availablePeriods;
 
-  bool _isExtendedPeriod(AnalyticsPeriod p) => p == AnalyticsPeriod.month || p == AnalyticsPeriod.year;
+  bool _isExtendedPeriod(AnalyticsPeriod p) =>
+      p == AnalyticsPeriod.week || p == AnalyticsPeriod.month || p == AnalyticsPeriod.year;
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +92,7 @@ class PeriodSelectorBar extends StatelessWidget {
                       ? null
                       : () {
                           if (!extendedRangeAllowed && _isExtendedPeriod(p)) {
-                            showUpgradeRequiredNotice(context, '月・年での表示はPRO/ULTRAプランで利用できます');
+                            showUpgradeRequiredNotice(context, '週・月・年での表示はPRO/ULTRAプランで利用できます');
                             return;
                           }
                           if (!periodControlsEnabled) {

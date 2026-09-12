@@ -392,6 +392,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         ? snapshotEntities.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
         : result?.users ?? const [];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    scheduleClampToDayOnlyHistoryPeriod(
+      mounted: mounted,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      hasCustomRange: _customRange != null,
+      selection: _selection,
+      onClamp: (clamped) => _changePeriod(() => _selection = clamped),
+    );
 
     return RefreshIndicator(
       onRefresh: _load,

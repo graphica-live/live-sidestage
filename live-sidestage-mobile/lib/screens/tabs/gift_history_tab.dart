@@ -280,6 +280,16 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
         ? storeHistory.map(GiftHistoryEvent.tryParse).whereType<GiftHistoryEvent>().toList()
         : result?.events ?? const [];
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    scheduleClampToDayOnlyHistoryPeriod(
+      mounted: mounted,
+      extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
+      hasCustomRange: _customRange != null,
+      selection: _selection,
+      onClamp: (clamped) {
+        setState(() => _selection = clamped);
+        _load();
+      },
+    );
 
     return RefreshIndicator(
       onRefresh: _load,

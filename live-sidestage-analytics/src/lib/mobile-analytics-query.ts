@@ -188,8 +188,8 @@ export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-// 貢献/ギフト履歴/バトル履歴の3ルート共通のプラン判定。month/year/カスタム範囲と
-// リスナー名フィルタはPRO/ULTRA限定機能なので、パース成功後にここでrequireFeatureへ渡す。
+// 貢献/ギフト履歴/バトル履歴の3ルート共通のプラン判定。FREEはdayのみ。week/month/year/
+// カスタム範囲とリスナー名フィルタはPRO/ULTRA限定なので、パース成功後にrequireFeatureへ渡す。
 // resolveMobileAnalyticsContext()のstreamer.principalIdをそのまま渡せる(principalIdはStreamerが
 // 1:1で持つ列なのでJWTのprincipalIdと同一)。
 export async function requireHistoryPlan(
@@ -197,7 +197,10 @@ export async function requireHistoryPlan(
   params: { range: RangeQuery; listenerQuery: string | null }
 ): Promise<NextResponse | null> {
   const usesExtendedRange =
-    params.range.mode === "custom" || params.range.period === "month" || params.range.period === "year";
+    params.range.mode === "custom" ||
+    params.range.period === "week" ||
+    params.range.period === "month" ||
+    params.range.period === "year";
   if (usesExtendedRange) {
     const denied = await requireFeature(principalId, "mobile.history.extendedRange");
     if (denied) return denied;
