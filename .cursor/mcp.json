@@ -5,9 +5,7 @@
       "command": "codegraph",
       "args": [
         "serve",
-        "--mcp",
-        "--path",
-        "C:\\dev\\live-sidestage"
+        "--mcp"
       ]
     }
   }
