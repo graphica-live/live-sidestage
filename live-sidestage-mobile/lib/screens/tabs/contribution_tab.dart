@@ -11,9 +11,11 @@ import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
 import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
+import '../../core/upgrade_notice.dart';
 import '../../models/gift_breakdown.dart';
 import '../../models/gift_ranking_entry.dart';
 import '../widgets/analytics_status.dart';
+import '../widgets/arrow_share_icon.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/diamond_format.dart';
 import '../widgets/gradient_kit.dart';
@@ -47,6 +49,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   List<GiftRankingEntry> _users = const [];
   String? _error;
   bool _loading = false;
+  bool _shareInProgress = false;
 
   /// 見えていない間に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
   bool _dirty = false;
@@ -355,9 +358,9 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   Future<void> _shareGiftRanking() async {
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
-    if (token == null) return;
+    if (token == null || _shareInProgress) return;
 
-    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _shareInProgress = true);
     final customRange = _customRange;
 
     try {
@@ -373,14 +376,13 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       );
       if (!mounted) return;
       await Clipboard.setData(ClipboardData(text: url));
-      messenger.showSnackBar(
-        const SnackBar(content: Text('コピーしました')),
-      );
+      if (!mounted) return;
+      showClipboardCopiedNotice(context);
     } catch (_) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        const SnackBar(content: Text('コピーに失敗しました')),
-      );
+      showClipboardCopyFailedNotice(context);
+    } finally {
+      if (mounted) setState(() => _shareInProgress = false);
     }
   }
 
@@ -443,15 +445,22 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                   onOpenCustomRangeFilter: _openCustomRangeFilter,
                   onShiftCustomRange: _shiftOutOfCustomRange,
                   extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      icon: const Icon(Icons.share),
-                      onPressed: _shareGiftRanking,
-                    ),
+                  dateNavTrailing: IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: '共有リンクをコピー',
+                    onPressed: _shareInProgress ? null : _shareGiftRanking,
+                    icon: _shareInProgress
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : const ArrowShareIcon(size: 16),
                   ),
                 ),
                 if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),

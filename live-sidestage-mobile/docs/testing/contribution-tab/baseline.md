@@ -3,7 +3,7 @@ project: live-sidestage-mobile
 feature: 貢献タブ(ContributionTab)
 last_updated: 2026-09-12
 last_risk: MEDIUM
-last_reviewers: Gemini Code Mode(medium) @ contribution-perf `_users`統合(batch34ロールバック+containsToday snapshot)。test-auto @ 2026-09-12
+last_reviewers: Gemini Code Mode(medium) @ contribution-perf `_users`統合; Gemini(agy, share-copy-ui LOW) test-auto 2026-09-12
 ---
 
 # テストベースライン: 貢献タブ(ContributionTab)
@@ -57,8 +57,8 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab._onRankingSnapshot` + `_users` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合)、かつ表示期間が「今日」を含む | `_applyRankingSnapshotUsers`で`_users`が更新される。過去日のみの表示中はlive snapshotで`_users`を上書きしない | `flutter test test/realtime_sync_test.dart` + コードレビュー | PASS | 2026-09-12 perf統合 |
 | TC-CT-029 | 既存データ表示中の再取得(silent)時、細いプログレスが出て期間セレクタは有効のまま | `ContributionTab._load(silent:)` + `PeriodSelectorBar` | UI/正常 | `_result != null`でpush/resync/日付切替によりsilent `_load`実行 | 取得中は`LinearProgressIndicator`表示、`PeriodSelectorBar.enabled`はtrue、完了/失敗後にインジケータ非表示 | 実機確認(Pixel 7a) | NOT RUN | Windows。Gemini test plan @ perf統合 |
 | TC-CT-018 | REST取得直後、サーバーの現在versionより1小さいversionのpushを欠損と誤判定しない | `RankingSyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが7、直後に届くpushがversion 8 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, epoch, version: 7)`でtrackerを実際のREST版数へ同期するため、version 8のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | |
-| TC-CT-019 | 貢献タブの期間ナビ行にシェアアイコン(バトル履歴と同じ共有アイコン)が表示される | `ContributionTab`(`_shareGiftRanking` の `IconButton`) | UI/正常 | 貢献タブを開く | 期間ナビ行の右端に `Icons.share` のアイコンボタンが表示される | 実機確認(Pixel 7a) | PASS | `SliverToBoxAdapter`化後も表示位置・挙動に変化が無いことを2026-09-12(Batch02)実機で再確認 |
-| TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗をSnackBarで通知する | `ContributionTab._shareGiftRanking` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後「コピーしました」のSnackBar (b)「コピーに失敗しました」のSnackBar | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: ローカルdevバックエンドへの実機到達がファイアウォールでブロック(既存の既知制約) (b)PASS(既存確認済み) | 成功パスのAPI契約自体は`[unit-int]`で担保 |
+| TC-CT-019 | 貢献タブの期間ナビ行(◀/▶)右端に web と同じ矢印共有アイコンが表示される | `ContributionTab`(`PeriodSelectorBar.dateNavTrailing`) | UI/正常 | 貢献タブを開く | ◀/▶行の右端に `ArrowShareIcon`(16dp)のボタン。独立した縦行は無い | 実機確認(Pixel 7a) | NOT RUN | adb/Marionette MCP未接続。web Playwrightで同一UIパターン確認済 |
+| TC-CT-020 | シェアボタンは現在の期間指定でURLを発行しクリップボードへコピー、成功/失敗を目立つ通知で知らせる | `ContributionTab._shareGiftRanking` / `showClipboardCopiedNotice` | 正常/異常 | (a)`fetchGiftRankingShareUrl` 成功 (b)ネットワークエラー・401等で例外 | (a)`Clipboard.setData`後 primary色の floating SnackBar「共有リンクをコピーしました」(check icon付き) (b)「コピーに失敗しました」 | 実機確認(Pixel 7a) + `[unit-int]` | (a)NOT RUN: 実機→本番APIのみ(既知) (b)PASS(既存) | `[unit-int]` gifts/share 5/5 PASS(2026-09-12 test-auto) |
 | TC-CT-021 | アプリ起動時に`RankingSyncStore`/`CommentFeed`のProvider登録漏れが無く、貢献タブが例外で真っ白にならない | `main.dart`(`LiveSidestageApp`の`MultiProvider`) + `ContributionTab.initState` | 回帰 | アプリ起動(`LiveSidestageApp`を実際にpump) | `Provider.of<CommentFeed>`/`Provider.of<RankingSyncStore>`等が`ProviderNotFoundException`を投げない。実機では貢献タブがランキング一覧を表示する(白画面にならない) | `flutter test test/widget_test.dart --plain-name "Provider登録"` + 実機確認(Pixel 7a) | PASS | |
 | TC-CT-023 | 大規模room(数百〜約1900人規模)でランキング行を表示しても操作不能になるほど重くならない(画面外の行が即座に全件構築されない) | `ContributionTab`(`CustomScrollView`+`ListPanelSliver`+`_users`) | 性能/回帰 | 約1900人規模roomの貢献タブを開く | スクロールが実用的な速度で追従する。日付◀/▶で別日(約1892人)へ切替後も一覧が表示され操作可能 | 実機確認(Pixel 7a、adb) | NOT RUN | Windows。build()毎snapshot parse廃止は統合済 |
 | TC-CT-024 | 少人数room(約240人規模)でも見た目・動作に変化が無い | `ContributionTab`(`CustomScrollView`+`ListPanelSliver`) | 回帰 | 約240人規模roomの貢献タブを開く | `ListView`版と同じ見た目・スクロール挙動 | 実機確認(Pixel 7a) | NOT RUN: 別配信者アカウント(約240人規模room)が本ラウンドで用意できず未実施 | 残タスク(推奨)として引き継ぎ |

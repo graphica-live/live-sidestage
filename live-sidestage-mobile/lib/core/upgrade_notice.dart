@@ -51,3 +51,44 @@ void showTimedNotice(BuildContext context, String message) {
     _lockedNoticeDuration,
   );
 }
+
+const Duration _clipboardNoticeDuration = Duration(seconds: 3);
+
+/// 共有リンク等をクリップボードへ入れた直後の案内。通常 SnackBar より目立つ floating 表示。
+void showClipboardCopiedNotice(
+  BuildContext context, {
+  String message = '共有リンクをコピーしました',
+}) {
+  final scheme = Theme.of(context).colorScheme;
+  _showTimedSnackBar(
+    context,
+    SnackBar(
+      content: Row(
+        children: [
+          Icon(Icons.check_circle_rounded, color: scheme.onPrimary, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: scheme.primary,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      duration: _clipboardNoticeDuration,
+    ),
+    _clipboardNoticeDuration,
+  );
+}
+
+void showClipboardCopyFailedNotice(BuildContext context) {
+  _showTimedSnackBar(
+    context,
+    const SnackBar(content: Text('コピーに失敗しました')),
+    _lockedNoticeDuration,
+  );
+}

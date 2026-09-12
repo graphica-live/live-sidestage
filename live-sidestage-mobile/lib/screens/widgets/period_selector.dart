@@ -22,6 +22,7 @@ class PeriodSelectorBar extends StatelessWidget {
     this.onShiftCustomRange,
     this.extendedRangeAllowed = true,
     this.availablePeriods = AnalyticsPeriod.values,
+    this.dateNavTrailing,
   });
 
   final AnalyticsPeriodSelection selection;
@@ -63,6 +64,9 @@ class PeriodSelectorBar extends StatelessWidget {
   /// 選ばせても0件にしかならないため、呼び出し側でここから外す
   /// (`AnalyticsPeriod`自体は貢献/バトル履歴タブと共有のため、削除ではなく絞り込みで扱う)。
   final List<AnalyticsPeriod> availablePeriods;
+
+  /// ◀ 期間ラベル ▶ 行の右端(例: 共有ボタン)。縦行を増やさないためここに置く。
+  final Widget? dateNavTrailing;
 
   bool _isExtendedPeriod(AnalyticsPeriod p) => p == AnalyticsPeriod.month || p == AnalyticsPeriod.year;
 
@@ -144,6 +148,7 @@ class PeriodSelectorBar extends StatelessWidget {
                     ? () => onChanged(selection.shiftNext())
                     : (canShiftCustomRange ? () => onShiftCustomRange!(true) : null),
               ),
+              if (dateNavTrailing != null) dateNavTrailing!,
             ],
           ),
         ),
