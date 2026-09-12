@@ -1,14 +1,14 @@
 ---
 project: live-sidestage-analytics
 feature: admin-workers-signature-usage
-last_updated: 2026-09-11
-last_risk: HIGH
-last_reviewers: DeepSeek + Codex(Code Mode + TestCase Mode)
+last_updated: 2026-09-12
+last_risk: MEDIUM
+last_reviewers: Codex(Code Mode)
 ---
 
 # テストベースライン: admin-workers-signature-usage
 
-admin/workers画面の監視対象一覧に「署名消費(24時間)」「コラボ署名消費(24時間)」列と、その合計値表示を追加する機能。`fetchAdminRoomList()`（src/lib/worker-status.ts）の`includeSignatureUsage24h`オプション、`GET /api/admin/workers`、画面上のテーブル・見出し合計値を対象とする。
+admin/workers画面の監視対象一覧に「署名消費(24時間)」「コラボ署名消費(24時間)」列と、その合計値表示を追加する機能。`fetchAdminRoomList()`（src/lib/worker-status.ts）の`includeSignatureUsage24h`オプション、`GET /api/admin/workers/room-usage`（集計専用。`GET /api/admin/workers`の15秒ポーリングとは分離）、画面上のテーブル・見出し合計値を対象とする。
 
 前提として、コラボ/バトル検知の発見元roomIDを`TiktokRoom.lastCollabSourceRoomId`/`lastCollabSourceAt`へ永続化する変更（`ensureRoomWatchedForCollab()`/`watchDiscoveredRooms()`、src/lib/tiktok-room.ts・src/lib/tiktok-listener.ts）も含む。管理者用デバッグ機能であり、本番のworker監視ループ・署名発行フロー（`connectInstance`/`signedWebSocketProvider`/`recordEulerSignUsage`）には一切触れない設計。
 
@@ -40,7 +40,8 @@ admin/workers画面の監視対象一覧に「署名消費(24時間)」「コラ
 | TC-AWS-015 | UI: 見出し横に合計値(署名消費(24h)・週間署名消費・コラボ署名消費(24h))が表示される | `/admin/workers` 見出し | UI | 同上 | `署名消費(24h):<数値> 週間署名消費:<数値> コラボ署名消費(24h):<数値>`が見出し内に表示される | Playwright | PASS | 合計は表示中(フィルタ適用後・ADMIN_ROOM_LIST_LIMIT枠内)のroom分。全room厳密合計ではない。TestCaseレビュー(DeepSeek)反映で3つ目の合計を追記 |
 | TC-AWS-016 | UI: 「署名消費(24時間)」列のソートボタンが機能する | `/admin/workers` テーブル | UI | 「署名消費(24時間)」列のソートボタンをクリック | 昇順/降順が切り替わり一覧の並びが変わる | Playwright | PASS | |
 | TC-AWS-016a | signatureUsage24hCount / collabSignatureUsage24hCount列のソート(0/1/N件・null混在)が正しい順序になる | `sortAssignedRooms` | 境界 | 値0・1・複数・nullが混在する配列 | 昇順・降順ともにnullは末尾固定、数値は正しく順序化される | `npx vitest run "src/app/(dashboard)/admin/workers/sort-rooms.test.ts"` | PASS | TestCaseレビュー(Codex/DeepSeek)反映。既存はweeklyEulerSignUsageCountのみ検証だった |
-| TC-AWS-017 | UI: 15秒ポーリングでエラーなく更新される | `/admin/workers` | UI/回帰 | 画面を開いたまま15秒以上待つ | コンソールエラー・ネットワークエラー無く再描画される | Playwright | PASS | |
+| TC-AWS-017 | UI: 15秒ポーリングでエラーなく更新される | `/admin/workers` | UI/回帰 | 画面を開いたまま15秒以上待つ | コンソールエラー・ネットワークエラー無く再描画される。`/api/admin/workers`のみ再取得し、`/api/admin/workers/room-usage`は再取得しない | Playwright | PASS | 2026-09-12 性能: ポーリングから署名消費集計を切り離し |
+| TC-AWS-018 | API: `GET /api/admin/workers`は署名消費列null、`room-usage`で数値 | `route.ts` / `room-usage/route.ts` | 性能/契約 | adminログイン・workerId割当room | ポーリングAPIはweekly/signature/collab列がnull。room-usageは数値 | `npm run test:integration`（`route.integration.test.ts`・`room-usage/route.integration.test.ts`） | PASS | |
 
 ## Quality Gate
 

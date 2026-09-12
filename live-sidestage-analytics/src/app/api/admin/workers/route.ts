@@ -45,9 +45,10 @@ export async function GET() {
 
   // UI一覧表示専用。fetchAssignedRooms()のwatchedRoomFilterでは監視解除済みの部屋が
   // 消えてしまうため、buildWorkerReport()用のroomsとは別に取得する(worker-status.ts参照)。
+  // 署名消費列の集計は重いので GET /api/admin/workers/room-usage に分離(15秒ポーリング対象外)。
   let adminRoomList: AssignedRoom[] = [];
   try {
-    adminRoomList = await fetchAdminRoomList(now, { includeWeeklyEulerUsage: true, includeSignatureUsage24h: true });
+    adminRoomList = await fetchAdminRoomList(now);
   } catch (err) {
     console.error("[admin/workers] adminRoomList 取得に失敗:", err);
   }

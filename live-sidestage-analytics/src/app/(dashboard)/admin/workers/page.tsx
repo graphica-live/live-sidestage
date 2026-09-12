@@ -19,6 +19,12 @@ type WorkerReportWithAudit = WorkerReport & {
   anonymousRoomAutoStopEnabled: boolean;
 };
 
+type AdminRoomUsageEntry = {
+  weeklyEulerSignUsageCount: number;
+  signatureUsage24hCount: number;
+  collabSignatureUsage24hCount: number;
+};
+
 // Worker の /status は reconcile 間隔(30秒)と listener heartbeat(30秒)で更新される。
 // それより短い間隔で叩いても新しい情報は増えないので、15秒で足りる。
 const REFRESH_INTERVAL_MS = 15_000;
@@ -380,6 +386,12 @@ export default function WorkersAdminPage() {
   const [actionError, setActionError] = useState("");
   // 監視対象一覧の自由入力フィルタ(tiktokHandle/プロフ名)。入力ごとに即時反映するのでdebounceしない。
   const [roomFilterText, setRoomFilterText] = useState("");
+  const [roomUsageById, setRoomUsageById] = useState<Map<string, AdminRoomUsageEntry> | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState("");
+  const [usageGeneratedAt, setUsageGeneratedAt] = useState<string | null>(null);
+  const usageInFlight = useRef(false);
+  const usageRequestId = useRef(0);
 
   const load = useCallback(async () => {
     if (inFlight.current) return;
@@ -403,11 +415,47 @@ export default function WorkersAdminPage() {
     }
   }, []);
 
+  const loadUsage = useCallback(async () => {
+    if (usageInFlight.current) return;
+    usageInFlight.current = true;
+    const id = ++usageRequestId.current;
+    setUsageLoading(true);
+    setUsageError("");
+    try {
+      const res = await fetch("/api/admin/workers/room-usage", { cache: "no-store" });
+      if (id !== usageRequestId.current) return;
+      if (!res.ok) {
+        setUsageError("署名消費の取得に失敗しました");
+        return;
+      }
+      const data = (await res.json()) as {
+        generatedAt: string;
+        rooms: ({ roomId: string } & AdminRoomUsageEntry)[];
+      };
+      const map = new Map<string, AdminRoomUsageEntry>();
+      for (const row of data.rooms) {
+        map.set(row.roomId, {
+          weeklyEulerSignUsageCount: row.weeklyEulerSignUsageCount,
+          signatureUsage24hCount: row.signatureUsage24hCount,
+          collabSignatureUsage24hCount: row.collabSignatureUsage24hCount,
+        });
+      }
+      setRoomUsageById(map);
+      setUsageGeneratedAt(data.generatedAt);
+    } catch {
+      if (id === usageRequestId.current) setUsageError("署名消費の取得に失敗しました");
+    } finally {
+      usageInFlight.current = false;
+      if (id === usageRequestId.current) setUsageLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load();
+    loadUsage();
     const timer = setInterval(load, REFRESH_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, loadUsage]);
 
   const nowMs = report ? new Date(report.generatedAt).getTime() : Date.now();
   const errors = report?.issues.filter((i) => i.severity === "error") ?? [];
@@ -415,10 +463,29 @@ export default function WorkersAdminPage() {
   const showListeners = displayMode === "listener" || displayMode === "both";
   const showAssigned = displayMode === "db" || displayMode === "both";
 
+  const adminRoomListWithUsage = useMemo(() => {
+    const list = report?.adminRoomList ?? [];
+    if (!roomUsageById) return list;
+    return list.map((r) => {
+      const usage = roomUsageById.get(r.roomId);
+      if (!usage) return r;
+      return { ...r, ...usage };
+    });
+  }, [report?.adminRoomList, roomUsageById]);
+
   const sortedRoomList = useMemo(
-    () => sortAssignedRooms(report?.adminRoomList ?? [], sortKey, sortDir),
-    [report?.adminRoomList, sortKey, sortDir]
+    () => sortAssignedRooms(adminRoomListWithUsage, sortKey, sortDir),
+    [adminRoomListWithUsage, sortKey, sortDir]
   );
+
+  const listenerByRoomIdPerWorker = useMemo(() => {
+    type ListenerRow = WorkerReport["workers"][number]["listeners"][number];
+    const outer = new Map<number, Map<string, ListenerRow>>();
+    for (const w of report?.workers ?? []) {
+      outer.set(w.workerIndex, new Map(w.listeners.map((l) => [l.roomId, l])));
+    }
+    return outer;
+  }, [report?.workers]);
 
   const filteredRoomList = useMemo(() => {
     const q = roomFilterText.trim().toLowerCase();
@@ -549,8 +616,10 @@ export default function WorkersAdminPage() {
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-strong">Worker 稼働状況</h1>
           <p className="text-xs text-muted mt-1">
-            {REFRESH_INTERVAL_MS / 1000}秒ごとに自動更新
-            {report && ` · 最終取得 ${new Date(report.generatedAt).toLocaleTimeString("ja-JP")}`}
+            稼働状況は{REFRESH_INTERVAL_MS / 1000}秒ごとに自動更新。署名消費列は初回と手動更新のみ。
+            {report && ` · 稼働最終取得 ${new Date(report.generatedAt).toLocaleTimeString("ja-JP")}`}
+            {usageGeneratedAt &&
+              ` · 署名消費最終取得 ${new Date(usageGeneratedAt).toLocaleTimeString("ja-JP")}`}
           </p>
         </div>
         <button
@@ -710,7 +779,7 @@ export default function WorkersAdminPage() {
               <div className="divide-y divide-border border-t border-border">
                 <div className="px-4 py-1.5 text-[11px] text-muted">DB上の担当（手動移動はここから）</div>
                 {w.assignedRooms.map((r) => {
-                  const live = w.listeners.find((l) => l.roomId === r.roomId);
+                  const live = listenerByRoomIdPerWorker.get(w.workerIndex)?.get(r.roomId);
                   return (
                     <div key={r.roomId} className="px-4 py-2 flex items-center gap-3 flex-wrap">
                       <span className="text-sm">
@@ -789,6 +858,14 @@ export default function WorkersAdminPage() {
             <span>
               監視対象一覧({filteredRoomList.length}/{report.adminRoomList.length}件) 署名消費(24h):{total24h} 週間署名消費:{totalWeekly} コラボ署名消費(24h):{totalCollabUsage24h}
             </span>
+            <button
+              type="button"
+              onClick={loadUsage}
+              disabled={usageLoading}
+              className="px-2 py-1 text-xs rounded border border-border text-strong hover:bg-row-hover disabled:opacity-50"
+            >
+              {usageLoading ? "署名消費取得中..." : "署名消費を更新"}
+            </button>
             <input
               type="text"
               value={roomFilterText}
@@ -797,6 +874,9 @@ export default function WorkersAdminPage() {
               className="ml-auto px-2 py-1 text-xs rounded border border-border bg-transparent text-strong placeholder:text-muted min-w-0"
             />
           </div>
+          {usageError && (
+            <div className="px-4 py-1 text-xs text-red-400 border-b border-border">{usageError}</div>
+          )}
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border text-muted">
