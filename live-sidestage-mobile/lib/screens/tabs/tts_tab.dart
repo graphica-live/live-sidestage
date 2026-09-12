@@ -102,7 +102,7 @@ class TtsTab extends StatelessWidget {
                         child: Text(
                           roomSwitching
                               ? '@${switchingToTiktokHandle ?? ''} への切り替えをサーバーが反映中です\n（最大60秒。「開始」を押しておけば、反映され次第コメントが流れ始めます）'
-                              : '「開始」を押すと、ここにコメントが表示されます\n（登録直後は反映まで最大60秒ほどかかります）',
+                              : '「開始」を押すと、ここに表示されているコメントが読み上げられます\n（登録直後は反映まで最大60秒ほどかかります）',
                           textAlign: TextAlign.center,
                           style: Theme.of(
                             context,
