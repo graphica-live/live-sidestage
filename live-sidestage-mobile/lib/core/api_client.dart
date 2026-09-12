@@ -57,18 +57,16 @@ const String appleRedirectUri = String.fromEnvironment(
   defaultValue: '$liveAnalyticsBaseUrl/api/mobile/auth/apple/callback',
 );
 
-/// iOSネイティブでAppleサインインを有効にするビルドフラグ。
+/// iOSネイティブでAppleサインインを画面に出すか。
 ///
-/// iOSのネイティブフローはAndroidと違い、クライアント側に渡すべき固有の設定値が
-/// 無い(client_idはXcodeビルドに焼き込まれるBundle IDで、Dart側は関知しない)。
-/// それでも「Apple Developer Program の entitlement とサーバーの
-/// `APPLE_BUNDLE_ID` 設定が両方揃うまでボタンを出さない」という既存の
-/// fail-closed方針を保つため、Android同様に明示的なビルドフラグでゲートする。
-///
-/// ```
-/// flutter build ios --release --dart-define=APPLE_SIGN_IN_IOS_ENABLED=true
-/// ```
-const bool appleSignInIosEnabled = bool.fromEnvironment('APPLE_SIGN_IN_IOS_ENABLED');
+/// iOSは Services ID / redirect URI を要らない(Bundle ID は Xcode 側)。
+/// `Runner.entitlements` に Sign In with Apple がある通常ビルドでは既定で有効。
+/// サーバー未設定のローカルだけ止めたいときは
+/// `--dart-define=APPLE_SIGN_IN_IOS_ENABLED=false`。
+const bool appleSignInIosEnabled = bool.fromEnvironment(
+  'APPLE_SIGN_IN_IOS_ENABLED',
+  defaultValue: true,
+);
 
 /// Apple サインインを画面に出してよいか。
 ///

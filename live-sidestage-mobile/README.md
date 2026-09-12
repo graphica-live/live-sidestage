@@ -39,13 +39,13 @@ Android OAuth クライアントが登録されていないと必ず失敗する
 
 ## Apple サインインのセットアップ（任意・Apple Developer Program 必須）
 
-**設定が済むまでボタンは表示されない。** `--dart-define=APPLE_SERVICES_ID=...` を渡したビルドでだけ
+**Android** は `--dart-define=APPLE_SERVICES_ID=...`（と通常は redirect URI）を渡したビルドでだけ
 ログイン画面に「Appleでサインイン」が出る（未設定のまま押しても必ず失敗するため）。
+**iOS** は `Runner.entitlements` に Sign In with Apple がある通常ビルドで既定表示。
+ローカルでサーバー未設定のときだけ `--dart-define=APPLE_SIGN_IN_IOS_ENABLED=false` で隠せる。
 バックエンド側も必須の環境変数が欠けていれば `POST /api/mobile/auth/apple` は 503 を返す。
 
-**CI・ビルド自動化スクリプトはこの2フラグを埋め込んでいない。** 手動で `flutter build apk` /
-`flutter run` する人が下記コマンドの通りに毎回付け忘れるとボタンが消える（バグではなく
-fail-closed仕様どおりの挙動）。「Appleボタンが消えた」と言われたら、まずビルドコマンドに
+Android で「Appleボタンが消えた」と言われたら、ビルドコマンドに
 `APPLE_SERVICES_ID` / `APPLE_REDIRECT_URI` が付いているか確認する。
 
 Android にはネイティブの Apple 認証が無いので、Custom Tab で **web フロー**を回す。
@@ -81,6 +81,8 @@ Services ID の設定で以下を登録する。
 
 ### 3. アプリのビルド
 
+**Android**
+
 ```bash
 flutter build apk --release \
   --dart-define=APPLE_SERVICES_ID=com.liveanalytics.live-sidestage.signin \
@@ -89,6 +91,8 @@ flutter build apk --release \
 
 `APPLE_REDIRECT_URI` は省略すると `API_BASE_URL` から組み立てるので、本番URLのままなら
 `APPLE_SERVICES_ID` だけでよい。
+
+**iOS** — 追加の dart-define は不要（`flutter build ios` / `mobile-ios-run` で Apple ボタンが出る）。
 
 ### 既存 Google ユーザーとの関係
 
