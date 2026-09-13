@@ -3,11 +3,13 @@ import fs from "fs";
 import path from "path";
 import {
   buildImportGraph,
+  buildUsedBindingGraph,
   buildExpectedPatterns,
   COMMON_WATCH_PATTERNS,
   normalizeRepoRelativePath,
   patternMatches,
   intersectChangedWithExpected,
+  classifyWorkerRestartProposal,
 } from "./core";
 
 describe("buildImportGraph", () => {
@@ -331,5 +333,254 @@ describe("intersectChangedWithExpected", () => {
         expected
       )
     ).toEqual([]);
+  });
+});
+
+describe("buildUsedBindingGraph", () => {
+  describe("fixture", () => {
+    let tempDir: string;
+    let srcLibDir: string;
+
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync("test-used-binding-");
+      srcLibDir = path.join(tempDir, "src", "lib");
+      fs.mkdirSync(srcLibDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it("mixed module: helper のみ辿り query 経路の C は used に含めない", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "c.ts"),
+        `export const fromC = () => "c";`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "b.ts"),
+        `import { fromC } from "./c";
+export function helper() { return 1; }
+export function query() { return fromC(); }`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "a.ts"),
+        `import { helper } from "./b";
+export function run() { return helper(); }`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "a.ts")],
+      });
+      const graph = buildImportGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "a.ts")],
+      });
+
+      expect(used.libFiles).toContain("b.ts");
+      expect(used.libFiles).not.toContain("c.ts");
+      expect(graph.libFiles).toContain("c.ts");
+    });
+
+    it("import type は辿らない", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "types.ts"),
+        `export type OnlyType = { x: number };`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "main.ts"),
+        `import type { OnlyType } from "./types";
+export function run(): OnlyType { return { x: 1 }; }`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "main.ts")],
+      });
+
+      expect(used.libFiles).toEqual(["main.ts"]);
+    });
+
+    it("side-effect import を辿る", () => {
+      fs.writeFileSync(path.join(srcLibDir, "side.ts"), `export const s = 1;`);
+      fs.writeFileSync(
+        path.join(srcLibDir, "main.ts"),
+        `import "./side";
+export const m = 1;`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "main.ts")],
+      });
+
+      expect(used.libFiles).toContain("side.ts");
+    });
+
+    it("inline object return type の関数本体の依存を辿る", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "b.ts"),
+        `export function helper() { return 1; }`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "a.ts"),
+        `import { helper } from "./b";
+export function run(): { ok: boolean } { return { ok: helper() === 1 }; }`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "a.ts")],
+      });
+
+      expect(used.libFiles).toContain("b.ts");
+    });
+
+    it("import { Interface } は WHOLE_MODULE に倒さない", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "heavy-dep.ts"),
+        `export const heavy = 1;`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "types.ts"),
+        `import { heavy } from "./heavy-dep";
+export interface MyType { x: number }
+export const keep = heavy;`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "main.ts"),
+        `import { MyType } from "./types";
+export function run(): MyType { return { x: 1 }; }`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "main.ts")],
+      });
+
+      expect(used.libFiles).toContain("main.ts");
+      expect(used.libFiles).not.toContain("heavy-dep.ts");
+    });
+
+    it("型注釈付き const 代入の依存を辿る", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "b.ts"),
+        `export function helper() { return 1; }`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "a.ts"),
+        `import { helper } from "./b";
+type Runner = () => number;
+export const run: Runner = () => helper();`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "a.ts")],
+      });
+
+      expect(used.libFiles).toContain("b.ts");
+    });
+
+    it("class メソッド内の import を辿る", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "b.ts"),
+        `export function helper() { return 1; }`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "a.ts"),
+        `import { helper } from "./b";
+export class Handler {
+  exec() { return helper(); }
+}`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "a.ts")],
+      });
+
+      expect(used.libFiles).toContain("b.ts");
+    });
+
+    it("named alias import { x as y } を source 名で辿る", () => {
+      fs.writeFileSync(
+        path.join(srcLibDir, "b.ts"),
+        `export function sourceName() { return 1; }`
+      );
+      fs.writeFileSync(
+        path.join(srcLibDir, "a.ts"),
+        `import { sourceName as alias } from "./b";
+export function run() { return alias(); }`
+      );
+
+      const used = buildUsedBindingGraph({
+        rootDir: tempDir,
+        srcDir: srcLibDir,
+        roots: [path.join(srcLibDir, "a.ts")],
+      });
+
+      expect(used.libFiles).toContain("b.ts");
+    });
+  });
+
+  describe("回帰 - 実リポジトリ", () => {
+    it("battle-replay.ts は graph に含み used には含めない", () => {
+      const repoRoot = path.resolve(__dirname, "../../");
+      const srcDir = path.resolve(repoRoot, "src", "lib");
+      const opts = {
+        rootDir: repoRoot,
+        srcDir,
+        roots: [
+          path.resolve(repoRoot, "worker.ts"),
+          path.resolve(srcDir, "tiktok-listener.ts"),
+        ],
+      };
+
+      const graph = buildImportGraph(opts);
+      const used = buildUsedBindingGraph(opts);
+
+      expect(graph.libFiles).toContain("battle-replay.ts");
+      expect(used.libFiles).not.toContain("battle-replay.ts");
+      expect(used.libFiles).toContain("battle-history-finalize.ts");
+      expect(used.libFiles).toContain("battle-history.ts");
+    });
+  });
+});
+
+describe("classifyWorkerRestartProposal", () => {
+  it("usedHits 優先で recommended", () => {
+    expect(
+      classifyWorkerRestartProposal({
+        usedHits: ["live-sidestage-analytics/worker.ts"],
+        graphHits: ["live-sidestage-analytics/src/lib/battle-replay.ts"],
+      })
+    ).toBe("recommended");
+  });
+
+  it("graph のみなら graph-only", () => {
+    expect(
+      classifyWorkerRestartProposal({
+        usedHits: [],
+        graphHits: ["live-sidestage-analytics/src/lib/battle-replay.ts"],
+      })
+    ).toBe("graph-only");
+  });
+
+  it("両方空なら not-needed", () => {
+    expect(
+      classifyWorkerRestartProposal({
+        usedHits: [],
+        graphHits: [],
+      })
+    ).toBe("not-needed");
   });
 });

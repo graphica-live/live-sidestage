@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * TikTok worker 再起動提案 CLI（import graph ∩ 変更ファイル）
+ * TikTok worker 再起動提案 CLI（used-export 優先、import graph は GRAPH_ONLY 用）
  *
  * Usage:
  *   npx tsx scripts/check-worker-restart-proposal.ts [--base=origin/main] [--head=HEAD]
  *   npx tsx scripts/check-worker-restart-proposal.ts --changed-files=paths.txt
  *
  * Exit codes:
- *   0: 提案の有無に関わらず正常終了（git 失敗時も fail-open）
+ *   0: 提案の有無に関わらず正常終了（git 失敗時は fail-open）
  *   1: import graph など起動不能な致命エラー
  */
 
@@ -16,11 +16,14 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   buildImportGraph,
+  buildUsedBindingGraph,
   buildExpectedPatterns,
   intersectChangedWithExpected,
+  classifyWorkerRestartProposal,
 } from "./worker-watch-patterns/core";
 
 const RECOMMENDED = "WORKER_RESTART_RECOMMENDED";
+const GRAPH_ONLY = "WORKER_RESTART_GRAPH_ONLY";
 const NOT_NEEDED = "WORKER_RESTART_NOT_NEEDED";
 
 function parseArgs(argv: string[]): {
@@ -106,10 +109,24 @@ function emitRecommendation(hits: string[]): void {
   );
 }
 
+function emitGraphOnly(hits: string[]): void {
+  console.log(GRAPH_ONLY);
+  for (const hit of hits) {
+    console.log(hit);
+  }
+
+  appendGithubStepSummary(
+    "## TikTok worker 再起動提案\n\n" +
+      "import graph には載るが worker used-export 経路外です。**再起動必須ではありません。**\n\n" +
+      hits.map((h) => `- \`${h}\``).join("\n") +
+      "\n"
+  );
+}
+
 function emitNotNeeded(): void {
   console.log(NOT_NEEDED);
   appendGithubStepSummary(
-    "## TikTok worker 再起動提案\n\n再起動は不要です（変更が import graph の対象外）。\n"
+    "## TikTok worker 再起動提案\n\n再起動は不要です（used-export 経路および import graph の対象外）。\n"
   );
 }
 
@@ -122,29 +139,43 @@ async function main(): Promise<number> {
   const workerPath = path.resolve(analyticsRoot, "worker.ts");
   const tiktokListenerPath = path.resolve(srcDir, "tiktok-listener.ts");
 
-  const graphResult = buildImportGraph({
+  const graphOpts = {
     rootDir: analyticsRoot,
     srcDir,
     roots: [workerPath, tiktokListenerPath],
-  });
+  };
 
-  if (graphResult.unresolved.length > 0) {
-    console.warn(`Warning: ${graphResult.unresolved.length} unresolved imports:`);
-    for (const entry of graphResult.unresolved) {
-      console.warn(`  ${entry}`);
+  const graphResult = buildImportGraph(graphOpts);
+  const usedResult = buildUsedBindingGraph(graphOpts);
+
+  for (const [label, result] of [
+    ["graph", graphResult],
+    ["used", usedResult],
+  ] as const) {
+    if (result.unresolved.length > 0) {
+      console.warn(`Warning: ${label} ${result.unresolved.length} unresolved imports:`);
+      for (const entry of result.unresolved) {
+        console.warn(`  ${entry}`);
+      }
     }
   }
 
-  const expected = buildExpectedPatterns(graphResult.libFiles);
+  const usedExpected = buildExpectedPatterns(usedResult.libFiles);
+  const graphExpected = buildExpectedPatterns(graphResult.libFiles);
 
   const changedFiles = changedFilesPath
     ? loadChangedFilesFromPath(path.resolve(changedFilesPath))
     : getChangedFilesFromGit(monorepoRoot, baseRef, headRef);
 
-  const hits = intersectChangedWithExpected(changedFiles, expected);
+  const usedHits = intersectChangedWithExpected(changedFiles, usedExpected);
+  const graphHits = intersectChangedWithExpected(changedFiles, graphExpected);
 
-  if (hits.length > 0) {
-    emitRecommendation(hits);
+  const classification = classifyWorkerRestartProposal({ usedHits, graphHits });
+
+  if (classification === "recommended") {
+    emitRecommendation(usedHits);
+  } else if (classification === "graph-only") {
+    emitGraphOnly(graphHits);
   } else {
     emitNotNeeded();
   }

@@ -1,9 +1,9 @@
 ---
 project: live-sidestage-analytics
 feature: worker 再起動提案
-last_updated: 2026-09-13
+last_updated: 2026-09-14
 last_risk: MEDIUM
-last_reviewers: DeepSeek (Code Mode + TestCase Mode)
+last_reviewers: Gemini 3.7 Flash (Code Mode; TestCase simultaneous)
 ---
 
 # テストベースライン: worker 再起動提案
@@ -38,6 +38,16 @@ Railway 本番 `watchPatterns` との一致チェック・snapshot・Railway API
 | TC-WWP-015 | git diff 失敗時は fail-open（警告・交差空・exit 0） | CLI `getChangedFilesFromGit` | 境界 | 不正な base/head で git が失敗 | stderr に Warning、hits 空、`WORKER_RESTART_NOT_NEEDED`、exit 0 | 手動（無効 ref で CLI 実行） | PASS | `origin/main...HEAD` が main push で空になる場合も同様に不要扱いになりうる |
 | TC-WWP-016 | Windows環境で `npx tsx` CLI を shell 経由で起動できる | `cli.test.ts` runCli | 境界 | Windows(win32) | ENOENT にならず TC-WWP-013/014 が完走 | `npx vitest run scripts/worker-watch-patterns/cli.test.ts` | PASS | |
 | TC-WWP-017 | CI verify の提案ステップは推奨時も job を fail させない | `.github/workflows/analytics-ci.yml` verify + CLI 契約 | 回帰 | graph 内ファイルを含む PR | Job Summary / `::notice::` に提案または不要が出る、verify は成功 | PR 上の Actions ログ確認（`npm run check:worker-restart-proposal` と同契約） | PASS | `continue-on-error` に頼らず CLI が常に exit 0 を返す |
+| TC-WWP-022 | used-export は未使用 export 経路を辿らない（mixed fixture） | `core.ts` buildUsedBindingGraph | 正常 | A→B.helper のみ、B.query だけ C を import | used に C なし、graph に C あり | `npx vitest run scripts/worker-watch-patterns/core.test.ts` | PASS | |
+| TC-WWP-023 | 実リポで battle-replay.ts は graph のみ（used 除外） | `core.ts` 回帰 | 回帰 | roots=実 worker/listener | used に battle-replay なし、graph に含む | 同上 | PASS | finalize helpers 経路 |
+| TC-WWP-024 | import type は used/graph ともに辿らない | `core.ts` buildUsedBindingGraph | 正常 | import type のみ | types モジュールは libFiles に入らない | 同上 | PASS | |
+| TC-WWP-025 | side-effect import を graph/used で辿る | `core.ts` extractImportSpecsForGraph | 正常 | `import "./side"` | side.ts が used に含まれる | 同上 | PASS | 旧 Out of Scope から撤回 |
+| TC-WWP-026 | CLI 3 状態（GRAPH_ONLY は notice なし） | `check-worker-restart-proposal.ts` | 正常 | battle-replay.ts 単独変更 | `WORKER_RESTART_GRAPH_ONLY`、RECOMMENDED なし、exit 0 | `npx vitest run scripts/worker-watch-patterns/cli.test.ts` | PASS | |
+| TC-WWP-027 | COMMON/worker 変更は RECOMMENDED 優先 | CLI | 正常 | battle-replay + worker.ts | 先頭 RECOMMENDED、worker.ts 列挙 | 同上 | PASS | |
+| TC-WWP-028 | inline object 戻り値型の関数本体依存を辿る | `core.ts` buildUsedBindingGraph | 境界 | `run(): { ok: boolean } { return helper() }` | used に helper 元ファイルを含む | `npx vitest run scripts/worker-watch-patterns/core.test.ts` | PASS | return type の `{` を本体と誤認しない |
+| TC-WWP-029 | `import { Interface }` は WHOLE_MODULE に倒さない | `core.ts` collectNeededExportSources | 境界 | types が interface のみ named import、types は heavy-dep を import | used に heavy-dep なし | 同上 | PASS | `import type` なしの型 import |
+| TC-WWP-030 | class メソッド内の import を辿る | `core.ts` extractTopLevelBindingBody | 正常 | `export class Handler { exec() { return helper() } }` | used に helper 元ファイルを含む | 同上 | PASS | |
+| TC-WWP-031 | 型注釈付き top-level const の依存を辿る | `core.ts` buildUsedBindingGraph | 境界 | `export const run: Runner = () => helper()` | used に helper 元ファイルを含む | `npx vitest run scripts/worker-watch-patterns/core.test.ts` | PASS | `=` 直前の型注釈 |
 | TC-WWP-021 | 存在しない相対importはunresolvedに記録される | `core.ts` buildImportGraph | 異常 | `import { x } from "./nonexistent"` | unresolvedに`./nonexistent`を含む行が記録される | `npx vitest run scripts/worker-watch-patterns/core.test.ts` | PASS | unresolved のみでは CI を落とさない（警告） |
 
 ## Quality Gate
@@ -53,7 +63,7 @@ Railway 本番 `watchPatterns` との一致チェック・snapshot・Railway API
 - Railway `watchPatterns` のコードからの書き込み
 - `src/lib` 配下ファイル追加時の Railway ホワイトリスト人手更新（import graph はコード追従。Railway 側は runbook）
 - **正規表現ベースimport抽出の既知の限界**（TestCase Modeレビューで指摘、個別ケース化せず既知制約として記録）:
-  テンプレートリテラル動的import(`` import(`./${x}`) ``)、`from`を伴わないside-effect import(`import "./foo"`)、
+  テンプレートリテラル動的import(`` import(`./${x}`) ``)、
   `require.resolve(...)`の誤マッチはいずれも未対応。`worker.ts`/`tiktok-listener.ts`起点の実import graphには
   該当パターンが存在しないことを実行結果(`unresolved: 0`)で確認済みだが、将来的にこれらの書き方が追加された場合は
   検出漏れ・誤検出になりうる。AST化は対応コストに見合わないと判断し見送り
