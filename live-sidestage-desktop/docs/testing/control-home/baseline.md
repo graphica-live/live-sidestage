@@ -24,3 +24,7 @@
 
 - ウィジェット一覧 / エフェクト詳細の個別 comp
 - 検索のコマンドパレット UI
+
+| TC-CH-018 | analytics login UI | home.html | UI | Control settings | analytics URL/email/password and streamer register exist | read home.html | PASS | Electron not launched |
+| TC-CH-019 | map analytics gift payload | analytics-live-client.js | 正常 | desktop gift payload | uniqueId is tiktokHandle | jest analytics-live-client.test.js | PASS |
+| TC-CH-020 | no analytics creds means no live client | connectToTikTok | 異常 | missing token | not_configured return | read index.js | PASS |

@@ -94,6 +94,6 @@ export default async function middleware(req: NextRequest) {
 // 変更したら src/middleware.test.ts も更新すること(matcher を直接評価している)。
 export const config = {
   matcher: [
-    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|overlays/login(?:/|$)|e(?:/|$)|b(?:/|$)|c(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/webhooks/google-play(?:/|$)|api/webhooks/apple(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|terms(?:/|$)|invite(?:/|$)|api/ambassador/invite(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
+    "/((?!login(?:/|$)|register(?:/|$)|agency/login(?:/|$)|event/login(?:/|$)|overlays/login(?:/|$)|e(?:/|$)|b(?:/|$)|c(?:/|$)|api/auth(?:/|$)|api/agency-auth(?:/|$)|api/public(?:/|$)|api/mobile(?:/|$)|api/desktop(?:/|$)|api/health(?:/|$)|api/debug(?:/|$)|api/internal(?:/|$)|api/webhooks/stripe(?:/|$)|api/webhooks/google-play(?:/|$)|api/webhooks/apple(?:/|$)|api/agency/gifts(?:/|$)|api/overlay(?:/|$)|overlay(?:/|$)|images(?:/|$)|privacy(?:/|$)|terms(?:/|$)|invite(?:/|$)|api/ambassador/invite(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon.ico$).*)",
   ],
 };

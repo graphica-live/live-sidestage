@@ -106,6 +106,7 @@ describe("middleware の matcher", () => {
       "/api/auth/session",
       "/api/auth/callback/google",
       "/api/mobile/streamer",
+      "/api/desktop/auth/refresh",
       "/api/health",
       "/api/debug/battle-payloads",
       "/api/internal/gift-event",

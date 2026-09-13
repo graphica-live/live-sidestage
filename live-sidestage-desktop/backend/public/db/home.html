@@ -127,13 +127,20 @@
                 <p id="auto-launch-status" class="nav-footnote"></p>
             </section>
             <section class="admin-settings-section">
-                <div class="admin-settings-label">EulerStream API</div>
-                <p class="nav-footnote">未設定でも今まで通り匿名で接続します。<a href="https://www.eulerstream.com" target="_blank" rel="noopener noreferrer">eulerstream.com</a>で取得したAPIキーを設定すると、TikTok接続の署名処理が安定しやすくなります。</p>
-                <div class="admin-settings-data-row" style="gap:8px;">
-                    <input type="password" id="eulerstream-api-key-input" class="admin-settings-select" placeholder="APIキー（未設定=匿名動作）" autocomplete="off" style="flex:1;">
-                    <button type="button" class="primary" id="eulerstream-api-key-save">保存</button>
+                <div class="admin-settings-label">LIVE Sidestage Analytics</div>
+                <p class="nav-footnote">ギフトとコメントは analytics の監視接続から受け取ります。TikTok へはこのアプリから直接接続しません。</p>
+                <div class="admin-settings-data-row" style="gap:8px; flex-wrap:wrap;">
+                    <input type="url" id="analytics-base-url-input" class="admin-settings-select" placeholder="https://your-analytics.example.com" autocomplete="off" style="flex:1; min-width:220px;">
+                    <input type="email" id="analytics-email-input" class="admin-settings-select" placeholder="メール" autocomplete="username" style="flex:1; min-width:160px;">
+                    <input type="password" id="analytics-password-input" class="admin-settings-select" placeholder="パスワード" autocomplete="current-password" style="flex:1; min-width:140px;">
+                    <button type="button" class="primary" id="analytics-login-button">ログイン</button>
+                    <button type="button" class="ghost-button" id="analytics-logout-button">ログアウト</button>
                 </div>
-                <p id="eulerstream-api-key-status" class="nav-footnote" hidden></p>
+                <div class="admin-settings-data-row" style="gap:8px; margin-top:8px;">
+                    <input type="text" id="analytics-tiktok-handle-input" class="admin-settings-select" placeholder="未登録なら TikTok ID" autocomplete="off" style="flex:1;">
+                    <button type="button" class="primary" id="analytics-register-streamer-button">配信アカウントを登録</button>
+                </div>
+                <p id="analytics-auth-status" class="nav-footnote" hidden></p>
             </section>
             <section class="admin-settings-section">
                 <div class="admin-settings-label">データ管理</div>
@@ -597,9 +604,14 @@
     </script>
     <script>
         (function () {
-            const input = document.getElementById('eulerstream-api-key-input');
-            const saveBtn = document.getElementById('eulerstream-api-key-save');
-            const status = document.getElementById('eulerstream-api-key-status');
+            const baseUrlInput = document.getElementById('analytics-base-url-input');
+            const emailInput = document.getElementById('analytics-email-input');
+            const passwordInput = document.getElementById('analytics-password-input');
+            const loginBtn = document.getElementById('analytics-login-button');
+            const logoutBtn = document.getElementById('analytics-logout-button');
+            const handleInput = document.getElementById('analytics-tiktok-handle-input');
+            const registerBtn = document.getElementById('analytics-register-streamer-button');
+            const status = document.getElementById('analytics-auth-status');
 
             function showStatus(msg, isError) {
                 status.textContent = msg;
@@ -609,29 +621,71 @@
 
             async function loadState() {
                 try {
-                    const res = await fetch('/api/settings/eulerstream-api-key');
+                    const res = await fetch('/api/settings/analytics-auth');
                     const data = await res.json();
-                    input.value = data.apiKey || '';
+                    if (baseUrlInput) baseUrlInput.value = data.baseUrl || '';
+                    if (data.loggedIn) {
+                        const handle = data.session && data.session.streamer && data.session.streamer.tiktokHandle;
+                        const activity = data.session && data.session.listener && data.session.listener.activity;
+                        const parts = ['analytics にログイン済みです。'];
+                        if (handle) parts.push('@' + handle);
+                        if (activity) parts.push('監視: ' + activity);
+                        if (data.session && data.session.onboardingRequired) parts.push('TikTok ID の登録が必要です。');
+                        showStatus(parts.join(' '), false);
+                    } else {
+                        showStatus('未ログインです。', false);
+                    }
                 } catch {
-                    showStatus('APIキーの状態を取得できませんでした。', true);
+                    showStatus('analytics の状態を取得できませんでした。', true);
                 }
             }
 
-            saveBtn.addEventListener('click', async () => {
-                saveBtn.disabled = true;
+            if (loginBtn) loginBtn.addEventListener('click', async () => {
+                loginBtn.disabled = true;
                 try {
-                    const res = await fetch('/api/settings/eulerstream-api-key', {
+                    const res = await fetch('/api/settings/analytics-login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ apiKey: input.value.trim() })
+                        body: JSON.stringify({
+                            baseUrl: baseUrlInput.value.trim(),
+                            email: emailInput.value.trim(),
+                            password: passwordInput.value
+                        })
                     });
-                    if (!res.ok) throw new Error('サーバーエラー');
-                    showStatus(input.value.trim() ? '保存しました。' : '未設定にしました（匿名動作）。');
-                } catch (e) {
-                    showStatus('保存に失敗しました: ' + e.message, true);
+                    const data = await res.json();
+                    if (!res.ok) {
+                        showStatus(data.error || 'ログインに失敗しました。', true);
+                        return;
+                    }
+                    passwordInput.value = '';
+                    showStatus(data.onboardingRequired ? 'ログインしました。TikTok ID を登録してください。' : 'ログインしました。ライブ受信を開始します。', false);
+                } catch {
+                    showStatus('analytics に接続できませんでした。', true);
                 } finally {
-                    saveBtn.disabled = false;
+                    loginBtn.disabled = false;
                 }
+            });
+
+            if (registerBtn) registerBtn.addEventListener('click', async () => {
+                registerBtn.disabled = true;
+                try {
+                    const res = await fetch('/api/settings/analytics-register-streamer', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tiktokHandle: handleInput.value.trim() })
+                    });
+                    const data = await res.json();
+                    showStatus(res.ok ? '配信アカウントを登録しました。' : (data.error || '登録に失敗しました。'), !res.ok);
+                } catch {
+                    showStatus('登録に失敗しました。', true);
+                } finally {
+                    registerBtn.disabled = false;
+                }
+            });
+
+            if (logoutBtn) logoutBtn.addEventListener('click', async () => {
+                await fetch('/api/settings/analytics-logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                showStatus('ログアウトしました。', false);
             });
 
             loadState();

@@ -141,6 +141,12 @@ function getMobileJwtSecret() {
   return secret;
 }
 
+function getDesktopJwtSecret() {
+  const secret = process.env.DESKTOP_JWT_SECRET;
+  if (!secret) throw new Error("DESKTOP_JWT_SECRET is not set");
+  return secret;
+}
+
 // 戻り値: { ok: true, principalId, exp } | { ok: false, code }
 // code は unauthorizedError() へそのまま渡す機械可読コード。
 function verifyMobileAccessToken(token) {
@@ -173,6 +179,32 @@ function verifyMobileAccessToken(token) {
     return { ok: false, code: "INVALID_TOKEN" };
   }
 
+  return { ok: true, principalId, exp: typeof exp === "number" ? exp : null };
+}
+
+function verifyDesktopAccessToken(token) {
+  let secret;
+  try {
+    secret = getDesktopJwtSecret();
+  } catch {
+    console.error(
+      "[socket] DESKTOP_JWT_SECRET が未設定のため、desktop の socket 接続を認証できません"
+    );
+    return { ok: false, code: "INVALID_TOKEN" };
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, secret, { audience: "desktop" });
+  } catch (err) {
+    if (err && err.name === "TokenExpiredError") return { ok: false, code: "TOKEN_EXPIRED" };
+    return { ok: false, code: "INVALID_TOKEN" };
+  }
+
+  if (typeof decoded === "string") return { ok: false, code: "INVALID_TOKEN" };
+  const { principalId, iat, exp } = decoded;
+  if (typeof principalId !== "string" || !principalId) return { ok: false, code: "INVALID_TOKEN" };
+  if (typeof iat !== "number") return { ok: false, code: "INVALID_TOKEN" };
   return { ok: true, principalId, exp: typeof exp === "number" ? exp : null };
 }
 
@@ -267,7 +299,8 @@ app.prepare().then(() => {
 
   io.use(async (socket, next) => {
     const { token } = socket.handshake.query ?? {};
-    const mobileToken = socket.handshake.auth?.token;
+    const authClient = socket.handshake.auth?.client;
+    const authToken = socket.handshake.auth?.token;
 
     if (typeof token === "string" && token) {
       try {
@@ -287,8 +320,28 @@ app.prepare().then(() => {
       }
     }
 
-    if (typeof mobileToken === "string" && mobileToken) {
-      const verified = verifyMobileAccessToken(mobileToken);
+    if (authClient === "desktop" && typeof authToken === "string" && authToken) {
+      const verified = verifyDesktopAccessToken(authToken);
+      if (!verified.ok) return next(unauthorizedError(verified.code));
+
+      try {
+        const streamer = await prisma.streamer.findFirst({
+          where: { principalId: verified.principalId },
+          select: { id: true },
+        });
+        if (!streamer) return next(unauthorizedError("STREAMER_NOT_REGISTERED"));
+        socket.data.streamerId = streamer.id;
+        socket.data.room = `desktop:${streamer.id}`;
+        socket.data.tokenExp = verified.exp;
+        return next();
+      } catch (err) {
+        console.error("[socket] auth error:", err);
+        return next(unauthorizedError("INVALID_TOKEN"));
+      }
+    }
+
+    if (typeof authToken === "string" && authToken) {
+      const verified = verifyMobileAccessToken(authToken);
       if (!verified.ok) return next(unauthorizedError(verified.code));
 
       try {

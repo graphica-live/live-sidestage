@@ -3,7 +3,7 @@
 const { DISPLAY_NAME } = require('../app-identity');
 
 const express = require('express');
-const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS, EULER_STREAM_API_KEY_STATE_KEY } = require('../constants');
+const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS, EULER_STREAM_API_KEY_STATE_KEY, ANALYTICS_BASE_URL_STATE_KEY, ANALYTICS_REFRESH_TOKEN_STATE_KEY, ANALYTICS_ACCESS_TOKEN_STATE_KEY } = require('../constants');
 
 const POPOUT_WINDOW_KINDS = ['comments', 'gifts', 'comments-gifts'];
 const GIFT_SORT_ORDERS = ['timestamp-asc', 'timestamp-desc'];
@@ -16,7 +16,19 @@ function popoutAutoFrontStateKey(kind) {
     return `popout_auto_front_${kind}`;
 }
 
-module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvents, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON }) {
+function isLocalControlRequest(req) {
+    const origin = String(req.get('origin') || '').trim();
+    if (!origin) return true;
+    try {
+        const host = new URL(origin).hostname;
+        return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+            || host === '127.0.0.1.sslip.io' || host.endsWith('.127.0.0.1.sslip.io');
+    } catch {
+        return false;
+    }
+}
+
+module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvents, getBroadcasterId, setBroadcasterId, connectToTikTok, resetTikTokConnection, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON }) {
     app.get('/api/settings/popout-windows', (req, res) => {
         const windows = {};
         for (const kind of POPOUT_WINDOW_KINDS) {
@@ -135,6 +147,129 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         res.json({ ok: true, enabled });
     });
 
+
+
+    app.get('/api/settings/analytics-auth', async (req, res) => {
+        const baseUrl = String(dbStore.getGlobalStateValue(ANALYTICS_BASE_URL_STATE_KEY) || '').replace(/\/$/, '');
+        const token = dbStore.getGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY) || '';
+        const loggedIn = Boolean(dbStore.getGlobalStateValue(ANALYTICS_REFRESH_TOKEN_STATE_KEY));
+        let session = null;
+        if (loggedIn && baseUrl && token) {
+            try {
+                const response = await fetch(baseUrl + '/api/desktop/session', {
+                    headers: { Authorization: 'Bearer ' + token }
+                });
+                if (response.ok) {
+                    session = await response.json();
+                    if (session && session.streamer && session.streamer.tiktokHandle && setBroadcasterId) {
+                        setBroadcasterId(session.streamer.tiktokHandle);
+                    }
+                }
+            } catch (_) { /* ignore */ }
+        }
+        res.json({ baseUrl, loggedIn, session });
+    });
+
+    app.post('/api/settings/analytics-login', express.json(), async (req, res) => {
+        if (!isLocalControlRequest(req)) {
+            return res.status(403).json({ error: 'この操作は Control 画面からのみ行えます' });
+        }
+        const body = req.body || {};
+        const baseUrl = String(body.baseUrl || '').trim().replace(/\/$/, '');
+        const email = String(body.email || '').trim();
+        const password = String(body.password || '');
+        if (!baseUrl || !email || !password) {
+            return res.status(400).json({ error: 'analytics の URL とメール、パスワードが必要です' });
+        }
+        try {
+            const response = await fetch(baseUrl + '/api/desktop/auth/email/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                return res.status(response.status).json({ error: payload.error || 'ログインに失敗しました' });
+            }
+            dbStore.setGlobalStateValue(ANALYTICS_BASE_URL_STATE_KEY, baseUrl, getTimestamp());
+            dbStore.setGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY, payload.token || '', getTimestamp());
+            dbStore.setGlobalStateValue(ANALYTICS_REFRESH_TOKEN_STATE_KEY, payload.refreshToken || '', getTimestamp());
+            if (payload.streamer && payload.streamer.tiktokHandle && setBroadcasterId) {
+                setBroadcasterId(payload.streamer.tiktokHandle);
+            }
+            if (typeof connectToTikTok === 'function') {
+                connectToTikTok().catch((err) => console.warn('[analytics-login] connect failed:', err?.message || err));
+            }
+            res.json({
+                ok: true,
+                onboardingRequired: Boolean(payload.onboardingRequired),
+                streamer: payload.streamer || null
+            });
+        } catch (error) {
+            res.status(502).json({ error: error?.message || 'analytics に接続できません' });
+        }
+    });
+
+    app.post('/api/settings/analytics-register-streamer', express.json(), async (req, res) => {
+        if (!isLocalControlRequest(req)) {
+            return res.status(403).json({ error: 'この操作は Control 画面からのみ行えます' });
+        }
+        const baseUrl = String(dbStore.getGlobalStateValue(ANALYTICS_BASE_URL_STATE_KEY) || '').replace(/\/$/, '');
+        const token = dbStore.getGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY) || '';
+        const tiktokHandle = String((req.body || {}).tiktokHandle || '').replace(/^@/, '').trim();
+        if (!baseUrl || !token) {
+            return res.status(401).json({ error: '先に analytics へログインしてください' });
+        }
+        if (!tiktokHandle) {
+            return res.status(400).json({ error: 'TikTok IDを入力してください' });
+        }
+        try {
+            const response = await fetch(baseUrl + '/api/desktop/streamer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({ tiktokHandle })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                return res.status(response.status).json({ error: payload.error || '登録に失敗しました' });
+            }
+            if (payload.token) {
+                dbStore.setGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY, payload.token, getTimestamp());
+            }
+            if (payload.streamer && payload.streamer.tiktokHandle && setBroadcasterId) {
+                setBroadcasterId(payload.streamer.tiktokHandle);
+            }
+            if (typeof connectToTikTok === 'function') {
+                connectToTikTok().catch((err) => console.warn('[analytics-register] connect failed:', err?.message || err));
+            }
+            res.status(201).json({ ok: true, streamer: payload.streamer || null });
+        } catch (error) {
+            res.status(502).json({ error: error?.message || 'analytics に接続できません' });
+        }
+    });
+
+    app.post('/api/settings/analytics-logout', express.json(), async (req, res) => {
+        if (!isLocalControlRequest(req)) {
+            return res.status(403).json({ error: 'この操作は Control 画面からのみ行えます' });
+        }
+        const baseUrl = String(dbStore.getGlobalStateValue(ANALYTICS_BASE_URL_STATE_KEY) || '').replace(/\/$/, '');
+        const refreshToken = dbStore.getGlobalStateValue(ANALYTICS_REFRESH_TOKEN_STATE_KEY) || '';
+        if (baseUrl && refreshToken) {
+            try {
+                await fetch(baseUrl + '/api/desktop/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refreshToken })
+                });
+            } catch (_) { /* ignore */ }
+        }
+        dbStore.setGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY, '', getTimestamp());
+        dbStore.setGlobalStateValue(ANALYTICS_REFRESH_TOKEN_STATE_KEY, '', getTimestamp());
+        if (typeof resetTikTokConnection === 'function') {
+            await resetTikTokConnection();
+        }
+        res.json({ ok: true });
+    });
 
     app.get('/api/settings/eulerstream-api-key', (req, res) => {
         const apiKey = dbStore.getGlobalStateValue(EULER_STREAM_API_KEY_STATE_KEY) || '';

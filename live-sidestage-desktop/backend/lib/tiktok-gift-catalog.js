@@ -19,7 +19,6 @@
 // カタログは SQLite にも保存する。以前あった辞書アセット（`gift-name-ja.js`）を廃止したので、
 // **起動直後・オフラインで日本語名を出せる供給源がここしかない**。
 
-const { WebcastPushConnection } = require('TLC-sidestage');
 const { firstDefinedString, hasJapaneseText } = require('./utils');
 const { TIKTOK_GIFT_CACHE_TTL_MS, TIKTOK_JA_LOCALE_CLIENT_PARAMS } = require('./constants');
 const tiktokState = require('./tiktok-state');
@@ -27,6 +26,7 @@ const tiktokState = require('./tiktok-state');
 let _dbStore = null;
 let _getBroadcasterId = null;
 let _getConnectionOptions = null;
+let _getAnalyticsAuth = null;
 
 // 表示名の同期 lookup 用。`正規化した英語名 -> 日本語名`。
 // ライブイベントの処理経路（index.js の hydrateStoredGiftEvent など）は同期関数なので、
@@ -34,10 +34,13 @@ let _getConnectionOptions = null;
 // 取得が成功するたびに差し替える。
 let _nameJaByKey = new Map();
 
-function initGiftCatalog({ dbStore, getBroadcasterId, getConnectionOptions }) {
+function initGiftCatalog({ dbStore, getBroadcasterId, getConnectionOptions, getAnalyticsAuth }) {
     _dbStore = dbStore;
     _getBroadcasterId = getBroadcasterId;
     _getConnectionOptions = getConnectionOptions;
+    if (typeof getAnalyticsAuth === 'function') {
+        _getAnalyticsAuth = getAnalyticsAuth;
+    }
 }
 
 const APOSTROPHES = /[‘’ʼ´`]/gu;
@@ -299,19 +302,31 @@ function buildTikTokGiftCatalogConnectionOptions(locale = 'ja') {
 }
 
 /** 使い捨て接続で `gift/list/` を1回叩く。 */
-async function fetchRawGiftList(broadcasterId, locale) {
-    const connection = new WebcastPushConnection(
-        broadcasterId,
-        buildTikTokGiftCatalogConnectionOptions(locale)
-    );
-
-    try {
-        return await connection.fetchAvailableGifts();
-    } finally {
-        if (typeof connection?.disconnect === 'function') {
-            await connection.disconnect().catch(() => {});
-        }
+async function fetchCatalogFromAnalytics() {
+    const auth = typeof _getAnalyticsAuth === "function" ? _getAnalyticsAuth() : null;
+    if (!auth || !auth.baseUrl || !auth.token) {
+        throw new Error("analytics にログインしてください。");
     }
+    const base = String(auth.baseUrl).replace(/\/$/, "");
+    const response = await fetch(base + "/api/desktop/gifts", {
+        headers: { Authorization: "Bearer " + auth.token }
+    });
+    if (!response.ok) {
+        throw new Error("ギフトカタログの取得に失敗しました (" + response.status + ")");
+    }
+    const body = await response.json();
+    const gifts = Array.isArray(body && body.gifts) ? body.gifts : [];
+    return gifts.map((gift) => ({
+        id: String(gift.id || ""),
+        name: gift.name || "",
+        nameJa: gift.nameJa || gift.name || "",
+        imageUrl: gift.imageUrl || "",
+        diamondCount: Number(gift.diamondCount) || 0,
+        describe: "",
+        fallbackName: gift.name || "",
+        localization: {},
+        observedGiftName: null
+    })).filter((gift) => gift.id && gift.name);
 }
 
 async function fetchTikTokGiftCatalog(options = {}) {
@@ -337,26 +352,8 @@ async function fetchTikTokGiftCatalog(options = {}) {
     }
 
     tiktokState.giftCatalogPromise = (async () => {
-        const observedGiftNamesById = buildObservedGiftNameMap(broadcasterId);
-
         try {
-            // **メイン接続は再利用しない。** あれは日本語ロケールで張ってあるので、
-            // 使い回すと英語版カタログが取れず一致キーが日本語になる。
-            // 未認証の使い捨て接続を2本使う（リスクスコアの観点でもこちらが安全）。
-            const baseGifts = await fetchRawGiftList(broadcasterId, 'default');
-
-            // 日本語版は表示にしか効かない。落ちてもカタログ更新そのものは通す。
-            let jaNamesById = new Map();
-            try {
-                jaNamesById = buildJaNameMap(await fetchRawGiftList(broadcasterId, 'ja'));
-            } catch (error) {
-                console.warn('[gift-catalog] 日本語版の取得に失敗しました（既存の日本語名は保持）:', error?.message || error);
-            }
-
-            const gifts = normalizeTikTokGiftCatalog(baseGifts, {
-                observedGiftNamesById,
-                jaNamesById
-            });
+            const gifts = await fetchCatalogFromAnalytics();
 
             tiktokState.giftCatalog = {
                 broadcasterId,

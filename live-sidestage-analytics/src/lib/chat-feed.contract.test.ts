@@ -45,6 +45,10 @@ afterEach(() => {
   delete g.__io;
 });
 
+function chatEmitted(): EmittedEvent[] {
+  return emitted.filter((e) => e.event.startsWith("chat:"));
+}
+
 function keysOf(value: object): string[] {
   return Object.keys(value)
     .filter((k) => !k.startsWith("_"))
@@ -74,10 +78,10 @@ describe("chat:* ペイロード契約", () => {
     });
 
     expect(ok).toBe(true);
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0].event).toBe("chat:gift");
-    expect(emitted[0].room).toBe(`chat:${fixture.streamerId}`);
-    expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
+    expect(chatEmitted()).toHaveLength(1);
+    expect(chatEmitted()[0].event).toBe("chat:gift");
+    expect(chatEmitted()[0].room).toBe(`chat:${fixture.streamerId}`);
+    expect(keysOf(chatEmitted()[0].payload)).toEqual(keysOf(fixture));
   });
 
   it("chat:gift のキー集合が fixture と一致する(非コンボ)", async () => {
@@ -101,11 +105,11 @@ describe("chat:* ペイロード契約", () => {
       receivedAt: fixture.receivedAt,
     });
 
-    expect(emitted).toHaveLength(1);
-    expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
+    expect(chatEmitted()).toHaveLength(1);
+    expect(keysOf(chatEmitted()[0].payload)).toEqual(keysOf(fixture));
     // 非コンボは comboId が null になる。Dart 側はこれを「サーバーで dedup 済みの
     // 単発」と解釈し、コンボ抑止の LRU へ入れない。
-    expect(emitted[0].payload.comboId).toBeNull();
+    expect(chatEmitted()[0].payload.comboId).toBeNull();
   });
 
   it("chat:follow のキー集合が fixture と一致する", async () => {
@@ -121,19 +125,19 @@ describe("chat:* ペイロード契約", () => {
       msgId: fixture.msgId,
     });
 
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0].event).toBe("chat:follow");
-    expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
+    expect(chatEmitted()).toHaveLength(1);
+    expect(chatEmitted()[0].event).toBe("chat:follow");
+    expect(keysOf(chatEmitted()[0].payload)).toEqual(keysOf(fixture));
   });
 
   it("chat:comment のキー集合が fixture と一致する(schemaVersion を持たない既存形式)", async () => {
     const fixture = fixtures.comment;
     await emitChatComment({ ...fixture });
 
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0].event).toBe("chat:comment");
-    expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
-    expect(emitted[0].payload.schemaVersion).toBeUndefined();
+    expect(chatEmitted()).toHaveLength(1);
+    expect(chatEmitted()[0].event).toBe("chat:comment");
+    expect(keysOf(chatEmitted()[0].payload)).toEqual(keysOf(fixture));
+    expect(chatEmitted()[0].payload.schemaVersion).toBeUndefined();
   });
 
   it("chat:battle のキー集合が fixture と一致する", async () => {
@@ -146,9 +150,9 @@ describe("chat:* ペイロード契約", () => {
       receivedAt: fixture.receivedAt,
     });
 
-    expect(emitted).toHaveLength(1);
-    expect(emitted[0].event).toBe("chat:battle");
-    expect(emitted[0].room).toBe(`chat:${fixture.streamerId}`);
-    expect(keysOf(emitted[0].payload)).toEqual(keysOf(fixture));
+    expect(chatEmitted()).toHaveLength(1);
+    expect(chatEmitted()[0].event).toBe("chat:battle");
+    expect(chatEmitted()[0].room).toBe(`chat:${fixture.streamerId}`);
+    expect(keysOf(chatEmitted()[0].payload)).toEqual(keysOf(fixture));
   });
 });

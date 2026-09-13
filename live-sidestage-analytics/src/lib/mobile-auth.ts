@@ -173,9 +173,13 @@ function hashRefreshToken(rawToken: string): string {
   return crypto.createHash("sha256").update(rawToken).digest("hex");
 }
 
+export type AuthClient = "mobile" | "desktop";
+
 interface IssueRefreshTokenInput {
   principalId: string;
   streamerId?: string | null;
+  /// 省略すると "mobile"。desktop ログインは "desktop" を渡す。rotation では現在の client を引き継ぐ。
+  client?: AuthClient;
   /// 省略すると新しい family を採番する(= 新規ログイン)。rotation では現在の family を渡す。
   familyId?: string;
   /// 省略すると `now + 90日`。**rotation では現在の行の値をそのまま渡し、再計算しない。**
@@ -196,6 +200,7 @@ async function createRefreshTokenRow(
     data: {
       principalId: input.principalId,
       streamerId: input.streamerId ?? null,
+      client: input.client ?? "mobile",
       tokenHash: hashRefreshToken(rawToken),
       familyId: input.familyId ?? crypto.randomUUID(),
       expiresAt: new Date(now.getTime() + REFRESH_TOKEN_SLIDING_TTL_MS),
@@ -232,9 +237,10 @@ async function readRotationReplay(
   db: Pick<RefreshTokenDb, "refreshTokenReplay">,
   tokenHash: string,
   now: Date,
+  client: AuthClient,
 ): Promise<RotateRefreshTokenSuccess | null> {
   const replay = await db.refreshTokenReplay.findUnique({ where: { oldTokenHash: tokenHash } });
-  if (!replay || replay.expiresAt <= now) return null;
+  if (!replay || replay.expiresAt <= now || replay.client !== client) return null;
 
   try {
     return {
@@ -261,12 +267,20 @@ async function readRotationReplay(
 ///    (行ロックで待たされていた真の同時提示は、手順1の時点ではまだ勝者の結果を見られない)。
 ///    それでも無ければ猶予期間を過ぎた再提示 = 盗難の兆候とみなし family 全体を失効させる。
 /// 4. 勝者は新しいペアと猶予期間キャッシュを**同じトランザクション内**で書く。
-export async function rotateRefreshToken(rawToken: string): Promise<RotateRefreshTokenResult> {
+export async function rotateRefreshToken(
+  rawToken: string,
+  options: {
+    client?: AuthClient;
+    signAccessToken?: (payload: MobileTokenPayload) => string;
+  } = {},
+): Promise<RotateRefreshTokenResult> {
+  const client: AuthClient = options.client ?? "mobile";
+  const signAccessToken = options.signAccessToken ?? signMobileToken;
   const tokenHash = hashRefreshToken(rawToken);
   const now = new Date();
 
   // --- 手順1: 猶予期間内なら前回と同じ結果を返す(書き込みなし) ---
-  const cached = await readRotationReplay(prisma, tokenHash, now);
+  const cached = await readRotationReplay(prisma, tokenHash, now, client);
   if (cached) return cached;
 
   // 期限切れ行の掃除はベストエフォート(件数が小さいので専用ジョブは持たない)。
@@ -280,6 +294,7 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
       const revoked = await tx.refreshToken.updateMany({
         where: {
           tokenHash,
+          client,
           revokedAt: null,
           expiresAt: { gt: now },
           absoluteExpiresAt: { gt: now },
@@ -290,11 +305,13 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
       if (revoked.count === 0) {
         const existing = await tx.refreshToken.findUnique({
           where: { tokenHash },
-          select: { familyId: true, revokedAt: true },
+          select: { familyId: true, revokedAt: true, client: true },
         });
 
         // 行が無い / 期限切れ(revoke されていないのに使えない)は、ただの無効トークン。
-        if (!existing || !existing.revokedAt) return { error: "INVALID_REFRESH_TOKEN" };
+        if (!existing || existing.client !== client || !existing.revokedAt) {
+          return { error: "INVALID_REFRESH_TOKEN" };
+        }
 
         // **真に同時**だった場合、手順1でキャッシュを引いた時点ではまだ勝者が
         // rotation を終えていない(こちらの updateMany は勝者の行ロックで待たされ、
@@ -302,13 +319,13 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
         // このBatchが解消しようとしている「正常な同時提示の誤検知」がそのまま残る。
         // 勝者は replay 行を**同じトランザクション内**で書くので、待たされて戻ってきた
         // 時点では必ず見える(READ COMMITTED は文ごとに新しいスナップショットを取る)。
-        const raced = await readRotationReplay(tx, tokenHash, now);
+        const raced = await readRotationReplay(tx, tokenHash, now, client);
         if (raced) return raced;
 
         // 既に revoke 済み = 誰かが rotation 済みなのに、猶予期間の外で再提示された。
         // 盗難の兆候として family 全体を失効させる(端末は再ログインが必要になる)。
         await tx.refreshToken.updateMany({
-          where: { familyId: existing.familyId, revokedAt: null },
+          where: { familyId: existing.familyId, client, revokedAt: null },
           data: { revokedAt: now },
         });
         return { error: "TOKEN_REUSE_DETECTED" };
@@ -332,6 +349,7 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
       const issued = await createRefreshTokenRow({
         principalId: current.principalId,
         streamerId,
+        client,
         familyId: current.familyId,
         // **絶対期限は引き継ぐ(延長しない)。**
         absoluteExpiresAt: current.absoluteExpiresAt,
@@ -339,7 +357,7 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
       });
       await tx.refreshToken.update({ where: { id: current.id }, data: { replacedById: issued.id } });
 
-      const accessToken = signMobileToken({
+      const accessToken = signAccessToken({
         principalId: current.principalId,
         streamerId: streamerId ?? undefined,
       });
@@ -359,6 +377,7 @@ export async function rotateRefreshToken(rawToken: string): Promise<RotateRefres
           accessTokenEnc: encryptReplayPayload(accessToken),
           refreshTokenEnc: encryptReplayPayload(issued.rawToken),
           expiresAt: new Date(Date.now() + ROTATION_REPLAY_WINDOW_MS),
+          client,
         },
       });
 
@@ -381,7 +400,7 @@ export async function revokeRefreshTokenFamily(rawToken: string): Promise<void> 
 
   const row = await prisma.refreshToken.findUnique({
     where: { tokenHash },
-    select: { principalId: true, familyId: true },
+    select: { principalId: true, familyId: true, client: true },
   });
   if (!row) return;
 
@@ -392,8 +411,9 @@ export async function revokeRefreshTokenFamily(rawToken: string): Promise<void> 
 
   // 猶予期間キャッシュも落とす。残しておいても返されるトークンは今 revoke したものなので
   // 実害は無いが、ログアウト直後に「新しいペア」を返す紛らわしい挙動を避ける。
+  // client を分けないと desktop ログアウトが mobile の同時 rotation replay を消し、誤検知しうる。
   try {
-    await prisma.refreshTokenReplay.deleteMany({ where: { principalId: row.principalId } });
+    await prisma.refreshTokenReplay.deleteMany({ where: { principalId: row.principalId, client: row.client } });
   } catch (err) {
     console.error("[mobile-auth] ログアウト時のreplayキャッシュ削除に失敗:", err);
   }

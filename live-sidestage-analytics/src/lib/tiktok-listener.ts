@@ -12,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { emitGiftDrivenOverlayUpdates } from "./overlay";
 import { applyLikeEventInProcess } from "./overlay/like.server";
+import { emitDesktopFeed, type DesktopFeedKind } from "./desktop-feed";
 import {
   emitChatBattle,
   emitChatComment,
@@ -643,6 +644,29 @@ async function notifyLikeEvent(
     return;
   }
   await forwardToWeb({ streamerIds, likeEvent: { roomId, ...like } });
+}
+
+async function notifyDesktopFeed(
+  streamerIds: string[],
+  event: {
+    kind: DesktopFeedKind;
+    tiktokUid: string;
+    tiktokHandle: string;
+    nickname: string;
+    profilePictureUrl: string | null;
+    msgId: string | null;
+    text?: string;
+    receivedAt: string;
+  }
+) {
+  if (streamerIds.length === 0) return;
+  if (!isWorkerProcess) {
+    for (const streamerId of streamerIds) {
+      emitDesktopFeed(streamerId, event.kind, event);
+    }
+    return;
+  }
+  await forwardToWeb({ streamerIds, desktopFeedEvent: event });
 }
 
 async function notifyChatFollow(streamerIds: string[], follow: Omit<ChatFollowInput, "streamerId">) {
@@ -2879,15 +2903,33 @@ async function connectAndAttach(
   };
   // アプリ層の配信活動だけを生存とみなす。websocketData/rawData/decodedData/msgDetect/
   // enterRoom/controlMessage は輸送・接続制御なので足さない(hb/ack/プローブでゾンビを隠す)。
-  conn.on("member", markAlive);
+  const forwardDesktopFeed = (kind: DesktopFeedKind) => (data: Record<string, unknown>) => {
+    markAlive();
+    const tiktokUid =
+      normalizeTikTokUserId(data.userId) ||
+      normalizeTikTokUserId((data.user as { userId?: unknown } | undefined)?.userId);
+    const tiktokHandle = String(data.uniqueId || "");
+    if (!tiktokUid || !tiktokHandle) return;
+    notifyDesktopFeed(Array.from(inst.subscriberIds), {
+      kind,
+      tiktokUid,
+      tiktokHandle,
+      nickname: String(data.nickname || ""),
+      profilePictureUrl: data.profilePictureUrl ? String(data.profilePictureUrl) : null,
+      msgId: resolveMsgId(data),
+      receivedAt: new Date().toISOString(),
+    });
+  };
+  conn.on("member", forwardDesktopFeed("member"));
   conn.on("roomUser", markAlive);
-  conn.on("social", markAlive);
+  conn.on("social", forwardDesktopFeed("social"));
   conn.on("like", markAlive);
-  conn.on("share", markAlive);
-  conn.on("emote", markAlive);
-  conn.on("envelope", markAlive);
-  conn.on("questionNew", markAlive);
-  conn.on("liveIntro", markAlive);
+  conn.on("share", forwardDesktopFeed("share"));
+  conn.on("subscribe", forwardDesktopFeed("subscribe"));
+  conn.on("emote", forwardDesktopFeed("emote"));
+  conn.on("envelope", forwardDesktopFeed("envelope"));
+  conn.on("questionNew", forwardDesktopFeed("questionNew"));
+  conn.on("liveIntro", forwardDesktopFeed("liveIntro"));
   conn.on("hourlyRank", markAlive);
   conn.on("rankUpdate", markAlive);
   conn.on("rankText", markAlive);

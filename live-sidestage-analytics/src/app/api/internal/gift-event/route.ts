@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { appendGiftLog, type GiftLogEntry } from "@/lib/tiktok-listener";
 import { emitGiftDrivenOverlayUpdates } from "@/lib/overlay";
 import { applyLikeEventInProcess } from "@/lib/overlay/like.server";
+import { emitDesktopFeed, emitDesktopLike, type DesktopFeedKind } from "@/lib/desktop-feed";
 import {
   emitChatBattle,
   emitChatComment,
@@ -180,6 +181,49 @@ function parseLikeEvent(value: unknown): {
   };
 }
 
+const DESKTOP_FEED_KIND_SET = new Set([
+  "member",
+  "share",
+  "subscribe",
+  "emote",
+  "envelope",
+  "questionNew",
+  "liveIntro",
+  "social",
+]);
+
+function parseDesktopFeedEvent(value: unknown): {
+  kind: DesktopFeedKind;
+  tiktokUid: string;
+  tiktokHandle: string;
+  nickname: string;
+  profilePictureUrl: string | null;
+  msgId: string | null;
+  text?: string;
+  receivedAt: string;
+} | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.kind !== "string" || !DESKTOP_FEED_KIND_SET.has(v.kind)) return null;
+  if (!isNonEmptyString(v.tiktokUid)) return null;
+  if (!isNonEmptyString(v.tiktokHandle)) return null;
+  if (typeof v.nickname !== "string" || v.nickname.length > MAX_STRING_LENGTH) return null;
+  if (!isOptionalString(v.profilePictureUrl)) return null;
+  if (!isOptionalString(v.msgId)) return null;
+  if (!isNonEmptyString(v.receivedAt)) return null;
+  if (v.text !== undefined && (typeof v.text !== "string" || v.text.length > MAX_STRING_LENGTH)) return null;
+  return {
+    kind: v.kind as DesktopFeedKind,
+    tiktokUid: v.tiktokUid,
+    tiktokHandle: v.tiktokHandle,
+    nickname: v.nickname,
+    profilePictureUrl: v.profilePictureUrl,
+    msgId: v.msgId,
+    ...(typeof v.text === "string" ? { text: v.text } : {}),
+    receivedAt: v.receivedAt,
+  };
+}
+
 function parseBattleEvent(value: unknown): Omit<ChatBattleInput, "streamerId"> | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
@@ -243,6 +287,7 @@ export async function POST(req: NextRequest) {
     chatSuperFanJoinEvent?: unknown;
     listenerEvent?: unknown;
     likeEvent?: unknown;
+    desktopFeedEvent?: unknown;
     battleEvent?: unknown;
     syncTrigger?: "ranking" | "gift-history" | "battle-history";
     roomId?: string;
@@ -369,6 +414,35 @@ export async function POST(req: NextRequest) {
     await applyLikeEventInProcess({ streamerIds, ...like }).catch((err) =>
       console.error("[internal/gift-event] like apply error:", err)
     );
+    for (const streamerId of streamerIds) {
+      emitDesktopLike(streamerId, {
+        tiktokUid: like.tiktokUid,
+        tiktokHandle: like.tiktokHandle,
+        nickname: like.nickname,
+        profilePictureUrl: like.profilePictureUrl,
+        likeCount: like.likeCount,
+      });
+    }
+  }
+
+  if (body.desktopFeedEvent !== undefined) {
+    const streamerIds = parseStreamerIds(body.streamerIds);
+    const feed = parseDesktopFeedEvent(body.desktopFeedEvent);
+    if (!streamerIds || !feed) {
+      return NextResponse.json({ error: "Invalid desktopFeedEvent" }, { status: 400 });
+    }
+    for (const streamerId of streamerIds) {
+      const delivered = emitDesktopFeed(streamerId, feed.kind, {
+        tiktokUid: feed.tiktokUid,
+        tiktokHandle: feed.tiktokHandle,
+        nickname: feed.nickname,
+        profilePictureUrl: feed.profilePictureUrl,
+        msgId: feed.msgId,
+        text: feed.text,
+        receivedAt: feed.receivedAt,
+      });
+      if (!delivered) return ioUnavailable();
+    }
   }
 
   // バトル終了(またはEND後のスコア確定)の即時表示トリガー。detailsは積まず、
