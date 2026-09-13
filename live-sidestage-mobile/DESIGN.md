@@ -25,10 +25,10 @@ colors:
   on-danger: "#FFFFFF"
 typography:
   display:
-    fontFamily: "Zen Maru Gothic, ui-sans-serif, sans-serif"
-    fontWeight: 700
+    fontFamily: "M PLUS 2, ui-sans-serif, sans-serif"
+    fontWeight: 800
   body:
-    fontFamily: "Zen Kaku Gothic New, ui-sans-serif, sans-serif"
+    fontFamily: "M PLUS 2, ui-sans-serif, sans-serif"
     fontSize: "16px"
     fontWeight: 400
 spacing:
@@ -56,7 +56,7 @@ components:
 LIVE Sidestageは、上品さと高揚感を両立させる世界観に刷新した(2026-09、Mixer Consoleから移行)。「配信機材」「ゲーム」といった題材モチーフから離れ、洗練されたプロダクトとしての品位を余白・タイポグラフィ・階調で語る一方、ギフトが届く瞬間の高揚感を装飾グラデーション(コーラル→バイオレット→ミント)で表現する。いわゆるネオン・ダークグラスのようなサイバー系表現(AI生成UIで陳腐化しているパターン)は意図的に避け、白地を基調にした軽やかな配色を採る。
 
 **Key Characteristics:**
-- 独自トークンは`main.dart`の`_buildTheme()`1箇所(バイオレットaccent・Zen Maru Gothic/Zen Kaku Gothic New・カード角丸18px)に集約
+- 独自トークンは`main.dart`の`_buildTheme()`1箇所(バイオレットaccent・M PLUS 2・カード角丸18px)に集約
 - 装飾グラデーション3色(コーラル `#FF7A59` / バイオレット `#9B6BFF` / ミント `#2FC6A0`)は`widgets/gradient_kit.dart`の`KosaiPalette`に集約し、バッジ・見出し文字・カード枠・メダル・アバター枠にのみ使う
 - 状態伝達色(接続・読み上げ・エラー)は装飾グラデーションとは別レイヤーとして扱い、既存のSignal-Only Color Rule(green/orange/red/grey)を維持する
 - ホームは6タブのボトムナビ(TTS / サウンド / 設定 / 貢献 / ギフト履歴 / バトル履歴)。各タブの中身は単一目的の縦積みを保つ
@@ -87,18 +87,18 @@ LIVE Sidestageは、上品さと高揚感を両立させる世界観に刷新し
 
 ## Typography
 
-**Display Font:** Zen Maru Gothic(`google_fonts`パッケージ、フォールバック sans-serif、bold 700)
-**Body Font:** Zen Kaku Gothic New(`google_fonts`パッケージ)
+**Display Font:** M PLUS 2(`google_fonts`パッケージ、フォールバック sans-serif、extraBold 800)
+**Body Font:** M PLUS 2(`google_fonts`パッケージ)
 
-**Character:** 2026-09にSpace Grotesk/IBM Plex Sans/Space Monoの3書体構成(Mixer Console)から、Zen Maru Gothic(見出し)+Zen Kaku Gothic New(本文・データ表示すべて)の2書体構成(光彩)へ変更。丸みのある見出し書体で柔らかさ・親しみやすさを出しつつ、本文は引き締まったゴシックで可読性を保つ。等幅のデータ専用書体は廃止し、コイン数等の数値も本文書体で統一する(桁揃えは`tabular-nums`相当の効果を持つフォント機能に依存せず、数値の並びが乱れないことを実機で確認する)。サイズ階層はMaterial3 TextThemeのロール名に準拠する。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
+**Character:** 2026-09-13にZen Maru Gothic(見出し)+Zen Kaku Gothic New(本文)の2書体構成から、M PLUS 2一本化へ変更。丸ゴシックの親しみは角丸18と装飾グラデーション側へ残し、文字は字面の広いゴシック1ファミリーで階層をウェイト(見出し800 / 本文400 / データ700)で作る。等幅のデータ専用書体は持たず、コイン数等は`FontFeature.tabularFigures()`で桁を揃える。サイズ階層はMaterial3 TextThemeのロール名に準拠する。TTFはアセット同梱せず`google_fonts`が初回起動時にネットワーク取得してキャッシュする(オフライン初回起動時はシステムフォールバック書体になる)。
 
 ### Hierarchy
-- **Display** (Zen Maru Gothic bold 700, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
-- **Tab Title** (Zen Maru Gothic bold 700, 22px、グラデーション文字): 各タブの見出し(例:「貢献」)。`widgets/gradient_kit.dart`の`GradientText`を使う。
-- **Body** (Zen Kaku Gothic New regular 400, 16px、Material3 bodyLarge/bodyMedium相当): ボタンラベル、フォームラベル、コメント本文・ニックネームなど、画面の大半のテキスト。
-- **Data** (Zen Kaku Gothic New 700, 13px): コイン数・ランキング順位・日付など、桁を揃えたい数値表示。合計値のみ25px/800でグラデーション文字。
-- **Label** (Zen Kaku Gothic New regular 400, 12〜13px, grey): 補助的な状態テキスト(「ランダムボイス」ラベル、「VOICEVOX準備中…」、話者名表示)。
-- **Caption** (Zen Kaku Gothic New regular 400, 11px, error色): エラーメッセージの縮小表示(接続エラー詳細など、スペースが限られる箇所)。
+- **Display** (M PLUS 2 extraBold 800, 28px, line-height 1.2): アプリ名の表示。ウェルカム画面のみで使用される唯一の大型見出し。
+- **Tab Title** (M PLUS 2 extraBold 800, 22px、グラデーション文字): 各タブの見出し(例:「貢献」)。`widgets/gradient_kit.dart`の`GradientText`を使う。
+- **Body** (M PLUS 2 regular 400, 16px、Material3 bodyLarge/bodyMedium相当): ボタンラベル、フォームラベル、コメント本文・ニックネームなど、画面の大半のテキスト。
+- **Data** (M PLUS 2 700, 13px): コイン数・ランキング順位・日付など、桁を揃えたい数値表示。合計値のみ25px/800でグラデーション文字。
+- **Label** (M PLUS 2 regular 400, 12〜13px, grey): 補助的な状態テキスト(「ランダムボイス」ラベル、「VOICEVOX準備中…」、話者名表示)。
+- **Caption** (M PLUS 2 regular 400, 11px, error色): エラーメッセージの縮小表示(接続エラー詳細など、スペースが限られる箇所)。
 
 ### Named Rules
 **The One Title Rule.** 28px boldの大型見出しはウェルカム画面のアプリ名一箇所のみに予約されている。他画面で見出しサイズを増やして視覚的な重みを作らない。

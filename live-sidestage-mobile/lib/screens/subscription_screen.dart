@@ -95,8 +95,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   style: Theme.of(context)
                           .textTheme
                           .titleLarge
-                          ?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-                      const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                          ?.copyWith(fontSize: 22, fontWeight: FontWeight.w800) ??
+                      const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                 ),
               ),
               Text(
@@ -220,8 +220,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               style: Theme.of(context)
                       .textTheme
                       .titleLarge
-                      ?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                      ?.copyWith(fontSize: 22, fontWeight: FontWeight.w800) ??
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
           ),
           if (billingUnavailable)

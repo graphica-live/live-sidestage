@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LIVE Sidestage モバイル — 書体10案</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Dela+Gothic+One&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Kiwi+Maru:wght@400;500&family=Klee+One:wght@400;600&family=M+PLUS+2:wght@400;500;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Noto+Sans+JP:wght@400;500;700;800&family=RocknRoll+One&family=Shippori+Mincho:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FAF7F5;
+      --card: #FFFFFF;
+      --ink: #2A2130;
+      --sub: #7C7286;
+      --line: #EFE6E9;
+      --c1: #FF7A59;
+      --c2: #9B6BFF;
+      --c3: #2FC6A0;
+      --page: #EFE8E3;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      background: var(--page);
+      color: var(--ink);
+      font-family: "Noto Sans JP", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    ::selection { background: #E4D4FF; color: var(--ink); }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 28px 24px 80px; }
+    h1 {
+      font-family: "Zen Maru Gothic", sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin: 0 0 8px;
+    }
+    .lede {
+      max-width: 62ch;
+      color: var(--sub);
+      margin: 0 0 28px;
+      font-size: 15px;
+    }
+    .now {
+      display: flex;
+      gap: 16px;
+      align-items: baseline;
+      flex-wrap: wrap;
+      margin: 0 0 22px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid #E4D8D4;
+    }
+    .now b { font-weight: 700; }
+    .now span { color: var(--sub); font-size: 13px; }
+
+    .picker {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 0 0 28px;
+    }
+    .picker button {
+      appearance: none;
+      border: 1px solid #E4D8D4;
+      background: #F6F0EC;
+      color: var(--ink);
+      border-radius: 14px;
+      padding: 10px 10px 9px;
+      text-align: left;
+      cursor: pointer;
+      min-height: 64px;
+    }
+    .picker button[aria-pressed="true"] {
+      background: var(--card);
+      border-color: var(--c2);
+      box-shadow: 0 10px 24px -18px rgba(155,107,255,.55);
+    }
+    .picker .n {
+      display: block;
+      font-size: 11px;
+      color: var(--sub);
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .picker .t {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 36px;
+      align-items: start;
+    }
+    .meta h2 {
+      margin: 0 0 6px;
+      font-size: 26px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+    .meta .pair {
+      color: var(--sub);
+      font-size: 13px;
+      margin: 0 0 18px;
+    }
+    .meta dl { margin: 0; }
+    .meta dt {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--sub);
+      margin: 14px 0 4px;
+    }
+    .meta dd {
+      margin: 0;
+      max-width: 58ch;
+    }
+    .meta code {
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 12px;
+      background: #F3ECE8;
+      padding: 1px 6px;
+      border-radius: 6px;
+    }
+
+    .phone {
+      width: 280px;
+      background: var(--bg);
+      border-radius: 28px;
+      border: 1px solid #E4D8D4;
+      box-shadow: 0 18px 40px -24px rgba(42,33,48,.35);
+      overflow: hidden;
+      font-size: 13px;
+    }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px 8px;
+    }
+    .handle { font-weight: 700; font-size: 13.5px; }
+    .plan {
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 999px;
+    }
+    .status {
+      margin: 0 12px 10px;
+      background: rgba(47,198,160,.12);
+      color: #2A7A66;
+      border-radius: 10px;
+      padding: 7px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c3); }
+    .scr { padding: 4px 16px 12px; }
+    .tab-title {
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.2;
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin: 0 0 2px;
+    }
+    .subline { color: var(--sub); font-size: 12px; margin: 0 0 10px; }
+    .chips { display: flex; gap: 6px; margin: 0 0 12px; }
+    .chip {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--sub);
+    }
+    .chip.on {
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      color: #fff;
+      border-color: transparent;
+    }
+    .sum {
+      border-radius: 20px;
+      padding: 2px;
+      background: linear-gradient(120deg, var(--c1), var(--c2), var(--c3));
+      margin-bottom: 12px;
+    }
+    .sum-in {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 14px 16px;
+    }
+    .sum-k { color: var(--sub); font-size: 11px; }
+    .sum-v {
+      font-size: 25px;
+      font-weight: 800;
+      letter-spacing: -.01em;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      line-height: 1.15;
+    }
+    .list {
+      background: var(--card);
+      border-radius: 18px;
+      box-shadow: 0 8px 22px -18px rgba(155,107,255,.3);
+      overflow: hidden;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .row:last-child { border-bottom: 0; }
+    .medal {
+      width: 26px; height: 26px; border-radius: 50%;
+      color: #fff; font-size: 12px; font-weight: 700;
+      display: grid; place-items: center; flex: 0 0 26px;
+    }
+    .m1 { background: linear-gradient(135deg, var(--c1), var(--c2)); }
+    .m2 { background: linear-gradient(135deg, var(--c2), var(--c3)); }
+    .m3 { background: linear-gradient(135deg, var(--c3), var(--c1)); opacity: .85; }
+    .av {
+      width: 30px; height: 30px; border-radius: 50%;
+      padding: 1.5px;
+      background: linear-gradient(135deg, var(--c1), var(--c2));
+      flex: 0 0 30px;
+    }
+    .av i {
+      display: block; width: 100%; height: 100%; border-radius: 50%;
+      background: #E8DFF4;
+    }
+    .nm {
+      flex: 1; min-width: 0;
+      font-size: 13.5px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .coin {
+      font-size: 13px; font-weight: 700; color: var(--c2);
+      font-variant-numeric: tabular-nums;
+    }
+    .nav {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      padding: 8px 4px 12px;
+      border-top: 1px solid var(--line);
+      background: var(--bg);
+    }
+    .nav span {
+      text-align: center;
+      font-size: 9px;
+      color: var(--sub);
+      font-weight: 500;
+    }
+    .nav .sel { color: var(--c2); font-weight: 700; }
+
+    .specimens {
+      margin-top: 36px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .spec {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .spec .lab { font-size: 11px; color: var(--sub); font-weight: 700; margin-bottom: 4px; }
+    .welcome { font-size: 28px; font-weight: 700; line-height: 1.2; }
+    .welcome.grad {
+      background: linear-gradient(90deg, var(--c1), var(--c2));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .comment { font-size: 16px; line-height: 1.5; }
+    .btn {
+      display: inline-block;
+      background: var(--c2);
+      color: #fff;
+      font-size: 17px;
+      font-weight: 800;
+      padding: 10px 22px;
+      border-radius: 18px;
+    }
+    .dark {
+      background: #17151A;
+      color: #F1EDF5;
+      border-color: #332C3B;
+    }
+    .dark .lab { color: #A79FB0; }
+
+    .p0 .disp, .p0 .cta, .p0 .body { font-family: "Noto Sans JP", sans-serif; }
+    .p1 .disp, .p1 .cta, .p1 .body { font-family: "BIZ UDPGothic", sans-serif; }
+    .p2 .disp { font-family: "Shippori Mincho", serif; }
+    .p2 .body, .p2 .cta { font-family: "Noto Sans JP", sans-serif; }
+    .p3 .disp, .p3 .cta { font-family: "M PLUS Rounded 1c", sans-serif; }
+    .p3 .body { font-family: "Noto Sans JP", sans-serif; }
+    .p4 .disp { font-family: "Dela Gothic One", sans-serif; }
+    .p4 .body, .p4 .cta { font-family: "Noto Sans JP", sans-serif; }
+    .p5 .disp, .p5 .cta { font-family: "Klee One", serif; }
+    .p5 .body { font-family: "Noto Sans JP", sans-serif; }
+    .p6 .disp, .p6 .cta { font-family: "Kiwi Maru", serif; }
+    .p6 .body { font-family: "Noto Sans JP", sans-serif; }
+    .p7 .disp, .p7 .cta, .p7 .body { font-family: "M PLUS 2", sans-serif; }
+    .p8 .disp, .p8 .cta, .p8 .body { font-family: "IBM Plex Sans JP", sans-serif; }
+    .p9 .disp { font-family: "RocknRoll One", sans-serif; }
+    .p9 .body, .p9 .cta { font-family: "Noto Sans JP", sans-serif; }
+
+    .strip {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid #E4D8D4;
+    }
+    .strip h2 { font-size: 18px; margin: 0 0 12px; }
+    .strip-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    .cell {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 10px;
+      min-height: 92px;
+    }
+    .cell .lab { font-size: 10px; color: var(--sub); font-weight: 700; margin-bottom: 6px; font-family: "Noto Sans JP", sans-serif; }
+    .cell .w { font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .cell .c { font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+    .note {
+      margin-top: 28px;
+      color: var(--sub);
+      font-size: 13px;
+      max-width: 72ch;
+    }
+
+    @media (max-width: 920px) {
+      .picker, .strip-grid { grid-template-columns: 1fr 1fr; }
+      .stage { grid-template-columns: 1fr; }
+      .specimens { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>書体を替える10方向</h1>
+    <p class="lede">色・角丸・グラデーションは光彩のまま。変えるのは書体だけ。現行は見出し Zen Maru Gothic、本文 Zen Kaku Gothic New。前の5案に、教科書体・別の丸ゴ・モダンゴシック・数字向き・ライブ感を足した。</p>
+    <div class="now">
+      <b>現行</b>
+      <span>見出し Zen Maru Gothic 700 / 本文 Zen Kaku Gothic New 400–700 · google_fonts 初回ネット取得</span>
+    </div>
+
+    <div class="picker" role="tablist">
+      <button type="button" aria-pressed="true" data-p="0"><span class="n">案1</span><span class="t">Noto 一本化</span></button>
+      <button type="button" aria-pressed="false" data-p="1"><span class="n">案2</span><span class="t">BIZ 運用書体</span></button>
+      <button type="button" aria-pressed="false" data-p="2"><span class="n">案3</span><span class="t">明朝の光彩</span></button>
+      <button type="button" aria-pressed="false" data-p="3"><span class="n">案4</span><span class="t">丸ゴ＋Noto</span></button>
+      <button type="button" aria-pressed="false" data-p="4"><span class="n">案5</span><span class="t">看板極太</span></button>
+      <button type="button" aria-pressed="false" data-p="5"><span class="n">案6</span><span class="t">教科書体</span></button>
+      <button type="button" aria-pressed="false" data-p="6"><span class="n">案7</span><span class="t">キウイ丸</span></button>
+      <button type="button" aria-pressed="false" data-p="7"><span class="n">案8</span><span class="t">M PLUS 2</span></button>
+      <button type="button" aria-pressed="false" data-p="8"><span class="n">案9</span><span class="t">Plex 数字</span></button>
+      <button type="button" aria-pressed="false" data-p="9"><span class="n">案10</span><span class="t">ロックンロール</span></button>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="phone p0" id="phone">
+        <div class="bar">
+          <div class="handle body">@yu_ki_nojo</div>
+          <div class="plan body">βFREE</div>
+        </div>
+        <div class="status body"><span class="dot"></span>接続中</div>
+        <div class="scr">
+          <h3 class="tab-title disp">貢献</h3>
+          <p class="subline body">今日のギフト貢献ランキング</p>
+          <div class="chips">
+            <span class="chip on body">今日</span>
+            <span class="chip body">7日</span>
+            <span class="chip body">30日</span>
+          </div>
+          <div class="sum"><div class="sum-in">
+            <div class="sum-k body">合計コイン · 12人</div>
+            <div class="sum-v body">12,480</div>
+          </div></div>
+          <div class="list">
+            <div class="row">
+              <div class="medal m1 body">1</div>
+              <div class="av"><i></i></div>
+              <div class="nm body">わやハグ大好き</div>
+              <div class="coin body">3,613</div>
+            </div>
+            <div class="row">
+              <div class="medal m2 body">2</div>
+              <div class="av"><i></i></div>
+              <div class="nm body">nightowl_jp</div>
+              <div class="coin body">1,280</div>
+            </div>
+            <div class="row">
+              <div class="medal m3 body">3</div>
+              <div class="av"><i></i></div>
+              <div class="nm body">ローズ投げ隊長</div>
+              <div class="coin body">980</div>
+            </div>
+            <div class="row">
+              <div class="medal body" style="background:transparent;color:#7C7286">4</div>
+              <div class="av"><i></i></div>
+              <div class="nm body">みけねこ</div>
+              <div class="coin body">120</div>
+            </div>
+          </div>
+        </div>
+        <div class="nav">
+          <span class="body">TTS</span>
+          <span class="body">音</span>
+          <span class="sel body">貢献</span>
+          <span class="body">ギフト</span>
+          <span class="body">バトル</span>
+          <span class="body">設定</span>
+        </div>
+      </div>
+
+      <div class="meta" id="meta"></div>
+    </div>
+
+    <div class="specimens p0" id="specs">
+      <div class="spec">
+        <div class="lab">ウェルカム · 28px 見出し</div>
+        <div class="welcome grad disp">LIVE Sidestage</div>
+        <div class="body" style="color:var(--sub);font-size:13px;margin-top:6px">TikTok Liveのコメントを読み上げます</div>
+      </div>
+      <div class="spec">
+        <div class="lab">TTSコメント · 16px 本文</div>
+        <div class="comment body"><b class="disp" style="font-size:13.5px">わやハグ大好き</b><br>ばちばち盛れてる〜！次はローズいくよ</div>
+      </div>
+      <div class="spec">
+        <div class="lab">開始ボタン · 17px 800</div>
+        <span class="btn cta">読み上げを開始</span>
+      </div>
+      <div class="spec dark">
+        <div class="lab">ダーク · 見出しの太さ</div>
+        <div class="tab-title disp" style="font-size:28px">貢献</div>
+        <div class="body" style="color:#A79FB0;font-size:13px;margin-top:6px">暗い面では細字が溶ける。本文は一段太く見えるかを見る。</div>
+      </div>
+    </div>
+
+    <section class="strip">
+      <h2>現行＋10案を横に並べる</h2>
+      <div class="strip-grid">
+        <div class="cell" style="font-family:'Zen Maru Gothic',sans-serif">
+          <div class="lab">現行</div>
+          <div class="w">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Zen Kaku Gothic New',sans-serif">貢献  3,613</div>
+        </div>
+        <div class="cell" style="font-family:'Noto Sans JP',sans-serif">
+          <div class="lab">案1 Noto</div>
+          <div class="w">LIVE Sidestage</div>
+          <div class="c">貢献  3,613</div>
+        </div>
+        <div class="cell" style="font-family:'BIZ UDPGothic',sans-serif">
+          <div class="lab">案2 BIZ</div>
+          <div class="w">LIVE Sidestage</div>
+          <div class="c">貢献  3,613</div>
+        </div>
+        <div class="cell">
+          <div class="lab">案3 明朝</div>
+          <div class="w" style="font-family:'Shippori Mincho',serif;font-weight:800">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Noto Sans JP',sans-serif">貢献  3,613</div>
+        </div>
+        <div class="cell">
+          <div class="lab">案4 丸ゴ</div>
+          <div class="w" style="font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Noto Sans JP',sans-serif">貢献  3,613</div>
+        </div>
+        <div class="cell">
+          <div class="lab">案5 看板</div>
+          <div class="w" style="font-family:'Dela Gothic One',sans-serif">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Noto Sans JP',sans-serif">貢献  3,613</div>
+        </div>
+        <div class="cell">
+          <div class="lab">案6 教科書</div>
+          <div class="w" style="font-family:'Klee One',serif;font-weight:600">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Noto Sans JP',sans-serif">貢献  3,613</div>
+        </div>
+        <div class="cell">
+          <div class="lab">案7 キウイ</div>
+          <div class="w" style="font-family:'Kiwi Maru',serif;font-weight:500">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Noto Sans JP',sans-serif">貢献  3,613</div>
+        </div>
+        <div class="cell" style="font-family:'M PLUS 2',sans-serif">
+          <div class="lab">案8 M PLUS 2</div>
+          <div class="w">LIVE Sidestage</div>
+          <div class="c">貢献  3,613</div>
+        </div>
+        <div class="cell" style="font-family:'IBM Plex Sans JP',sans-serif">
+          <div class="lab">案9 Plex</div>
+          <div class="w">LIVE Sidestage</div>
+          <div class="c">貢献  3,613</div>
+        </div>
+        <div class="cell">
+          <div class="lab">案10 ロック</div>
+          <div class="w" style="font-family:'RocknRoll One',sans-serif">LIVE Sidestage</div>
+          <div class="c" style="font-family:'Noto Sans JP',sans-serif">貢献  3,613</div>
+        </div>
+      </div>
+    </section>
+
+    <p class="note">どの案も本文16px床・リスト13–13.5dp・タブ見出し22dpは現行スケールのまま。変えるのはファミリーだけ。採用後に google_fonts ネット取得をやめ、使ったウェイトだけアセット同梱するのが前提。ナビ6タブの9pxラベルには見出し書体を載せない。</p>
+    <p class="note">画像素材: 該当なし — 書体比較が目的で、写真やイラストを置くと字形の差が読めなくなる。</p>
+  </div>
+
+  <script>
+    const copy = {
+      0: {
+        title: "Noto Sans JP 一本化",
+        pair: "見出し ExtraBold 800 / 本文 Regular–Bold · 1ファミリー",
+        why: "日本語UIの床。ウェイトだけで階層を作る。ラテンと仮名のバランスが安定し、現行の2書体の「見出しだけ丸い」ズレが消える。google_fonts も取得が1系統。",
+        risk: "個性が薄い。光彩の「丸い親しみ」は書体では担わなくなり、グラデーションと角丸18に頼る。",
+        fit: "上品さは余白と色で、文字は道具。配信中に画面をチラ見する用途と一番合う。",
+        flutter: "GoogleFonts.notoSansJp / アセットなら NotoSansJP-Regular.ttf と ExtraBold。",
+        load: "可変1ファイルか、400/700/800 の3ウェイト。CJKフルは重いので jp サブセット必須。"
+      },
+      1: {
+        title: "BIZ UDPGothic 運用書体",
+        pair: "見出し Bold 700 / 本文 Regular · モリサワ BIZ UDP（プロポーショナル）",
+        why: "画面用に設計された和文。濁点・半濁点が潰れにくく、コインと順位のスキャン向き。ニックネームと数値が同じ骨格なので、貢献タブが表として読める。",
+        risk: "事務的。ウェルカムの「LIVE Sidestage」が看板ではなく帳票になる。丸みが消えるので光彩の柔らかさは角丸とグラデだけになる。",
+        fit: "配信中の運用画面（貢献・ギフト履歴・設定）を最優先するならこれ。",
+        flutter: "GoogleFonts.bizUDPGothic。UDGothic（等幅寄り）と取り違えない。",
+        load: "400/700 の2ウェイトで足りる。Notoよりファイルは軽いことが多い。"
+      },
+      2: {
+        title: "Shippori Mincho × Noto Sans JP",
+        pair: "見出し 明朝 ExtraBold 800 / 本文 Noto Sans JP",
+        why: "光彩を「丸ゴシックの可愛さ」から「上質な光沢」へ読み替える。タブ見出し22pxとウェルカム28pxだけ明朝。ボタン・リスト・数値はゴシックのまま。",
+        risk: "明朝は大きなDynamic Typeで行が伸びる。設定の密なラベルに明朝を流すと古い。ボタンに明朝は使わない、が実装で漏れやすい。",
+        fit: "ブランドの上品さを文字で見せたいとき。運用の速さより世界観。",
+        flutter: "GoogleFonts.shipporiMincho + notoSansJp。display/title ロールだけ明朝。",
+        load: "明朝フルセットは特に重い。見出し用漢字をサブセットするか、見出しに出す語彙を決めてから同梱。"
+      },
+      3: {
+        title: "M PLUS Rounded 1c × Noto Sans JP",
+        pair: "見出し ExtraBold 800 / 本文 Noto Sans JP",
+        why: "現行 Zen Maru の丸みは残す。本文だけ Zen Kaku（13pxで細く見える）を Noto に替える。見出しのウェイトが 800 まであり、現行700より段差がつく。",
+        risk: "現行からの距離が一番小さい。「替えた感」が弱い。丸ゴ＋Noto は日本語アプリで既視感もある。",
+        fit: "光彩の性格は崩したくないが、本文の可読性と数字の安定が欲しいとき。",
+        flutter: "GoogleFonts.mPlusRounded1c + notoSansJp。ボタンも見出し書体のまま。",
+        load: "丸ゴは 400/800、本文 Noto は 400/700。2ファミリーだが現行と同じ構成。"
+      },
+      4: {
+        title: "Dela Gothic One × Noto Sans JP",
+        pair: "見出し Dela Gothic One（1ウェイト） / 本文 Noto Sans JP Medium",
+        why: "ライブの看板。高揚感をグラデーションだけに頼らず、字そのものが太い。ウェルカムとタブ見出しだけで使い、本文は一段落ち着いた Noto Medium。",
+        risk: "設定・ナビ・13pxコインに載せると壊れる。ウェイトが1つしかない。ファイルが大きく、仮名の詰まりが強い。暗い面ではハレーションでさらに太く見える。",
+        fit: "ギフトが来た瞬間の画面を「舞台」にしたいとき。運用の静けさは本文側で取る。",
+        flutter: "GoogleFonts.delaGothicOne は display/title のみ。本文・label・data は必ず Noto。",
+        load: "Dela はサブセット必須。見出しに出す語（アプリ名・タブ名）が少ないので、その漢字だけ残せる。"
+      },
+      5: {
+        title: "Klee One × Noto Sans JP",
+        pair: "見出し Semibold 600 / 本文 Noto Sans JP",
+        why: "教科書体。筆の入り抜きがあり、丸ゴとも極太ゴシックとも違う「手で書いた上品さ」。VOICEVOXのキャラ読み上げと世界観が近い。",
+        risk: "画面用ではなく印刷教科書向け。13pxでは線が潰れるので本文には使わない。 SemiBold までしか無く、ボタンの800が出せない。",
+        fit: "柔らかさを残したいが Zen Maru の「よくある丸ゴ」から抜けたいとき。",
+        flutter: "GoogleFonts.kleeOne は title のみ。本文・データは Noto。",
+        load: "400/600 の2ファイル。見出し語彙のサブセットが効く。"
+      },
+      6: {
+        title: "Kiwi Maru × Noto Sans JP",
+        pair: "見出し Medium 500 / 本文 Noto Sans JP",
+        why: "Zen Maru より丸く、仮名が開く。現行の「丸い見出し」を一段はっきりさせる。本文は Noto で引き締める。",
+        risk: "Bold が無い（500が上限）。見出しのコントラストはサイズとグラデに頼る。丸すぎて大人向け配信では幼く見える。",
+        fit: "光彩の親しみを最大まで振る方向。案4より「替えた」と分かる。",
+        flutter: "GoogleFonts.kiwiMaru + notoSansJp。title は w500 固定。",
+        load: "Kiwi は 400/500 だけ。本文 Noto 400/700。"
+      },
+      7: {
+        title: "M PLUS 2 一本化",
+        pair: "見出し ExtraBold 800 / 本文 Regular–Bold · 1ファミリー",
+        why: "Notoより字面が広く、仮名が開く。一本化なのに案1よりプロダクトらしい。ウェイトが揃っている。",
+        risk: "Notoとの差は並ぶまで分かりにくい。丸みは無いので光彩の柔らかさは角丸側。",
+        fit: "道具としての新しさが欲しく、丸ゴにも明朝にも行きたくないとき。",
+        flutter: "GoogleFonts.mPlus2。可変フォントが使える。",
+        load: "可変1本が一番きれい。固定なら 400/700/800。"
+      },
+      8: {
+        title: "IBM Plex Sans JP 一本化",
+        pair: "見出し Bold 700 / 本文 Regular · 数字とラテンが揃う",
+        why: "LIVE Sidestage、@handle、コイン桁が同じ骨格。IBM Plex のメトリクスは数字の並びが安定する。貢献タブのスキャン向き。",
+        risk: "テック製品の既定書体に寄り、光彩の独自性が落ちる。800が無く見出しが案1/8より弱い。",
+        fit: "運用の数字を最優先し、ブランドの丸さは捨ててよいとき。案2 BIZ のラテン寄り。",
+        flutter: "GoogleFonts.ibmPlexSansJp。tabularFigures が使えるウェイトを実機確認。",
+        load: "400/500/700。CJKは重いのでサブセット必須。"
+      },
+      9: {
+        title: "RocknRoll One × Noto Sans JP",
+        pair: "見出し RocknRoll One（1ウェイト） / 本文 Noto Sans JP",
+        why: "Dela ほど詰まらず、ライブの手書き看板。仮名が跳ねる。高揚感は案5より「配信者の部屋」側。",
+        risk: "長文見出しで崩れる。ウェイトが1つ。設定に流すとおもちゃ。ラテンの「LIVE Sidestage」が和文と温度差を持つ。",
+        fit: "看板は欲しいが Dela の圧が強すぎるとき。",
+        flutter: "GoogleFonts.rocknRollOne は display のみ。本文は Noto。",
+        load: "1ウェイト。見出し語彙のサブセットが効く。"
+      }
+    };
+
+    const phone = document.getElementById("phone");
+    const specs = document.getElementById("specs");
+    const meta = document.getElementById("meta");
+    const buttons = [...document.querySelectorAll(".picker button")];
+
+    function render(p) {
+      phone.className = "phone p" + p;
+      specs.className = "specimens p" + p;
+      const c = copy[p];
+      meta.innerHTML = `
+        <h2>${c.title}</h2>
+        <p class="pair">${c.pair}</p>
+        <dl>
+          <dt>なぜこれか</dt><dd>${c.why}</dd>
+          <dt>壊れる点</dt><dd>${c.risk}</dd>
+          <dt>光彩との関係</dt><dd>${c.fit}</dd>
+          <dt>Flutter</dt><dd><code>${c.flutter}</code></dd>
+          <dt>配布</dt><dd>${c.load}</dd>
+        </dl>`;
+      buttons.forEach((b) => b.setAttribute("aria-pressed", b.dataset.p === String(p) ? "true" : "false"));
+    }
+
+    buttons.forEach((b) => b.addEventListener("click", () => render(b.dataset.p)));
+    render(0);
+  </script>
+</body>
+</html>

@@ -77,8 +77,8 @@ class KosaiSectionHeading extends StatelessWidget {
   Widget build(BuildContext context) {
     final sub = subtitle;
     final headingStyle =
-        Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-            const TextStyle(fontSize: 22, fontWeight: FontWeight.w700);
+        Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w800) ??
+            const TextStyle(fontSize: 22, fontWeight: FontWeight.w800);
     return Padding(
       padding: EdgeInsets.fromLTRB(16, top, 16, sub == null ? bottom : 2),
       child: Column(

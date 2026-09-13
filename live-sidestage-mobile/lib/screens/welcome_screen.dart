@@ -50,8 +50,8 @@ class WelcomeScreen extends StatelessWidget {
                   style: Theme.of(context)
                           .textTheme
                           .titleLarge
-                          ?.copyWith(fontSize: 28, fontWeight: FontWeight.w700) ??
-                      const TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
+                          ?.copyWith(fontSize: 28, fontWeight: FontWeight.w800) ??
+                      const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
                 Text(

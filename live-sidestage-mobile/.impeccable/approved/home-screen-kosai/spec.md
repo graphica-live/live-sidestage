@@ -33,11 +33,11 @@
 
 | 要素 | フォント | サイズ/weight | 備考 |
 |---|---|---|---|
-| アプリ名(`@tiktokId`)・タブタイトル・プランバッジ | Zen Maru Gothic | 700 | タブタイトルは22px、グラデーション文字 |
-| ステータス・chip・リスト・補助文言 | Zen Kaku Gothic New | 400〜500 | |
-| サマリーカードの合計値 | Zen Kaku Gothic New | 25px / 800 / letter-spacing -.01em | グラデーション文字 |
-| リスト行のコイン数値 | Zen Kaku Gothic New | 13px / 700 | 色は`c2`単色 |
-| ニックネーム | Zen Kaku Gothic New | 13.5px / 400 | 1行省略(ellipsis) |
+| アプリ名(`@tiktokId`)・タブタイトル・プランバッジ | M PLUS 2 | 800 | タブタイトルは22px、グラデーション文字 |
+| ステータス・chip・リスト・補助文言 | M PLUS 2 | 400〜500 | |
+| サマリーカードの合計値 | M PLUS 2 | 25px / 800 / letter-spacing -.01em | グラデーション文字 |
+| リスト行のコイン数値 | M PLUS 2 | 13px / 700 | 色は`c2`単色 |
+| ニックネーム | M PLUS 2 | 13.5px / 400 | 1行省略(ellipsis) |
 
 数字はすべて `tabular-nums`(桁揃え)。
 

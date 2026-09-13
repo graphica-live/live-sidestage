@@ -50,9 +50,9 @@ comp caption:
 | 1 | ヒーロー円 | 96dp / `BoxShape.circle` / 背景 `gradRing` c1→c2 135deg |
 | 2 | アイコン | 白 44dp。0=`Icons.speaker_notes_rounded` / 1=`Icons.card_giftcard` / 2=`Icons.graphic_eq` / 3=`Icons.emoji_events` / 4=`Icons.bolt` |
 | 3 | 余白 | 24dp |
-| 4 | 見出し | GradientText 22dp w700 Zen Maru Gothic / 中央 / `gradBadge` |
+| 4 | 見出し | GradientText 22dp w800 M PLUS 2 / 中央 / `gradBadge` |
 | 5 | 余白 | 12dp |
-| 6 | 本文 | 13.5dp w400 Zen Kaku Gothic New / sub `#7C7286` / 中央 / 行間 1.45 / 最大幅 320dp |
+| 6 | 本文 | 13.5dp w400 M PLUS 2 / sub `#7C7286` / 中央 / 行間 1.45 / 最大幅 320dp |
 
 コピー:
 

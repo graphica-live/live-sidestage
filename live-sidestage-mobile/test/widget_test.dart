@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -48,5 +49,32 @@ void main() {
     expect(() => Provider.of<RankingSyncStore>(context, listen: false), returnsNormally);
     expect(() => Provider.of<GiftHistorySyncStore>(context, listen: false), returnsNormally);
     expect(() => Provider.of<BattleHistorySyncStore>(context, listen: false), returnsNormally);
+  });
+
+
+  test('buildAppTheme uses M PLUS 2 with tabular figures', () {
+    for (final brightness in [Brightness.light, Brightness.dark]) {
+      final theme = buildAppTheme(brightness);
+      bool isMplus2(String? family) {
+        final f = (family ?? '').toLowerCase().replaceAll(' ', '');
+        return f.contains('mplus2');
+      }
+
+      expect(isMplus2(theme.textTheme.titleLarge?.fontFamily), isTrue);
+      expect(isMplus2(theme.textTheme.bodyMedium?.fontFamily), isTrue);
+      expect(theme.textTheme.titleLarge?.fontWeight, FontWeight.w800);
+      expect(theme.textTheme.bodyMedium?.fontWeight ?? FontWeight.w400, FontWeight.w400);
+      const tabular = FontFeature.tabularFigures();
+      for (final style in [
+        theme.textTheme.bodyLarge,
+        theme.textTheme.bodyMedium,
+        theme.textTheme.bodySmall,
+        theme.textTheme.labelLarge,
+        theme.textTheme.labelMedium,
+        theme.textTheme.labelSmall,
+      ]) {
+        expect(style?.fontFeatures, contains(tabular));
+      }
+    }
   });
 }
