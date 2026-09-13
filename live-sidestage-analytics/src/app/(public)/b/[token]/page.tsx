@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { queryBattleReplayByShareToken } from "@/lib/battle-replay";
-import { formatClock, replayTitleOf } from "@/components/analytics/battle-replay/replay-format";
+import { formatClock, replayTitleOf, selfAvatarUrlOf } from "@/components/analytics/battle-replay/replay-format";
 import { PublicBattleClient } from "./PublicBattleClient";
 
 // シェアリンクの公開ページ。**トークンで「どのバトルか」、クエリで「どの表示か」**を決める。
@@ -42,13 +42,21 @@ export async function generateMetadata({ params }: { params: { token: string } }
     .map((team) => (team.officialScore === null ? "—" : Number(team.officialScore).toLocaleString("ja-JP")))
     .join(" - ");
   const description = `${scores} ・ ${new Date(payload.startedAt).toLocaleString("ja-JP")} ・ ${formatClock(payload.durationMs)}`;
+  const ogImage = selfAvatarUrlOf(payload.teams);
 
   return {
     title: `${title} | LIVE Sidestage`,
     description,
     // トークンを他サイトへ漏らさない(外部リンクを踏んだときの Referer)。
     referrer: "same-origin",
-    openGraph: { title, description, type: "website" },
+    // 未指定だと LINE 等がページ内の最初の img（貢献者）をサムネイルにする。
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      ...(ogImage ? { images: [{ url: ogImage }] } : {}),
+    },
+    ...(ogImage ? { twitter: { card: "summary", images: [ogImage] } } : {}),
     // URLを知る人向けであってSEOの対象ではない。公開APIの X-Robots-Tag と対。
     robots: { index: false, follow: false },
   };

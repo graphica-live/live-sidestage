@@ -57,6 +57,21 @@ export function replayTitleOf(
   return `${self} × ${others.length}人バトル`;
 }
 
+/**
+ * LINE / DM のリンクプレビュー用。**配信者本人のアバターだけ**を返す。
+ * 未指定だとクローラがページ先頭の貢献者アイコンをサムネイルにする。
+ * 陣営の他メンバーや相手にはフォールバックしない。
+ */
+export function selfAvatarUrlOf(
+  teams: { participants: { isSelf: boolean; avatarUrl: string | null }[] }[]
+): string | null {
+  for (const team of teams) {
+    const self = team.participants.find((p) => p.isSelf);
+    if (self?.avatarUrl) return self.avatarUrl;
+  }
+  return null;
+}
+
 /** イニシャル(アバターが無いときの代替)。絵文字・サロゲートペアで割らない。 */
 export function initialOf(name: string): string {
   const trimmed = name.trim();

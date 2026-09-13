@@ -12,6 +12,7 @@ import {
   initialOf,
   replayTitleOf,
   rippleScaleForCoins,
+  selfAvatarUrlOf,
 } from "./replay-format";
 import { buildStageLayout } from "./replay-layout";
 import {
@@ -652,6 +653,29 @@ describe("replayTitleOf", () => {
   it("陣営が解決できないバトルでも例外を出さない", () => {
     expect(replayTitleOf([])).toBe("自分");
     expect(replayTitleOf([team(true, "わや")])).toBe("わや");
+  });
+});
+
+describe("selfAvatarUrlOf", () => {
+  const p = (isSelf: boolean, avatarUrl: string | null) => ({ isSelf, avatarUrl });
+
+  it("配信者本人のアバターだけを返し、貢献者・相手・味方には落ちない", () => {
+    expect(
+      selfAvatarUrlOf([
+        { participants: [p(false, "https://cdn.example/teammate.png"), p(true, "https://cdn.example/self.png")] },
+        { participants: [p(false, "https://cdn.example/rival.png")] },
+      ])
+    ).toBe("https://cdn.example/self.png");
+  });
+
+  it("本人アバターが無いときは null（クローラに別画像を渡さない）", () => {
+    expect(
+      selfAvatarUrlOf([
+        { participants: [p(true, null), p(false, "https://cdn.example/teammate.png")] },
+        { participants: [p(false, "https://cdn.example/rival.png")] },
+      ])
+    ).toBeNull();
+    expect(selfAvatarUrlOf([])).toBeNull();
   });
 });
 
