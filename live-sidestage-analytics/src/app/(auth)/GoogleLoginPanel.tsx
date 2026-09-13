@@ -185,7 +185,7 @@ function LoginForm({
 
   if (variant === "split") {
     return (
-      <div className="theme-light-forced min-h-screen flex flex-col md:flex-row">
+      <div className="min-h-screen flex flex-col md:flex-row">
         <div
           className="flex-1 md:basis-[46%] text-on-accent px-6 py-9 md:px-9 md:py-11 flex flex-col justify-between"
           style={{

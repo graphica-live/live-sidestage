@@ -1,3 +1,4 @@
+import { AnalyticsThemeShell } from "@/components/theme/AnalyticsThemeShell";
 import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
@@ -22,9 +23,9 @@ export default async function OverlaySettingsLayout({ children }: { children: Re
   const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "overlays");
 
   return (
-    <>
+    <AnalyticsThemeShell variant="dark">
       <OverlaysHeader planLabel={planLabel} />
       {children}
-    </>
+    </AnalyticsThemeShell>
   );
 }

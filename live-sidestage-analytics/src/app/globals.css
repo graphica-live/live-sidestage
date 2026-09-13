@@ -4,46 +4,10 @@
 
 /* トークン: ライトが既定、ダークは prefers-color-scheme で自動追従。
    実測値は .impeccable/approved/dashboard/spec.md(色テーブル)が正本。
-   login 画面のみ常時ライト固定(.theme-light-forced、GoogleLoginPanel.tsx参照)。
+   login 画面のみ常時ライト固定(.analytics-theme-light、GoogleLoginPanel.tsx参照)。
    値は "R G B"(スペース区切り)で持つ — tailwind.config.ts が `rgb(var(--x) / <alpha>)`
    の形で参照するため、opacity修飾子(bg-brand/40等)が機能するにはこの形式が必須。 */
 :root {
-  color-scheme: light dark;
-  --bg: 255 255 255;
-  --panel: 248 249 251;
-  --border: 229 231 235;
-  --row-border: 238 240 243;
-  --row-hover: 245 246 249;
-  --text: 55 65 81;
-  --text-strong: 17 24 39;
-  --muted: 107 114 128;
-  --accent: 79 70 229;
-  --accent-hover: 67 56 202;
-  --on-accent: 255 255 255;
-  --ok: 34 197 94;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: 16 18 22;
-    --panel: 24 27 33;
-    --border: 42 46 55;
-    --row-border: 34 37 44;
-    --row-hover: 30 33 41;
-    --text: 199 203 212;
-    --text-strong: 243 244 247;
-    --muted: 136 144 160;
-    --accent: 139 133 255;
-    --accent-hover: 122 115 224;
-    --on-accent: 13 12 26;
-    --ok: 52 211 153;
-  }
-}
-
-/* CSS変数とcolor-schemeのみ上書き。tailwindのdarkModeはmedia戦略のままなので、
-   このクラス配下でも `dark:` ユーティリティはOS設定に追従してしまう —
-   配下に `dark:` クラスを新しく足さないこと(足すとライト固定が破れる)。 */
-.theme-light-forced {
   color-scheme: light;
   --bg: 255 255 255;
   --panel: 248 249 251;
@@ -57,6 +21,37 @@
   --accent-hover: 67 56 202;
   --on-accent: 255 255 255;
   --ok: 34 197 94;
+}
+
+.analytics-theme-light {
+  color-scheme: light;
+  --bg: 255 255 255;
+  --panel: 248 249 251;
+  --border: 229 231 235;
+  --row-border: 238 240 243;
+  --row-hover: 245 246 249;
+  --text: 55 65 81;
+  --text-strong: 17 24 39;
+  --muted: 107 114 128;
+  --accent: 79 70 229;
+  --accent-hover: 67 56 202;
+  --on-accent: 255 255 255;
+  --ok: 34 197 94;
+}
+.analytics-theme-dark {
+  color-scheme: dark;
+  --bg: 16 18 22;
+  --panel: 24 27 33;
+  --border: 42 46 55;
+  --row-border: 34 37 44;
+  --row-hover: 30 33 41;
+  --text: 199 203 212;
+  --text-strong: 243 244 247;
+  --muted: 136 144 160;
+  --accent: 139 133 255;
+  --accent-hover: 122 115 224;
+  --on-accent: 13 12 26;
+  --ok: 52 211 153;
 }
 
 body {

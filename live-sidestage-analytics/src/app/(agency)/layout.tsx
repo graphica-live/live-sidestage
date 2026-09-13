@@ -1,3 +1,4 @@
+import { AnalyticsThemeShell } from "@/components/theme/AnalyticsThemeShell";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { agencyAuthOptions } from "@/lib/agency/auth";
@@ -17,9 +18,9 @@ export default async function AgencyLayout({ children }: { children: React.React
   const { label: planLabel } = await getWebPlanBadgeDisplayForEmail(session.user.email, "agency");
 
   return (
-    <>
+    <AnalyticsThemeShell variant="dark">
       <AgencyHeader planLabel={planLabel} />
       {children}
-    </>
+    </AnalyticsThemeShell>
   );
 }

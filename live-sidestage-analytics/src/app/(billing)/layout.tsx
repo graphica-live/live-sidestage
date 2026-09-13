@@ -1,3 +1,4 @@
+import { AnalyticsThemeShell } from "@/components/theme/AnalyticsThemeShell";
 import type { Metadata } from "next";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
@@ -20,9 +21,9 @@ export default async function BillingLayout({ children }: { children: React.Reac
   const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "billing");
 
   return (
-    <>
+    <AnalyticsThemeShell variant="dark">
       <BillingHeader planLabel={planLabel} />
       {children}
-    </>
+    </AnalyticsThemeShell>
   );
 }
