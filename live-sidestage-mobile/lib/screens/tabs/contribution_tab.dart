@@ -10,6 +10,7 @@ import '../../core/api_retry.dart';
 import '../../core/comment_feed.dart';
 import '../../core/gift_activity.dart';
 import '../../core/plan_gate.dart';
+import '../../core/ranking_snapshot_page.dart';
 import '../../core/realtime_sync.dart';
 import '../../core/session_controller.dart';
 import '../../core/upgrade_notice.dart';
@@ -133,6 +134,11 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     final parsed = _parseRankingEntities(entities);
     if (!mounted) return;
     final current = _result;
+    final merged = mergeRankingSnapshotPage(
+      snapshotUsers: parsed,
+      loadedUsers: _users,
+      restUserCount: current?.userCount,
+    );
     final rawTotal = snapshot?['total'];
     final total = rawTotal is Map
         ? (
@@ -141,15 +147,15 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
           )
         : current?.total ?? (giftCount: 0, totalDiamonds: 0);
     setState(() {
-      _users = parsed;
+      _users = merged.users;
       if (current != null) {
         _result = GiftRankingResult(
-          users: parsed,
+          users: merged.users,
           dateRange: current.dateRange,
           total: total,
           verified: current.verified,
-          userCount: parsed.length,
-          hasMore: false,
+          userCount: merged.userCount,
+          hasMore: merged.hasMore,
           bootId: current.bootId,
           epoch: current.epoch,
           version: current.version,

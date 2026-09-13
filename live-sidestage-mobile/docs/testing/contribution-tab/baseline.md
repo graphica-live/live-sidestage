@@ -29,7 +29,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 
 **2026-09-12(8fed9bdc)**: マージ解消時のUTF-8破損をbatch34版(`_changePeriod`ロールバック)へ復元。`worktree-mobile-contribution-perf`の`_users`/silent期間UIは未マージのまま。
 
-**2026-09-12(snapshot guard)**: live snapshotは`_onRankingSnapshot`経由で`_users`更新。`containsToday`のときのみ。過去日・カスタム範囲はREST `_load`結果のみ。
+**2026-09-12(snapshot guard)**: live snapshotは`_onRankingSnapshot`経由で`_applyRankingSnapshotUsers`が`mergeRankingSnapshotPage`でマージ更新。`containsToday`のときのみ。`hasMore`を落とさない。過去日・カスタム範囲はREST `_load`結果のみ。
 
 **2026-09-12(perf統合)**: `worktree-mobile-contribution-perf`の`_users`キャッシュ・silent再取得時`LinearProgressIndicator`・期間セレクタ常時`enabled: true`を取込。`_changePeriod`ロールバックは維持。
 
@@ -54,7 +54,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-014 | `fetchBreakdown` 未指定時(バトル履歴タブ)、順位メダル部分にもタップ領域が残る(退行防止) | `RankingListTile`(バトル履歴タブ) | 回帰 | `fetchBreakdown` 未指定 | 順位メダル部分に `InkWell` が存在する(プロフィール遷移の呼び出し自体はurl_launcherのモック手段が無いため対象外) | `flutter test test/ranking_list_tile_test.dart --plain-name "順位メダル部分にもタップ領域"` | PASS | |
 | TC-CT-015 | `tiktokHandle` が null(TikTokUser 行が無い送信者)の行はプロフィール遷移のタップを受け付けない | `RankingListTile`(バトル履歴タブ) | 異常/データ欠損 | `tiktokHandle: null`、`fetchBreakdown` 未指定 | 行内の `InkWell`・アバターの `GestureDetector` の `onTap` が全て null(`https://www.tiktok.com/@` を組み立てられないため導線を出さない) | `flutter test test/ranking_list_tile_test.dart --plain-name "タップを受け付けない"` | PASS | |
 | TC-CT-016 | `tiktokHandle` が null でも内訳アコーディオンは `tiktokUid` をキーに動作する | `RankingListTile`(貢献タブ) | 境界 | `tiktokHandle: null`、`fetchBreakdown` 指定、名前をタップ | `fetchBreakdown` が `entry.tiktokUid` で1回呼ばれ、内訳が表示される | `flutter test test/ranking_list_tile_test.dart --plain-name "fetchBreakdown指定時は名前タップ"` | PASS | |
-| TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab._onRankingSnapshot` + `_users` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合)、かつ表示期間が「今日」を含む | `_applyRankingSnapshotUsers`で`_users`が更新される。過去日のみの表示中はlive snapshotで`_users`を上書きしない | `flutter test test/realtime_sync_test.dart` + コードレビュー | PASS | 2026-09-12 perf統合 |
+| TC-CT-017 | Socket.IOで正常なranking snapshot pushを受信すると、REST再取得を待たず画面のランキング一覧が更新される | `ContributionTab._onRankingSnapshot` + `_users` | 正常/回帰 | `RankingSyncStore`が`canApply`な`chat:ranking:snapshot`を受信(version整合)、かつ表示期間が「今日」を含む | `_applyRankingSnapshotUsers`でマージ後のロード済み窓が`_users`に反映される(全件snapshotでも一気に全行構築しない)。過去日のみの表示中はlive snapshotで`_users`を上書きしない | `flutter test test/realtime_sync_test.dart` + コードレビュー | PASS | 2026-09-12 perf統合 |
 | TC-CT-029 | 既存データ表示中の再取得(silent)時、細いプログレスが出て期間セレクタは有効のまま | `ContributionTab._load(silent:)` + `PeriodSelectorBar` | UI/正常 | `_result != null`でpush/resync/日付切替によりsilent `_load`実行 | 取得中は`LinearProgressIndicator`表示、`PeriodSelectorBar.enabled`はtrue、完了/失敗後にインジケータ非表示 | 実機確認(Pixel 7a) | NOT RUN | Windows。Gemini test plan @ perf統合 |
 | TC-CT-018 | REST取得直後、サーバーの現在versionより1小さいversionのpushを欠損と誤判定しない | `RankingSyncStore.acknowledgeResync` + `VersionTracker.acknowledge` | 境界/回帰 | REST取得時点でサーバーversionが7、直後に届くpushがversion 8 | `acknowledgeResync`が`VersionTracker.acknowledge(bootId, epoch, version: 7)`でtrackerを実際のREST版数へ同期するため、version 8のpushは`canApply`になる | `flutter test test/realtime_sync_test.dart`(`acknowledge()`関連ケース) | PASS | |
 | TC-CT-019 | 貢献タブの期間ナビ行(◀/▶)右端に web と同じ矢印共有アイコンが表示される | `ContributionTab`(`PeriodSelectorBar.dateNavTrailing`) | UI/正常 | 貢献タブを開く | ◀/▶行の右端に `ArrowShareIcon`(16dp)のボタン。独立した縦行は無い | 実機確認(Pixel 7a) | NOT RUN | adb/Marionette MCP未接続。web Playwrightで同一UIパターン確認済 |
@@ -72,7 +72,7 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-031 | 日付切替は offset=0 の1ページ(50件)を返し、人数ラベルは userCount | ContributionTab._load / GET ranking | 正常 | 51人以上の日で◀/▶ | 初回は最大50行。ラベルは全集合人数。スクロールで残りが追加される | analytics: ranking/route.integration.test.ts (limit/offset) + 実機 | PASS (API) / NOT RUN (実機 Windows) | 2026-09-13 date-nav perf |
 | TC-CT-032 | ランキング初回の profileImageUrl は空、後から avatars POST で埋まる | fetchRankingAvatars + _enrichWithAvatars | 正常 | 認証済み、当該roomの uid | GET ranking の users.profileImageUrl は null。POST avatars は room にギフト/ロールアップがある uid だけ署名 | analytics: ranking + avatars integration / flutter test gift_ranking_entry copyWith | PASS (unit+API方針) / avatars IDORフィルタはコード確認 | 他room uid は空配列 |
 | TC-CT-033 | キャッシュヒット時は即表示し、失敗してもキャッシュを残す | ContributionTab._changePeriod | 正常/異常 | 一度見た日へ戻る | ネットワーク待ち前に一覧が出る。silent refresh 失敗でも表示維持 | コードレビュー | NOT RUN: 実機 | prefetch は UI を上書きしない |
-| TC-CT-034 | snapshot(今日)適用後は userCount=件数, hasMore=false | _applyRankingSnapshotUsers | 回帰 | 今日を表示中に ranking snapshot | 人数ラベルが snapshot 件数。無限スクロールが止まらないよう hasMore を落とす | コードレビュー | PASS (実装確認) | |
+| TC-CT-034 | 当日snapshot適用後もREST userCountと無限スクロールが維持される | `_applyRankingSnapshotUsers` + `mergeRankingSnapshotPage` | 回帰 | 今日を表示中に ranking snapshot(先頭ページまたは全件) | 人数ラベルは全集合(`userCount`をsnapshot件数で減らさない)。`hasMore`は表示行数が`userCount`未満。表示行はロード済み窓(全件snapshotでも最大ロード済み件数/空なら50)。snapshotのnullアバターはloadedのURLを維持 | `flutter test test/ranking_snapshot_page_test.dart` + `_applyRankingSnapshotUsers`コードレビュー | PASS | 2026-09-13 unit 9/9 + analyze |
 
 
 
