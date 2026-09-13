@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PlanBadge } from "@/components/PlanBadge";
 import { signOut } from "next-auth/react";
 
 // イベント管理画面のヘッダー。**analytics の要素は一切置かない。**
@@ -13,7 +14,7 @@ import { signOut } from "next-auth/react";
 // ログアウト後の戻り先は analytics の /login ではなくイベント側の /event/login。
 // セッション Cookie は analytics と共有なので、ここでのログアウトは analytics 側からも
 // ログアウトすることになる(1セッション1ログイン)。
-export default function EventHeader() {
+export default function EventHeader({ planLabel }: { planLabel: string }) {
   return (
     <header className="border-b border-border bg-panel sticky top-0 z-10">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -24,6 +25,8 @@ export default function EventHeader() {
           <span className="text-brand font-bold text-base sm:text-lg">LIVE Sidestage</span>
           <span className="text-muted font-medium text-sm">Event</span>
         </Link>
+
+        <PlanBadge label={planLabel} />
 
         <Link
           href="/events/settings"

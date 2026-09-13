@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { PlanBadge } from "@/components/PlanBadge";
 import { signOut } from "next-auth/react";
 
 interface ListenerState {
@@ -18,7 +19,7 @@ const statusColor: Record<string, string> = {
   error: "bg-red-500",
 };
 
-export default function DashboardHeader({ email }: { email?: string | null }) {
+export default function DashboardHeader({ email, planLabel }: { email?: string | null; planLabel: string }) {
   const [listener, setListener] = useState<ListenerState | null>(null);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function DashboardHeader({ email }: { email?: string | null }) {
           )}
         </div>
 
+        <PlanBadge label={planLabel} />
         {email && (
           <span
             className="text-xs text-muted truncate shrink min-w-0 max-w-[100px] sm:max-w-[160px]"

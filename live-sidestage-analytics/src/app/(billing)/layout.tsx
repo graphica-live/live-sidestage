@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import BillingHeader from "./BillingHeader";
+import { getWebPlanBadgeDisplay } from "@/lib/plan/web-plan-badge";
 
 export const metadata: Metadata = {
   title: "LIVE Sidestage プラン",
@@ -16,9 +17,11 @@ export default async function BillingLayout({ children }: { children: React.Reac
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
 
+  const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "billing");
+
   return (
     <>
-      <BillingHeader />
+      <BillingHeader planLabel={planLabel} />
       {children}
     </>
   );

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { agencyAuthOptions } from "@/lib/agency/auth";
 import { AGENCY_LOGIN_PATH } from "@/lib/agency/session-cookie";
 import AgencyHeader from "./AgencyHeader";
+import { getWebPlanBadgeDisplayForEmail } from "@/lib/plan/web-plan-badge";
 
 // 配信者向けの (dashboard) とは別のroute group。事務所向け画面に
 // 配信者用ヘッダー(リスナー状態・オーバーレイ設定)を混ぜないために分けている。
@@ -13,9 +14,11 @@ export default async function AgencyLayout({ children }: { children: React.React
   const session = await getServerSession(agencyAuthOptions);
   if (!session) redirect(AGENCY_LOGIN_PATH);
 
+  const { label: planLabel } = await getWebPlanBadgeDisplayForEmail(session.user.email, "agency");
+
   return (
     <>
-      <AgencyHeader />
+      <AgencyHeader planLabel={planLabel} />
       {children}
     </>
   );

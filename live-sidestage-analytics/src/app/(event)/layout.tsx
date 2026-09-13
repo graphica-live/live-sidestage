@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import EventHeader from "./EventHeader";
+import { getWebPlanBadgeDisplay } from "@/lib/plan/web-plan-badge";
 
 // Next.js の metadata はフィールド単位の浅いマージなので、title だけ上書きすると
 // ルート layout.tsx の description("TikTok Live gift analytics")が events 配下へ
@@ -22,9 +23,11 @@ export default async function EventLayout({ children }: { children: React.ReactN
   const session = await getServerSession(authOptions);
   if (!session) redirect("/event/login");
 
+  const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "events");
+
   return (
     <>
-      <EventHeader />
+      <EventHeader planLabel={planLabel} />
       {children}
     </>
   );

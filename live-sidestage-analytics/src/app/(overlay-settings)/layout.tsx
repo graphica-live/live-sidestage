@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import OverlaysHeader from "./OverlaysHeader";
+import { getWebPlanBadgeDisplay } from "@/lib/plan/web-plan-badge";
 
 // metadata はフィールド単位の浅いマージなので、title だけ上書きすると
 // ルート layout.tsx の description がそのまま継承される。両方書く。
@@ -18,9 +19,11 @@ export default async function OverlaySettingsLayout({ children }: { children: Re
   const session = await getServerSession(authOptions);
   if (!session) redirect("/overlays/login");
 
+  const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "overlays");
+
   return (
     <>
-      <OverlaysHeader />
+      <OverlaysHeader planLabel={planLabel} />
       {children}
     </>
   );

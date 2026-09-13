@@ -4,6 +4,7 @@ import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { isAdminEmail } from "@/lib/admin";
 import DashboardHeader from "./DashboardHeader";
+import { getWebPlanBadgeDisplay } from "@/lib/plan/web-plan-badge";
 
 export default async function DashboardLayout({
   children,
@@ -12,6 +13,8 @@ export default async function DashboardLayout({
 }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
+
+  const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "analytics");
 
   return (
     <>
@@ -22,7 +25,7 @@ export default async function DashboardLayout({
           </Link>
         </div>
       )}
-      <DashboardHeader email={session.user.email} />
+      <DashboardHeader email={session.user.email} planLabel={planLabel} />
       {children}
     </>
   );

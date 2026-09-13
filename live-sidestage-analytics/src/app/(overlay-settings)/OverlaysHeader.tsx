@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PlanBadge } from "@/components/PlanBadge";
 import { signOut } from "next-auth/react";
 
 // オーバーレイ設定画面のヘッダー。**analytics の要素は一切置かない。**
@@ -13,7 +14,7 @@ import { signOut } from "next-auth/react";
 // セッション Cookie は analytics と共有なので、ここでのログアウトは analytics 側からも
 // ログアウトすることになる(1セッション1ログイン)。ログイン画面は event と同じ理由で
 // /overlays/login に分けてある(表向き別サービスとして見せるため)。
-export default function OverlaysHeader() {
+export default function OverlaysHeader({ planLabel }: { planLabel: string }) {
   return (
     <header className="border-b border-border bg-panel sticky top-0 z-10">
       <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
@@ -24,6 +25,8 @@ export default function OverlaysHeader() {
           <span className="text-brand font-bold text-base sm:text-lg">LIVE Sidestage</span>
           <span className="text-muted font-medium text-sm">Overlays</span>
         </Link>
+
+        <PlanBadge label={planLabel} />
 
         <Link
           href="/overlays/settings"

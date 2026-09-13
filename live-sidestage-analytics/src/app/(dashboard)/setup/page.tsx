@@ -5,14 +5,14 @@ import Link from "next/link";
 import { TiktokHandleSetupForm } from "@/components/TiktokHandleSetupForm";
 
 export default function SetupPage() {
-  const [plan, setPlan] = useState<string | null>(null);
+  const [planLabel, setPlanLabel] = useState<string | null>(null);
   const [principalId, setPrincipalId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetch("/api/billing/subscription")
+    fetch("/api/billing/subscription?badgeContext=analytics")
       .then((r) => r.json())
-      .then((data) => setPlan(data.plan ?? "FREE"))
+      .then((data) => setPlanLabel(data.planLabel ?? data.plan ?? "FREE"))
       .catch(() => {});
   }, []);
 
@@ -44,7 +44,7 @@ export default function SetupPage() {
         <div className="card space-y-3 mt-4">
           <div>
             <p className="text-sm text-strong font-semibold">現在のプラン</p>
-            <p className="mt-1 text-lg font-bold text-brand">{plan ?? "…"}</p>
+            <p className="mt-1 text-lg font-bold text-brand">{planLabel ?? "…"}</p>
           </div>
           <div>
             <p className="text-sm text-strong font-semibold">アカウントID</p>
