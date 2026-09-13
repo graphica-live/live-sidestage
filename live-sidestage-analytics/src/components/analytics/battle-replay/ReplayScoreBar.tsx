@@ -2,7 +2,7 @@
 
 import { ReplayItemCardType } from "@/lib/battle-replay-contract";
 import { formatClock } from "./replay-format";
-import type { ReplayActiveItem } from "./replay-select";
+import { itemAppearT, type ReplayActiveItem } from "./replay-select";
 
 function widthsOf(scores: number[]): number[] {
   const total = scores.reduce((sum, v) => sum + v, 0);
@@ -55,7 +55,11 @@ function ReplayItemChip({ item }: { item: ReplayActiveItem }) {
       role="img"
       aria-label={`${labelOf(item.cardType)} 残り ${formatClock(item.remainMs)}`}
     >
-      <span className={`replay-item-icon replay-item-icon--${kind}`} aria-hidden>
+      <span
+        className={`replay-item-icon replay-item-icon--${kind}`}
+        aria-hidden
+        style={{ ["--replay-item-appear" as string]: String(itemAppearT(item.remainMs)) }}
+      >
         {glyph ? <span className="replay-item-glyph" /> : kind === "top2" ? "×2" : kind === "top3" ? "×3" : "!"}
       </span>
       <span className="replay-item-time">{formatClock(item.remainMs)}</span>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BATTLE_REPLAY_VERSION,
+  ITEM_APPEAR_MS,
   ITEM_EFFECT_MS,
   REPLAY_BAR_LIFETIME_MS,
   type BattleReplayPayload,
@@ -24,6 +25,7 @@ import {
   isQuietAt,
   quietRangesOf,
   itemsAt,
+  itemAppearT,
   scoresAt,
   segmentAt,
   selfAnchorIndexes,
@@ -764,5 +766,14 @@ describe("itemsAt", () => {
     const mid = itemsAt(payload({ itemEvents }), 600, ["left", "right"] as const);
     expect(mid.left).toHaveLength(5);
     expect(mid.left.map((i) => i.key)).toEqual(["i2", "i3", "i4", "i5", "i6"]);
+  });
+});
+
+describe("itemAppearT", () => {
+  it("peaks at effect start and is 0 after ITEM_APPEAR_MS", () => {
+    expect(itemAppearT(ITEM_EFFECT_MS)).toBe(1);
+    expect(itemAppearT(ITEM_EFFECT_MS - ITEM_APPEAR_MS)).toBe(0);
+    expect(itemAppearT(ITEM_EFFECT_MS - ITEM_APPEAR_MS / 2)).toBeCloseTo(0.875);
+    expect(itemAppearT(1_000)).toBe(0);
   });
 });

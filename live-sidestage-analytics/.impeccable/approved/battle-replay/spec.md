@@ -97,7 +97,8 @@ Battle item chips sit on the top-left (self, cell.right=false) and top-right (op
 - Remaining time pill under icon: 8px/700/mono/line-height 12px/padding 0 4px/radius 999px/bg rgba(6,8,12,0.82)/#fff. formatClock 00:05
 - Gap 2px (width 32px so 00:ss stays readable). Max 5 per side (keep newest). Left: oldest at outer left. Right: flex-direction row-reverse, oldest at outer right
 - Effect window ITEM_EFFECT_MS = 30000 for every cardType. Hidden outside the window
-- Colors: glove #fe4d4d, vault #f5c451, hammer #6b7280, top2 #4d9fff + x2, top3 #ffa64d + x3 (#0d0f13 text), unknown #2b303a
+- Colors: glove #fe4d4d, vault #f5c451 (white glyph), top2/top3 #f5c451 + x2/x3 text #0d0f13, hammer #6b7280, unknown #2b303a
+- Appear glow: ITEM_APPEAR_MS=520, t=1-(age/520)^3 from remainMs. Icon scale 1+0.32t, brightness 1+0.65t, extra shadow 6+22t px blur / 1+10t px spread, glow glove rgba(254,77,77,0.95) vault+boosters rgba(255,232,140,0.95) hammer rgba(220,228,240,0.9) unknown rgba(255,255,255,0.7). prefers-reduced-motion: no scale/filter/extra shadow
 - pointer-events none
 
 ### 4.3 陣営グリッド（**縦横比は実バトル画面の実測。計器のために縮めない**）

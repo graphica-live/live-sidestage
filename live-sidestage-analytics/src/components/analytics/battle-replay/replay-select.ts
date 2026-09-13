@@ -4,6 +4,7 @@
 // 特別扱いしないための設計で、ここに `useState` や DOM を持ち込まない。
 
 import {
+  ITEM_APPEAR_MS,
   ITEM_EFFECT_MS,
   MAX_VISIBLE_ITEMS_PER_SIDE,
   REPLAY_BAR_LIFETIME_MS,
@@ -411,6 +412,15 @@ export function segmentAt(
     active.find((s) => s.kind === "opening") ??
     active[0]!
   );
+}
+
+
+/** 出現直後ほど 1。効果時間の先頭 ITEM_APPEAR_MS だけ。シークしても elapsedMs から決まる。 */
+export function itemAppearT(remainMs: number): number {
+  const age = ITEM_EFFECT_MS - remainMs;
+  if (age < 0 || age >= ITEM_APPEAR_MS) return 0;
+  const u = age / ITEM_APPEAR_MS;
+  return 1 - u * u * u;
 }
 
 export type ReplayActiveItem = {
