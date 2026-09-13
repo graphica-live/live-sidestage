@@ -13,7 +13,7 @@ import 'api_retry.dart';
 /// **サーバーへの問い合わせが失敗した([AccountStatus.isFallback])ときは書き換えない。**
 /// [AccountStatus.fallback] はUIの出し分け用に「最も広く許可される側(FREE)」へ倒す設計だが、
 /// それをそのままここへ書くと、一時的な通信不良だけでPRO/ULTRAユーザーの読み上げまで
-/// 5分間のインターバル制限を受ける事故になる。未保存(null)のときは背景Isolate側で
+/// 10分間のインターバル制限を受ける事故になる。未保存(null)のときは背景Isolate側で
 /// 「制限しない」に倒す(background_task_handler.dart参照)。
 const String planStorageKey = 'plan';
 
