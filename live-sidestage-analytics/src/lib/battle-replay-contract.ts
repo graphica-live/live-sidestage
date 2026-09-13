@@ -10,7 +10,7 @@
 // 既存2ファイルの統合は別課題として残す。
 
 /** ペイロードの形。互換性を壊す変更を入れたら上げる。クライアントは不一致なら再生を拒否する。 */
-export const BATTLE_REPLAY_VERSION = 3;
+export const BATTLE_REPLAY_VERSION = 4;
 
 export const OPENING_INTRO_MS = 18_000;
 export const OPENING_MAIN_MS = 30_000;
@@ -20,6 +20,24 @@ export const MAX_REPLAY_EVENTS = 3000;
 
 /** ギフトバーが画面に留まる時間。クライアントの描画にのみ使う。 */
 export const REPLAY_BAR_LIFETIME_MS = 4000;
+
+/** バトルアイテム(グローブ等)の効果時間。種別を問わず 30 秒固定(BATTLE-EVENTS.md)。 */
+export const ITEM_EFFECT_MS = 30_000;
+
+/** スコアバー片側に同時に出すアイテムの上限。超えたら新しい方を残す。 */
+export const MAX_VISIBLE_ITEMS_PER_SIDE = 5;
+
+/**
+ * WebcastLinkMicBattleItemCard.cardType。
+ * 再生UIは TLC を引かないので、検出側の BattleItemCardType と同じ数値をここへ写す。
+ */
+export const ReplayItemCardType = {
+  GLOVE: 2,
+  HAMMER: 6,
+  TOP2_BOOSTER: 10,
+  TOP3_BOOSTER: 11,
+  VAULT_GLOVE: 12,
+} as const;
 
 /** 再生できない理由。文言はクライアント側の辞書で持つ(サーバーは理由コードだけ返す)。 */
 export type ReplayUnavailableReason =
@@ -148,6 +166,16 @@ export type ReplayGiftEvent = {
   m: number | null;
 };
 
+/** バトルアイテム使用。送信者は載せない(公開リンクでも種別と時刻だけで足りる)。 */
+export type ReplayItemEvent = {
+  /** windowStart からの経過ms。 */
+  t: number;
+  /** 使用対象の配信者。anchor 配列の添字。 */
+  a: number;
+  /** cardType。ReplayItemCardType の値。未知の値もありうる。 */
+  k: number;
+};
+
 export type BattleReplayPayload = {
   version: typeof BATTLE_REPLAY_VERSION;
   battleId: string;
@@ -162,6 +190,7 @@ export type BattleReplayPayload = {
   gifts: ReplayGift[];
   scorePoints: ReplayScorePoint[];
   giftEvents: ReplayGiftEvent[];
+  itemEvents: ReplayItemEvent[];
   segments: ReplaySegment[];
   /**
    * 相手陣営のギフト明細が1件も無いか。**再生は可能**で、画面に注記を出すためだけに使う

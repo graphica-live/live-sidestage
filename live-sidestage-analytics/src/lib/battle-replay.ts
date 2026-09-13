@@ -22,6 +22,7 @@ import {
   type ReplayEligibility,
   type ReplayGift,
   type ReplayGiftEvent,
+  type ReplayItemEvent,
   type ReplayParticipant,
   type ReplayScorePoint,
   type ReplaySegment,
@@ -113,6 +114,13 @@ const REPLAY_SELECT = {
         },
         orderBy: [{ occurredAt: "asc" }, { sourceGiftId: "asc" }],
       },
+      itemCardEvents: {
+        select: {
+          occurredAt: true,
+          cardType: true,
+        },
+        orderBy: [{ occurredAt: "asc" }],
+      },
     },
     orderBy: [{ teamIndex: "asc" }, { position: "asc" }],
   },
@@ -173,6 +181,7 @@ export type ReplayRow = {
       senderGroupId: string | null;
       multiplierValue: number | null;
     }[];
+    itemCardEvents: { occurredAt: Date; cardType: number }[];
   }[];
   scorePoints: { tiktokUid: string; offsetMs: number; score: string }[];
   bonusMissions: {
@@ -526,10 +535,33 @@ export function buildPayload(
     gifts,
     scorePoints,
     giftEvents,
+    itemEvents: buildItemEvents(row, anchorIndex, windowStartMs, windowLengthMs),
     segments: buildSegments(row),
     opponentGiftsMissing,
     truncated,
   };
+}
+
+function buildItemEvents(
+  row: ReplayRow,
+  anchorIndex: Map<string, number>,
+  windowStartMs: number,
+  windowLengthMs: number
+): ReplayItemEvent[] {
+  const itemEvents: ReplayItemEvent[] = [];
+  for (const participant of row.participants) {
+    const anchorPos = anchorIndex.get(participant.tiktokUid);
+    if (anchorPos === undefined) continue;
+    for (const event of participant.itemCardEvents) {
+      itemEvents.push({
+        t: Math.min(windowLengthMs, Math.max(0, event.occurredAt.getTime() - windowStartMs)),
+        a: anchorPos,
+        k: event.cardType,
+      });
+    }
+  }
+  itemEvents.sort((a, b) => a.t - b.t || a.a - b.a || a.k - b.k);
+  return itemEvents;
 }
 
 async function buildFromRow(row: ReplayRow, variant: ReplayVariant): Promise<BattleReplayPayload> {

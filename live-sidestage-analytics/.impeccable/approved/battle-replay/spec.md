@@ -4,7 +4,7 @@
 - comp: [comp.png](comp.png)（1280px viewport / deviceScaleFactor 2 / dark / reduced-motion）
 - comp のソース: `.impeccable/mocks/decision/battle-replay-options.html`（採用構成の `section.option`。**案Aは廃止済み**）
 - 継承元の凍結契約: `.impeccable/approved/battle-detail-contributors/spec.md`（陣営色の生HEX・`font-mono`・`bg-panel` / `border-white/10` / `rounded-xl`）
-- 凍結日: 2026-09-07（再凍結）
+- 凍結日: 2026-09-07 / 2026-09-14 item chips（再凍結）
 - 変更履歴: 2026-09-07 初回凍結 → 同日、ユーザー指示により再凍結。**相手陣営もスライドイン**（セル内レーン化）/ 相手カードはリスナー名なし / 右側の枠は右→左スライドイン・色帯も右 / カード背景は内容長ぶん / 配信者プロフは縦中央維持 / コンボの `×N` をオドメーター / 貢献者ボードに FLIP / 貢献値に 🪙 と省略表記 / 上位3人へ順位バッジ / 見出し右端に「上位 ➡」/ 貢献者アイコンにもリップル / 案A廃止 → 同日、ユーザー指示で **カードのギフト画像から背景を撤去** / **10,000コイン以上の大ギフト演出を追加** / **自動早送り中は時計チップも点滅** / **時計をスコアバーの直下へ移動** / **1vs1 のアイコンを左右とも 128px**。**comp.png はこれら以前の版**なので、上記5点だけは本文の記述が comp より優先する
 
 comp は5バリアントを含む。**5つすべてが契約対象**。
@@ -89,6 +89,16 @@ comp は5バリアントを含む。**5つすべてが契約対象**。
 duration は等速で **420ms**、実効速度（速度チップ × 自動早送りブースト4）で割った値をインラインで与える（4x なら 105ms、自動早送り中は 26ms）。
 シークバーのつまみを掴んでいる間は **0ms**（即時追従）。`prefers-reduced-motion: reduce` では `transition-property: none`。
 数値の表示は補間しない（幅だけが動く）。
+
+
+Battle item chips sit on the top-left (self, cell.right=false) and top-right (opponent) of the scorebar, matching TikTok LIVE PK.
+- Icon circle 22px, border 1px solid rgba(255,255,255,0.88), radius 999px, shadow 0 1px 3px rgba(0,0,0,0.45)
+- Resting half on the bar top edge (top:0; transform:translateY(-50%)). .replay-scorebar margin-top 16px; overflow visible
+- Remaining time pill under icon: 8px/700/mono/line-height 12px/padding 0 4px/radius 999px/bg rgba(6,8,12,0.82)/#fff. formatClock 00:05
+- Gap 2px (width 32px so 00:ss stays readable). Max 5 per side (keep newest). Left: oldest at outer left. Right: flex-direction row-reverse, oldest at outer right
+- Effect window ITEM_EFFECT_MS = 30000 for every cardType. Hidden outside the window
+- Colors: glove #fe4d4d, vault #f5c451, hammer #6b7280, top2 #4d9fff + x2, top3 #ffa64d + x3 (#0d0f13 text), unknown #2b303a
+- pointer-events none
 
 ### 4.3 陣営グリッド（**縦横比は実バトル画面の実測。計器のために縮めない**）
 
@@ -197,6 +207,7 @@ duration は等速で **420ms**、実効速度（速度チップ × 自動早送
 | 「貢献者一覧へ戻る」 | `mode: "replay"` → `"list"` | — |
 | スコアバー セグメント | 陣営ごとの現在スコアと比率 | `scorePoints`（`t <= elapsedMs` の最後の点。**補間しない**） |
 | 経過時間チップ | `mm:ss` | `elapsedMs` |
+| battle item chips | in-effect item icon + remaining time; self top-left, opponent top-right | `itemEvents` + ITEM_EFFECT_MS; sides from layout.cells[].right |
 | 配信者枠 | 陣営色グラデ地 + アイコン + 個人スコア | `teams[].participants[]`（`avatarUrl` は署名付き） |
 | 順位バッジ（枠） | 3陣営以上の個人戦のみ | `scorePoints` の順位 |
 | WIN バッジ | 勝ち陣営（`resolveWinningTeamIndex` と同じ判定） | `teams[].officialScore` |
@@ -233,6 +244,7 @@ duration は等速で **420ms**、実効速度（速度チップ × 自動早送
 | 貢献者0人 | ボードの領域は残し「まだ貢献者がいません」 |
 | 長いリスナー名 / 配信者名 | 1行省略（`text-overflow: ellipsis`）。カードを縦に伸ばさない |
 | 貢献者が多い | ボードは折り返し。上位6人まで |
+| no active items | hide the chip row entirely |
 | error | モーダル内にエラーと再試行 |
 
 ### 7.4 画像素材

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BATTLE_REPLAY_VERSION,
+  ITEM_EFFECT_MS,
   REPLAY_BAR_LIFETIME_MS,
   type BattleReplayPayload,
 } from "@/lib/battle-replay-contract";
@@ -22,6 +23,7 @@ import {
   contributorsAt,
   isQuietAt,
   quietRangesOf,
+  itemsAt,
   scoresAt,
   segmentAt,
   selfAnchorIndexes,
@@ -73,6 +75,7 @@ function payload(overrides: Partial<BattleReplayPayload> = {}): BattleReplayPayl
       { t: 20_000, a: 1, s: "300" },
     ],
     giftEvents: [],
+    itemEvents: [],
     segments: [],
     opponentGiftsMissing: false,
     truncated: false,
@@ -733,5 +736,33 @@ describe("teamTotalsOf", () => {
       avatarUrl: null,
     });
     expect(teamTotalsOf(p)[1]!.displayName).toBe("相手 / 相手2");
+  });
+});
+
+describe("itemsAt", () => {
+  it("keeps items inside the 30s window and splits by side", () => {
+    const p = payload({
+      itemEvents: [
+        { t: 10_000, a: 0, k: 2 },
+        { t: 12_000, a: 1, k: 6 },
+        { t: 80_000, a: 0, k: 10 },
+      ],
+    });
+    const sides = ["left", "right"] as const;
+    expect(itemsAt(p, 9_999, sides)).toEqual({ left: [], right: [] });
+    const mid = itemsAt(p, 15_000, sides);
+    expect(mid.left).toEqual([
+      { key: "i0", cardType: 2, remainMs: 10_000 + ITEM_EFFECT_MS - 15_000, side: "left" },
+    ]);
+    expect(mid.right.map((i) => i.cardType)).toEqual([6]);
+    expect(itemsAt(p, 10_000 + ITEM_EFFECT_MS, sides).left).toEqual([]);
+    expect(itemsAt(p, 80_000, sides).left.map((i) => i.cardType)).toEqual([10]);
+  });
+
+  it("caps each side to the newest items", () => {
+    const itemEvents = Array.from({ length: 7 }, (_, i) => ({ t: i * 100, a: 0, k: 2 }));
+    const mid = itemsAt(payload({ itemEvents }), 600, ["left", "right"] as const);
+    expect(mid.left).toHaveLength(5);
+    expect(mid.left.map((i) => i.key)).toEqual(["i2", "i3", "i4", "i5", "i6"]);
   });
 });

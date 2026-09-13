@@ -14,6 +14,7 @@ import {
   cardsByAnchor,
   cardsAt,
   isBandSegment,
+  itemsAt,
   scoresAt,
   segmentAt,
   type ReplayCard,
@@ -66,6 +67,11 @@ export const ReplayStage = memo(function ReplayStage({
   quietSkipping: boolean;
 }) {
   const scores = scoresAt(payload, elapsedMs);
+  const sideOfAnchor: ("left" | "right")[] = Array.from({ length: payload.anchors.length }, () => "left");
+  for (const cell of layout.cells) {
+    sideOfAnchor[cell.anchorIndex] = cell.right ? "right" : "left";
+  }
+  const activeItems = itemsAt(payload, elapsedMs, sideOfAnchor);
   const ranks = ranksOf(scores);
   const visible = cardsAt(cards, elapsedMs);
   const buckets = cardsByAnchor(visible, payload.anchors.length);
@@ -91,6 +97,8 @@ export const ReplayStage = memo(function ReplayStage({
         durationMs={payload.durationMs}
         transitionMs={scoreTransitionMs}
         boosting={quietSkipping}
+        leftItems={activeItems.left}
+        rightItems={activeItems.right}
       />
 
       {/* レーンはグリッド全体に重ねるので、赤帯を巻き込まないようここで位置基準を作る */}

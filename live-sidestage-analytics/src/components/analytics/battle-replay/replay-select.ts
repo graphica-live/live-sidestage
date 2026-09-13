@@ -4,6 +4,8 @@
 // 特別扱いしないための設計で、ここに `useState` や DOM を持ち込まない。
 
 import {
+  ITEM_EFFECT_MS,
+  MAX_VISIBLE_ITEMS_PER_SIDE,
   REPLAY_BAR_LIFETIME_MS,
   type BattleReplayPayload,
   type ReplayGiftEvent,
@@ -409,4 +411,43 @@ export function segmentAt(
     active.find((s) => s.kind === "opening") ??
     active[0]!
   );
+}
+
+export type ReplayActiveItem = {
+  key: string;
+  cardType: number;
+  remainMs: number;
+  side: "left" | "right";
+};
+
+/**
+ * ?????????????????????????????????
+ * ?????????(?????????? flex-direction:row-reverse ??????)?
+ */
+export function itemsAt(
+  payload: BattleReplayPayload,
+  elapsedMs: number,
+  sideOfAnchor: readonly ("left" | "right")[]
+): { left: ReplayActiveItem[]; right: ReplayActiveItem[] } {
+  const left: ReplayActiveItem[] = [];
+  const right: ReplayActiveItem[] = [];
+  const events = payload.itemEvents ?? [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i]!;
+    const endMs = ev.t + ITEM_EFFECT_MS;
+    if (elapsedMs < ev.t || elapsedMs >= endMs) continue;
+    const side = sideOfAnchor[ev.a] ?? "left";
+    const item: ReplayActiveItem = {
+      key: `i${i}`,
+      cardType: ev.k,
+      remainMs: endMs - elapsedMs,
+      side,
+    };
+    if (side === "right") right.push(item);
+    else left.push(item);
+  }
+  return {
+    left: left.slice(-MAX_VISIBLE_ITEMS_PER_SIDE),
+    right: right.slice(-MAX_VISIBLE_ITEMS_PER_SIDE),
+  };
 }
