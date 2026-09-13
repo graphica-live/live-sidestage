@@ -90,6 +90,7 @@ beforeAll(async () => {
       tiktokUid: FAN.tiktokUid,
       giftId: 5655,
       giftName: "Rose",
+      giftPictureUrl: "https://p16-sg.tiktokcdn.com/rose.png",
       repeatCount: 3,
       diamondCount: 10,
       totalDiamonds: 30,
@@ -162,8 +163,20 @@ describe("queryBattleReplay", () => {
     expect(payload.giftEvents).toHaveLength(1);
     expect(payload.itemEvents).toEqual([{ t: 40_000, a: 0, k: 2 }]);
     expect(payload.gifts[0].id).toBe(5655);
+    expect(payload.gifts[0].img).toBe("https://p16-sg.tiktokcdn.com/rose.png");
     expect(payload.opponentGiftsMissing).toBe(true);
     expect(payload.truncated).toBe(false);
+  });
+
+  it("snapshot が空でも元 Gift の画像URLで埋める", async () => {
+    await prisma.battleHistoryGiftEvent.updateMany({
+      where: { participant: { battleHistory: { roomId: selfRoomId, battleId: OK_BATTLE_ID } } },
+      data: { giftPictureUrlSnapshot: null },
+    });
+    const result = await queryBattleReplay(selfRoomId, OK_BATTLE_ID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.gifts[0].img).toBe("https://p16-sg.tiktokcdn.com/rose.png");
   });
 
   it("スコア点が無いバトルは no_score_points で再生できない", async () => {

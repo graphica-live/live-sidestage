@@ -9,6 +9,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { resolveAvatarUrls } from "./avatar-storage";
+import { sanitizeAvatarUrl } from "./tiktok-profile";
 import { generateShareToken } from "./share-token";
 import {
   BATTLE_REPLAY_VERSION,
@@ -109,6 +110,8 @@ const REPLAY_SELECT = {
           occurredAt: true,
           giftId: true,
           giftNameSnapshot: true,
+          giftPictureUrlSnapshot: true,
+          sourceGiftId: true,
           senderGroupId: true,
           multiplierValue: true,
         },
@@ -178,6 +181,8 @@ export type ReplayRow = {
       occurredAt: Date;
       giftId: number;
       giftNameSnapshot: string;
+      giftPictureUrlSnapshot: string | null;
+      sourceGiftId: string;
       senderGroupId: string | null;
       multiplierValue: number | null;
     }[];
@@ -238,6 +243,50 @@ async function loadGiftCatalog(giftIds: number[]): Promise<Map<number, { labelJa
     select: { giftId: true, labelJa: true, imageUrl: true },
   });
   return new Map(rows.map((r) => [r.giftId, { labelJa: r.labelJa, imageUrl: r.imageUrl }]));
+}
+
+/**
+ * スナップショットもカタログも画像が無い giftId へ、元 Gift 行から埋める。
+ * コミュニティギフトは gift/list/ に載らない。グローバルカタログへは書かない
+ * (部屋固有ギフトが全部屋のピッカーに混ざるため)。
+ *
+ * 表示の優先は buildPayload 側: スナップショット(当時の受信URL) > カタログ(現在の公式)。
+ */
+async function fillMissingGiftImages(
+  giftCatalog: Map<number, { labelJa: string | null; imageUrl: string | null }>,
+  row: ReplayRow
+): Promise<void> {
+  const events = row.participants.flatMap((p) => p.giftEvents);
+  const covered = new Set<number>();
+  for (const event of events) {
+    if (sanitizeAvatarUrl(event.giftPictureUrlSnapshot) || giftCatalog.get(event.giftId)?.imageUrl) {
+      covered.add(event.giftId);
+    }
+  }
+  const missing = [...new Set(events.map((e) => e.giftId))].filter((id) => !covered.has(id));
+  if (missing.length === 0) return;
+
+  const missingSet = new Set(missing);
+
+  const sourceIds = [...new Set(events.filter((e) => missingSet.has(e.giftId)).map((e) => e.sourceGiftId))];
+  if (sourceIds.length === 0) return;
+  const SOURCE_CHUNK = 1000;
+  const urlBySourceId = new Map<string, string | null>();
+  for (let i = 0; i < sourceIds.length; i += SOURCE_CHUNK) {
+    const gifts = await prisma.gift.findMany({
+      where: { id: { in: sourceIds.slice(i, i + SOURCE_CHUNK) } },
+      select: { id: true, giftPictureUrl: true },
+    });
+    for (const gift of gifts) urlBySourceId.set(gift.id, sanitizeAvatarUrl(gift.giftPictureUrl));
+  }
+  for (const event of events) {
+    if (!missingSet.has(event.giftId)) continue;
+    const url = urlBySourceId.get(event.sourceGiftId);
+    if (!url) continue;
+    const current = giftCatalog.get(event.giftId) ?? { labelJa: null, imageUrl: null };
+    if (!current.imageUrl) giftCatalog.set(event.giftId, { ...current, imageUrl: url });
+    missingSet.delete(event.giftId);
+  }
 }
 
 function bonusMissionLabel(targetType: number, progressTarget: number): string {
@@ -446,6 +495,7 @@ export function buildPayload(
   const nicknameBySender = new Map<string, string | null>();
   const handleBySender = new Map<string, string | null>();
   const giftNameById = new Map<number, string>();
+  const giftPictureById = new Map<number, string>();
   for (const participant of row.participants) {
     for (const event of participant.giftEvents) {
       if (!nicknameBySender.has(event.senderTiktokUid)) {
@@ -453,6 +503,10 @@ export function buildPayload(
         handleBySender.set(event.senderTiktokUid, event.senderTiktokHandleSnapshot);
       }
       if (!giftNameById.has(event.giftId)) giftNameById.set(event.giftId, event.giftNameSnapshot);
+      if (!giftPictureById.has(event.giftId)) {
+        const snap = sanitizeAvatarUrl(event.giftPictureUrlSnapshot);
+        if (snap) giftPictureById.set(event.giftId, snap);
+      }
     }
   }
 
@@ -500,7 +554,8 @@ export function buildPayload(
         id: event.giftId,
         // 日本語名は表示専用。一致判定には使わない(LIVEのgiftイベント名は英語固定)。
         n: catalog?.labelJa ?? giftNameById.get(event.giftId) ?? "",
-        img: catalog?.imageUrl ?? null,
+        // 当時の受信画像を優先。カタログはスナップショットが無い(旧行・allowlist落ち)ときの控え。
+        img: giftPictureById.get(event.giftId) ?? catalog?.imageUrl ?? null,
       });
     }
 
@@ -576,6 +631,8 @@ async function buildFromRow(row: ReplayRow, variant: ReplayVariant): Promise<Bat
     resolveAvatarUrls(senderTiktokUids),
     loadGiftCatalog(giftIds),
   ]);
+
+  await fillMissingGiftImages(giftCatalog, row);
 
   return buildPayload(row, variant, anchorAvatarUrls, senderAvatarUrls, giftCatalog);
 }
