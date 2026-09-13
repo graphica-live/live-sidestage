@@ -767,6 +767,6 @@ describe("buildPayload の区間(segments)", () => {
     expect(labelsOf(1, 3)).toEqual(["ミッション:3人からギフトを受け取る"]);
     expect(labelsOf(2, 500)).toEqual(["ミッション:500pt受け取る"]);
     expect(labelsOf(8, 1000)).toEqual(["ミッション:チームで1000pt受け取る"]);
-    expect(labelsOf(9, 12)).toEqual(["ミッション:12"]);
+    expect(labelsOf(9, 12)).toEqual(["ミッション:(目標12)"]);
   });
 });

@@ -240,7 +240,7 @@ function bonusMissionLabel(targetType: number, progressTarget: number): string {
     case 8:
       return `ミッション:チームで${progressTarget}pt受け取る`;
     default:
-      return `ミッション:${progressTarget}`;
+      return `ミッション:(目標${progressTarget})`;
   }
 }
 
