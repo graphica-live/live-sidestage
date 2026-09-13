@@ -44,7 +44,7 @@ TikFinity等の既存の類似ツールに対し、ローカル完結型で動�
 
 ## Brand Commitments
 
-- 製品名「TikEffect」
+- 製品名「Live Sidestage Desktop」（旧称 TikEffect）
 - UIは日本語が基本言語
 
 ## Evidence on Hand

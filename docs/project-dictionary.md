@@ -252,14 +252,14 @@ sidestageユーザーによる**TikTokアカウントの所有主張**と、cont
 | ディレクトリ | 製品名 | パッケージ名 |
 | --- | --- | --- |
 | `live-sidestage-analytics` | LIVE Sidestage Analytics | `live-analytics` |
-| `live-sidestage-desktop` | **TikEffect** | `tikeffect` |
+| `live-sidestage-desktop` | **Live Sidestage Desktop**（旧称 TikEffect） | `tikeffect` |
 | `live-sidestage-mydesktop` | **MyDesktop** | `live-sidestage-mydesktop` |
 | `live-sidestage-mobile` | LIVE Sidestage (Android) | `live_sidestage_mobile` |
 | `TikCaption` | TikCaption | `tikcaption` |
 | `TikRIng` | **TikRing** | `profileimagefitservice` |
 
 - **`TikRIng` はディレクトリ名の綴り（大文字I）で、製品名は TikRing。** 統合前のリポジトリ名は `frame`
-- **desktop（TikEffect）と mydesktop（MyDesktop）は別アプリ。** mydesktop は desktop（ポート38100固定）へ socket.io-client で接続するだけの観測者アプリで、SQLite・TikTok接続・動画保存ロジックを持たない
+- **desktop（Live Sidestage Desktop、旧称 TikEffect）と mydesktop（MyDesktop）は別アプリ。** mydesktop は desktop（ポート38100固定）へ socket.io-client で接続するだけの観測者アプリで、SQLite・TikTok接続・動画保存ロジックを持たない
 - イベント（大会）運営機能は独立プロジェクトではなく `live-sidestage-analytics/src/event/` にある
 
 ### worker / worker-guardian / event-worker

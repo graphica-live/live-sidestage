@@ -11,21 +11,25 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, shell, dialog, screen } = require('electron');
+const { DISPLAY_NAME } = require('../backend/lib/app-identity');
 let autoUpdater = null;
 
 
-ipcMain.on('control-window:minimize', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.minimize();
+function controlWindowFromEvent(event) {
+    return BrowserWindow.fromWebContents(event.sender);
+}
+
+ipcMain.on('control-window:minimize', (event) => {
+    controlWindowFromEvent(event)?.minimize();
 });
-ipcMain.on('control-window:toggle-max', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMaximized()) mainWindow.unmaximize();
-    else mainWindow.maximize();
+ipcMain.on('control-window:toggle-max', (event) => {
+    const win = controlWindowFromEvent(event);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
 });
-ipcMain.on('control-window:close', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.close();
+ipcMain.on('control-window:close', (event) => {
+    controlWindowFromEvent(event)?.close();
 });
 
 
@@ -38,6 +42,43 @@ const LOADER_PORT = parseListenPort(process.env.TIKEFFECT_LOADER_PORT, 38099);
 const APP_URL = `http://localhost:${LOADER_PORT}/`;
 const COMMENT_READ_ALOUD_SCREEN_URL = `http://localhost:${PORT}/overlays/effects/1?readAloudOnly=1`;
 const SETUP_URL = `http://localhost:${LOADER_PORT}/setup`;
+
+function isAppLocalUrl(url) {
+    try {
+        const parsed = new URL(String(url || ''));
+        const allowedOrigins = new Set([
+            `http://localhost:${PORT}`,
+            `http://127.0.0.1:${PORT}`,
+            `http://localhost:${LOADER_PORT}`,
+            `http://127.0.0.1:${LOADER_PORT}`
+        ]);
+        return allowedOrigins.has(parsed.origin);
+    } catch {
+        return false;
+    }
+}
+
+function waitForTcpPort(port, timeoutMs = 20000) {
+    const startedAt = Date.now();
+    return new Promise((resolve, reject) => {
+        const attempt = () => {
+            const socket = require('net').connect({ port, host: '127.0.0.1' });
+            socket.once('connect', () => {
+                socket.destroy();
+                resolve();
+            });
+            socket.once('error', () => {
+                socket.destroy();
+                if (Date.now() - startedAt > timeoutMs) {
+                    reject(new Error(`Timed out waiting for 127.0.0.1:${port}`));
+                    return;
+                }
+                setTimeout(attempt, 80);
+            });
+        };
+        attempt();
+    });
+}
 const VOICEVOX_API_BASE_URL = 'http://127.0.0.1:50021';
 const COEIROINK_API_BASE_URL = 'http://127.0.0.1:50032/v1';
 const DEFAULT_AUTO_UPDATE_URL = 'https://update.graphica-produce.com/tikeffect/win';
@@ -108,6 +149,15 @@ if (process.argv.includes('--loader-only')) {
         require('../loader-server/index.js');
     });
     return; // CommonJS モジュールのトップレベル return: 以降の実行を停止
+}
+
+{
+    const configuredUserData = process.env.APP_DATA_DIR?.trim();
+    if (configuredUserData) {
+        const isolatedUserData = path.resolve(configuredUserData);
+        fs.mkdirSync(isolatedUserData, { recursive: true });
+        app.setPath('userData', isolatedUserData);
+    }
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -194,9 +244,9 @@ const MAIN_WINDOW_BOUNDS = {
 };
 
 const POPOUT_WINDOW_CONFIG = {
-    comments: { path: '/comments', title: 'TikEffect - コメント欄', width: 480, height: 760 },
-    gifts: { path: '/gifts', title: 'TikEffect - ギフト履歴', width: 480, height: 760 },
-    'comments-gifts': { path: '/comments-gifts', title: 'TikEffect - コメント＆ギフト', width: 900, height: 760 }
+    comments: { path: '/comments', title: `${DISPLAY_NAME} - コメント欄`, width: 480, height: 760 },
+    gifts: { path: '/gifts', title: `${DISPLAY_NAME} - ギフト履歴`, width: 480, height: 760 },
+    'comments-gifts': { path: '/comments-gifts', title: `${DISPLAY_NAME} - コメント＆ギフト`, width: 900, height: 760 }
 };
 
 function popoutBoundsStateKey(kind) {
@@ -325,7 +375,7 @@ function ensurePopoutWindow(kind) {
 
     // 外部リンク（TikTokプロフィールなど）はシステムブラウザで開く
     popoutWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (!url.startsWith(`http://localhost:${PORT}`)) {
+        if (!isAppLocalUrl(url)) {
             shell.openExternal(url);
             return { action: 'deny' };
         }
@@ -385,7 +435,7 @@ function showAutoUpdateNotification(body) {
 
     try {
         new Notification({
-            title: 'TikEffect',
+            title: DISPLAY_NAME,
             body,
             silent: true
         }).show();
@@ -527,9 +577,12 @@ function createMainWindow(initialUrl = APP_URL) {
         minWidth: MAIN_WINDOW_BOUNDS.minWidth,
         minHeight: MAIN_WINDOW_BOUNDS.minHeight,
         useContentSize: true,
-        title: 'TikEffect',
+        title: DISPLAY_NAME,
         icon: iconPath,
+        show: false,
         frame: false,
+        roundedCorners: true,
+        hasShadow: true,
         backgroundColor: '#12110f',
         autoHideMenuBar: true,
         webPreferences: {
@@ -541,7 +594,23 @@ function createMainWindow(initialUrl = APP_URL) {
 
     mainWindow.setMenuBarVisibility(false);
 
-    mainWindow.loadURL(initialUrl);
+    mainWindow.once('ready-to-show', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.show();
+    });
+
+    waitForTcpPort(LOADER_PORT)
+        .then(() => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            return mainWindow.loadURL(initialUrl);
+        })
+        .catch((error) => {
+            console.error('[control] loader wait failed:', error);
+            dialog.showErrorBox(
+                DISPLAY_NAME,
+                `Control の起動に失敗しました (loader ${LOADER_PORT}): ${error.message}`
+            );
+        });
 
     mainWindow.on('resize', () => scheduleMainWindowBoundsSave());
     mainWindow.on('move', () => scheduleMainWindowBoundsSave());
@@ -565,7 +634,7 @@ function createMainWindow(initialUrl = APP_URL) {
 
     // 外部リンクはシステムブラウザで開く
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (!url.startsWith(`http://localhost:${PORT}`)) {
+        if (!isAppLocalUrl(url)) {
             shell.openExternal(url);
             return { action: 'deny' };
         }
@@ -930,7 +999,7 @@ function ensureCommentReadAloudWindow() {
         transparent: true,
         skipTaskbar: true,
         focusable: false,
-        title: 'TikEffect Screen1 Read Aloud',
+        title: 'Live Sidestage Desktop Screen1 Read Aloud',
         icon: iconPath,
         webPreferences: {
             nodeIntegration: false,
@@ -951,7 +1020,7 @@ function ensureCommentReadAloudWindow() {
 function createTray() {
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-    tray.setToolTip('TikEffect');
+    tray.setToolTip(DISPLAY_NAME);
 
     const contextMenu = Menu.buildFromTemplate([
         {
