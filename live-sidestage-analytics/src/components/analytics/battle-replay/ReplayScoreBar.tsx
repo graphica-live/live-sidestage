@@ -1,12 +1,66 @@
 "use client";
 
+import { ReplayItemCardType } from "@/lib/battle-replay-contract";
 import { formatClock } from "./replay-format";
+import type { ReplayActiveItem } from "./replay-select";
 
-/** 全員 0 のときは等分にする(幅 0 のセグメントが並ぶと色が消えるため)。 */
 function widthsOf(scores: number[]): number[] {
   const total = scores.reduce((sum, v) => sum + v, 0);
   if (total <= 0) return scores.map(() => 100 / Math.max(1, scores.length));
   return scores.map((v) => (v / total) * 100);
+}
+
+type ItemKind = "glove" | "vault" | "hammer" | "top2" | "top3" | "unknown";
+
+function kindOf(cardType: number): ItemKind {
+  switch (cardType) {
+    case ReplayItemCardType.GLOVE:
+      return "glove";
+    case ReplayItemCardType.VAULT_GLOVE:
+      return "vault";
+    case ReplayItemCardType.HAMMER:
+      return "hammer";
+    case ReplayItemCardType.TOP2_BOOSTER:
+      return "top2";
+    case ReplayItemCardType.TOP3_BOOSTER:
+      return "top3";
+    default:
+      return "unknown";
+  }
+}
+
+function labelOf(cardType: number): string {
+  switch (kindOf(cardType)) {
+    case "glove":
+      return "ブースティンググローブ";
+    case "vault":
+      return "金グローブ";
+    case "hammer":
+      return "ハンマー";
+    case "top2":
+      return "2位ブースター";
+    case "top3":
+      return "3位ブースター";
+    default:
+      return "バトルアイテム";
+  }
+}
+
+function ReplayItemChip({ item }: { item: ReplayActiveItem }) {
+  const kind = kindOf(item.cardType);
+  const glyph = kind === "glove" || kind === "vault" || kind === "hammer";
+  return (
+    <div
+      className="replay-item"
+      role="img"
+      aria-label={`${labelOf(item.cardType)} 残り ${formatClock(item.remainMs)}`}
+    >
+      <span className={`replay-item-icon replay-item-icon--${kind}`} aria-hidden>
+        {glyph ? <span className="replay-item-glyph" /> : kind === "top2" ? "×2" : kind === "top3" ? "×3" : "!"}
+      </span>
+      <span className="replay-item-time">{formatClock(item.remainMs)}</span>
+    </div>
+  );
 }
 
 export function ReplayScoreBar({
@@ -16,21 +70,17 @@ export function ReplayScoreBar({
   durationMs,
   transitionMs = 0,
   boosting = false,
+  leftItems = [],
+  rightItems = [],
 }: {
-  /** anchor ごとの累積スコア(文字列。桁が大きいので BigInt 経由で数値化する)。 */
   scores: string[];
   colors: string[];
   elapsedMs: number;
-  /** バトルの尺。中央の時計は**残り時間のカウントダウン**(実バトル画面と同じ)。 */
   durationMs: number;
-  /**
-   * 幅が変わるときの補間時間。**再生速度で割った値を親が渡す**(4倍速や自動早送りで
-   * 等速と同じ時間をかけると、伸びきる前に次のギフトが来て遅延に見えるため)。
-   * シーク中は 0 を渡して即時反映にする。
-   */
   transitionMs?: number;
-  /** 自動早送り中。時計チップを点滅させて、時間が速く進んでいることを示す。 */
   boosting?: boolean;
+  leftItems?: ReplayActiveItem[];
+  rightItems?: ReplayActiveItem[];
 }) {
   const numeric = scores.map((s) => {
     try {
@@ -55,6 +105,20 @@ export function ReplayScoreBar({
           {value.toLocaleString("ja-JP")}
         </div>
       ))}
+      {leftItems.length > 0 ? (
+        <div className="replay-items replay-items--left">
+          {leftItems.map((item) => (
+            <ReplayItemChip key={item.key} item={item} />
+          ))}
+        </div>
+      ) : null}
+      {rightItems.length > 0 ? (
+        <div className="replay-items replay-items--right">
+          {rightItems.map((item) => (
+            <ReplayItemChip key={item.key} item={item} />
+          ))}
+        </div>
+      ) : null}
       <div
         className={
           durationMs - elapsedMs <= 0
@@ -69,3 +133,4 @@ export function ReplayScoreBar({
     </div>
   );
 }
+

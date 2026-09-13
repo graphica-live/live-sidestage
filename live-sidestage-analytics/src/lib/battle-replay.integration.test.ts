@@ -97,6 +97,16 @@ beforeAll(async () => {
       receivedAt: new Date(STARTED_AT.getTime() + 30_000),
     },
   });
+  await prisma.tiktokBattleItemUse.create({
+    data: {
+      roomId: selfRoomId,
+      battleId: OK_BATTLE_ID,
+      cardType: 2,
+      senderTiktokUid: FAN.tiktokUid,
+      targetHostTiktokUid: SELF_ANCHOR_ID,
+      receivedAt: new Date(STARTED_AT.getTime() + 40_000),
+    },
+  });
   for (const [offsetSec, selfScore, oppScore] of [
     [0, "0", "0"],
     [30, "300", "100"],
@@ -150,6 +160,7 @@ describe("queryBattleReplay", () => {
     expect(payload.scorePoints).toHaveLength(6);
     // 自陣営のギフト明細は載る。相手roomは監視していないので相手側は0件。
     expect(payload.giftEvents).toHaveLength(1);
+    expect(payload.itemEvents).toEqual([{ t: 40_000, a: 0, k: 2 }]);
     expect(payload.gifts[0].id).toBe(5655);
     expect(payload.opponentGiftsMissing).toBe(true);
     expect(payload.truncated).toBe(false);

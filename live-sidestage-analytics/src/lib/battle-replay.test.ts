@@ -79,6 +79,7 @@ function participant(
     officialScore: "100",
     battleTeamId: null,
     giftEvents: [],
+    itemCardEvents: [],
     ...overrides,
   };
 }
@@ -226,6 +227,37 @@ describe("buildPayload", () => {
     expect(payload.giftEvents.map((e) => [e.t, e.a, e.s, e.g])).toEqual([
       [10_000, 0, 0, 0],
       [20_000, 0, 0, 0],
+    ]);
+  });
+
+  it("maps itemCardEvents to itemEvents by anchor index and omits senders", () => {
+    const payload = buildPayload(
+      row({
+        participants: [
+          participant({
+            itemCardEvents: [
+              { occurredAt: new Date(WINDOW_START.getTime() + 40_000), cardType: 2 },
+              { occurredAt: new Date(WINDOW_START.getTime() + 50_000), cardType: 6 },
+            ],
+          }),
+          participant({
+            id: "p2",
+            tiktokUid: OPP_UID,
+            teamIndex: 1,
+            side: "opponent",
+            itemCardEvents: [{ occurredAt: new Date(WINDOW_START.getTime() + 45_000), cardType: 12 }],
+          }),
+        ],
+      }),
+      "private",
+      NO_AVATARS,
+      NO_AVATARS,
+      NO_CATALOG
+    );
+    expect(payload.itemEvents).toEqual([
+      { t: 40_000, a: 0, k: 2 },
+      { t: 45_000, a: 1, k: 12 },
+      { t: 50_000, a: 0, k: 6 },
     ]);
   });
 
