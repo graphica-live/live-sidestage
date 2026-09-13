@@ -126,7 +126,7 @@ class SpeechQueueController extends ChangeNotifier {
   int speed = 100;
 
   /// 重複コメントをスキップするか。
-  bool duplicateSkipEnabled = true;
+  bool duplicateSkipEnabled = false;
 
   int get volume => _volume;
 

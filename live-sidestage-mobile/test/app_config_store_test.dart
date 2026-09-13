@@ -157,20 +157,20 @@ void main() {
       await store.load();
       final before = store.config.revision;
 
-      await store.setDuplicateSpeechSkipEnabled(false);
+      await store.setDuplicateSpeechSkipEnabled(true);
 
-      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
       expect(store.config.revision, before + 1);
     });
 
-    test('既定値trueから変更できる', () async {
+    test('既定値falseから変更できる', () async {
       final store = AppConfigStore();
       await store.load();
-      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
-
-      await store.setDuplicateSpeechSkipEnabled(false);
-
       expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+
+      await store.setDuplicateSpeechSkipEnabled(true);
+
+      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
     });
 
     test('変化がなければrevisionを進めない', () async {
@@ -178,7 +178,7 @@ void main() {
       await store.load();
       final before = store.config.revision;
 
-      await store.setDuplicateSpeechSkipEnabled(true); // 既定値と同じ
+      await store.setDuplicateSpeechSkipEnabled(false); // 既定値と同じ
 
       expect(store.config.revision, before);
     });
@@ -188,21 +188,21 @@ void main() {
       await store.load();
       await store.setTtsVolume(42);
 
-      await store.setDuplicateSpeechSkipEnabled(false);
+      await store.setDuplicateSpeechSkipEnabled(true);
 
       expect(store.config.ttsVolume, 42);
-      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
+      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
     });
 
     test('保存した内容は読み直しても残る', () async {
       final store = AppConfigStore();
       await store.load();
-      await store.setDuplicateSpeechSkipEnabled(false);
+      await store.setDuplicateSpeechSkipEnabled(true);
 
       final reloaded = AppConfigStore();
       await reloaded.load();
 
-      expect(reloaded.config.duplicateSpeechSkipEnabled, isFalse);
+      expect(reloaded.config.duplicateSpeechSkipEnabled, isTrue);
     });
   });
 

@@ -1,16 +1,16 @@
 ---
 project: live-sidestage-mobile
 feature: duplicate-comment-tts-skip
-last_updated: 2026-09-11
+last_updated: 2026-09-13
 last_risk: LOW
-last_reviewers: DeepSeek
+last_reviewers: Gemini 3.7 Flash
 ---
 
 # テストベースライン: duplicate-comment-tts-skip
 
 直近10分以内に同一内容（`Comment.speechText`、streamerId単位、投稿者は問わない）のコメントが2回投稿されたら、
-2回目の投稿時点を起点にその後10分間、同一内容のコメントの読み上げを抑制する。設定タブの「定型文の読み上げを制限」
-トグルでON/OFFできる（デフォルトON）。判定・抑制はクライアント（`SpeechQueueController`）側のみで完結し、
+2回目の投稿時点を起点にその後10分間、同一内容のコメントの読み上げを抑制する。設定タブの「お楽しみ袋などの連投文読み上げ無効」
+トグルでON/OFFできる（デフォルトOFF）。判定・抑制はクライアント（`SpeechQueueController`）側のみで完結し、
 サーバー・DBには一切触れない。
 
 ## テストケース
@@ -28,10 +28,10 @@ last_reviewers: DeepSeek
 | TC-DC-009 | duplicateSkipEnabled=trueで同一内容連投時、キューに積まれるのは重複判定を通った分だけ | `SpeechQueueController._enqueue` | 正常 | `duplicateSkipEnabled=true`で同一内容を3連投 | 1,2件目はキューに積まれ、3件目(抑制対象)は積まれない(`debugQueueLength`で確認) | `flutter test test/speech_queue_duplicate_test.dart` | PASS | `debugEnqueue`/`debugQueueLength`/`debugSkipProcessing`はテスト専用の`@visibleForTesting`アクセサ |
 | TC-DC-009b | duplicateSkipEnabled=falseなら抑制されない | 同上 | 正常 | `duplicateSkipEnabled=false`で同一内容を3連投 | 3件ともキューに積まれる | 同上 | PASS | |
 | TC-DC-010 | 判定順序: 空コメント早期return→重複判定→FREEプランクールダウンの順を維持 | `SpeechQueueController._enqueue` | 回帰 | (a)speechTextが空のコメントを投稿 (b)FREEプランクールダウン中に非重複コメントを投稿 | (a)キューに積まれない (b)キューに積まれない(重複判定を通ってもクールダウンで止まる) | 同上 | PASS | |
-| TC-DC-011 | 設定の永続化・背景Isolateへの同期 | `AppConfig` / `AppConfigStore` / `background_task_handler._applyEffectiveConfig` | 正常 | `setDuplicateSpeechSkipEnabled(false)`を呼ぶ | revisionが進み、JSON往復後も値が保持される。旧バージョンJSON(キー無し)は`true`にフォールバックする | `flutter test test/app_config_test.dart` / `flutter test test/app_config_store_test.dart` | PASS | schemaVersionは上げない方針を踏襲。`_applyEffectiveConfig`自体(背景Isolateへの1行の代入)は既存のrandomVoice等の同種フィールドと同じくテスト対象外(`CommentSpeechTaskHandler`はForeground Task Handlerで単体テスト不可能な構造。既存アーキテクチャの制約であり今回の変更固有ではない) |
-| TC-DC-012 | 設定画面にトグルが表示され、既定でON | `lib/screens/tabs/settings_tab.dart` | UI | 設定タブの「読み上げ」セクション | 「定型文の読み上げを制限」の行が表示され、Switchの初期値がON(`store.config.duplicateSpeechSkipEnabled`と一致) | `flutter test test/settings_voice_test.dart` | PASS | |
-| TC-DC-012b | トグルをタップするとstoreへ反映される | 同上 | UI | 上記画面でSwitchをタップ | `store.config.duplicateSpeechSkipEnabled`がfalseになり、Switchの表示もOFFになる | 同上 | PASS | |
-| TC-DC-013 | 実機での見た目確認 | `lib/screens/tabs/settings_tab.dart` | UI | 設定タブの「読み上げ」セクション | 「定型文の読み上げを制限」の行が既存の`_SettingSwitchRow`と同じスタイルで表示される | 実機(Pixel 7a) | 下記参照 | スクリーンショットをArtifactで提示 |
+| TC-DC-011 | 設定の永続化・背景Isolateへの同期 | `AppConfig` / `AppConfigStore` / `background_task_handler._applyEffectiveConfig` | 正常 | `setDuplicateSpeechSkipEnabled(false)`を呼ぶ | revisionが進み、JSON往復後も値が保持される。旧バージョンJSON(キー無し)は`false`にフォールバックする | `flutter test test/app_config_test.dart` / `flutter test test/app_config_store_test.dart` | PASS | schemaVersionは上げない方針を踏襲。`_applyEffectiveConfig`自体(背景Isolateへの1行の代入)は既存のrandomVoice等の同種フィールドと同じくテスト対象外(`CommentSpeechTaskHandler`はForeground Task Handlerで単体テスト不可能な構造。既存アーキテクチャの制約であり今回の変更固有ではない) |
+| TC-DC-012 | 設定画面にトグルが表示され、既定でOFF | `lib/screens/tabs/settings_tab.dart` | UI | 設定タブの「読み上げ」セクション | 「お楽しみ袋などの連投文読み上げ無効」の行が表示され、Switchの初期値がOFF(`store.config.duplicateSpeechSkipEnabled`と一致) | `flutter test test/settings_voice_test.dart` | PASS | |
+| TC-DC-012b | トグルをタップするとstoreへ反映される | 同上 | UI | 上記画面でSwitchをタップ | `store.config.duplicateSpeechSkipEnabled`がtrueになり、Switchの表示もONになる | 同上 | PASS | |
+| TC-DC-013 | 実機での見た目確認 | `lib/screens/tabs/settings_tab.dart` | UI | 設定タブの「読み上げ」セクション | 「お楽しみ袋などの連投文読み上げ無効」の行が既存の`_SettingSwitchRow`と同じスタイルで表示される | 実機(Pixel 7a) | 下記参照 | スクリーンショットをArtifactで提示 |
 
 ## Quality Gate
 

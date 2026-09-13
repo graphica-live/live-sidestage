@@ -179,35 +179,35 @@ void main() {
     });
   });
 
-  group('定型文の読み上げ制限', () {
-    testWidgets('トグルが表示され、既定でONになっている', (tester) async {
+  group('連投文の読み上げ無効', () {
+    testWidgets('トグルが表示され、既定でOFFになっている', (tester) async {
       final store = await pumpSettings(tester);
 
-      expect(find.text('定型文の読み上げを制限'), findsOneWidget);
-      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
+      expect(find.text('お楽しみ袋などの連投文読み上げ無効'), findsOneWidget);
+      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
       final row = find.ancestor(
-        of: find.text('定型文の読み上げを制限'),
+        of: find.text('お楽しみ袋などの連投文読み上げ無効'),
         matching: find.byType(InkWell),
       );
       final switchWidget = tester.widget<Switch>(
         find.descendant(of: row, matching: find.byType(Switch)),
       );
-      expect(switchWidget.value, isTrue);
+      expect(switchWidget.value, isFalse);
     });
 
-    testWidgets('タップするとstoreのduplicateSpeechSkipEnabledがOFFになる', (tester) async {
+    testWidgets('タップするとstoreのduplicateSpeechSkipEnabledがONになる', (tester) async {
       final store = await pumpSettings(tester);
 
       final row = find.ancestor(
-        of: find.text('定型文の読み上げを制限'),
+        of: find.text('お楽しみ袋などの連投文読み上げ無効'),
         matching: find.byType(InkWell),
       );
       final switchFinder = find.descendant(of: row, matching: find.byType(Switch));
       await tester.tap(switchFinder);
       await tester.pumpAndSettle();
 
-      expect(store.config.duplicateSpeechSkipEnabled, isFalse);
-      expect(tester.widget<Switch>(switchFinder).value, isFalse);
+      expect(store.config.duplicateSpeechSkipEnabled, isTrue);
+      expect(tester.widget<Switch>(switchFinder).value, isTrue);
     });
   });
 

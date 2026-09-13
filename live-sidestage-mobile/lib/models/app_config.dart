@@ -605,7 +605,7 @@ class AppConfig {
     this.fixedStyleId = VoiceCatalog.defaultStyleId,
     this.ttsVolume = 100,
     this.ttsSpeed = 100,
-    this.duplicateSpeechSkipEnabled = true,
+    this.duplicateSpeechSkipEnabled = false,
     this.sound = SoundConfig.initial,
   });
 
@@ -670,8 +670,8 @@ class AppConfig {
         ttsVolume: _clampInt(json['ttsVolume'], min: 0, max: 100, fallback: 100),
         // キーが無い旧設定は等速。追加しただけなのでスキーマ版は上げていない。
         ttsSpeed: _clampInt(json['ttsSpeed'], min: 50, max: 200, fallback: 100),
-        // キーが無い旧設定は true（デフォルトで有効）。スキーマ版は上げていない。
-        duplicateSpeechSkipEnabled: json['duplicateSpeechSkipEnabled'] != false,
+        // キーが無い旧設定は false（デフォルトで無効）。スキーマ版は上げていない。
+        duplicateSpeechSkipEnabled: json['duplicateSpeechSkipEnabled'] == true,
         sound: SoundConfig.fromJson(soundJson),
       );
     } catch (_) {
