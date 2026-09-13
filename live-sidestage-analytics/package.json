@@ -32,6 +32,7 @@
     "seed:battle:local": "dotenv -e .env.local.test --override -- tsx scripts/seed-local-battle.ts",
     "seed:battle-live:local": "dotenv -e .env.local.test --override -- tsx scripts/seed-local-live-battle.ts",
     "seed:battle-teams:local": "dotenv -e .env.local.test --override -- tsx scripts/seed-local-battle-with-teams.ts",
+    "seed:ios-review:local": "dotenv -e .env.local.test --override -- tsx scripts/seed-ios-review-account.ts",
     "event-worker:local": "dotenv -e .env.local.test --override -- tsx event-worker.ts",
     "bench:aggregate:local": "dotenv -e .env.local.test --override -- tsx scripts/bench-aggregate.ts",
     "cleanup:nonexistent-streamers:local": "dotenv -e .env.local.test --override -- tsx scripts/cleanup-nonexistent-streamers.ts",
