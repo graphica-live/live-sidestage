@@ -618,7 +618,7 @@ describe("buildPayload の区間(segments)", () => {
         startMs: 0,
         endMs: 120_000,
         multiplier: 3,
-        label: "ギフター3人ミッション",
+        label: "ミッション:3人からギフトを受け取る",
         showCountdown: false,
       },
       {
@@ -696,7 +696,7 @@ describe("buildPayload の区間(segments)", () => {
         startMs: 60_000,
         endMs: 90_000,
         multiplier: 3,
-        label: "ギフター3人ミッション",
+        label: "ミッション:3人からギフトを受け取る",
         showCountdown: false,
       },
       {
@@ -739,5 +739,34 @@ describe("buildPayload の区間(segments)", () => {
       ["opening", 18_000],
       ["bonus_reward", 150_000],
     ]);
+  });
+
+  it("ボーナスミッション帯ラベルは targetType ごとに定型文を使う", () => {
+    const settled = new Date(WINDOW_START.getTime() + 30_000);
+    const labelsOf = (targetType: number, progressTarget: number) =>
+      buildPayload(
+        row({
+          bonusMissions: [
+            {
+              targetType,
+              progressTarget,
+              rewardMultiple: 2,
+              startedAt: WINDOW_START,
+              settledAt: settled,
+              rewardStartedAt: null,
+              rewardEndedAt: null,
+            },
+          ],
+        }),
+        "private",
+        NO_AVATARS,
+        NO_AVATARS,
+        NO_CATALOG
+      ).segments.map((s) => s.label);
+
+    expect(labelsOf(1, 3)).toEqual(["ミッション:3人からギフトを受け取る"]);
+    expect(labelsOf(2, 500)).toEqual(["ミッション:500pt受け取る"]);
+    expect(labelsOf(8, 1000)).toEqual(["ミッション:チームで1000pt受け取る"]);
+    expect(labelsOf(9, 12)).toEqual(["ミッション:12"]);
   });
 });
