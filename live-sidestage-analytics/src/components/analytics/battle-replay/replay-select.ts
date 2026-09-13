@@ -388,13 +388,10 @@ export function cardSizeOf(diamonds: number): "sm" | "md" | "lg" {
   return "sm";
 }
 
-/**
- * 帯にしてよい区間か。**初ギフト倍率の推定(`inferred`)は帯にしない**
- * (推定を事実として見せることになる。チップ止まり)。
- */
+/** 帯にしてよい区間か。`opening` は `measured` / `inferred` とも赤帯(`inferred` はラベル末尾に `(推定)`)。 */
 export function isBandSegment(segment: ReplaySegment): boolean {
   if (segment.kind !== "opening") return true;
-  return segment.confidence === "measured";
+  return segment.confidence === "measured" || segment.confidence === "inferred";
 }
 
 /** その瞬間の帯。重なったら `opening` を優先する。 */

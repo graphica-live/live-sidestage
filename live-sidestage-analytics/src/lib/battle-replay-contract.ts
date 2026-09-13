@@ -61,7 +61,7 @@ export type ReplaySegment = {
    * 逆算の仮定値(OPENING_WINDOW_MS)から残り時間を作って見せない。
    */
   showCountdown: boolean;
-  /** `opening` のみ。`measured` だけが赤帯の対象で、`inferred` はチップ止まり。 */
+  /** `opening` のみ。`measured` / `inferred` は赤帯(`inferred` はラベルに `(推定)`)。 */
   confidence?: "measured" | "inferred";
 };
 

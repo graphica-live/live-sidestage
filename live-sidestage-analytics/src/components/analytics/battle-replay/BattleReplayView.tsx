@@ -239,9 +239,6 @@ export function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
           <Chip warn>相手陣営のギフト明細は記録なし(片側のみ再生)</Chip>
         ) : null}
         {payload.truncated ? <Chip warn>ギフト件数が上限を超えたため後半を省略</Chip> : null}
-        {opening?.confidence === "inferred" && opening.multiplier !== null ? (
-          <Chip>初回ボーナス: ×{opening.multiplier}(推定)</Chip>
-        ) : null}
         {!opening ? <Chip>初回ボーナス倍率: 記録なし</Chip> : null}
       </div>
     </div>
