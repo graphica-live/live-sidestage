@@ -40,7 +40,8 @@
     "test": "npm run test:unit && npm run test:integration",
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
-    "check:worker-restart-proposal": "tsx scripts/check-worker-restart-proposal.ts"
+    "check:worker-restart-proposal": "tsx scripts/check-worker-restart-proposal.ts",
+    "check:cron-image-deploy": "tsx scripts/check-cron-image-deploy.ts"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",

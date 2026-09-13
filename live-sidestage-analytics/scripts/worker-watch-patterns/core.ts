@@ -15,6 +15,7 @@ export interface ImportGraphOptions {
 export interface ImportGraphResult {
   libFiles: string[];   // srcDir相対、"/"区切り、ソート済み（例: "overlay/emit.ts"）
   unresolved: string[]; // 解決できなかった import spec（"<file> -> <spec>"形式）
+  outsideSrcDir: string[]; // rootDir内だが srcDir 外へ解決されたローカル依存
 }
 
 export const COMMON_WATCH_PATTERNS: string[] = [
@@ -27,6 +28,23 @@ export const COMMON_WATCH_PATTERNS: string[] = [
 ];
 
 export const ANALYTICS_REPO_PREFIX = "live-sidestage-analytics/";
+
+/** Cron エントリ（analytics ルート）。worker.ts は含めない。 */
+export const CRON_ENTRY_FILES: string[] = [
+  "gift-retention.ts",
+  "tiktok-cleanup.ts",
+  "listener-comment-retention.ts",
+  "ambassador-invite-retention.ts",
+];
+
+/** Cron の共通ウォッチ。COMMON_WATCH_PATTERNS の worker.ts は除外。 */
+export const CRON_COMMON_WATCH_PATTERNS: string[] = [
+  "prisma/**",
+  "package.json",
+  "package-lock.json",
+  "Dockerfile",
+  "tsconfig.json",
+];
 
 /**
  * モノレポ相対パスを expected パターンと揃える（バックスラッシュ・./ 除去、analytics プレフィックス）
@@ -187,10 +205,12 @@ export function buildImportGraph(opts: ImportGraphOptions): ImportGraphResult {
 
   const libFiles = new Set<string>();
   const unresolved: string[] = [];
+  const outsideSrcDir: string[] = [];
   const processed = new Set<string>(); // cycle detection (design-review反映)
 
   // パス正規化（Windows対応）
   const normalizedSrcDir = path.resolve(srcDir).replace(/\\/g, "/");
+  const normalizedRootDir = path.resolve(rootDir).replace(/\\/g, "/");
 
   const queue: string[] = [...roots];
 
@@ -240,6 +260,11 @@ export function buildImportGraph(opts: ImportGraphOptions): ImportGraphResult {
           // srcDir相対パスへ正規化
           const relPath = path.relative(srcDir, resolved).replace(/\\/g, "/");
           libFiles.add(relPath);
+        } else if (
+          normalizedResolved.startsWith(normalizedRootDir) &&
+          !normalizedResolved.includes("/node_modules/")
+        ) {
+          outsideSrcDir.push(`${current} -> ${spec}`);
         }
 
         // 次のキューへ（srcDir内ならキューに追加）
@@ -254,6 +279,7 @@ export function buildImportGraph(opts: ImportGraphOptions): ImportGraphResult {
   return {
     libFiles: Array.from(libFiles).sort(),
     unresolved: unresolved.sort(),
+    outsideSrcDir: outsideSrcDir.sort(),
   };
 }
 
@@ -277,6 +303,25 @@ export function buildExpectedPatterns(
     expected.add(prefix + "src/lib/" + libFile);
   }
 
+  return expected;
+}
+
+export function buildCronExpectedPatterns(
+  libFiles: string[],
+  opts?: { pathPrefix?: string }
+): Set<string> {
+  const prefix = opts?.pathPrefix ?? ANALYTICS_REPO_PREFIX;
+  const expected = new Set<string>();
+
+  for (const pattern of CRON_COMMON_WATCH_PATTERNS) {
+    expected.add(prefix + pattern);
+  }
+  for (const entry of CRON_ENTRY_FILES) {
+    expected.add(prefix + entry);
+  }
+  for (const libFile of libFiles) {
+    expected.add(prefix + "src/lib/" + libFile);
+  }
   return expected;
 }
 
