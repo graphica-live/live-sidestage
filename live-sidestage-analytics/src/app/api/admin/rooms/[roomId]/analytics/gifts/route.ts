@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
+import {
+  CALENDAR_RANKING_QUERY_OPTIONS,
+  CUSTOM_RANGE_RANKING_QUERY_OPTIONS,
+} from "@/lib/gift-ranking-avatars";
 
 // admin専用: 一般ユーザー向け /api/analytics/gifts と違い roomId を直接指定できる
 // (getAdminSession()配下、URLでroomId指定不可という既存の一般ユーザー認可は変更しない)。
@@ -17,9 +21,13 @@ export async function GET(req: NextRequest, { params }: { params: { roomId: stri
   if (startDatetime && endDatetime) {
     const startDate = new Date(startDatetime);
     const endDate = new Date(endDatetime);
-    const { users, total } = await queryGifts(roomId, roomId, {
-      receivedAt: { gte: startDate, lte: endDate },
-    });
+    const { users, total } = await queryGifts(
+      roomId,
+      roomId,
+      { receivedAt: { gte: startDate, lte: endDate } },
+      null,
+      CUSTOM_RANGE_RANKING_QUERY_OPTIONS
+    );
     return NextResponse.json({
       users,
       dateRange: { start: startDatetime, end: endDatetime },
@@ -32,6 +40,12 @@ export async function GET(req: NextRequest, { params }: { params: { roomId: stri
   const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
   const { start, end } = getDateRange(period, date);
 
-  const { users, total } = await queryGifts(roomId, roomId, { dayKey: { gte: start, lte: end } });
+  const { users, total } = await queryGifts(
+    roomId,
+    roomId,
+    { dayKey: { gte: start, lte: end } },
+    null,
+    CALENDAR_RANKING_QUERY_OPTIONS
+  );
   return NextResponse.json({ users, dateRange: { start, end }, total, verified: true });
 }
