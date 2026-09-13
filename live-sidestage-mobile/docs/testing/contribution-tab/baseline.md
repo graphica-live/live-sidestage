@@ -69,6 +69,11 @@ TikTokプロフィールへ遷移し、行のそれ以外(順位メダル・名�
 | TC-CT-029 | FREEプランで週チップをタップしても期間は変わらずアップグレード案内が出る | `PeriodSelectorBar` | 異常/権限差 | `extendedRangeAllowed: false`、現在「日」選択 | `onChanged`は呼ばれない。SnackBarに「週・月・年での表示はPRO/ULTRAプランで利用できます」 | `flutter test test/period_selector_bar_test.dart` | PASS | 2026-09-13 |
 | TC-CT-030 | FREE相当でweek/month/yearが残っていたら起動後にtodayのdayへクランプ | `scheduleClampToDayOnlyHistoryPeriod` | 回帰/権限差 | `extendedRangeAllowed: false`、保存状態がweek | フレーム後にday(today)へ`onClamp` | `flutter test test/analytics_period_test.dart --plain-name scheduleClamp` | PASS | 貢献/ギフト履歴/バトル履歴タブで共有 |
 
+| TC-CT-031 | 日付切替は offset=0 の1ページ(50件)を返し、人数ラベルは userCount | ContributionTab._load / GET ranking | 正常 | 51人以上の日で◀/▶ | 初回は最大50行。ラベルは全集合人数。スクロールで残りが追加される | analytics: ranking/route.integration.test.ts (limit/offset) + 実機 | PASS (API) / NOT RUN (実機 Windows) | 2026-09-13 date-nav perf |
+| TC-CT-032 | ランキング初回の profileImageUrl は空、後から avatars POST で埋まる | fetchRankingAvatars + _enrichWithAvatars | 正常 | 認証済み、当該roomの uid | GET ranking の users.profileImageUrl は null。POST avatars は room にギフト/ロールアップがある uid だけ署名 | analytics: ranking + avatars integration / flutter test gift_ranking_entry copyWith | PASS (unit+API方針) / avatars IDORフィルタはコード確認 | 他room uid は空配列 |
+| TC-CT-033 | キャッシュヒット時は即表示し、失敗してもキャッシュを残す | ContributionTab._changePeriod | 正常/異常 | 一度見た日へ戻る | ネットワーク待ち前に一覧が出る。silent refresh 失敗でも表示維持 | コードレビュー | NOT RUN: 実機 | prefetch は UI を上書きしない |
+| TC-CT-034 | snapshot(今日)適用後は userCount=件数, hasMore=false | _applyRankingSnapshotUsers | 回帰 | 今日を表示中に ranking snapshot | 人数ラベルが snapshot 件数。無限スクロールが止まらないよう hasMore を落とす | コードレビュー | PASS (実装確認) | |
+
 
 
 ## Quality Gate

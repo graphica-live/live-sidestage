@@ -74,4 +74,26 @@ void main() {
       expect(entry.lastGiftAt, isNull);
     });
   });
+
+  group('GiftRankingEntry.copyWith', () {
+    test('profileImageUrlだけ差し替え、他フィールドは維持', () {
+      final original = GiftRankingEntry(
+        tiktokUid: 'user_a',
+        tiktokHandle: 'handle_a',
+        nickname: 'ユーザーA',
+        profileImageUrl: null,
+        giftCount: 3,
+        totalDiamonds: 100,
+        lastGiftAt: DateTime.parse('2026-08-28T10:00:00.000Z'),
+      );
+      final updated = original.copyWith(profileImageUrl: 'https://example.com/a.png');
+      expect(updated.tiktokUid, original.tiktokUid);
+      expect(updated.tiktokHandle, original.tiktokHandle);
+      expect(updated.nickname, original.nickname);
+      expect(updated.giftCount, original.giftCount);
+      expect(updated.totalDiamonds, original.totalDiamonds);
+      expect(updated.lastGiftAt, original.lastGiftAt);
+      expect(updated.profileImageUrl, 'https://example.com/a.png');
+    });
+  });
 }

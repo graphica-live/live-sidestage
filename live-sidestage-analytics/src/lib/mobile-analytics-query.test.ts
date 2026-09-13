@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { MAX_RANGE_DAYS } from "@/lib/range-limits";
-import { parseRangeQuery, parseListenerQuery, escapeLikePattern } from "./mobile-analytics-query";
+import {
+  parseRangeQuery,
+  parseListenerQuery,
+  parseOptionalLimit,
+  parseOffset,
+  escapeLikePattern,
+} from "./mobile-analytics-query";
 
 function params(entries: Record<string, string>): URLSearchParams {
   return new URLSearchParams(entries);
@@ -160,3 +166,40 @@ describe("escapeLikePattern", () => {
     expect(escapeLikePattern("taro")).toBe("taro");
   });
 });
+
+describe("parseOptionalLimit", () => {
+  it("omitted limit is null (no default page size)", () => {
+    const r = parseOptionalLimit(params({}), 200);
+    expect(r).toEqual({ ok: true, value: null });
+  });
+
+  it("accepts integers from 1 to max", () => {
+    expect(parseOptionalLimit(params({ limit: "1" }), 200)).toEqual({ ok: true, value: 1 });
+    expect(parseOptionalLimit(params({ limit: "200" }), 200)).toEqual({ ok: true, value: 200 });
+  });
+
+  it("rejects 0, over max, and non-integers", () => {
+    expect(parseOptionalLimit(params({ limit: "0" }), 200).ok).toBe(false);
+    expect(parseOptionalLimit(params({ limit: "201" }), 200).ok).toBe(false);
+    expect(parseOptionalLimit(params({ limit: "1.5" }), 200).ok).toBe(false);
+    expect(parseOptionalLimit(params({ limit: "abc" }), 200).ok).toBe(false);
+  });
+});
+
+describe("parseOffset", () => {
+  it("omitted offset is 0", () => {
+    expect(parseOffset(params({}))).toEqual({ ok: true, value: 0 });
+  });
+
+  it("accepts 0 and positive integers", () => {
+    expect(parseOffset(params({ offset: "0" }))).toEqual({ ok: true, value: 0 });
+    expect(parseOffset(params({ offset: "2" }))).toEqual({ ok: true, value: 2 });
+  });
+
+  it("rejects negatives and non-integers", () => {
+    expect(parseOffset(params({ offset: "-1" })).ok).toBe(false);
+    expect(parseOffset(params({ offset: "1.2" })).ok).toBe(false);
+    expect(parseOffset(params({ offset: "foo" })).ok).toBe(false);
+  });
+});
+

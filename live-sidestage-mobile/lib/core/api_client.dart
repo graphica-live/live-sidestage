@@ -282,6 +282,12 @@ class GiftRankingResult {
   final ({int giftCount, int totalDiamonds}) total;
   final bool verified;
 
+  /// 期間全体のユニーク貢献者数（ページング前の全集合）。
+  final int userCount;
+
+  /// 追加ページが存在するか。
+  final bool hasMore;
+
   /// webプロセスの起動識別子。[RankingSyncStore.acknowledgeResync]へそのまま渡し、
   /// version tracker をこのRESTレスポンス時点の値へ合わせるのに使う。
   final String bootId;
@@ -298,6 +304,8 @@ class GiftRankingResult {
     required this.dateRange,
     required this.total,
     required this.verified,
+    required this.userCount,
+    required this.hasMore,
     required this.bootId,
     required this.epoch,
     required this.version,
@@ -514,6 +522,8 @@ class LiveAnalyticsApi {
     required String token,
     required String period,
     required String date,
+    int? limit,
+    int? offset,
     DateTime? startDatetime,
     DateTime? endDatetime,
     String? listenerQuery,
@@ -527,22 +537,58 @@ class LiveAnalyticsApi {
           endDatetime: endDatetime,
         ),
         if (listenerQuery != null && listenerQuery.isNotEmpty) 'listenerQuery': listenerQuery,
+        if (limit != null) 'limit': limit.toString(),
+        if (offset != null) 'offset': offset.toString(),
       },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/ranking?$query', null, token: token);
     final users = data['users'];
+    final parsedUsers = users is List
+        ? users.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList()
+        : const <GiftRankingEntry>[];
+    final userCountRaw = data['userCount'];
+    final userCount = userCountRaw is int ? userCountRaw : parsedUsers.length;
     return GiftRankingResult(
-      users: users is List ? users.map(GiftRankingEntry.tryParse).whereType<GiftRankingEntry>().toList() : const [],
+      users: parsedUsers,
       dateRange: _parseDateRange(data['dateRange']),
       total: (
         giftCount: (data['total']?['giftCount'] as int?) ?? 0,
         totalDiamonds: (data['total']?['totalDiamonds'] as int?) ?? 0,
       ),
       verified: data['verified'] == true,
+      userCount: userCount,
+      hasMore: data['hasMore'] == true,
       bootId: data['bootId'] as String? ?? '',
       epoch: data['epoch'] as int? ?? 0,
       version: data['version'] as int? ?? 0,
     );
+  }
+
+
+
+  /// ランキング行のアバターURLを後から取得する。
+  Future<Map<String, String>> fetchRankingAvatars({
+    required String token,
+    required List<String> uids,
+  }) async {
+    if (uids.isEmpty) return const {};
+    final data = await _send(
+      'POST',
+      '/api/mobile/analytics/ranking/avatars',
+      {'uids': uids},
+      token: token,
+    );
+    final avatars = data['avatars'];
+    if (avatars is! List) return const {};
+    final out = <String, String>{};
+    for (final item in avatars) {
+      if (item is! Map) continue;
+      final uid = item['tiktokUid'];
+      if (uid is! String || uid.isEmpty) continue;
+      final url = parseImageUrl(item['profileImageUrl']);
+      if (url != null) out[uid] = url;
+    }
+    return out;
   }
 
   /// ギフト履歴タブ。[hasMore] が true なら「期間全体」ではなく「直近[limit]件」であることを示す。
@@ -791,7 +837,7 @@ class LiveAnalyticsApi {
   Future<Map<String, dynamic>> _send(
     String method,
     String path,
-    Map<String, String>? body, {
+    Object? body, {
     String? token,
   }) async {
     final http.Response response;

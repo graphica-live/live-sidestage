@@ -5,8 +5,10 @@ import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
 import { escapeLikePattern } from "@/lib/mobile-analytics-query";
 import {
   dayKeyOf,
+  isOnOrAfterTodayRawWindow,
   isWithinRawGiftWindow,
   resolveRollupReadCutoff,
+  resolveWatermarkExclusiveCutoff,
   shiftDayKey,
 } from "@/lib/gift-retention-window";
 
@@ -102,19 +104,36 @@ export type SplitPlan =
   | { kind: "raw" }
   | { kind: "split"; cutoffDayKey: string; rollupLower: string | null; rollupUpper: string | null };
 
-export async function planSplit(where: GiftAggregateWhere, now: Date): Promise<SplitPlan> {
+function buildSplitPlan(where: GiftAggregateWhere, cutoffDayKey: string): SplitPlan {
   const lower = dayKeyLowerBound(where);
+  const upper = dayKeyUpperBound(where);
+  const rollupUpperFromCutoff = shiftDayKey(cutoffDayKey, -1);
+  const rollupUpper =
+    upper !== null && upper < rollupUpperFromCutoff ? upper : rollupUpperFromCutoff;
+  return { kind: "split", cutoffDayKey, rollupLower: lower, rollupUpper };
+}
+
+export async function planSplit(
+  where: GiftAggregateWhere,
+  now: Date,
+  options?: { preferRollup?: boolean }
+): Promise<SplitPlan> {
+  const lower = dayKeyLowerBound(where);
+
+  if (options?.preferRollup === true) {
+    // ranking: 当日以降は Gift。watermark 完了日は rollup。80日境界は使わない。
+    if (isOnOrAfterTodayRawWindow(lower, now)) return { kind: "raw" };
+    const cutoffDayKey = await resolveWatermarkExclusiveCutoff();
+    if (lower !== null && lower >= cutoffDayKey) return { kind: "raw" };
+    return buildSplitPlan(where, cutoffDayKey);
+  }
+
   if (isWithinRawGiftWindow(lower, now)) return { kind: "raw" };
 
   const cutoffDayKey = await resolveRollupReadCutoff(now);
   if (lower !== null && lower >= cutoffDayKey) return { kind: "raw" };
 
-  const upper = dayKeyUpperBound(where);
-  const rollupUpperFromCutoff = shiftDayKey(cutoffDayKey, -1);
-  const rollupUpper =
-    upper !== null && upper < rollupUpperFromCutoff ? upper : rollupUpperFromCutoff;
-
-  return { kind: "split", cutoffDayKey, rollupLower: lower, rollupUpper };
+  return buildSplitPlan(where, cutoffDayKey);
 }
 
 /** 分割時に Gift 側へ渡す where(カットオフ以降だけを読ませる)。範囲が空なら null。 */
@@ -233,11 +252,11 @@ function mergeAccumulated(
  */
 export async function aggregateGiftUsers(
   where: GiftAggregateWhere,
-  options: { resolveAvatars?: boolean; now?: Date } = {}
+  options: { resolveAvatars?: boolean; now?: Date; preferRollup?: boolean } = {}
 ): Promise<{ users: GiftAnalyticsUser[]; total: { giftCount: number; totalDiamonds: number } }> {
-  const { resolveAvatars = true, now = new Date() } = options;
+  const { resolveAvatars = true, now = new Date(), preferRollup = false } = options;
 
-  const plan = await planSplit(where, now);
+  const plan = await planSplit(where, now, { preferRollup });
 
   let accumulated: Map<string, Accumulated>;
   if (plan.kind === "raw") {
@@ -248,7 +267,10 @@ export async function aggregateGiftUsers(
       accumulateFromRollup(where, plan),
       rawWhere ? accumulateFromGifts(rawWhere) : Promise.resolve(new Map<string, Accumulated>()),
     ]);
-    accumulated = mergeAccumulated(rolled, raw);
+    // watermark が進んでいても、この room のロールアップが空なら Gift が残っている
+    // (テスト・cron遅れ)。加算マージすると二重計上になるので、空のときだけ Gift 全範囲へ倒す。
+    accumulated =
+      rolled.size === 0 ? await accumulateFromGifts(where) : mergeAccumulated(rolled, raw);
   }
 
   if (accumulated.size === 0) return { users: [], total: { giftCount: 0, totalDiamonds: 0 } };
@@ -341,8 +363,12 @@ export async function queryGifts(
   roomId: string,
   viewerStreamerId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
-  listenerQuery?: string | null
+  listenerQuery?: string | null,
+  options?: { preferRollup?: boolean; resolveAvatars?: boolean }
 ): Promise<{ users: GiftAnalyticsUser[]; total: { giftCount: number; totalDiamonds: number } }> {
+  const preferRollup = options?.preferRollup === true;
+  const resolveAvatars = options?.resolveAvatars !== false;
+  const now = new Date();
   const baseWhere: GiftAggregateWhere = {
     roomId,
     ...where,
@@ -358,7 +384,7 @@ export async function queryGifts(
     // バインドパラメータ上限(32,767)に触れる。room + 期間で先に絞ってから JOIN するのが要点。
     const like = `%${escapeLikePattern(listenerQuery)}%`;
 
-    const plan = await planSplit(baseWhere, new Date());
+    const plan = await planSplit(baseWhere, now, { preferRollup });
     const rawWhere = plan.kind === "raw" ? baseWhere : narrowToRawWindow(baseWhere, plan.cutoffDayKey);
 
     // 80日を超える範囲では、Giftが既に消えているリスナーを名前で引けない。
@@ -375,10 +401,13 @@ export async function queryGifts(
         : Promise.resolve([] as MatchedUid[]),
     ]);
 
-    const matched = [...new Set([...rawMatches, ...rollupMatches].map((u) => u.tiktokUid))];
+    let matched = [...new Set([...rawMatches, ...rollupMatches].map((u) => u.tiktokUid))];
+    if (matched.length === 0 && plan.kind === "split" && !rawWhere) {
+      matched = [...new Set((await matchRawGiftSenders(baseWhere, like)).map((u) => u.tiktokUid))];
+    }
     if (matched.length === 0) return { users: [], total: { giftCount: 0, totalDiamonds: 0 } };
     fullWhere = { ...baseWhere, tiktokUid: { in: matched } };
   }
 
-  return aggregateGiftUsers(fullWhere);
+  return aggregateGiftUsers(fullWhere, { preferRollup, resolveAvatars, now });
 }

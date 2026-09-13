@@ -4,6 +4,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "./prisma";
 import { queryGifts } from "./gift-analytics";
 import { makeTiktokUid } from "./__fixtures__/gift";
+import { ROLLUP_WATERMARK_KEY } from "./gift-retention-window";
+import { getSetting, setSetting } from "./settings";
 
 const STREAMER_TIKTOK_ID = "itest_gift_analytics_streamer";
 const HOST_TIKTOK_UID = makeTiktokUid("itest_gift_analytics_host");
@@ -16,7 +18,8 @@ const UID_C = makeTiktokUid("itest_gift_analytics_user_c");
 const UID_TARO = makeTiktokUid("itest_gift_analytics_taro");
 const UID_HANAKO = makeTiktokUid("itest_gift_analytics_hanako");
 const UID_RENAMED = makeTiktokUid("itest_gift_analytics_renamed");
-const ALL_UIDS = [UID_A, UID_B, UID_C, UID_TARO, UID_HANAKO, UID_RENAMED];
+const UID_ROLLUP = makeTiktokUid("itest_gift_analytics_rollup");
+const ALL_UIDS = [UID_A, UID_B, UID_C, UID_TARO, UID_HANAKO, UID_RENAMED, UID_ROLLUP];
 
 let streamerId: string;
 let roomId: string;
@@ -73,6 +76,7 @@ beforeAll(async () => {
       { tiktokUid: UID_HANAKO, tiktokHandle: "hanako_listener", nickname: "花子" },
       // 改名後の現在値だけを持つ(TikTokUser は履歴を持たない)。
       { tiktokUid: UID_RENAMED, tiktokHandle: "rename_user", nickname: "新名前" },
+      { tiktokUid: UID_ROLLUP, tiktokHandle: "rollup_user", nickname: "ロールアップ" },
     ],
     skipDuplicates: true,
   });
@@ -83,6 +87,7 @@ afterAll(async () => {
   if (streamer) {
     await prisma.principal.delete({ where: { id: streamer.principalId } }); // cascades User -> Streamer
   }
+  await prisma.giftDailyListenerStat.deleteMany({ where: { roomId } }).catch(() => {});
   await prisma.tiktokRoom.delete({ where: { id: roomId } }).catch(() => {}); // cascades TiktokRoom -> Gift
   await prisma.tikTokUser.deleteMany({ where: { tiktokUid: { in: ALL_UIDS } } }).catch(() => {});
   await prisma.$disconnect();
@@ -181,5 +186,65 @@ describe("queryGifts", () => {
       "nonexistent_listener_xyz"
     );
     expect(result).toEqual({ users: [], total: { giftCount: 0, totalDiamonds: 0 } });
+  });
+
+  it("preferRollup:true on a watermark-complete day uses rollup values, default stays on Gift", async () => {
+    const day = "2026-08-10";
+    await makeGift({
+      tiktokUid: UID_ROLLUP,
+      totalDiamonds: 11,
+      repeatCount: 1,
+      receivedAt: new Date("2026-08-10T10:00:00Z"),
+      dayKey: day,
+    });
+    await prisma.giftDailyListenerStat.create({
+      data: {
+        roomId,
+        dayKey: day,
+        tiktokUid: UID_ROLLUP,
+        rowCount: 1,
+        giftCount: 42,
+        totalDiamonds: 999,
+        firstReceivedAt: new Date("2026-08-10T10:00:00Z"),
+        lastReceivedAt: new Date("2026-08-10T10:00:00Z"),
+      },
+    });
+    const previous = await getSetting(ROLLUP_WATERMARK_KEY);
+    try {
+      await setSetting(ROLLUP_WATERMARK_KEY, day);
+
+      const rolled = await queryGifts(
+        roomId,
+        streamerId,
+        { dayKey: { gte: day, lte: day } },
+        null,
+        { preferRollup: true, resolveAvatars: false }
+      );
+      expect(rolled.total.totalDiamonds).toBe(999);
+      expect(rolled.users).toHaveLength(1);
+      expect(rolled.users[0]!.tiktokUid).toBe(UID_ROLLUP);
+      expect(rolled.users[0]!.giftCount).toBe(42);
+      expect(rolled.users[0]!.profileImageUrl).toBeNull();
+
+      const raw = await queryGifts(roomId, streamerId, { dayKey: { gte: day, lte: day } });
+      const rawUser = raw.users.find((u) => u.tiktokUid === UID_ROLLUP);
+      expect(rawUser).toBeDefined();
+      expect(rawUser!.totalDiamonds).toBe(11);
+      expect(raw.total.totalDiamonds).toBe(11);
+    } finally {
+      await setSetting(ROLLUP_WATERMARK_KEY, previous);
+    }
+  });
+
+  it("resolveAvatars:false leaves profileImageUrl null", async () => {
+    const { users } = await queryGifts(
+      roomId,
+      streamerId,
+      { dayKey: { gte: "2026-08-15", lte: "2026-08-15" } },
+      null,
+      { resolveAvatars: false }
+    );
+    expect(users.length).toBeGreaterThan(0);
+    expect(users.every((u) => u.profileImageUrl === null)).toBe(true);
   });
 });

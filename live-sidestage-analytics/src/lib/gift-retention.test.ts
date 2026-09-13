@@ -2,9 +2,12 @@ import { describe, it, expect } from "vitest";
 import { deletionSkipReason, dayKeyStartUtc } from "./gift-retention";
 import {
   GIFT_ROLLUP_READ_CUTOFF_DAYS,
+  MIN_DAY_KEY,
   dayKeyOf,
+  isOnOrAfterTodayRawWindow,
   isWithinRawGiftWindow,
   shiftDayKey,
+  watermarkExclusiveCutoff,
 } from "./gift-retention-window";
 
 describe("deletionSkipReason", () => {
@@ -34,6 +37,28 @@ describe("dayKeyOf", () => {
   it("UTCの15:00以降は翌日のdayKeyになる(JST)", () => {
     expect(dayKeyOf(new Date("2026-09-05T14:59:59.000Z"))).toBe("2026-09-05");
     expect(dayKeyOf(new Date("2026-09-05T15:00:00.000Z"))).toBe("2026-09-06");
+  });
+});
+
+describe("watermarkExclusiveCutoff", () => {
+  it("watermarkが未設定ならMIN_DAY_KEYを返す", () => {
+    expect(watermarkExclusiveCutoff(null)).toBe(MIN_DAY_KEY);
+  });
+
+  it("watermarkの翌日を排他的カットオフとして返す", () => {
+    expect(watermarkExclusiveCutoff("2026-09-01")).toBe("2026-09-02");
+  });
+});
+
+describe("isOnOrAfterTodayRawWindow", () => {
+  const now = new Date("2026-09-06T03:00:00.000Z");
+  const today = dayKeyOf(now);
+
+  it("下限が今日以降ならtrue、昨日・nullはfalse(nowを固定)", () => {
+    expect(isOnOrAfterTodayRawWindow(today, now)).toBe(true);
+    expect(isOnOrAfterTodayRawWindow(shiftDayKey(today, 1), now)).toBe(true);
+    expect(isOnOrAfterTodayRawWindow(shiftDayKey(today, -1), now)).toBe(false);
+    expect(isOnOrAfterTodayRawWindow(null, now)).toBe(false);
   });
 });
 

@@ -228,3 +228,32 @@ export function parseLimit(
   }
   return { ok: true, value: n };
 }
+
+/** ranking 用。省略は全件(null)。指定時は 1..max の整数。デフォルト件数は持たない。 */
+export function parseOptionalLimit(
+  searchParams: URLSearchParams,
+  max: number
+): { ok: true; value: number | null } | { ok: false; response: NextResponse } {
+  const raw = searchParams.get("limit");
+  if (raw === null) return { ok: true, value: null };
+
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > max) {
+    return { ok: false, response: NextResponse.json({ error: "limit が不正です" }, { status: 400 }) };
+  }
+  return { ok: true, value: n };
+}
+
+/** ranking 用。省略は 0。0以上の整数。limit 省略時は呼び出し側で無視する。 */
+export function parseOffset(
+  searchParams: URLSearchParams
+): { ok: true; value: number } | { ok: false; response: NextResponse } {
+  const raw = searchParams.get("offset");
+  if (raw === null) return { ok: true, value: 0 };
+
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    return { ok: false, response: NextResponse.json({ error: "offset が不正です" }, { status: 400 }) };
+  }
+  return { ok: true, value: n };
+}
