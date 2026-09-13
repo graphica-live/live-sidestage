@@ -909,6 +909,29 @@ span.replay-thumb {
   font-family: var(--replay-mono);
   font-weight: 700;
 }
+.replay-band--scroll {
+  overflow: hidden;
+  justify-content: flex-start;
+  padding-inline: 0;
+}
+.replay-band__marquee {
+  display: flex;
+  width: max-content;
+  animation: replay-band-marquee 14s linear infinite;
+}
+.replay-band__marquee > span {
+  flex: 0 0 auto;
+  padding-inline: 24px;
+  white-space: nowrap;
+}
+@keyframes replay-band-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
 
 /* ---------- 貢献者ボード ---------- */
 .replay-board {

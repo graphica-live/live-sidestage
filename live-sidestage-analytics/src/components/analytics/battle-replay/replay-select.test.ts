@@ -448,17 +448,26 @@ describe("segmentAt", () => {
           showCountdown: false,
         },
         {
-          kind: "opening",
+          kind: "opening_intro",
           startMs: 0,
+          endMs: 18_000,
+          multiplier: 2,
+          label: "30秒間、初めてのギフトポイント×2倍",
+          showCountdown: false,
+          scrollLabel: true,
+        },
+        {
+          kind: "opening",
+          startMs: 18_000,
           endMs: 48_000,
           multiplier: 2,
           label: "初めてのギフト ×2倍",
-          showCountdown: true,
+          showCountdown: false,
           confidence: "measured",
         },
       ],
     });
-    expect(segmentAt(p, 10_000)?.kind).toBe("opening");
+    expect(segmentAt(p, 10_000)?.kind).toBe("opening_intro");
     expect(segmentAt(p, 50_000)?.kind).toBe("bonus_mission");
     expect(segmentAt(p, 90_000)).toBeNull();
   });

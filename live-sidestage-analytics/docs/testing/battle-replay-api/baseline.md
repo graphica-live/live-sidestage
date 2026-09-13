@@ -1,6 +1,6 @@
 ---
-last_updated: 2026-09-09
-last_risk: HIGH
+last_updated: 2026-09-13
+last_risk: MEDIUM
 last_reviewers: [deepseek-v4-flash, fable] / [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 admin版シェア発行API追加時
 ---
 
@@ -56,10 +56,11 @@ last_reviewers: [deepseek-v4-flash, fable] / [Code Mode]DeepSeek(high)+Codex-ter
 | TC-BRA-019 | 数字以外のスコアは例外を投げずに飛ばす | `buildPayload` | 異常/回帰 | `"1,200"` / `"abc"` を含むメンバー | 例外なし。不正な行を除いた合計。全員不正なら null | `[unit]` | PASS | `BigInt()` は throw する。1行の異常データでそのバトルが恒久 500 になる |
 | TC-BRA-020 | 相手陣営のギフト明細が無ければ注記フラグを立てる(再生自体は可能) | `buildPayload` | データ欠損 | 相手側 giftEvents 0件 / 1件以上 | `opponentGiftsMissing` が true / false | `[unit]` / `[itg]` | PASS | 相手room未監視のバトルが多数を占める |
 | TC-BRA-021 | 両陣営のギフトを時刻順に併合し、相手側は添字1を指す | `buildPayload` | 回帰 | 両陣営に交互の時刻でイベント | `giftEvents` の `[t, a]` が `[10000,0] [20000,1] [30000,0] [40000,1]` | `[unit]` | PASS | 自陣営(添字0)だけの検証では添字の正しさを保証できない |
-| TC-BRA-022 | 初ギフトx倍の帯は区間が実測できたときだけ出す | `buildPayload` | 境界/negative | `openingWindow*` が null / 実測値あり / `confidence: "unknown"` / `measured` だが倍率 null | null・unknown・倍率nullは区間なし。実測値ありのみ帯を作り `showCountdown: true` | `[unit]` | PASS | 60秒は仮定値。仮定から残り秒数を見せない |
+| TC-BRA-022 | 初ギフトx倍の帯は区間が実測できたときだけ出す | `buildPayload` | 境界/negative | `openingWindow*` が null / 実測値あり / `confidence: "unknown"` / `measured` だが倍率 null | null・unknown・倍率nullは区間なし。実測ありは `opening_intro`(0〜18s・スクロールラベル) + `opening`(18〜48s)。カウントダウンは出さない | `[unit]` | PASS | 推定ラベル `(推定)` は `opening` 側のみ |
 | TC-BRA-023 | `inferred` でも区間が実測できていれば帯を作り confidence をそのまま載せる | `buildPayload` | 境界 | `confidence: "inferred"` + 実測区間 | `kind: "opening"` / `confidence: "inferred"` / ラベル末尾 `(推定)` | `[unit]` | PASS | UI は `isBandSegment` で赤帯表示 |
 | TC-BRA-024 | ボーナス区間は報酬の開始・終了が揃ったものだけ帯にする | `buildPayload` | 境界/データ欠損 | `rewardStartedAt` / `rewardEndedAt` が欠けた行と揃った行 | 揃った行だけ帯になり `showCountdown: true` | `[unit]` | PASS | `rewardEndedAt` は TikTok が配信する実測値。opening と重なった区間は `segmentAt` が opening を優先する |
-| TC-BRA-025 | opening とボーナスが両方あれば開始時刻の昇順で並ぶ | `buildPayload` | 回帰 | opening(0-48s) + bonus(150-180s) | `segments` の kind が `opening` → `bonus_reward` | `[unit]` | PASS | クライアントの「重なったら opening 優先」が並び順に依存する |
+| TC-BRA-025 | opening とボーナスが両方あれば開始時刻の昇順で並ぶ | `buildPayload` | 回帰 | opening(0-48s) + bonus_reward(150-180s) | `segments` の kind が `opening_intro` → `opening` → `bonus_reward` | `[unit]` | PASS | `segmentAt` は kind 優先で重なりを解く |
+| TC-BRA-041 | ボーナスミッション区間は `startedAt`→`settledAt` の赤帯にする | `buildPayload` | 正常/境界 | `settledAt` あり / 報酬時刻のみ揃い / 重複行 | `settledAt` まで `bonus_mission`。報酬は `bonus_reward`。同一ミッションは1帯(重複除去) | `[unit]` | PASS | ラベルは `targetType` / `progressTarget` から生成 |
 | TC-BRA-026 | 確定済みバトルは再生ペイロードを返し、未確定・スコア点なしは理由コードを返す | `queryBattleReplay` | 正常/異常 | 確定済み / armies 無しで確定 / 未確定の battleId | 順に ok、`no_score_points`、`not_finalized` | `[itg]` | PASS | roomId で絞るので他人のバトルは引けない |
 | TC-BRA-027 | 実際に読めたスコア点が足りなければ再生不可にする | `queryBattleReplay` | 回帰/競合 | 確定後にスコア点だけ削除し件数列は残す | `no_score_points`(件数列だけを信用しない) | `[itg]` | PASS | ネストした select は1トランザクションにまとまらない |
 | TC-BRA-028 | シェアトークンは同時発行しても1本に収まり、2回目以降は同じ値を返す | `ensureShareToken` | 並行/冪等 | 同一バトルへ3並列 + 追加1回 | 4回とも同じ値。48桁の16進(`crypto.randomBytes(24)`) | `[itg]` | PASS | `updateMany({ shareToken: null })` → 読み直しの compare-and-set |
