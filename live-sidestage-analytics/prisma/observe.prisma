@@ -1,0 +1,331 @@
+// public - live observation and rollups
+
+
+model Gift {
+  id              String   @id @default(cuid())
+  roomId          String // TikTokアカウント単位で共有(同じ配信者を登録した全ユーザーが同じ行を参照)
+  // 送信者の不変ID。表示名(ハンドル・ニックネーム・アイコン)はここから TikTokUser を順引きする
+  // ので、この行には保存しない(改名しても集計が割れない)。
+  tiktokUid       String
+  giftId          Int
+  giftName        String
+  giftPictureUrl  String?
+  repeatCount     Int      @default(1)
+  diamondCount    Int      @default(0)
+  totalDiamonds   Int      @default(0)
+  receivedAt      DateTime @default(now())
+  timeSource      String   @default("tiktok") // "tiktok" | "fallback" — fallback は TikTok createTime 欠落/不正でサーバー受信時刻を使用したことを示す
+  dayKey          String
+  orderId         String?
+  groupId         String?
+  // TikTok common.msgId。protobufの既定値"0"等、実IDとして使えない値は resolveMsgId() が null にする。
+  // dedupキー。saveGift() が「直近5分に同じ (roomId, msgId) があるか」を引くのに使う
+  // (@@index([roomId, msgId]))。**unique制約は張らない** — roomIdは配信セッション
+  // ではなく永続的なTiktokRoom.idなので、将来の別ライブでmsgIdが再利用されたら正当なギフトを
+  // 恒久的に弾いてしまう。加えて prisma db push は Dockerfile の CMD でコンテナ起動時に走るため、
+  // 既存の重複行があるとunique index作成に失敗してWebが起動しなくなる。
+  msgId           String?
+  // 1 = combo可能ギフト。groupId="0" が3591件流入していて、それが実際にcomboなのか
+  // 単発ギフトなのかを本番DBだけでは判定できないため、combo キーの設計見直し用に残す。
+  giftType        Int?
+  // WebcastGiftMessage.matchInfo(shared/tiktok-live-connectorのfork改造で取得可能になった
+  // バトルアイテム効果の刻印)。multiplierType=0は「倍率なし」を明示する値で、未観測(旧データ・
+  // 取得失敗)はnullのまま区別する。BATTLE-EVENTS.mdのMultiplierType enum: 1=CRITICAL_STRIKE(グローブ crit)
+  // / 2=TOP_2 / 3=TOP_3 / 4=VAULT_GLOVE_CRITICAL_STRIKE(fork独自追加)。
+  multiplierType  Int?
+  multiplierValue Int?
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, orderId])
+  @@index([roomId, dayKey])
+  @@index([roomId, receivedAt])
+  @@index([roomId, tiktokUid])
+  @@index([roomId, groupId])
+  @@index([roomId, msgId])
+  // 90日retentionの削除バッチは dayKey 単体で絞る(gift-retention.ts)。既存のindexは
+  // すべて roomId 先頭なので、これが無いと日次の削除が gifts のフルスキャンになる。
+  @@index([dayKey])
+  @@map("gifts")
+  @@schema("public")
+}
+
+
+// リスナーコメント(chat)の生ログ。将来のAIによるコメント傾向分析用途で保存する。
+// **受信から30日で自動削除される**(listener-comment-retention.ts)。Giftと違い
+// 金銭的価値を持たず流量もはるかに多いため、削除前のロールアップ集計は行わない
+// (分析要件が未確定な段階で集計テーブルを固定すると、要件変更のたびに壊れるため)。
+//
+// unique制約は張らない。Gift同様の理由: roomIdは配信セッションではなく永続的な
+// TiktokRoom.idで、将来msgIdが再利用されると正当なコメントを恒久的に弾みうる。
+// 加えて prisma db push はコンテナ起動時に走るため、既存の重複行があると
+// unique index作成に失敗してWebが起動しなくなる。
+//
+// profileImageUrlは持たない。TikTokのプロフィール画像URLは署名付きで数十時間で
+// 失効し(avatar-storage.tsの再保存を経ないと恒久表示できない)、この用途は
+// テキスト分析が主眼で画像表示を要さないため。
+model ListenerComment {
+  id         String   @id @default(cuid())
+  roomId     String
+  // 投稿者の不変ID。表示名は TikTokUser から順引きする(§2.1)。
+  tiktokUid  String
+  comment    String
+  receivedAt DateTime @default(now())
+  timeSource String   @default("tiktok") // "tiktok" | "fallback"。Gift同様、TikTok createTime欠落/不正時はサーバー受信時刻を使う
+  dayKey     String
+  // TikTok common.msgId。resolveMsgId()がprotobufの既定値等をnullにする。
+  // インメモリdedup(rememberMsgId, tiktok-listener.ts)が正常系の重複をほぼ弾いており、
+  // DB側の事前重複チェックは行わない(chat流量はgiftよりはるかに多く、都度のfindFirstは
+  // 書き込み負荷に見合わない。多少の重複が残ってもAI傾向分析用途では実害が軽微)。
+  msgId      String?
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, dayKey])
+  @@index([roomId, receivedAt])
+  // 30日retentionの削除バッチは dayKey 単体で絞る(listener-comment-retention.ts)。
+  // 他のindexは全部roomId先頭なので、これが無いと削除がフルスキャンになる。
+  @@index([dayKey])
+  @@map("listener_comments")
+  @@schema("public")
+}
+
+
+// ギフト明細(Gift)の日次ロールアップ。(roomId, dayKey, tiktokUid) 単位。
+//
+// **Gift は受信後90日で削除される**(gift-retention.ts)。削除しても期間ランキング・
+// 事務所APIの長期集計が壊れないよう、削除の前にこのテーブルへ集計を落としておく。
+// こちらは長期保持(削除しない)。
+//
+// **Gift への FK は張らない**(BattleHistoryGiftEvent と同じ「コピーして切り離す」パターン)。
+// roomId も論理参照に留める — TiktokRoom の物理削除時は deleteTiktokRoomPermanently() が
+// 同一トランザクションで明示的に削除し、TikTok ID 自動合流時は absorbRooms() が
+// 新 roomId へ合算して付け替える。
+//
+// rowCount は「行数」で、giftCount(= repeatCount の合計)とは意味が違う。
+// login-stats が現行どおり行数ベースの数字を出せるよう GiftLifetimeStat.rowCount を
+// ここから再集計するために必要。
+model GiftDailyListenerStat {
+  id        String @id @default(cuid())
+  roomId    String
+  dayKey    String
+  tiktokUid String
+
+  rowCount      Int @default(0) // Gift の行数
+  giftCount     Int @default(0) // Gift.repeatCount の合計
+  totalDiamonds Int @default(0) // Gift.totalDiamonds の合計(1日1人ぶんなのでIntで足りる)
+
+  firstReceivedAt DateTime
+  lastReceivedAt  DateTime
+
+  @@unique([roomId, dayKey, tiktokUid])
+  @@index([roomId, dayKey])
+  @@index([dayKey])
+  @@map("gift_daily_listener_stats")
+  @@schema("public")
+}
+
+
+// tiktokUid 単位(room横断)の全期間累計。GiftDailyListenerStat 全体から毎回再集計する。
+// /api/public/login-stats の gifts フルスキャンを置き換えるためだけに存在する。
+//
+// totalDiamonds は全期間・全room の合計なので Int を超えうる。BigInt で持つ。
+model GiftLifetimeStat {
+  tiktokUid String @id
+
+  rowCount      Int    @default(0) // Gift の行数(prisma.gift.count() 相当)
+  giftCount     Int    @default(0) // Gift.repeatCount の合計
+  totalDiamonds BigInt @default(0)
+
+  firstSeenAt DateTime
+  lastSeenAt  DateTime
+
+  @@map("gift_lifetime_stats")
+  @@schema("public")
+}
+
+
+// TikTokのバトル(LinkMic Battle)の観測記録。イベントの対戦自動検知が使う。
+// analytics自身はこのデータを使わないが、バトル中かどうかはWebcastのイベントでしか
+// 分からないので受信側で残しておく。
+//
+// **1つのバトルについて、参加した両サイドのroomからそれぞれ同じbattleIdのイベントが届く。**
+// (両方をこちらが監視している場合)。したがってbattleIdでグループ化すれば
+// 「そのバトルに誰が参加したか」がpayloadの解釈精度に依存せず分かる。
+// 相手のTikTokハンドルはpayloadに含まれないため、この照合が唯一の確実な手段。
+model TiktokBattle {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String // TikTokのbattleId。API上stringなので数値化しない
+  action   Int // 最後に観測したBattleAction(OPEN=4 / FINISH=5 / CUT_SHORT=6)
+
+  startedAt          DateTime
+  // startedAtが受信時刻からの推定値か。接続はprocessInitialData:falseなので配信の
+  // 途中から繋ぐと開始(OPEN)を取り逃す。BattleSetting.startTimeMsも取れなかった場合、
+  // startedAtは「気づいた時刻」でしかない。イベント側の照合はこれを見て信頼度を決める。
+  startedAtEstimated Boolean  @default(true)
+
+  endedAt        DateTime?
+  durationSec    Int? // BattleSetting.duration(秒)。終了を取り逃したときの終了時刻の推定に使う
+  hostTiktokUids String[]  @default([]) // tiktokUid(TLC raw の anchorIdStr。数値文字列)
+  hostScores     Json      @default("{}") // tiktokUid -> hostScore(stringのまま)
+  // tiktokUid -> {displayId, avatarUrl}。tiktok-battle.tsのHostProfiles。
+  // **nickName は持たない** — 表示名の正本は TikTokUser で、hostProfiles 観測時に recordTikTokUser() が記録する。
+  hostProfiles   Json      @default("{}")
+  hostTeams      Json      @default("{}") // tiktokUid -> teamId(teamArmies由来。1vs1等チーム情報が無いバトルは{})
+  // tiktokUid -> OpponentWatchEntry(tiktok-battle.tsのOpponentWatch)。相手roomの監視が
+  // どの経路(コラボ承諾/バトル開始補助/元々監視中/失敗)で始まったかの記録。表示には使わず、
+  // コラボ承諾トリガー(recordCollabGroupChange)の取りこぼし率を事後検証するためだけの記録。
+  opponentWatch  Json      @default("{}")
+
+  // このroomでこのバトルのタップ点(TiktokBattleTapPoint)を**バトル開始から取りこぼしなく**
+  // 観測できたか。true のときだけ初ギフトx倍の逆算がタップ点を差し引く。
+  //
+  // **「タップ点0件」と「未計測」を混同しないための列。** false のバトルは差し引きを行わず、
+  // タップ計測導入前と完全に同じ判定になる(既定値がfalseなので過去分は自動的にそうなる)。
+  //
+  // 書き込みはバトル終了時の最終化タスク1本だけ(tiktok-listener.ts)。途中の失敗はメモリ上の
+  // フラグを落とすだけでDBは触らない。二経路で書くと、FINISH後にreject したinsertのfalseを
+  // 後から走るtrueが上書きしうる。
+  tapPointsTracked Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, battleId])
+  @@index([roomId, startedAt])
+  @@index([battleId])
+  @@map("tiktok_battles")
+  @@schema("public")
+}
+
+
+// バトル中のアイテム使用ログ(グローブ/ハンマー/ブースター/金グローブ)。1回の使用=1行。
+// TiktokBattleが「現在のバトル状態」を1行に集約するのに対し、こちらは時系列の離散イベント。
+//
+// **battleIdへFK制約は張らない。** TiktokBattle行の作成前(バトル開始検知の取りこぼし・受信順序)
+// にアイテム使用イベントが先着することがあり、Giftと同じ「roomId経由の緩い関連付け」思想を踏襲する。
+model TiktokBattleItemUse {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String // TikTokのbattleId。TiktokBattle.battleIdと同じ文字列だが直接のFKは張らない
+
+  // WebcastLinkMicBattleItemCard.cardType(shared/tiktok-live-connectorのBattleItemCardType)
+  // 2=glove / 6=hammer / 10=top2booster / 11=top3booster / 12=vaultGlove。
+  // POWER_UP_SUMMARY(4、周期通知でsenderなし)は保存対象外(ハンドラ側でスキップ)。
+  cardType Int
+
+  // 送信者の不変ID。表示名は TikTokUser から順引きする(§2.1)。
+  senderTiktokUid         String
+  senderProfilePictureUrl String?
+  targetHostTiktokUid     String // 使用対象の配信者のtiktokUid
+
+  // TikTok common.msgId。resolveMsgId()が既定値"0"等を弾いてnullにする。
+  // dedupは(roomId, msgId)の5分window方式(Gift/saveGiftと同じ思想。理由はtiktok-listener.tsのGIFT_DEDUP_WINDOW_MS参照)。
+  msgId String?
+
+  receivedAt DateTime @default(now())
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, battleId])
+  @@index([roomId, msgId])
+  @@map("tiktok_battle_item_uses")
+  @@schema("public")
+}
+
+
+// バトル中盤のボーナスミッション区間(linkMicBattleTask、taskStart→taskUpdate×n→taskSettle→
+// [報酬区間]→rewardSettleのライフサイクル)。taskUpdate(進捗)は高頻度なため保存しない。
+//
+// **battleIdへFK制約は張らない**(TiktokBattleItemUseと同じ理由)。
+//
+// rewardSumは**observing roomごとの値**(BATTLE-EVENTS.mdに明記の通り「そのルームが区間中に
+// 獲得したボーナスpt合計」)。TiktokBattleと同じく、両サイドを監視している場合は別行として届く。
+model TiktokBattleBonusMission {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String
+
+  targetType     Int // 1=人数系 / 2=実弾pt系 / 8=チーム戦pt系(taskPeriodConfig.targetType)
+  progressTarget Int
+  rewardMultiple Int // 2 or 3
+
+  startedAt       DateTime // taskStart受信時刻
+  settledAt       DateTime? // taskSettle受信時刻
+  taskResult      Int? // 0=中間settle / 1=未達成 / 2=達成
+  rewardStartedAt DateTime? // 報酬区間開始目安
+  rewardEndedAt   DateTime? // rewardSettle受信時刻(区間終了の正)
+  rewardSum       Int? // rewardSettle.sum相当。observing roomごとの値
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, battleId])
+  @@map("tiktok_battle_bonus_missions")
+  @@schema("public")
+}
+
+
+// linkMicArmies受信の都度追記する時系列スコアスナップショット。TiktokBattle.hostScores
+// (最新値への累積上書き、mergeBattleStateで増える方向のみマージ)と異なり、
+// 「初ギフトx倍」区間の逆算(ギフトのdiamondCountとスコア増分を突き合わせる、BATTLE-EVENTS.md
+// 4節)の入力として時系列を残す。
+//
+// **2026-09-07に方針変更**: 以前はここに「確定後は逆算結果のみが恒久化対象で、このテーブル自体は
+// BattleHistory側へ複製しない」と書いていたが、バトル再生機能ではスコア曲線そのものが表示対象に
+// なったため、確定時に自roomのwindow内スナップショットを BattleHistoryScorePoint へ複製する。
+model TiktokBattleArmiesSnapshot {
+  id         String   @id @default(cuid())
+  roomId     String
+  battleId   String
+  occurredAt DateTime @default(now())
+  tiktokUid  String // スコア主体。1vs1はbattleItems[].userArmy[]単位、チーム戦はteamArmies[].teamUsers[]単位
+  score      String // 累積スコア。桁数が大きいためString(BattleHistoryParticipant.scoreと同じ理由)
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, battleId, occurredAt])
+  @@map("tiktok_battle_armies_snapshots")
+  @@schema("public")
+}
+
+
+// バトル中のタップ点(いいね由来のスコア)。**1リスナーが10タップに到達した瞬間に1行**立つ。
+// 上限は1リスナー1バトル1回で、次のバトルでは全員が再び権利を得る。毎秒書く方式ではない。
+//
+// 公式スコアはギフトだけでは増えず「ギフト点 x 倍率 + タップ点」なので、これを差し引かないと
+// 初ギフトx倍の逆算(battle-opening-multiplier.ts)の ratio が一方向に上振れし、正しい倍率が
+// 「判定不能」として棄却される(本番実例: 406/200 = 2.03 が RATIO_TOLERANCE 0.02 を超えて棄却)。
+//
+// **battleIdへFK制約は張らない**(TiktokBattleItemUse / TiktokBattleBonusMission と同じ理由。
+// イベント先着で TiktokBattle 行が未作成のことがある)。
+model TiktokBattleTapPoint {
+  id       String @id @default(cuid())
+  roomId   String
+  battleId String
+
+  // このroomの配信者のtiktokUid(TikTokの数値ID文字列。DBのUUIDではない)。
+  // **読み出し時に room -> host を解決しないための列。**
+  hostTiktokUid String
+
+  // 10タップ目のlikeを受信した時刻。**@default(now()) にしない** — insertはfire-and-forgetなので
+  // now()は挿入時刻になり、write queueの詰まりの分だけ後ろへずれる。区間割当の精度が
+  // そのまま逆算の正しさになる。
+  occurredAt DateTime
+
+  tiktokUid String // 10タップに到達したリスナー(不変ID。表示名は TikTokUser から順引き)
+  points    Int // 現行仕様では常に3。仕様が違っていたと後で判るよう定数で埋めずに保存する
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // **「1リスナー1バトル1回」の仕様そのもの。** 再接続でメモリ上の重複防止(reached Set)が
+  // 消えても二重計上できない。書き込みは createMany({ skipDuplicates: true })。
+  @@unique([roomId, battleId, tiktokUid])
+  // 先頭はroomIdではなくbattleId。loadTapPointsForBattleは1つのbattleIdに対して
+  // 自room・相手roomを横断して引く(armies snapshotが自roomだけを引くのと条件が違う)。
+  @@index([battleId, roomId, occurredAt])
+  @@map("tiktok_battle_tap_points")
+  @@schema("public")
+}

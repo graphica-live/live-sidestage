@@ -1,13 +1,13 @@
 # ENTITY_MAP — データモデルの意味論
 
-`schema.prisma` のコピーではない。列の型は schema にあるので繰り返さない。ここに書くのは
+Prisma schema set（`prisma/*.prisma`）のコピーではない。列の型は schema にあるので繰り返さない。ここに書くのは
 **そのEntityが何を表しているか / 誰が正本か / 誰が所有するか / いつ消えるか / 何を入れてはいけないか**。
 
 - **schema を読む前にここを読む。** schema はカラム名と型しか語らない
 - **ここと実コードが食い違ったら実コードが正。** その場合はこのファイルの該当箇所を直す
 - 「不明」と書いてある項目は実コードで確認できなかったもの。**推測で確定させない**
 - DDL の正本は3ファイルだけ（[../../CLAUDE.md](../../CLAUDE.md) の「データモデル / DB設計ルール」）
-  - `live-sidestage-analytics/prisma/schema.prisma`（Prisma。`public` + `event` の2スキーマ）
+  - `live-sidestage-analytics/prisma/*.prisma`（Prisma schema set。1 Client / 1 datasource / 1 migration history。物理スキーマは `public` + `event`）
   - `live-sidestage-desktop/backend/lib/db/store.js`（better-sqlite3）
   - `TikRIng/migrations/*.sql`（Cloudflare D1）
 - mydesktop / TikCaption / mobile はリレーショナルスキーマを持たない（JSON・secure storage の key-value のみ）
@@ -204,7 +204,7 @@
 - **保存すべきでない**: 集計値そのもの（Gift から都度組み立てる）、**任意の音源URL**（`endSoundKey` / `countdownSoundKey` はプリセットキー。OBS ブラウザソースに外部URLを無条件 fetch させないため）
 - `OverlayTimerGiftRule` の一致キーは **giftId ではなく giftName（trim + 小文字化）**
 - `OverlayTimerState` は実行時状態。発火はサーバー setTimeout ではなくクライアント側ローカル計算
-- **⚠️ schema.prisma:646-651 は孤児コメント。** 旧 `LikeTally` テーブルの説明が無関係な `OverlayCoinListSettings` の直上に残っている。実体は `src/lib/overlay/like-tally-store.ts` の**プロセス内インメモリ**へ移行済みで、`LikeTally` model は schema に存在しない
+- **⚠️ `prisma/overlay.prisma` の `OverlayCoinListSettings` 直上は孤児コメント。** 旧 `LikeTally` テーブルの説明が無関係なモデルの直上に残っている。実体は `src/lib/overlay/like-tally-store.ts` の**プロセス内インメモリ**へ移行済みで、`LikeTally` model は schema に存在しない
 - **`BattleHistoryFilterSettings`（ダッシュボードのバトル履歴フィルタ設定。Streamer単位）はOverlay設定ではない。** OBSオーバーレイ表示ではなくダッシュボード自体の表示フィルタのため、`src/lib/overlay/` 配下には置かず独立モジュールとして扱う
 
 ### 2.6 Battle

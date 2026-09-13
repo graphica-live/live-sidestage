@@ -67,11 +67,11 @@ typecheck / test / build は analytics 共通のものがイベント機能も�
 
 **この構成には壊すと復旧できない箇所があるので、触る前に必ず読むこと。**
 
-`prisma/schema.prisma` が `public` と `event` の**両方**を管理する
+`prisma/` 配下の `.prisma` ファイル群が `public` と `event` の**両方**を1つの schema set として管理する
 （`schemas = ["public", "event"]`、`previewFeatures = ["multiSchema"]`）。
 イベント機能のテーブルはすべて `@@schema("event")`、analytics のテーブルは `@@schema("public")`。
 
-**schema.prisma からモデルを消したり `@@schema` を外したりするときは必ず `prisma migrate dev` で明示的な drop migration を生成する。** 本番デプロイは `prisma migrate deploy` で、削除差分を含むmigrationファイルが順序通り実行されるため、明確なレビュー対象にする必要がある。統合前は「event 側の `schemas` に `public` を足すと analytics のテーブルが消える」という形で同じ危険があった。1つの schema.prisma が両方を書くことで解消している。
+**schema set からモデルを消したり `@@schema` を外したりするときは必ず `prisma migrate dev` で明示的な drop migration を生成する。** 本番デプロイは `prisma migrate deploy` で、削除差分を含むmigrationファイルが順序通り実行されるため、明確なレビュー対象にする必要がある。統合前は「event 側の `schemas` に `public` を足すと analytics のテーブルが消える」という形で同じ危険があった。1つの schema set が両方を書くことで解消している。
 
 `public` のテーブルを読むのは `src/event/analytics-db.ts` だけ。SQL は必ず
 `public."TiktokRoom"` のように完全修飾する（Prisma の multiSchema は raw SQL を自動修飾しない）。
@@ -126,7 +126,7 @@ worker と event-worker は start command を上書きするので Pre-Deploy Co
 ```bash
 npx prisma migrate diff \
   --from-url "$PROD_DATABASE_URL" \
-  --to-schema-datamodel prisma/schema.prisma \
+  --to-schema-datamodel prisma \
   --script
 ```
 

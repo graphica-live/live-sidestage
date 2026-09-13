@@ -91,9 +91,9 @@ jobs:
       # prisma/migrations/ contains 0_init and Wave1-B CHECK migration, so migrate deploy applies both.
       - run: npx prisma migrate deploy
 
-      # Verify no schema drift between applied DB and schema.prisma.
+      # Verify no schema drift between applied DB and Prisma schema set.
       # Fails if differences found (exit code 2).
-      - run: npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npx prisma migrate diff --from-schema-datasource prisma --to-schema-datamodel prisma --exit-code
 
       # test:integration は .env.local.test を読む script なので、CI では直接叩く
       # (env の DATABASE_URL をそのまま使う)。

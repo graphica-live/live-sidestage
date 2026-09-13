@@ -5,7 +5,7 @@
 - **語の意味・正式名称・別名禁止**はここが正本
 - **Entityが何を表すか / 誰が正本か / lifecycle / 保存禁止項目**は [docs/architecture/ENTITY_MAP.md](architecture/ENTITY_MAP.md) が正本。ここでは繰り返さない
 - **識別子3語彙の規約と改名不可の背景**は [live-sidestage-analytics/CLAUDE.md](../live-sidestage-analytics/CLAUDE.md)「識別子の命名規約」が正本
-- **列の型・制約**は `schema.prisma` / `backend/lib/db/store.js` / `TikRIng/migrations/*.sql`
+- **列の型・制約**は `live-sidestage-analytics/prisma/*.prisma` / `backend/lib/db/store.js` / `TikRIng/migrations/*.sql`
 - ここと実コードが食い違ったら**実コードが正**。推測でどちらかを上書きせず、不整合として扱う
 - 一般的な技術用語・一時変数・実装詳細は載せない
 

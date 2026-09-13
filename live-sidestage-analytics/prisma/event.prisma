@@ -1,0 +1,469 @@
+// event - tournament operations. Same Prisma Client reads public data. analytics-db.ts is the only event-side public reader.
+
+
+// ============================================================================
+// event — イベント(大会)運営
+//
+// public のデータ(gifts / TiktokRoom / Streamer)は同じ Prisma Client から
+// 直接読める。以前は列を絞った view 経由で読んでいたが、統合により不要になった。
+// 参照は src/event/analytics-db.ts に集約する。
+// ============================================================================
+
+model Event {
+  id               String  @id @default(cuid())
+  slug             String  @unique // 公開URL /e/{slug}
+  title            String
+  description      String? @db.Text
+  // Railway Bucket(S3互換)上のオブジェクトキー。生のURLは保存しない
+  // — 読み出しのたびに src/lib/media-storage.ts が presigned GET を発行する(media-storage.ts参照)。
+  coverImageKey    String?
+  prizeText        String? @db.Text // 優勝賞品。公開ページでは空なら賞品セクション自体を出さない
+  noticeText       String? @db.Text // 注意事項+FAQ(軽量Markdownサブセット。src/event/notice-blocks.ts が解釈する)
+  ownerPrincipalId String // Principal.id。FKは張らない(将来 auth サービスへ切り出すため)
+
+  format     String // "TOURNAMENT" | "DIAMOND_RACE" | "DEATHMATCH"
+  entryMode  String // "SOLO" | "TEAM"
+  teamPreset String @default("GENERIC") // "GENERIC" | "PREFECTURE"
+  // 公開範囲がすべてを制御する。PRIVATE はオーナー以外誰にも見せない(下書き概念を統合)。
+  visibility String @default("PRIVATE") // "PUBLIC" | "PRIVATE"
+  status     String @default("SCHEDULED") // "SCHEDULED"|"RUNNING"|"FINISHED"|"ARCHIVED"
+
+  // 全開催日程を覆う外枠。**sessions からの派生値**で、
+  // startAt = min(sessions.startAt) / endAt = max(sessions.endAt)。
+  // 集計する区間そのものは sessions(EventSession)。日程の隙間は集計に入らない。
+  // 外枠を持つのは、集計対象の抽出・最終集計の締切・room 監視期限・一覧の表示が
+  // 子テーブルの min/max を毎回引かずに済むようにするため。
+  // **書き込みは日程と必ず同じトランザクションで行う**(イベント作成・更新APIだけ)。
+  startAt DateTime
+  endAt   DateTime
+  // 名前空間ごとのルール。"deathmatch"(初期ライフ等、parseDeathmatchRules)と
+  // "matchRules"(グローブ/ブースター等、parseMatchRules)を持つ。
+  // 名前空間の追加・更新は既存キーを潰さないよう必ず `{ ...existing, <namespace>: ... }` で書く。
+  rules   Json     @default("{}")
+
+  lastAggregatedAt     DateTime?
+  aggregateMs          Int? // 直近の再集計にかかった時間(SLO監視用)
+  // スナップショット(EventContribution / EventStanding)を作った集計方式。
+  // "FULL_PERIOD" = 開催日程の全ギフト / "BATTLE_ONLY" = 検知したバトル区間のギフトだけ。
+  // null は方式を記録し始める前に最終集計を終えたイベント(FULL_PERIOD 相当)。
+  // **主催者が設定する項目ではない。** aggregateEvent() が毎回書く。
+  // finalizedAt が立ったイベントは再集計されないので、公開ページは format ではなく
+  // この列を見て見出し・注記を決める(過去のスナップショットへ新しい説明を付けないため)。
+  aggregationPolicy    String?
+  // 締切(endAt + 猶予)を過ぎてからの最終集計が1回成功した時刻。
+  // これが入るまでは status を FINISHED にしても集計を続ける(遅れて保存された
+  // ギフトを取り込むため)。逆にこれが入ったら以後は集計しない。
+  // 主催者が endAt を延ばしたら null に戻して再開させる。
+  finalizedAt          DateTime?
+  // startAt到来時点で参加者アイコンを自前ストレージへ1回だけスナップショットした時刻。
+  // null は未到来または未実行。書き込みは avatar-snapshot.ts の1箇所だけ。
+  // 個々の参加者の取得に失敗してもここは立てる(以後はライブ取得へ永続的にフォールバックする
+  // fail-open方針のため)。startAtを延ばしても自動では戻さない — 延長は主催者が
+  // 意図して行う操作であり、延長後も旧開始時刻のスナップショットで揃える(finalizedAtの
+  // ような「再開して当然」の項目ではない)。
+  avatarsSnapshottedAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  sessions      EventSession[]
+  teams         EventTeam[]
+  participants  EventParticipant[]
+  multipliers   EventMultiplier[]
+  matches       EventMatch[]
+  contributions EventContribution[]
+  standings     EventStanding[]
+  lifePoints    EventLifePoint[]
+  lifeLedger    EventLifeLedger[]
+  roomLeases    EventRoomLease[]
+
+  @@index([status, endAt])
+  @@index([ownerPrincipalId])
+  @@schema("event")
+}
+
+
+// 開催日程。1つのイベントを複数の時間帯に分けて開催できる
+// (例: 1日目 22:00-23:00 予選 / 2日目 22:00-23:00 決勝)。
+//
+// - 集計区間は日程ごとの [startAt, endAt) の半開区間。**日程の隙間は集計に入らない**
+// - 日程どうしは重ならない(重なると同じギフトを二重に数える)。検証は
+//   src/event/sessions.ts の normalizeSessionInputs が持つ
+// - 並び順は startAt 昇順。重なりがないので sortOrder 列は持たない
+// - **0件のイベントがありうる**(この機能より前に作られたもの)。その場合は
+//   Event の外枠 [startAt, endAt) を1日程とみなす(resolveEventWindows)
+model EventSession {
+  id        String   @id @default(cuid())
+  eventId   String
+  name      String? // "予選" などの任意ラベル
+  startAt   DateTime
+  endAt     DateTime
+  createdAt DateTime @default(now())
+
+  event   Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  matches EventMatch[]
+
+  // EventMatch からの複合FK `(eventId, sessionId)` の参照先。
+  // これがないと「他イベントの日程を指す対戦」が DB 上成立してしまう。
+  @@unique([eventId, id])
+  @@index([eventId, startAt])
+  @@schema("event")
+}
+
+
+// 倍率オプション。kind を増やすだけで新しい倍率条件を足せる。
+// 1件のギフトに適用される倍率は必ず1つ(src/event/scoring.ts を参照)。
+model EventMultiplier {
+  id        String    @id @default(cuid())
+  eventId   String
+  kind      String // "BATTLE"(バトル中) | "SOLO_STREAM"(枠投げ)
+  factor    Decimal   @db.Decimal(6, 2) // 2.00 など
+  startAt   DateTime? // 期間限定倍率。null なら常時
+  endAt     DateTime?
+  createdAt DateTime  @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@schema("event")
+}
+
+
+model EventTeam {
+  id             String  @id @default(cuid())
+  eventId        String
+  name           String
+  colorHex       String?
+  prefectureCode String? // teamPreset = "PREFECTURE" のとき "01".."47"
+  sortOrder      Int     @default(0)
+
+  event        Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participants EventParticipant[]
+  sides        EventMatchSide[]
+
+  @@unique([eventId, name])
+  @@unique([eventId, prefectureCode])
+  @@schema("event")
+}
+
+
+model EventParticipant {
+  id           String   @id @default(cuid())
+  eventId      String
+  tiktokUid    String // TikTokの不変な数値ID。登録ゲートの実在確認応答から得る(src/event/participants.ts)
+  tiktokHandle String // 可変の@ハンドル。正規化済み(小文字・trim・先頭@除去)。表示・接続用のスナップショット
+  roomId       String // TiktokRoom.id(論理参照)
+  teamId       String?
+  displayName  String // イベント内の表示名。登録時の初期値は TikTok ID で、主催者があとから編集できる
+  principalId  String? // 会員登録済みなら Principal.id へリンク
+  status       String   @default("ACTIVE") // "INVITED"|"ACTIVE"|"WITHDRAWN"|"DISQUALIFIED"
+  joinedAt     DateTime @default(now())
+
+  // 対戦カードに表示するアバターの切り出し位置・ズーム。null = 現状のデフォルト表示
+  // (object-position: 50% 30%, zoom: 1)。解決は src/event/avatar-frame.ts に閉じる。
+  avatarOffsetX Float? // object-position の横位置(%, 0-100)
+  avatarOffsetY Float? // object-position の縦位置(%, 0-100)
+  avatarZoom    Float? // 拡大率(1-3)
+
+  event Event                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  team  EventTeam?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  sides EventMatchSideParticipant[]
+
+  @@unique([eventId, tiktokUid])
+  // 同じ room を別表記で二重登録させない = 同じギフトの二重計上を防ぐ。
+  // TiktokRoom は複数 Streamer に共有されるため、tiktokUid の unique だけでは足りない。
+  @@unique([eventId, roomId])
+  @@schema("event")
+}
+
+
+// イベントのために確保した room 監視の台帳。
+// TiktokRoom.monitorUntil を立てた事実をこちらで持つ。
+model EventRoomLease {
+  id              String    @id @default(cuid())
+  eventId         String
+  roomId          String
+  tiktokUid       String
+  tiktokHandle    String
+  createdBySystem Boolean   @default(false) // イベントが room を新規作成したか
+  monitorUntil    DateTime // 通常は event.endAt + 猶予
+  releasedAt      DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, roomId])
+  @@index([roomId, releasedAt])
+  @@schema("event")
+}
+
+
+// 対戦(トーナメント1試合 / デスマッチの1マッチ)
+model EventMatch {
+  id              String @id @default(cuid())
+  eventId         String
+  round           Int    @default(1)
+  bracketPosition Int    @default(0)
+  matchType       String @default("1V1") // "1V1" | "2V2"
+
+  // この対戦をどの開催日程で行うか。**対戦に個別の時間枠は無い**
+  // (日程まるごとが監視・検知の対象。詳細は src/event/CLAUDE.md)。
+  // 既存行の穴埋めは scripts/migrate-match-session.ts が db push の前に済ませる
+  // (db push は「既存データのある非NULL列の追加」を実行できないため)。
+  sessionId        String
+  // "SCHEDULED"    まだバトルを検知していない
+  // "LIVE"         検知して進行中(終了時刻がまだ確定していない暫定関連を含む)
+  // "DETECTED"     検知して終了。集計で勝者を決める段階
+  // "NEEDS_REVIEW" 検知したが自動確定できない(部分一致 / 2vs2 / 候補が複数 / 終了未確定のまま日程終了)。主催者の承認待ち
+  // "FINISHED"     勝者が確定した
+  // "NO_SHOW"      日程が終わっても検知できなかった
+  // "VOID"         主催者が無効にした
+  status           String    @default("SCHEDULED")
+
+  detectedBattleId    String? // TikTok の battleId。string のまま保持する
+  detectedStartAt     DateTime?
+  detectedEndAt       DateTime?
+  // "exact"  = 観測した room の集合が対戦カードと完全一致した
+  // "partial" = 一部の room しか観測できなかった(相手が参加者でない・監視が落ちていた等)
+  detectionConfidence String?
+  // 検知した終了時刻の出所。"observed"(終了イベント) / "duration"(設定値から計算)。
+  // **予定終了時刻へのフォールバック("scheduled")は廃止した** —
+  // 実測できない終了時刻を作ると、その区間ぶんの通常ギフトまでバトル倍率と勝敗に混ざる。
+  detectedEndSource   String?
+
+  winnerSideId    String?
+  // 勝敗の決め方。"AGGREGATE"(こちらの集計) / "MANUAL"(主催者が確定) / "BYE"(不戦勝) / "DRAW"(引き分け)
+  winnerDecidedBy String?
+  // 決着時刻。デスマッチのライフはこの順に適用する(life-points.ts)。
+  // **resolveMatchSeries() が AGGREGATE 決着時も必ず書く**(旧: detectedEndAt にフォール
+  // バックしていたが、勝利条件(複数バトル)対応で decidedAt を優先参照先に統一した)。
+  // 主催者が確定した場合はその時刻。**null は「まだ決着していない」。**
+  // updatedAt を使わない(再集計のたびに動いて適用順が不安定になる)。
+  decidedAt       DateTime?
+
+  rules Json @default("{}") // 種目別ルールと、判定時の補足情報
+
+  event            Event                       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  // **複合FK。** sessionId 単独だと他イベントの日程を指す行が DB 上成立してしまう。
+  //
+  // **onDelete は Restrict。** 対戦がぶら下がった日程を消せなくすることで、
+  // 「日程を全置換する古いコード(または古いイメージ)が動くと表が丸ごと消える」事故を
+  // DB 側で止める。日程の削除は更新APIが 409 で先に弾き、イベントごと消すときは
+  // DELETE が対戦を明示的に消してから Event を消す。
+  session          EventSession                @relation(fields: [eventId, sessionId], references: [eventId, id], onDelete: Restrict)
+  sides            EventMatchSide[]
+  battleCandidates EventMatchBattleCandidate[]
+
+  @@index([eventId, sessionId])
+  @@index([detectedBattleId])
+  @@schema("event")
+}
+
+
+// 対戦カード(EventMatch)に紐づく、検知した「候補バトル」1件の検知結果だけを持つ。
+// 勝利条件(matchRules.winCondition)が SINGLE なら通常1件、BEST_OF_THREE ならシリーズの
+// 各ゲームぶん複数件になりうる。**採点(ダイヤ集計・勝敗)はキャッシュしない** —
+// 全期間再計算という既存の集計哲学(aggregate.ts)に合わせ、resolveMatchSeries() が
+// 呼ばれるたびに scoreSides() で毎回計算する。詳細は src/event/CLAUDE.md。
+//
+// DetectedBattle への FK は張らない(roomId ごとに複数行あり、event を跨いで共有される
+// 疎結合テーブルのため。battleId は文字列のまま緩く参照する)。
+model EventMatchBattleCandidate {
+  id       String @id @default(cuid())
+  matchId  String
+  battleId String
+
+  startedAt     DateTime
+  endedAt       DateTime? // null = まだ進行中(暫定候補)
+  endedAtSource String? // "observed" | "duration"
+  confidence    String // "exact" | "partial"
+
+  // 同じ battleId が2つ以上の EventMatch の room 集合と完全一致した(cross-match衝突。
+  // デスマッチで同じ組み合わせが複数カードにあるケースを含む)。
+  // **一度 true になったら「検知をやり直す」まで sticky に true のまま**(片方のマッチが
+  // confirm で open から外れても、もう片方の曖昧判定が false へ戻らないように)。
+  ambiguous Boolean @default(false)
+
+  // 主催者が「候補過多(CANDIDATES_EXCEEDED)」画面で判定対象として選んだプール。
+  // selectCandidates API だけが書く。一度立てたら resolveMatchSeries() は書き換えない
+  // (主催者の意図をそのまま保持する — selected と役割を分けている理由は match-results.ts 参照)。
+  organizerSelected Boolean @default(false)
+
+  // resolveMatchSeries() が毎回計算する、現在の「実効ゲーム集合(effectiveGames)」に
+  // 含まれるか。loadBattleRangesByRoom() はこの列だけを見る。
+  selected Boolean @default(false)
+
+  // 主催者が「合算して1ゲームとして扱う」と判定した候補のグループ印。
+  // null = 単独ゲーム(従来どおり1候補=1ゲーム)。同じ値を持つ候補群は
+  // resolveMatchSeries() がスコアを合算して1ゲームとして扱う。
+  //
+  // **selectCandidateGroups API だけが書く。organizerSelected と対で運用する不変条件**
+  // ("combinedGroupId が非null ⇒ organizerSelected も true"。void/reopen/resetCandidates は
+  // 必ず両方をクリアする)。値そのものに意味はなく、サーバーが crypto.randomUUID() で
+  // 発行する不透明な文字列。同じ matchId 内に複数のグループが同時に存在してよい。
+  combinedGroupId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match EventMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, battleId])
+  @@index([matchId])
+  @@schema("event")
+}
+
+
+model EventMatchSide {
+  id        String  @id @default(cuid())
+  matchId   String
+  sideIndex Int // 0 | 1
+  teamId    String?
+  score     Decimal @default(0) @db.Decimal(18, 2) // 倍率適用後
+  diamonds  BigInt  @default(0) // 素のダイヤ
+
+  match        EventMatch                  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team         EventTeam?                  @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  participants EventMatchSideParticipant[]
+
+  @@unique([matchId, sideIndex])
+  @@schema("event")
+}
+
+
+model EventMatchSideParticipant {
+  id            String @id @default(cuid())
+  sideId        String
+  participantId String
+
+  side        EventMatchSide   @relation(fields: [sideId], references: [id], onDelete: Cascade)
+  participant EventParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([sideId, participantId])
+  @@schema("event")
+}
+
+
+// デスマッチのライフポイント
+model EventLifePoint {
+  id           String    @id @default(cuid())
+  eventId      String
+  subjectType  String // "PARTICIPANT" | "TEAM"
+  subjectId    String
+  current      Int
+  max          Int
+  eliminatedAt DateTime?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, subjectType, subjectId])
+  @@schema("event")
+}
+
+
+// ライフ増減の履歴。後から検証できるように必ず残す。
+model EventLifeLedger {
+  id          String   @id @default(cuid())
+  eventId     String
+  subjectType String
+  subjectId   String
+  matchId     String?
+  delta       Int
+  reason      String // "MATCH_LOSS" | "MATCH_WIN" | "MATCH_DRAW"
+  createdAt   DateTime @default(now())
+
+  // イベント削除で一緒に消す。関連を張らないと履歴だけが孤児として残り続ける。
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, subjectType, subjectId])
+  @@schema("event")
+}
+
+
+// リスナー貢献の集計スナップショット。3種のランキングをこの1テーブルで賄う。
+model EventContribution {
+  id                   String   @id @default(cuid())
+  eventId              String
+  scope                String // "EVENT" | "PARTICIPANT" | "TEAM" | "MATCH"
+  scopeId              String   @default("") // participantId / teamId / matchId(EVENT のときは "")
+  listenerTiktokUid    String // gifts.tiktokUid(不変ID)
+  // 表示用スナップショット。null 許容(TikTokUser 行が無い / ハンドル未観測)。
+  // **ニックネームとアバターURLは持たない** — 表示は resolveTikTokUserDisplay() と
+  // resolveAvatarUrls() で読み取り時に解決する(改名前のハンドルをDBへ焼き付けない)。
+  listenerTiktokHandle String?
+  diamonds             BigInt   @default(0) // 実弾(素のダイヤ)
+  points               Decimal  @default(0) @db.Decimal(18, 2) // 倍率適用後
+  giftCount            Int      @default(0)
+  // そのリスナーが最も多くポイントを入れた参加者。scope="EVENT" のときだけ入る
+  // (PARTICIPANT / TEAM は scope 自体が答えなので null)。
+  // EventStanding.subjectId と同じく **FK を張らない** — 参加者が消えても集計を壊さず、
+  // 次の再集計で消える/付け替わるのに任せる。読み側は解決できなければ表示しない。
+  topParticipantId     String?
+  // そのリスナーがギフトを入れた参加者の人数。scope="EVENT" のときだけ意味を持つ
+  participantCount     Int      @default(0)
+  // 参加者ごとの内訳。scope="EVENT" のときだけ入る(形式は src/event/contribution-breakdown.ts)。
+  // **null は「集計が内訳に未対応だった頃の行」**で、読み側は従来表示へフォールバックする。
+  // finalizedAt が立ったイベントは再集計されないので、過去イベントの行は永久に null のまま残る。
+  breakdown            Json?
+  updatedAt            DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, scope, scopeId, listenerTiktokUid])
+  @@index([eventId, scope, scopeId, points])
+  @@index([eventId, scope, scopeId, diamonds])
+  @@schema("event")
+}
+
+
+// 順位表スナップショット(レース・チーム戦・全体順位)
+model EventStanding {
+  id          String   @id @default(cuid())
+  eventId     String
+  subjectType String // "PARTICIPANT" | "TEAM"
+  subjectId   String
+  diamonds    BigInt   @default(0)
+  points      Decimal  @default(0) @db.Decimal(18, 2)
+  rank        Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, subjectType, subjectId])
+  @@index([eventId, subjectType, rank])
+  @@schema("event")
+}
+
+
+// TiktokBattle から取り込んだバトルの観測記録。EventMatch への照合前の生データ。
+//
+// **1つのバトルにつき、両サイドの room ぶんの行ができる**(両方をイベントが監視している場合)。
+// `battleId` でグループ化した roomId の集合が「そのバトルの参加者」になる。
+// 相手の TikTok ハンドルは payload に含まれない(anchorInfo にハンドル列が無い)ので、
+// この roomId 集合による照合が唯一の確実な手段。`src/event/match-detect.ts` を参照。
+model DetectedBattle {
+  id       String @id @default(cuid())
+  battleId String // TikTok の battleId。string のまま
+  roomId   String
+
+  startedAt          DateTime
+  // startedAt が受信時刻からの推定値か。配信の途中から接続すると開始(OPEN)を取り逃す。
+  startedAtEstimated Boolean  @default(true)
+
+  endedAt     DateTime?
+  durationSec Int? // BattleSetting.duration(秒)。終了を取り逃したときの推定に使う
+  lastAction  Int // 最後に観測した BattleAction(4=OPEN, 5=FINISH, 6=CUT_SHORT)
+
+  hostTiktokUids String[] @default([]) // anchorIdStr(数値文字列)
+  hostScores     Json     @default("{}") // tiktokUid -> hostScore。TikTok 側の集計値、参考のみ
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // **どのマッチに割り当てたかはここに持たない。** 同じ配信者が複数のイベントに
+  // 出られる以上、1つのバトルが複数イベントの対戦カードに該当しうる。
+  // 割当は EventMatch.detectedBattleId 側(イベントごと)だけが持つ。
+
+  @@unique([battleId, roomId])
+  @@index([startedAt])
+  @@index([roomId, startedAt])
+  @@schema("event")
+}

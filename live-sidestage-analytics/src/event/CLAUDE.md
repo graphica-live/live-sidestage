@@ -54,7 +54,7 @@ uid は所有の根拠にならない。`TikTokUser.tiktokHandle` に unique を
 掴むため）。`prisma.tikTokUser` の出現は `src/lib/tiktok-user.ts` の1ファイルに閉じ、
 `tiktok-user.guard.test.ts` がソース走査で固定する。
 
-### 2. `prisma/schema.prisma` は public と event の両方を1ファイルで管理する
+### 2. `prisma/` 配下の `.prisma` ファイル群が public と event の両方を1つの schema set で管理する
 
 `schemas = ["public", "event"]`。**analytics のモデルを消したり `@@schema` を外したりするときは `prisma migrate dev` で明示的な drop migration を生成する。**
 本番デプロイは `prisma migrate deploy` で、削除差分を含むmigrationファイルが順序通り実行されるため、明確なレビュー対象にする必要がある。
