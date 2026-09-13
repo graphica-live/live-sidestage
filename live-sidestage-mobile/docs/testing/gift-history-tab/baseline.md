@@ -1,7 +1,7 @@
 ---
 project: live-sidestage-mobile
 feature: ギフト履歴タブ(GiftHistoryTab)
-last_updated: 2026-09-12
+last_updated: 2026-09-13
 last_risk: MEDIUM
 last_reviewers: Gemini(agy、Code Mode、medium)。Batch03 ListPanelSliver+_events
 ---
@@ -26,6 +26,10 @@ last_reviewers: Gemini(agy、Code Mode、medium)。Batch03 ListPanelSliver+_even
 | TC-GH-006 | silent 再取得失敗でプログレスが永久表示されない | `_load` catch(silent) | 異常 | `silent: true` かつ `_result != null` で API 失敗 | `_loading` が false | コードレビュー | (review後) | 貢献 TC-CT-028 と同型 |
 | TC-GH-007 | `ListPanelSliver` のカード視覚が旧 `ListPanel` と同一 | `ListPanelSliver` | UI/回帰 | ギフト履歴一覧表示 | 角丸・シャドウ・区切り線・行 padding が従来と同一 | 実機スクリーンショット | NOT RUN | TC-CT-026 と同判断可 |
 | TC-GH-008 | pull-to-refresh が `CustomScrollView` 化後も動く | `RefreshIndicator` | 回帰 | 下方向スワイプ | `_load()` が呼ばれる | 実機 | NOT RUN | |
+| TC-GH-009 | hasMore のときだけ末尾スクロールで追加ページを取る | `GiftHistoryTab._loadMore` | 正常 | `_result.hasMore==true`、末尾行の receivedAt/id をカーソルに送る | `_loadingMore` 中でなければ fetchGiftHistory(cursor) が走り、未知 id だけ `_events` 末尾へ。`acknowledgeResync` は呼ばない | コードレビュー + `flutter analyze` | (review後) | 貢献タブ閾値 240px と同型 |
+| TC-GH-010 | 当日 Store append が loadMore 済み行を消さない | `_applyStoreHistoryEvents` | 回帰 | 追加ページ表示中に push append | Store 全置換せず未知 id だけ先頭 merge。既存ページの id が残る | コードレビュー + `flutter test test/realtime_sync_test.dart` | (review後) | |
+| TC-GH-011 | ヘッダ合計はサーバ期間 aggregate でありクライアント加算しない | `_result.total` / `_loadMore` | 契約/回帰 | 2ページ以上ある期間 | 先頭ページ REST の total は期間全体。cursor ページ REST の total は stub(0,0)。UI ヘッダは先頭ページ値を維持し 0 に戻さない | gift-history.integration.test.ts + コードレビュー | PASS(2026-09-13) | ページ reduce 禁止。cursor 時 aggregate 省略 |
+| TC-GH-012 | 日付◀▶のキャッシュヒットは即表示してから silent refresh | `_historyCache` / `_changePeriod` | 性能 | day かつ customRange なしで隣接日を一度表示済み | キャッシュキー一致時は `_events` を即復元し `_load(silent: true)`。prefetch 失敗は表示を壊さない | コードレビュー | (review後) | 貢献タブ `_rankingCache` と同型。新基盤なし |
 
 ## Quality Gate
 

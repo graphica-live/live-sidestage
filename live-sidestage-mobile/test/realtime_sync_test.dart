@@ -240,4 +240,102 @@ void main() {
       expect(tracker2.lastVersion, equals(101));
     });
   });
+
+  group('GiftHistorySyncStore merge', () {
+    test('appendToHistoryは未知idだけ末尾追加しversionを変えない', () {
+      final store = GiftHistorySyncStore();
+      store.acknowledgeResync(
+        history: [
+          {'id': 'g1', 'giftName': 'Rose'},
+        ],
+        bootId: 'boot-1',
+        version: 7,
+      );
+      expect(store.lastSyncedVersion, 7);
+
+      store.appendToHistory([
+        {'id': 'g1', 'giftName': 'Rose'},
+        {'id': 'g2', 'giftName': 'Ice Cream'},
+      ]);
+
+      expect(store.getHistory().map((e) => e['id']), ['g1', 'g2']);
+      expect(store.lastSyncedVersion, 7);
+    });
+  });
+
+  group('BattleHistorySyncStore merge', () {
+    test('mergeIntoHistoryは未知battleIdだけ追記しversionを変えない', () {
+      final store = BattleHistorySyncStore();
+      store.acknowledgeResync(
+        battles: [
+          {'battleId': 'b1', 'status': 'finished'},
+        ],
+        bootId: 'boot-1',
+        version: 4,
+      );
+      expect(store.lastSyncedVersion, 4);
+
+      store.mergeIntoHistory([
+        {'battleId': 'b1', 'status': 'finished'},
+        {'battleId': 'b2', 'status': 'finished'},
+      ]);
+
+      expect(store.getBattles().map((e) => e['battleId']), ['b1', 'b2']);
+      expect(store.lastSyncedVersion, 4);
+    });
+  });
+
+  group('silent first-page merge', () {
+    test('head+tail merge を acknowledgeResync しても末尾 id が残る', () {
+      final store = GiftHistorySyncStore();
+      store.acknowledgeResync(
+        history: [
+          {'id': 'g1', 'giftName': 'Rose'},
+          {'id': 'g2', 'giftName': 'Ice Cream'},
+        ],
+        bootId: 'boot-1',
+        version: 3,
+      );
+
+      final head = [
+        {'id': 'g0', 'giftName': 'New'},
+        {'id': 'g1', 'giftName': 'Rose'},
+      ];
+      final existing = store.getHistory();
+      final headIds = head.map((e) => e['id']).toSet();
+      final tail = existing.where((e) => !headIds.contains(e['id'])).toList();
+      final merged = [...head, ...tail];
+
+      store.acknowledgeResync(history: merged, bootId: 'boot-1', version: 8);
+
+      expect(store.getHistory().map((e) => e['id']), ['g0', 'g1', 'g2']);
+      expect(store.lastSyncedVersion, 8);
+    });
+
+    test('バトル head+tail merge でも末尾 battleId が残る', () {
+      final store = BattleHistorySyncStore();
+      store.acknowledgeResync(
+        battles: [
+          {'battleId': 'b1', 'status': 'finished'},
+          {'battleId': 'b2', 'status': 'finished'},
+        ],
+        bootId: 'boot-1',
+        version: 2,
+      );
+
+      final head = [
+        {'battleId': 'b0', 'status': 'live'},
+        {'battleId': 'b1', 'status': 'finished'},
+      ];
+      final existing = store.getBattles();
+      final headIds = head.map((e) => e['battleId']).toSet();
+      final tail = existing.where((e) => !headIds.contains(e['battleId'])).toList();
+      final merged = [...head, ...tail];
+
+      store.acknowledgeResync(battles: merged, bootId: 'boot-1', version: 5);
+
+      expect(store.getBattles().map((e) => e['battleId']), ['b0', 'b1', 'b2']);
+      expect(store.lastSyncedVersion, 5);
+    });
+  });
 }

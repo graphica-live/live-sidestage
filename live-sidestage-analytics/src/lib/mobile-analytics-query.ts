@@ -244,6 +244,54 @@ export function parseOptionalLimit(
   return { ok: true, value: n };
 }
 
+/**
+ * ギフト履歴の複合カーソル。両方未指定なら初回ページ(null)。片方だけ・不正ISO・空idは400。
+ */
+export function parseGiftHistoryCursor(
+  searchParams: URLSearchParams
+):
+  | { ok: true; value: { receivedAt: Date; id: string } | null }
+  | { ok: false; response: NextResponse } {
+  const receivedAtRaw = searchParams.get("cursorReceivedAt");
+  const idRaw = searchParams.get("cursorId");
+  if (receivedAtRaw === null && idRaw === null) return { ok: true, value: null };
+  if (receivedAtRaw === null || idRaw === null || idRaw.length === 0) {
+    return { ok: false, response: NextResponse.json({ error: "cursor が不正です" }, { status: 400 }) };
+  }
+  const parsed = isValidIsoDateTime(receivedAtRaw);
+  if (!parsed.valid) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "cursorReceivedAt が不正です" }, { status: 400 }),
+    };
+  }
+  return { ok: true, value: { receivedAt: parsed.date, id: idRaw } };
+}
+
+/**
+ * バトル履歴の複合カーソル。両方未指定なら初回ページ(null)。片方だけ・不正ISO・空idは400。
+ */
+export function parseBattleHistoryCursor(
+  searchParams: URLSearchParams
+):
+  | { ok: true; value: { startedAt: Date; battleId: string } | null }
+  | { ok: false; response: NextResponse } {
+  const startedAtRaw = searchParams.get("cursorStartedAt");
+  const idRaw = searchParams.get("cursorBattleId");
+  if (startedAtRaw === null && idRaw === null) return { ok: true, value: null };
+  if (startedAtRaw === null || idRaw === null || idRaw.length === 0) {
+    return { ok: false, response: NextResponse.json({ error: "cursor が不正です" }, { status: 400 }) };
+  }
+  const parsed = isValidIsoDateTime(startedAtRaw);
+  if (!parsed.valid) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "cursorStartedAt が不正です" }, { status: 400 }),
+    };
+  }
+  return { ok: true, value: { startedAt: parsed.date, battleId: idRaw } };
+}
+
 /** ranking 用。省略は 0。0以上の整数。limit 省略時は呼び出し側で無視する。 */
 export function parseOffset(
   searchParams: URLSearchParams

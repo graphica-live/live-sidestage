@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -31,6 +32,8 @@ class GiftHistoryTab extends StatefulWidget {
 }
 
 class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObserver {
+  static const _pageSize = 50;
+
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
@@ -40,6 +43,13 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
   List<GiftHistoryEvent> _events = const [];
   String? _error;
   bool _loading = false;
+  bool _loadingMore = false;
+
+  final Map<String, _GiftHistoryCacheEntry> _historyCache = {};
+
+  /// いま画面に載せている REST 窓のキャッシュキー。同じキーの silent 再取得では
+  /// 先頭ページと既存窓を merge し、loadMore 済みの末尾を消さない。
+  String? _loadedCacheKey;
 
   /// 見えていない間に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
   bool _dirty = false;
@@ -106,7 +116,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     if (history.isEmpty) return;
     final parsed = _parseHistoryEvents(history);
     if (!mounted) return;
-    setState(() => _events = parsed);
+    final existingIds = _events.map((e) => e.id).toSet();
+    final incoming = parsed.where((e) => !existingIds.contains(e.id)).toList();
+    if (incoming.isEmpty) return;
+    setState(() => _events = [...incoming, ..._events]);
   }
 
   /// GiftHistorySyncStore から append イベント受信時のコールバック。
@@ -153,6 +166,150 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     _load(silent: true);
   }
 
+  String _cacheKeyFor({
+    required AnalyticsPeriodSelection selection,
+    DateTimeRange? customRange,
+    String? listenerQuery,
+  }) {
+    final rangePart = customRange == null
+        ? ''
+        : '${customRange.start.toIso8601String()}_${customRange.end.toIso8601String()}';
+    return '${selection.period.apiValue}|${selection.date}|${listenerQuery ?? ''}|$rangePart';
+  }
+
+  String _currentCacheKey() => _cacheKeyFor(
+        selection: _selection,
+        customRange: _customRange,
+        listenerQuery: _listenerQuery,
+      );
+
+  void _storeFirstPageCache({
+    required GiftHistoryResult result,
+    required List<GiftHistoryEvent> events,
+  }) {
+    _historyCache[_currentCacheKey()] = _GiftHistoryCacheEntry(
+      result: GiftHistoryResult(
+        events: events,
+        dateRange: result.dateRange,
+        total: result.total,
+        hasMore: result.hasMore,
+        verified: result.verified,
+        bootId: result.bootId,
+        version: result.version,
+      ),
+      events: List<GiftHistoryEvent>.from(events),
+    );
+  }
+
+  Future<void> _prefetchDayHistory({
+    required AnalyticsPeriodSelection selection,
+    required String token,
+    required Future<String?> Function()? refreshToken,
+  }) async {
+    final key = _cacheKeyFor(selection: selection, customRange: null, listenerQuery: _listenerQuery);
+    if (_historyCache.containsKey(key)) return;
+    try {
+      final result = await withTokenRefresh(
+        call: (t) => _api.fetchGiftHistory(
+          token: t,
+          period: selection.period.apiValue,
+          date: selection.date,
+          limit: _pageSize,
+          listenerQuery: _listenerQuery,
+        ),
+        token: token,
+        refreshToken: refreshToken,
+      );
+      _historyCache[key] = _GiftHistoryCacheEntry(
+        result: result,
+        events: List<GiftHistoryEvent>.from(result.events),
+      );
+    } catch (e) {
+      debugPrint('[gift-history] prefetch失敗 ($key): $e');
+    }
+  }
+
+  void _prefetchAdjacentDays({required String token, required Future<String?> Function()? refreshToken}) {
+    if (_customRange != null || _selection.period != AnalyticsPeriod.day) return;
+    unawaited(_prefetchDayHistory(selection: _selection.shiftPrevious(), token: token, refreshToken: refreshToken));
+    unawaited(_prefetchDayHistory(selection: _selection.shiftNext(), token: token, refreshToken: refreshToken));
+  }
+
+  Future<void> _loadMore() async {
+    final result = _result;
+    if (result == null || !result.hasMore || _loadingMore || _loading) return;
+    if (_events.isEmpty) return;
+    final last = _events.last;
+    final cursorAt = last.receivedAt;
+    if (cursorAt == null) return;
+
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
+    if (token == null) return;
+
+    setState(() => _loadingMore = true);
+    final generation = _requestGeneration;
+    final customRange = _customRange;
+
+    try {
+      final page = await withTokenRefresh(
+        call: (t) => _api.fetchGiftHistory(
+          token: t,
+          period: _selection.period.apiValue,
+          date: _selection.date,
+          limit: _pageSize,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
+          listenerQuery: _listenerQuery,
+          cursorReceivedAt: cursorAt,
+          cursorId: last.id,
+        ),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted || generation != _requestGeneration) return;
+
+      final existingIds = _events.map((e) => e.id).toSet();
+      final newEvents = page.events.where((e) => !existingIds.contains(e.id)).toList();
+      setState(() {
+        _events = [..._events, ...newEvents];
+        _result = GiftHistoryResult(
+          events: _events,
+          dateRange: page.dateRange,
+          total: result.total,
+          hasMore: page.hasMore,
+          verified: page.verified,
+          bootId: page.bootId,
+          version: page.version,
+        );
+      });
+
+      if (newEvents.isNotEmpty && mounted) {
+        context.read<GiftHistorySyncStore>().appendToHistory(newEvents.map((e) => e.toMap()).toList());
+      }
+    } on ApiException catch (e) {
+      if (mounted && generation == _requestGeneration) {
+        debugPrint('[gift-history] 追加ページの取得に失敗: ${e.message}');
+      }
+    } catch (e) {
+      if (mounted && generation == _requestGeneration) {
+        debugPrint('[gift-history] 追加ページの取得で予期せぬエラー: $e');
+      }
+    } finally {
+      if (mounted && generation == _requestGeneration && _loadingMore) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    final metrics = notification.metrics;
+    if (metrics.maxScrollExtent > 0 && metrics.pixels >= metrics.maxScrollExtent - 240) {
+      _loadMore();
+    }
+    return false;
+  }
+
   /// [silent] はpush受信による自動更新、resync 遅延後、または日付切替(既存表示あり)の更新。
   /// 初回以外は期間セレクタを無効化しない(`enabled`は常にtrue)。取得中は細いプログレスのみ。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次のギフトか手動更新で拾い直せる。
@@ -166,10 +323,14 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     if (!silent) {
       setState(() {
         _loading = true;
+        _loadingMore = false;
         _error = null;
       });
     } else if (_result != null) {
-      setState(() => _loading = true);
+      setState(() {
+        _loading = true;
+        _loadingMore = false;
+      });
     }
 
     final customRange = _customRange;
@@ -179,6 +340,7 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
           token: t,
           period: _selection.period.apiValue,
           date: _selection.date,
+          limit: _pageSize,
           startDatetime: customRange?.start,
           endDatetime: customRange?.end,
           listenerQuery: _listenerQuery,
@@ -187,24 +349,45 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
         refreshToken: sessions.refreshToken,
       );
       if (!mounted || generation != _requestGeneration) return;
+
+      final currentKey = _currentCacheKey();
+      final existing = List<GiftHistoryEvent>.from(_events);
+      final sameWindow = silent && _loadedCacheKey == currentKey && existing.isNotEmpty;
+      final head = result.events;
+      final headIds = head.map((e) => e.id).toSet();
+      final tail = sameWindow ? existing.where((e) => !headIds.contains(e.id)).toList() : const <GiftHistoryEvent>[];
+      final merged = sameWindow ? [...head, ...tail] : head;
+      final previousHasMore = _result?.hasMore;
+      if (!sameWindow) {
+        _loadedCacheKey = currentKey;
+      }
+
       setState(() {
-        _result = result;
-        _events = result.events;
+        _result = GiftHistoryResult(
+          events: merged,
+          dateRange: result.dateRange,
+          total: result.total,
+          hasMore: tail.isNotEmpty ? (previousHasMore ?? result.hasMore) : result.hasMore,
+          verified: result.verified,
+          bootId: result.bootId,
+          version: result.version,
+        );
+        _events = merged;
         _loading = false;
         _dirty = false;
       });
 
       // Batch 06: REST取得成功時、GiftHistorySyncStore へ履歴全体とversionを反映。
-      // (Batch 05時点では'id'フィールドしか渡さないバグと reset() による version欠損
-      // 誤判定バグがあった)
+      // silent かつ同一キーなら loadMore 末尾を含めた merge 結果を渡し、版だけ進める。
       if (mounted) {
         final store = context.read<GiftHistorySyncStore>();
-        final history = result.events.map((e) => e.toMap()).toList();
         store.acknowledgeResync(
-          history: history,
+          history: merged.map((e) => e.toMap()).toList(),
           bootId: result.bootId,
           version: result.version,
         );
+        _storeFirstPageCache(result: result, events: result.events);
+        _prefetchAdjacentDays(token: token, refreshToken: sessions.refreshToken);
       }
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
@@ -220,9 +403,25 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
     }
   }
 
+  Future<void> _changePeriod(void Function() applyChange) async {
+    setState(applyChange);
+    final cacheKey = _currentCacheKey();
+    final cached = _historyCache[cacheKey];
+    if (cached != null) {
+      setState(() {
+        _result = cached.result;
+        _events = List<GiftHistoryEvent>.from(cached.events);
+        _error = null;
+        _loading = true;
+      });
+      await _load(silent: true);
+      return;
+    }
+    await _load(silent: _result != null);
+  }
+
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
-    setState(() => _selection = selection);
-    _load(silent: _result != null);
+    _changePeriod(() => _selection = selection);
   }
 
   Future<void> _openCustomRangeFilter() async {
@@ -238,11 +437,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       maxRangeDays: 90,
     );
     if (result == null) return;
-    setState(() {
+    await _changePeriod(() {
       _customRange = result.cleared ? null : result.range;
       _listenerQuery = result.cleared ? null : result.listenerQuery;
     });
-    _load(silent: _result != null);
   }
 
   /// 詳細フィルタ(日時範囲)中に◀/▶が押されたとき。現在の範囲の外へ出て`day`選択に
@@ -254,11 +452,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       period: AnalyticsPeriod.day,
       date: jstDateKeyOf(forward ? customRange.end : customRange.start),
     );
-    setState(() {
+    _changePeriod(() {
       _selection = forward ? anchor.shiftNext() : anchor.shiftPrevious();
       _customRange = null;
     });
-    _load(silent: _result != null);
   }
 
   String get _rangeLabel {
@@ -361,7 +558,9 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
       },
     );
 
-    return RefreshIndicator(
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: RefreshIndicator(
       onRefresh: _load,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -413,8 +612,23 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
               itemCount: events.length,
               itemBuilder: (context, i) => _buildGiftHistoryRow(events[i]),
             ),
+          if (_loadingMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+            ),
         ],
       ),
+    ),
     );
   }
+}
+
+class _GiftHistoryCacheEntry {
+  const _GiftHistoryCacheEntry({required this.result, required this.events});
+
+  final GiftHistoryResult result;
+  final List<GiftHistoryEvent> events;
 }

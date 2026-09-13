@@ -451,6 +451,22 @@ class GiftHistorySyncStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 追加ページの REST 行を末尾へ足す。版は変えない(loadMore で acknowledgeResync しない)。
+  void appendToHistory(List<Map<String, dynamic>> events) {
+    var changed = false;
+    for (final event in events) {
+      final giftId = event['id'];
+      if (giftId == null || _seenGiftIds.contains(giftId)) continue;
+      _seenGiftIds.add(giftId);
+      _history.add(event);
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  @visibleForTesting
+  int get lastSyncedVersion => _versionTracker.lastVersion;
+
   @override
   void dispose() {
     _subscription?.cancel();
@@ -522,7 +538,7 @@ class BattleHistorySyncStore extends ChangeNotifier {
           if (battleId != null) {
             // upsert: 既存なら上書き、無ければ追加。
             if (!_battles.containsKey(battleId)) {
-              _battleIds.add(battleId);
+              _battleIds.insert(0, battleId);
             }
             _battles[battleId] = battle;
             _needsResync = false;
@@ -577,6 +593,22 @@ class BattleHistorySyncStore extends ChangeNotifier {
     _versionTracker.acknowledge(bootId: bootId, epoch: 0, version: version);
     notifyListeners();
   }
+
+  /// 追加ページの REST 行を id 未所持だけ末尾追記。版は変えない。
+  void mergeIntoHistory(List<Map<String, dynamic>> battles) {
+    var changed = false;
+    for (final battle in battles) {
+      final battleId = battle['battleId'] as String?;
+      if (battleId == null || _battles.containsKey(battleId)) continue;
+      _battleIds.add(battleId);
+      _battles[battleId] = battle;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
+  @visibleForTesting
+  int get lastSyncedVersion => _versionTracker.lastVersion;
 
   @override
   void dispose() {

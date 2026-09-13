@@ -131,6 +131,80 @@ describe("queryGiftHistory", () => {
     expect(result.events.map((e) => e.id)).toEqual([literal.id]);
   });
 
+  it("4件中 limit=2 の2ページ目は残り2件。先頭ページのtotalは期間全体、cursorページはaggregateしない", async () => {
+    const dayKey = "2026-08-18";
+    const g1 = await makeGift({
+      dayKey,
+      receivedAt: new Date("2026-08-18T10:00:00Z"),
+      repeatCount: 1,
+      totalDiamonds: 1,
+    });
+    const g2 = await makeGift({
+      dayKey,
+      receivedAt: new Date("2026-08-18T10:01:00Z"),
+      repeatCount: 2,
+      totalDiamonds: 2,
+    });
+    const g3 = await makeGift({
+      dayKey,
+      receivedAt: new Date("2026-08-18T10:02:00Z"),
+      repeatCount: 3,
+      totalDiamonds: 3,
+    });
+    const g4 = await makeGift({
+      dayKey,
+      receivedAt: new Date("2026-08-18T10:03:00Z"),
+      repeatCount: 4,
+      totalDiamonds: 4,
+    });
+
+    const where = { dayKey: { gte: dayKey, lte: dayKey } };
+    const page1 = await queryGiftHistory(roomId, where, 2);
+    expect(page1.events.map((e) => e.id)).toEqual([g4.id, g3.id]);
+    expect(page1.hasMore).toBe(true);
+    expect(page1.total).toEqual({ count: 10, diamonds: 10 });
+
+    const last = page1.events[page1.events.length - 1];
+    const page2 = await queryGiftHistory(roomId, where, 2, null, {
+      cursor: { receivedAt: new Date(last.receivedAt), id: last.id },
+    });
+    expect(page2.events.map((e) => e.id)).toEqual([g2.id, g1.id]);
+    expect(page2.hasMore).toBe(false);
+    expect(page2.total).toEqual({ count: 0, diamonds: 0 });
+    const page1Ids = new Set(page1.events.map((e) => e.id));
+    expect(page2.events.every((e) => !page1Ids.has(e.id))).toBe(true);
+  });
+
+  it("listenerQuery時のtotalも絞り込み後の全集合", async () => {
+    const dayKey = "2026-08-16";
+    await makeGift({
+      dayKey,
+      tiktokUid: UID_TARO,
+      receivedAt: new Date("2026-08-16T10:00:00Z"),
+      repeatCount: 5,
+      totalDiamonds: 50,
+    });
+    await makeGift({
+      dayKey,
+      tiktokUid: UID_TARO,
+      receivedAt: new Date("2026-08-16T10:01:00Z"),
+      repeatCount: 1,
+      totalDiamonds: 10,
+    });
+    await makeGift({
+      dayKey,
+      tiktokUid: UID_HANAKO,
+      receivedAt: new Date("2026-08-16T10:02:00Z"),
+      repeatCount: 99,
+      totalDiamonds: 990,
+    });
+
+    const page = await queryGiftHistory(roomId, { dayKey: { gte: dayKey, lte: dayKey } }, 1, "taro");
+    expect(page.events).toHaveLength(1);
+    expect(page.hasMore).toBe(true);
+    expect(page.total).toEqual({ count: 6, diamonds: 60 });
+  });
+
   it("listenerQueryは日時条件とAND結合される", async () => {
     const dayKey = "2026-08-23";
     const inRange = await makeGift({ dayKey, tiktokUid: UID_AND, receivedAt: new Date("2026-08-23T10:00:00Z") });

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
-import { queryBattles, jstDateRangeToUtc } from "@/lib/battle-history";
+import { queryBattles, jstDateRangeToUtc, DISPLAY_LIMIT } from "@/lib/battle-history";
 import { getDateRange } from "@/lib/gift-analytics";
 import { prisma } from "@/lib/prisma";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseListenerQuery, parseLimit, parseOffset, parseBattleHistoryCursor, requireHistoryPlan } from "@/lib/mobile-analytics-query";
 import { currentVersion } from "@/lib/realtime-sync/version-store";
 
 const buildUnregisteredResponse = () =>
@@ -24,6 +24,14 @@ export async function GET(req: NextRequest) {
   if (!query.ok) return query.response;
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
+
+  // 省略時は DISPLAY_LIMIT(200)。旧アプリが limit 無しで 51件目以降を失わないため 50 にしない。
+  const limit = parseLimit(searchParams, DISPLAY_LIMIT, DISPLAY_LIMIT);
+  if (!limit.ok) return limit.response;
+  const offset = parseOffset(searchParams);
+  if (!offset.ok) return offset.response;
+  const cursor = parseBattleHistoryCursor(searchParams);
+  if (!cursor.ok) return cursor.response;
 
   const planDenied = await requireHistoryPlan(ctx.streamer.principalId, {
     range: query.value,
@@ -49,6 +57,9 @@ export async function GET(req: NextRequest) {
 
   const { battles, hasMore } = await queryBattles(ctx.streamer.roomId, ctx.streamer.id, range, {
     listenerQuery: listenerQuery.value,
+    limit: limit.value,
+    offset: offset.value,
+    cursor: cursor.value ?? undefined,
   });
 
   return NextResponse.json(

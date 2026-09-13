@@ -497,22 +497,45 @@ export function battleIdsWithGiftInWindow(
   return matched;
 }
 
-const DISPLAY_LIMIT = 200;
+export const DISPLAY_LIMIT = 200;
+export type BattleHistoryCursor = { startedAt: Date; battleId: string };
+
+/** startedAt desc, battleId desc の次行か。同じ時刻の残りを落とさないための tie-break。 */
+export function isAfterBattleKeysetCursor(
+  row: { startedAt: Date; battleId: string },
+  cursor: BattleHistoryCursor
+): boolean {
+  const t = row.startedAt.getTime();
+  const ct = cursor.startedAt.getTime();
+  if (t !== ct) return t < ct;
+  return row.battleId < cursor.battleId;
+}
+
+function battleKeysetWhere(cursor: BattleHistoryCursor) {
+  return {
+    OR: [
+      { startedAt: { lt: cursor.startedAt } },
+      { startedAt: cursor.startedAt, battleId: { lt: cursor.battleId } },
+    ],
+  };
+}
+
 const CHUNK_SIZE = 1000; // 1回のfindManyで取得するバトル件数(listenerQuery指定時のみ使う)
 const MAX_SCAN_CHUNKS = 10; // 安全弁。CHUNK_SIZE*MAX_SCAN_CHUNKS=10,000件相当。1年で1万バトルは
                              // 現実の配信頻度を大きく超えるため、MAX_RANGE_DAYS等と同種の
                              // 「実用上は到達しない安全弁」として扱う(理論上は境界が残ることを明記)。
 
 /**
- * リスナー名フィルタ有効時、一致するバトルをDISPLAY_LIMIT+1件見つかるまでチャンク走査する。
- * `startedAt`を降順カーソルにしてCHUNK_SIZE件ずつ取得し、各チャンクごとに一致判定に必要な
+ * リスナー名フィルタ有効時、一致するバトルを limit+1 件(ページカーソル以降)見つかるまでチャンク走査する。
+ * `(startedAt, battleId)` 降順カーソルでCHUNK_SIZE件ずつ取得し、各チャンクごとに一致判定に必要な
  * 最小限の列(receivedAt/tiktokHandle/nickname)だけでギフトを取得して判定する
  * (取得済み候補全件ぶんの表示用列・ダイヤ合計は表示対象が確定してから別途取得する)。
  *
  * 一括take(例: 5000件)で取得してから絞り込む設計だと、取得件数の上限を超えた位置にしか
  * 一致が無い場合に検索結果から漏れる(queryGiftHistoryが「limit後にfilterしない」のと同じ
- * 理由でNG)。チャンク走査ならレンジ全体を尽きるまで(またはDISPLAY_LIMIT+1件見つかるまで)
- * 走査を続けられる。
+ * 理由でNG)。チャンク走査ならレンジ全体を尽きるまで(またはページカーソル以降 limit+1 件見つかるまで)
+ * 走査を続けられる。MAX_SCAN_CHUNKS は維持する。同じ startedAt がチャンク境界を跨いでも
+ * battleId 降順のキーセットで欠番しない。
  */
 /** 与えたbattleIdのうち、確定済み(BattleHistory行がある)ものの集合。 */
 async function listFinalizedBattleIds(roomId: string, battleIds: string[]): Promise<Set<string>> {
@@ -557,15 +580,24 @@ async function scanMatchingBattleIds(
   viewerStreamerId: string,
   range: { start: Date; end: Date },
   listenerQuery: string,
-  now: Date
+  now: Date,
+  paging: { offset: number; limit: number; cursor?: BattleHistoryCursor }
 ): Promise<ScanRow[]> {
-  const matchedRows: ScanRow[] = [];
-  let cursor = range.end;
+  const pageRows: ScanRow[] = [];
+  const need = paging.limit + 1;
+  let skipRemaining = paging.cursor ? 0 : paging.offset;
+  // 追加ページは range 先頭から再走査せず、ページカーソル以降のチャンクから始める
+  // (MAX_SCAN_CHUNKS 到達で古い一致を取りこぼさない)。行フィルタは安全弁として残す。
+  let chunkCursor: BattleHistoryCursor | null = paging.cursor ?? null;
 
-  for (let i = 0; i < MAX_SCAN_CHUNKS && matchedRows.length <= DISPLAY_LIMIT; i++) {
+  for (let i = 0; i < MAX_SCAN_CHUNKS && pageRows.length < need; i++) {
     const chunk: ScanRow[] = await prisma.tiktokBattle.findMany({
-      where: { roomId, startedAt: { gte: range.start, lt: cursor } },
-      orderBy: { startedAt: "desc" },
+      where: {
+        roomId,
+        startedAt: { gte: range.start, lt: range.end },
+        ...(chunkCursor ? { AND: [battleKeysetWhere(chunkCursor)] } : {}),
+      },
+      orderBy: [{ startedAt: "desc" }, { battleId: "desc" }],
       take: CHUNK_SIZE,
       select: {
         battleId: true,
@@ -624,14 +656,23 @@ async function scanMatchingBattleIds(
       }
     }
 
-    // chunkの順序(startedAt降順)のまま積む。
-    matchedRows.push(...chunk.filter((b) => matchedIdsInChunk.has(b.battleId)));
+    // chunkの順序(startedAt desc, battleId desc)のまま、ページカーソルより古い一致だけを積む。
+    for (const row of chunk.filter((b) => matchedIdsInChunk.has(b.battleId))) {
+      if (paging.cursor && !isAfterBattleKeysetCursor(row, paging.cursor)) continue;
+      if (skipRemaining > 0) {
+        skipRemaining -= 1;
+        continue;
+      }
+      pageRows.push(row);
+      if (pageRows.length >= need) break;
+    }
 
     if (chunk.length < CHUNK_SIZE) break; // レンジ全体を走査し終えた
-    cursor = chunk[chunk.length - 1].startedAt;
+    const last = chunk[chunk.length - 1];
+    chunkCursor = { startedAt: last.startedAt, battleId: last.battleId };
   }
 
-  return matchedRows;
+  return pageRows;
 }
 
 /**
@@ -1098,18 +1139,26 @@ async function buildBattleListItems(
 /**
  * roomId の観測済みバトル一覧を返す。
  *
- * listenerQuery省略時は既存どおり直近DISPLAY_LIMIT件を1回のfindManyで取得する。指定時は
- * scanMatchingBattleIdsでチャンク走査により一致するバトルを探し、表示対象(最大
- * DISPLAY_LIMIT件)が確定してから初めて表示用の全列とダイヤ合計用のギフトを取得する
+ * listenerQuery省略時は skip/take(limit+1) の1回のfindMany。options省略時は
+ * 直近 DISPLAY_LIMIT(200) 件(web /api/analytics/battles の現行契約)。指定時は
+ * scanMatchingBattleIdsでチャンク走査により一致するバトルを探し、表示対象が確定してから
+ * 初めて表示用の全列とダイヤ合計用のギフトを取得する
  * (絞り込みで除外されたバトルの相手情報取得・ダイヤ集計を無駄にしないため)。
  */
 export async function queryBattles(
   roomId: string,
   viewerStreamerId: string,
   range: { start: Date; end: Date },
-  options: { listenerQuery?: string | null; now?: Date } = {}
+  options: {
+    listenerQuery?: string | null;
+    now?: Date;
+    limit?: number;
+    offset?: number;
+    cursor?: BattleHistoryCursor;
+  } = {}
 ): Promise<{ battles: BattleListItem[]; hasMore: boolean }> {
-  const { listenerQuery = null, now = new Date() } = options;
+  const { listenerQuery = null, now = new Date(), limit = DISPLAY_LIMIT, offset = 0, cursor } = options;
+  const skip = cursor ? 0 : offset;
 
   const selfRoom = await prisma.tiktokRoom.findUnique({
     where: { id: roomId },
@@ -1120,18 +1169,29 @@ export async function queryBattles(
 
   if (!listenerQuery) {
     const ownBattles = await prisma.tiktokBattle.findMany({
-      where: { roomId, startedAt: { gte: range.start, lt: range.end } },
-      orderBy: { startedAt: "desc" },
-      take: DISPLAY_LIMIT,
+      where: {
+        roomId,
+        startedAt: { gte: range.start, lt: range.end },
+        ...(cursor ? { AND: [battleKeysetWhere(cursor)] } : {}),
+      },
+      orderBy: [{ startedAt: "desc" }, { battleId: "desc" }],
+      skip,
+      take: limit + 1,
       select: BATTLE_SELECT,
     });
-    const battles = await buildBattleListItems(ownBattles, roomId, viewerStreamerId, selfHostTiktokUid, selfTiktokHandle, now);
-    return { battles, hasMore: ownBattles.length >= DISPLAY_LIMIT };
+    const hasMore = ownBattles.length > limit;
+    const pageRows = hasMore ? ownBattles.slice(0, limit) : ownBattles;
+    const battles = await buildBattleListItems(pageRows, roomId, viewerStreamerId, selfHostTiktokUid, selfTiktokHandle, now);
+    return { battles, hasMore };
   }
 
-  const matchedRows = await scanMatchingBattleIds(roomId, viewerStreamerId, range, listenerQuery, now);
-  const hasMore = matchedRows.length > DISPLAY_LIMIT;
-  const battlesToRenderIds = matchedRows.slice(0, DISPLAY_LIMIT).map((b) => b.battleId);
+  const matchedRows = await scanMatchingBattleIds(roomId, viewerStreamerId, range, listenerQuery, now, {
+    offset: skip,
+    limit,
+    cursor,
+  });
+  const hasMore = matchedRows.length > limit;
+  const battlesToRenderIds = matchedRows.slice(0, limit).map((b) => b.battleId);
   if (battlesToRenderIds.length === 0) return { battles: [], hasMore: false };
 
   const battlesToRenderUnsorted = await prisma.tiktokBattle.findMany({
