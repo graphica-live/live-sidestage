@@ -16,6 +16,7 @@ import '../../models/gift_history_event.dart';
 import '../widgets/analytics_status.dart';
 import '../widgets/custom_range_filter_sheet.dart';
 import '../widgets/diamond_format.dart';
+import '../widgets/gift_thumbnail.dart';
 import '../widgets/gradient_kit.dart';
 import '../widgets/list_panel.dart';
 import '../widgets/period_selector.dart';
@@ -500,14 +501,10 @@ class _GiftHistoryTabState extends State<GiftHistoryTab> with WidgetsBindingObse
                     style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 1),
-                  Text(
-                    '${event.giftName} ×${event.repeatCount}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  GiftHistoryGiftLabel(
+                    giftName: event.giftName,
+                    repeatCount: event.repeatCount,
+                    imageUrl: event.giftPictureUrl,
                   ),
                 ],
               ),
@@ -632,3 +629,42 @@ class _GiftHistoryCacheEntry {
   final GiftHistoryResult result;
   final List<GiftHistoryEvent> events;
 }
+
+/// ギフト名の左に受信時のアイコンを置く。URLが無ければ名前だけ。
+class GiftHistoryGiftLabel extends StatelessWidget {
+  const GiftHistoryGiftLabel({
+    super.key,
+    required this.giftName,
+    required this.repeatCount,
+    this.imageUrl,
+  });
+
+  final String giftName;
+  final int repeatCount;
+  final String? imageUrl;
+
+  static const double _thumbSize = 20;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: 11.5,
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+    final name = Text(
+      '$giftName ×$repeatCount',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
+    if (imageUrl == null) return name;
+    return Row(
+      children: [
+        ExcludeSemantics(child: GiftThumbnail(imageUrl, size: _thumbSize)),
+        const SizedBox(width: 6),
+        Expanded(child: name),
+      ],
+    );
+  }
+}
+

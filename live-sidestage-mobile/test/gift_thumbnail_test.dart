@@ -7,7 +7,7 @@
 // そのまま「読み込みに失敗した」経路の検証にもなる。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:live_sidestage_mobile/screens/gift_sound_edit_screen.dart';
+import 'package:live_sidestage_mobile/screens/widgets/gift_thumbnail.dart';
 
 const _url = 'https://p16-webcast.tiktokcdn.com/img/maliva/rose.png~tplv-obj.webp';
 
@@ -49,5 +49,15 @@ void main() {
     await pumpThumbnail(tester, _url);
     expect(tester.getSize(find.byType(GiftThumbnail)), withoutImage);
     expect(withoutImage, const Size(36, 36));
+  });
+
+  testWidgets('size overrides frame and cacheWidth', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: Scaffold(body: Center(child: GiftThumbnail(_url, size: 20)))),
+    );
+
+    expect(tester.getSize(find.byType(GiftThumbnail)), const Size(20, 20));
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as ResizeImage).width, 60);
   });
 }

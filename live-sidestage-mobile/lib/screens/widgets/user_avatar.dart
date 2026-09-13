@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// 貢献/ギフト履歴タブで使う円形のユーザーアイコン。
-/// `GiftThumbnail`(gift_sound_edit_screen.dart)と同じ描画パターンの円形版。
+/// `GiftThumbnail`(gift_thumbnail.dart)と同じ描画パターンの円形版。
 class UserAvatar extends StatelessWidget {
   const UserAvatar(this.imageUrl, {super.key, this.size = 36});
 

@@ -15,6 +15,7 @@ import '../core/sound_file_cleanup.dart';
 import '../core/sound_library.dart';
 import '../core/sound_preview.dart';
 import '../models/app_config.dart';
+import 'widgets/gift_thumbnail.dart';
 
 /// 「ギフトを選んで、音を選ぶ」だけの編集画面。
 ///
@@ -1019,48 +1020,6 @@ class _GiftPickerSheetState extends State<_GiftPickerSheet> {
     if (gift.maxDiamondCount <= 0) return null;
     if (!gift.hasCoinRange) return '${gift.maxDiamondCount}コイン';
     return '${gift.minDiamondCount}〜${gift.maxDiamondCount}コイン';
-  }
-}
-
-/// ギフトのアイコン。
-///
-/// 一覧は最大1000件あるが `ListView.builder` は可視行しか組み立てないので、同時に走る
-/// 取得は画面に見えている数行分だけで済む。`cacheWidth` を実表示幅に合わせてデコードを
-/// 縮め、Flutter 既定の `ImageCache` に収まるようにしている（追加パッケージは要らない）。
-///
-/// URL が無い・読み込み中・失敗のいずれも同じプレースホルダに落とす。ここで空白を返すと
-/// スクロール中に行の見た目が点滅する。
-class GiftThumbnail extends StatelessWidget {
-  const GiftThumbnail(this.imageUrl, {super.key});
-
-  final String? imageUrl;
-
-  static const double _size = 36;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = imageUrl;
-    final placeholder = Icon(
-      Icons.card_giftcard,
-      size: 20,
-      color: Theme.of(context).disabledColor,
-    );
-
-    return SizedBox(
-      width: _size,
-      height: _size,
-      child: url == null
-          ? placeholder
-          : Image.network(
-              url,
-              // ギフトの絵は正方形とは限らない。引き伸ばさず収める。
-              fit: BoxFit.contain,
-              cacheWidth: (_size * MediaQuery.of(context).devicePixelRatio).round(),
-              errorBuilder: (_, _, _) => placeholder,
-              frameBuilder: (_, child, frame, wasSynchronouslyLoaded) =>
-                  wasSynchronouslyLoaded || frame != null ? child : placeholder,
-            ),
-    );
   }
 }
 
