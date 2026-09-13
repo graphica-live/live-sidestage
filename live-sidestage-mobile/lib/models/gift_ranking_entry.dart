@@ -29,6 +29,19 @@ class GiftRankingEntry {
     this.lastGiftAt,
   });
 
+
+  GiftRankingEntry copyWith({String? profileImageUrl}) {
+    return GiftRankingEntry(
+      tiktokUid: tiktokUid,
+      tiktokHandle: tiktokHandle,
+      nickname: nickname,
+      profileImageUrl: profileImageUrl,
+      giftCount: giftCount,
+      totalDiamonds: totalDiamonds,
+      lastGiftAt: lastGiftAt,
+    );
+  }
+
   static GiftRankingEntry? tryParse(Object? value) {
     if (value is! Map) return null;
     final tiktokUid = value['tiktokUid'];

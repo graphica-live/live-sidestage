@@ -8,6 +8,7 @@ import { setSetting } from "@/lib/settings";
 import { betaSettingKey } from "@/lib/plan/beta-settings";
 import { acquireBetaSettingLock } from "@/lib/__fixtures__/beta-setting-lock";
 import { GET } from "./route";
+import { ROLLUP_WATERMARK_KEY } from "@/lib/gift-retention-window";
 
 const TIKTOK_ID = "itest_mobile_ranking";
 
@@ -28,10 +29,14 @@ process.env.MOBILE_JWT_SECRET ||= "itest-mobile-ranking-secret";
 // この機能(mobile.history.*)は analytics 領域の β でバイパスされる設計なので、mobile ではなく
 // analytics を false にする。
 const betaLock = acquireBetaSettingLock();
+let previousWatermark: string | null = null;
 
 beforeAll(async () => {
   await betaLock.acquired;
   await setSetting(betaSettingKey("analytics"), "false");
+  const watermarkRow = await prisma.appSetting.findUnique({ where: { key: ROLLUP_WATERMARK_KEY } });
+  previousWatermark = watermarkRow?.value ?? null;
+  await prisma.appSetting.deleteMany({ where: { key: ROLLUP_WATERMARK_KEY } });
 
   const room = await prisma.tiktokRoom.create({
     data: { tiktokHandle: TIKTOK_ID, hostTiktokUid: makeTiktokUid(TIKTOK_ID) },
@@ -90,6 +95,15 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (previousWatermark) {
+    await prisma.appSetting.upsert({
+      where: { key: ROLLUP_WATERMARK_KEY },
+      create: { key: ROLLUP_WATERMARK_KEY, value: previousWatermark },
+      update: { value: previousWatermark },
+    });
+  } else {
+    await prisma.appSetting.deleteMany({ where: { key: ROLLUP_WATERMARK_KEY } });
+  }
   await betaLock.release();
   await prisma.subscription.deleteMany({ where: { principalId } }).catch(() => {});
   await prisma.principal.delete({ where: { id: principalId } }).catch(() => {});
@@ -351,6 +365,57 @@ describe("GET /api/mobile/analytics/ranking", () => {
 
     it("100文字を超えるlistenerQueryは400", async () => {
       const res = await GET(request(`?period=day&date=2026-08-20&listenerQuery=${"a".repeat(101)}`, token));
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("limit/offset", () => {
+    const day = "2026-08-23";
+
+    it("limit omitted returns every user for the day", async () => {
+      await addGift("page_c", "C", 100, new Date("2026-08-23T10:00:00Z"), day);
+      await addGift("page_b", "B", 200, new Date("2026-08-23T10:01:00Z"), day);
+      await addGift("page_a", "A", 300, new Date("2026-08-23T10:02:00Z"), day);
+
+      const res = await GET(request(`?period=day&date=${day}`, token));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.users.map((u: { tiktokHandle: string }) => u.tiktokHandle)).toEqual([
+        "page_a",
+        "page_b",
+        "page_c",
+      ]);
+      expect(body.userCount).toBe(3);
+      expect(body.hasMore).toBe(false);
+      expect(body.total).toEqual({ giftCount: 3, totalDiamonds: 600 });
+      expect(body.users.every((u: { profileImageUrl: string | null }) => u.profileImageUrl === null)).toBe(
+        true
+      );
+    });
+
+    it("limit=2&offset=0 returns two users, hasMore, and full-set total/userCount", async () => {
+      const res = await GET(request(`?period=day&date=${day}&limit=2&offset=0`, token));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.users.map((u: { tiktokHandle: string }) => u.tiktokHandle)).toEqual(["page_a", "page_b"]);
+      expect(body.users).toHaveLength(2);
+      expect(body.hasMore).toBe(true);
+      expect(body.userCount).toBe(3);
+      expect(body.total).toEqual({ giftCount: 3, totalDiamonds: 600 });
+    });
+
+    it("offset=2&limit=2 returns the remainder with hasMore false", async () => {
+      const res = await GET(request(`?period=day&date=${day}&limit=2&offset=2`, token));
+      const body = await res.json();
+      expect(res.status).toBe(200);
+      expect(body.users.map((u: { tiktokHandle: string }) => u.tiktokHandle)).toEqual(["page_c"]);
+      expect(body.hasMore).toBe(false);
+      expect(body.userCount).toBe(3);
+      expect(body.total).toEqual({ giftCount: 3, totalDiamonds: 600 });
+    });
+
+    it("invalid limit is 400", async () => {
+      const res = await GET(request(`?period=day&date=${day}&limit=0`, token));
       expect(res.status).toBe(400);
     });
   });

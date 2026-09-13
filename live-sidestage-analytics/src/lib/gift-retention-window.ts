@@ -65,6 +65,28 @@ export async function resolveRollupReadCutoff(now: Date = new Date()): Promise<s
 }
 
 /**
+ * ロールアップ済みの翌日。この dayKey 以降は Gift、より前は GiftDailyListenerStat。
+ * 明細内訳(gift-breakdown)は使わない — Gift が残っている期間は明細を読む。
+ */
+export function watermarkExclusiveCutoff(watermark: string | null): string {
+  if (!watermark) return MIN_DAY_KEY;
+  return shiftDayKey(watermark, 1);
+}
+
+export async function resolveWatermarkExclusiveCutoff(): Promise<string> {
+  return watermarkExclusiveCutoff(await readDayKeySetting(ROLLUP_WATERMARK_KEY));
+}
+
+/**
+ * 下限が JST 今日以降なら Gift だけ読めば足りる(当日は cron 前でロールアップ不完全)。
+ * 昨日以前は watermark を見ないと欠けるので、ここでは true にしない。
+ */
+export function isOnOrAfterTodayRawWindow(lowerDayKey: string | null, now: Date = new Date()): boolean {
+  if (lowerDayKey === null) return false;
+  return lowerDayKey >= dayKeyOf(now);
+}
+
+/**
  * 分割境界より新しい範囲しか要求していないかを、**DBを読まずに**判定する。
  *
  * カットオフは常に `80日前` 以下なので、範囲の下限が 80日前 以上ならロールアップは要らない。

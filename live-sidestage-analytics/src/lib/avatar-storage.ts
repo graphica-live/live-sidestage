@@ -202,13 +202,18 @@ export async function resolveAvatarUrls(tiktokUids: string[]): Promise<Map<strin
     select: { tiktokUid: true, storageKey: true },
   });
 
-  for (const row of rows) {
-    const url = await getSignedUrl(
-      storage.client,
-      new GetObjectCommand({ Bucket: storage.bucket, Key: row.storageKey }),
-      { expiresIn: READ_URL_TTL_SECONDS }
-    );
-    result.set(row.tiktokUid, url);
+  const signed = await Promise.all(
+    rows.map(async (row) => {
+      const url = await getSignedUrl(
+        storage.client,
+        new GetObjectCommand({ Bucket: storage.bucket, Key: row.storageKey }),
+        { expiresIn: READ_URL_TTL_SECONDS }
+      );
+      return [row.tiktokUid, url] as const;
+    })
+  );
+  for (const [tiktokUid, url] of signed) {
+    result.set(tiktokUid, url);
   }
 
   return result;

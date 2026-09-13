@@ -3,8 +3,16 @@ import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
+import {
+  parseRangeQuery,
+  parseListenerQuery,
+  parseOptionalLimit,
+  parseOffset,
+  requireHistoryPlan,
+} from "@/lib/mobile-analytics-query";
 import { currentVersion } from "@/lib/realtime-sync/version-store";
+
+const RANKING_PAGE_MAX = 200;
 
 const buildUnregisteredResponse = () =>
   NextResponse.json({
@@ -23,6 +31,10 @@ export async function GET(req: NextRequest) {
   if (!query.ok) return query.response;
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
+  const limitResult = parseOptionalLimit(searchParams, RANKING_PAGE_MAX);
+  if (!limitResult.ok) return limitResult.response;
+  const offsetResult = parseOffset(searchParams);
+  if (!offsetResult.ok) return offsetResult.response;
 
   const planDenied = await requireHistoryPlan(ctx.streamer.principalId, {
     range: query.value,
@@ -47,7 +59,13 @@ export async function GET(req: NextRequest) {
     dateRange = { start, end };
   }
 
-  const { users, total } = await queryGifts(ctx.streamer.roomId, ctx.streamer.id, where, listenerQuery.value);
+  const { users, total } = await queryGifts(
+    ctx.streamer.roomId,
+    ctx.streamer.id,
+    where,
+    listenerQuery.value,
+    { preferRollup: query.value.mode !== "custom", resolveAvatars: false }
+  );
 
   // queryGifts() は groupBy の結果順(順位順ではない)を返すため、
   // 配列インデックス+1がそのまま順位になるようここで明示的にソートする。
@@ -59,15 +77,23 @@ export async function GET(req: NextRequest) {
     return ah < bh ? -1 : ah > bh ? 1 : 0;
   });
 
+  const userCount = sorted.length;
+  const limit = limitResult.value;
+  const offset = offsetResult.value;
+  const page = limit === null ? sorted : sorted.slice(offset, offset + limit);
+  const hasMore = limit === null ? false : offset + page.length < userCount;
+
   return NextResponse.json(
     {
-      users: sorted.map((u) => ({ ...u, profileImageUrl: sanitizeAvatarUrl(u.profileImageUrl) })),
+      users: page.map((u) => ({ ...u, profileImageUrl: sanitizeAvatarUrl(u.profileImageUrl) })),
       dateRange,
       total,
       verified: ctx.streamer.verified,
       bootId,
       epoch,
       version,
+      userCount,
+      hasMore,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

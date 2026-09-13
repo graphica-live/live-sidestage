@@ -38,6 +38,7 @@ vi.mock("sharp", () => ({
 // tiktok-profile.ts の isAllowedAvatarUrl は実装をそのまま使う(https + ホスト許可リストの
 // 検証ロジック自体がテスト対象の一部であるため、モックしない)。
 
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ensureAvatarCached, resolveAvatarUrls } from "./avatar-storage";
 
 const ALLOWED_URL = "https://p16-common-sign.tiktokcdn.com/a.webp";
@@ -171,5 +172,19 @@ describe("resolveAvatarUrls", () => {
 
     expect(result.get(UID_UPLOAD)).toBe(`https://signed.example/avatars/tiktok-user/${UID_UPLOAD}.webp`);
     expect(result.has(UID_FRESH)).toBe(false);
+  });
+
+  it("signs every hit in parallel and fills the Map regardless of row order", async () => {
+    findMany.mockResolvedValue([
+      { tiktokUid: UID_FRESH, storageKey: `avatars/tiktok-user/${UID_FRESH}.webp` },
+      { tiktokUid: UID_UPLOAD, storageKey: `avatars/tiktok-user/${UID_UPLOAD}.webp` },
+    ]);
+
+    const result = await resolveAvatarUrls([UID_UPLOAD, UID_FRESH]);
+
+    expect(getSignedUrl).toHaveBeenCalledTimes(2);
+    expect(result.size).toBe(2);
+    expect(result.get(UID_UPLOAD)).toBe(`https://signed.example/avatars/tiktok-user/${UID_UPLOAD}.webp`);
+    expect(result.get(UID_FRESH)).toBe(`https://signed.example/avatars/tiktok-user/${UID_FRESH}.webp`);
   });
 });

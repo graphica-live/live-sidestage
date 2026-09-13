@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -40,6 +41,8 @@ class ContributionTab extends StatefulWidget {
 }
 
 class _ContributionTabState extends State<ContributionTab> with WidgetsBindingObserver {
+  static const _pageSize = 50;
+
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
@@ -49,7 +52,10 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   List<GiftRankingEntry> _users = const [];
   String? _error;
   bool _loading = false;
+  bool _loadingMore = false;
   bool _shareInProgress = false;
+
+  final Map<String, _RankingCacheEntry> _rankingCache = {};
 
   /// 見えていない間に届いたギフト。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
   bool _dirty = false;
@@ -121,11 +127,35 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   }
 
   void _applyRankingSnapshotUsers(RankingSyncStore store) {
-    final entities = store.getSnapshot()?['entities'];
+    final snapshot = store.getSnapshot();
+    final entities = snapshot?['entities'];
     if (entities == null) return;
     final parsed = _parseRankingEntities(entities);
     if (!mounted) return;
-    setState(() => _users = parsed);
+    final current = _result;
+    final rawTotal = snapshot?['total'];
+    final total = rawTotal is Map
+        ? (
+            giftCount: (rawTotal['giftCount'] as int?) ?? current?.total.giftCount ?? 0,
+            totalDiamonds: (rawTotal['totalDiamonds'] as int?) ?? current?.total.totalDiamonds ?? 0,
+          )
+        : current?.total ?? (giftCount: 0, totalDiamonds: 0);
+    setState(() {
+      _users = parsed;
+      if (current != null) {
+        _result = GiftRankingResult(
+          users: parsed,
+          dateRange: current.dateRange,
+          total: total,
+          verified: current.verified,
+          userCount: parsed.length,
+          hasMore: false,
+          bootId: current.bootId,
+          epoch: current.epoch,
+          version: current.version,
+        );
+      }
+    });
   }
 
   /// RankingSyncStore から snapshot 受信時のコールバック。
@@ -179,6 +209,204 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
   /// [onResult]は期間ナビ操作時のロールバックを駆動するコールバック。成功時に true、
   /// 非silent失敗時に false を受け取る。silentな失敗、セッション切れ、リクエスト破棄、
   /// 未マウント時は呼ばれない。
+  String _cacheKeyFor({
+    required AnalyticsPeriodSelection selection,
+    DateTimeRange? customRange,
+    String? listenerQuery,
+  }) {
+    final rangePart = customRange == null
+        ? ''
+        : '${customRange.start.toIso8601String()}_${customRange.end.toIso8601String()}';
+    return '${selection.period.apiValue}|${selection.date}|${listenerQuery ?? ''}|$rangePart';
+  }
+
+  String _currentCacheKey() => _cacheKeyFor(
+        selection: _selection,
+        customRange: _customRange,
+        listenerQuery: _listenerQuery,
+      );
+
+  void _storeFirstPageCache({
+    required GiftRankingResult result,
+    required List<GiftRankingEntry> users,
+  }) {
+    final cachedResult = GiftRankingResult(
+      users: users,
+      dateRange: result.dateRange,
+      total: result.total,
+      verified: result.verified,
+      userCount: result.userCount,
+      hasMore: result.hasMore,
+      bootId: result.bootId,
+      epoch: result.epoch,
+      version: result.version,
+    );
+    _rankingCache[_currentCacheKey()] = _RankingCacheEntry(
+      result: cachedResult,
+      users: List<GiftRankingEntry>.from(users),
+    );
+  }
+
+  Future<List<GiftRankingEntry>> _enrichWithAvatars(
+    List<GiftRankingEntry> entries, {
+    required String token,
+    required Future<String?> Function()? refreshToken,
+  }) async {
+    if (entries.isEmpty) return entries;
+    final uids = entries.map((e) => e.tiktokUid).where((u) => u.isNotEmpty).toList();
+    if (uids.isEmpty) return entries;
+    try {
+      final avatars = await withTokenRefresh(
+        call: (t) => _api.fetchRankingAvatars(token: t, uids: uids),
+        token: token,
+        refreshToken: refreshToken,
+      );
+      return entries
+          .map((e) {
+            final url = avatars[e.tiktokUid];
+            return url != null ? e.copyWith(profileImageUrl: url) : e;
+          })
+          .toList();
+    } catch (e) {
+      debugPrint('[contribution] アバター取得に失敗: $e');
+      return entries;
+    }
+  }
+
+  Future<void> _prefetchDayRanking({
+    required AnalyticsPeriodSelection selection,
+    required String token,
+    required Future<String?> Function()? refreshToken,
+  }) async {
+    final key = _cacheKeyFor(selection: selection, customRange: null, listenerQuery: _listenerQuery);
+    if (_rankingCache.containsKey(key)) return;
+    try {
+      final result = await withTokenRefresh(
+        call: (t) => _api.fetchGiftRanking(
+          token: t,
+          period: selection.period.apiValue,
+          date: selection.date,
+          limit: _pageSize,
+          listenerQuery: _listenerQuery,
+        ),
+        token: token,
+        refreshToken: refreshToken,
+      );
+      var users = result.users;
+      users = await _enrichWithAvatars(users, token: token, refreshToken: refreshToken);
+      _rankingCache[key] = _RankingCacheEntry(
+        result: GiftRankingResult(
+          users: users,
+          dateRange: result.dateRange,
+          total: result.total,
+          verified: result.verified,
+          userCount: result.userCount,
+          hasMore: result.hasMore,
+          bootId: result.bootId,
+          epoch: result.epoch,
+          version: result.version,
+        ),
+        users: List<GiftRankingEntry>.from(users),
+      );
+    } catch (e) {
+      debugPrint('[contribution] prefetch失敗 ($key): $e');
+    }
+  }
+
+  void _prefetchAdjacentDays({required String token, required Future<String?> Function()? refreshToken}) {
+    if (_customRange != null || _selection.period != AnalyticsPeriod.day) return;
+    unawaited(_prefetchDayRanking(selection: _selection.shiftPrevious(), token: token, refreshToken: refreshToken));
+    unawaited(_prefetchDayRanking(selection: _selection.shiftNext(), token: token, refreshToken: refreshToken));
+  }
+
+  Future<void> _loadMore() async {
+    final result = _result;
+    if (result == null || !result.hasMore || _loadingMore || _loading) return;
+
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
+    if (token == null) return;
+
+    setState(() => _loadingMore = true);
+    final generation = _requestGeneration;
+    final customRange = _customRange;
+
+    try {
+      final page = await withTokenRefresh(
+        call: (t) => _api.fetchGiftRanking(
+          token: t,
+          period: _selection.period.apiValue,
+          date: _selection.date,
+          limit: _pageSize,
+          offset: _users.length,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
+          listenerQuery: _listenerQuery,
+        ),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted || generation != _requestGeneration) return;
+
+      final existingUids = _users.map((u) => u.tiktokUid).toSet();
+      final newUsers = page.users.where((u) => !existingUids.contains(u.tiktokUid)).toList();
+      final merged = [..._users, ...newUsers];
+      setState(() {
+        _users = merged;
+        _result = GiftRankingResult(
+          users: merged,
+          dateRange: page.dateRange,
+          total: page.total,
+          verified: page.verified,
+          userCount: page.userCount,
+          hasMore: page.hasMore,
+          bootId: page.bootId,
+          epoch: page.epoch,
+          version: page.version,
+        );
+      });
+
+      if (newUsers.isEmpty) return;
+
+      final enrichedNew = await _enrichWithAvatars(
+        newUsers,
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted || generation != _requestGeneration) return;
+
+      final avatarByUid = {for (final e in enrichedNew) e.tiktokUid: e.profileImageUrl};
+      setState(() {
+        _users = _users
+            .map((e) {
+              final url = avatarByUid[e.tiktokUid];
+              return url != null ? e.copyWith(profileImageUrl: url) : e;
+            })
+            .toList();
+      });
+    } on ApiException catch (e) {
+      if (mounted && generation == _requestGeneration) {
+        debugPrint('[contribution] 追加ページの取得に失敗: ${e.message}');
+      }
+    } catch (e) {
+      if (mounted && generation == _requestGeneration) {
+        debugPrint('[contribution] 追加ページの取得で予期せぬエラー: $e');
+      }
+    } finally {
+      if (mounted && generation == _requestGeneration && _loadingMore) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    final metrics = notification.metrics;
+    if (metrics.maxScrollExtent > 0 && metrics.pixels >= metrics.maxScrollExtent - 240) {
+      _loadMore();
+    }
+    return false;
+  }
+
   Future<void> _load({bool silent = false, void Function(bool success)? onResult}) async {
     final generation = ++_requestGeneration;
 
@@ -189,10 +417,14 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     if (!silent) {
       setState(() {
         _loading = true;
+        _loadingMore = false;
         _error = null;
       });
     } else if (_result != null) {
-      setState(() => _loading = true);
+      setState(() {
+        _loading = true;
+        _loadingMore = false;
+      });
     }
 
     final customRange = _customRange;
@@ -202,6 +434,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
           token: t,
           period: _selection.period.apiValue,
           date: _selection.date,
+          limit: _pageSize,
+          offset: 0,
           startDatetime: customRange?.start,
           endDatetime: customRange?.end,
           listenerQuery: _listenerQuery,
@@ -210,21 +444,21 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         refreshToken: sessions.refreshToken,
       );
       if (!mounted || generation != _requestGeneration) return;
+
+      final users = result.users;
       setState(() {
         _result = result;
-        _users = result.users;
+        _users = users;
         _loading = false;
         _dirty = false;
       });
 
-      // Batch 06: REST取得成功時、RankingSyncStore へsnapshotとversionを反映。
-      // (Batch 05時点では空Mapを渡すバグと reset() による version欠損誤判定バグがあった)
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       final store = context.read<RankingSyncStore>();
       store.acknowledgeResync(
         snapshot: {
-          'entities': result.users.map((u) => u.toMap()).toList(),
-          'order': result.users.map((u) => u.tiktokUid).toList(),
+          'entities': users.map((u) => u.toMap()).toList(),
+          'order': users.map((u) => u.tiktokUid).toList(),
           'total': {
             'giftCount': result.total.giftCount,
             'totalDiamonds': result.total.totalDiamonds,
@@ -235,6 +469,18 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         epoch: result.epoch,
         version: result.version,
       );
+
+      final enriched = await _enrichWithAvatars(
+        users,
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted || generation != _requestGeneration) return;
+      setState(() => _users = enriched);
+      _storeFirstPageCache(result: result, users: enriched);
+
+      _prefetchAdjacentDays(token: token, refreshToken: sessions.refreshToken);
+
       onResult?.call(true);
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
@@ -307,7 +553,38 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
     final previousSelection = _selection;
     final previousCustomRange = _customRange;
     final previousListenerQuery = _listenerQuery;
-    setState(applyChange);
+
+    late AnalyticsPeriodSelection newSelection;
+    late DateTimeRange? newCustomRange;
+    late String? newListenerQuery;
+
+    setState(() {
+      applyChange();
+      newSelection = _selection;
+      newCustomRange = _customRange;
+      newListenerQuery = _listenerQuery;
+    });
+
+    final store = context.read<RankingSyncStore>();
+    store.setCurrentPeriod(newCustomRange != null ? null : newSelection.period.apiValue);
+
+    final cacheKey = _cacheKeyFor(
+      selection: newSelection,
+      customRange: newCustomRange,
+      listenerQuery: newListenerQuery,
+    );
+    final cached = _rankingCache[cacheKey];
+    if (cached != null) {
+      setState(() {
+        _result = cached.result;
+        _users = List<GiftRankingEntry>.from(cached.users);
+        _error = null;
+        _loading = true;
+      });
+      await _load(silent: true);
+      return;
+    }
+
     var succeeded = true;
     await _load(onResult: (success) => succeeded = success);
     if (!succeeded && mounted) {
@@ -316,6 +593,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
         _customRange = previousCustomRange;
         _listenerQuery = previousListenerQuery;
       });
+      store.setCurrentPeriod(previousCustomRange != null ? null : previousSelection.period.apiValue);
     }
   }
 
@@ -417,9 +695,11 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
       onClamp: (clamped) => _changePeriod(() => _selection = clamped),
     );
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: CustomScrollView(
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: RefreshIndicator(
+        onRefresh: _load,
+        child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
@@ -486,7 +766,7 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '表示中の合計 ${users.length}人',
+                            '表示中の合計 ${result.userCount}人',
                             style: Theme.of(
                               context,
                             ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -526,8 +806,23 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                 fetchBreakdown: _fetchBreakdown,
               ),
             ),
+          if (_loadingMore)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+            ),
         ],
+        ),
       ),
     );
   }
+}
+
+class _RankingCacheEntry {
+  const _RankingCacheEntry({required this.result, required this.users});
+
+  final GiftRankingResult result;
+  final List<GiftRankingEntry> users;
 }

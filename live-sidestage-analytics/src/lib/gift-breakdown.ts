@@ -94,6 +94,7 @@ export async function queryGiftBreakdown(
 ): Promise<GiftBreakdownResult> {
   const baseWhere: GiftAggregateWhere = { roomId, tiktokUid: { in: [tiktokUid] }, ...where };
 
+  // preferRollup は ranking 専用。内訳は Gift が残る間 80日 raw 判定のまま(第3引数なし)。
   const { rawWhere, coverage } = resolveBreakdownWindow(baseWhere, await planSplit(baseWhere, now));
 
   if (!rawWhere) return emptyResult(tiktokUid, coverage);
