@@ -234,13 +234,13 @@ async function loadGiftCatalog(giftIds: number[]): Promise<Map<number, { labelJa
 function bonusMissionLabel(targetType: number, progressTarget: number): string {
   switch (targetType) {
     case 1:
-      return `ギフター${progressTarget}人ミッション`;
+      return `ミッション:${progressTarget}人からギフトを受け取る`;
     case 2:
-      return `${progressTarget}pt獲得ミッション`;
+      return `ミッション:${progressTarget}pt受け取る`;
     case 8:
-      return `チーム${progressTarget}ptミッション`;
+      return `ミッション:チームで${progressTarget}pt受け取る`;
     default:
-      return `ミッション(目標${progressTarget})`;
+      return `ミッション:(目標${progressTarget})`;
   }
 }
 

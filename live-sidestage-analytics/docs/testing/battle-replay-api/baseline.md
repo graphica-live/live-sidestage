@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-13
-last_risk: MEDIUM
-last_reviewers: [deepseek-v4-flash, fable] / [Code Mode]DeepSeek(high)+Codex-terra(medium)、2026-09-09 admin版シェア発行API追加時
+last_risk: LOW
+last_reviewers: [Gemini 3.7 Flash]
 ---
 
 # バトル再生API
@@ -60,7 +60,7 @@ last_reviewers: [deepseek-v4-flash, fable] / [Code Mode]DeepSeek(high)+Codex-ter
 | TC-BRA-023 | `inferred` でも区間が実測できていれば帯を作り confidence をそのまま載せる | `buildPayload` | 境界 | `confidence: "inferred"` + 実測区間 | `kind: "opening"` / `confidence: "inferred"` / ラベル末尾 `(推定)` | `[unit]` | PASS | UI は `isBandSegment` で赤帯表示 |
 | TC-BRA-024 | ボーナス区間は報酬の開始・終了が揃ったものだけ帯にする | `buildPayload` | 境界/データ欠損 | `rewardStartedAt` / `rewardEndedAt` が欠けた行と揃った行 | 揃った行だけ帯になり `showCountdown: true` | `[unit]` | PASS | `rewardEndedAt` は TikTok が配信する実測値。opening と重なった区間は `segmentAt` が opening を優先する |
 | TC-BRA-025 | opening とボーナスが両方あれば開始時刻の昇順で並ぶ | `buildPayload` | 回帰 | opening(0-48s) + bonus_reward(150-180s) | `segments` の kind が `opening_intro` → `opening` → `bonus_reward` | `[unit]` | PASS | `segmentAt` は kind 優先で重なりを解く |
-| TC-BRA-041 | ボーナスミッション区間は `startedAt`→`settledAt` の赤帯にする | `buildPayload` | 正常/境界 | `settledAt` あり / 報酬時刻のみ揃い / 重複行 | `settledAt` まで `bonus_mission`。報酬は `bonus_reward`。同一ミッションは1帯(重複除去) | `[unit]` | PASS | ラベルは `targetType` / `progressTarget` から生成 |
+| TC-BRA-041 | ボーナスミッション区間は `startedAt`→`settledAt` の赤帯にする | `buildPayload` | 正常/境界 | `settledAt` あり / 報酬時刻のみ揃い / 重複行 | `settledAt` まで `bonus_mission`。報酬は `bonus_reward`。同一ミッションは1帯(重複除去) | `[unit]` | PASS | ラベル: type1=`ミッション:{n}人からギフトを受け取る` / type2=`ミッション:{n}pt受け取る` / type8=`ミッション:チームで{n}pt受け取る` / 他=`ミッション:(目標{n})` |
 | TC-BRA-026 | 確定済みバトルは再生ペイロードを返し、未確定・スコア点なしは理由コードを返す | `queryBattleReplay` | 正常/異常 | 確定済み / armies 無しで確定 / 未確定の battleId | 順に ok、`no_score_points`、`not_finalized` | `[itg]` | PASS | roomId で絞るので他人のバトルは引けない |
 | TC-BRA-027 | 実際に読めたスコア点が足りなければ再生不可にする | `queryBattleReplay` | 回帰/競合 | 確定後にスコア点だけ削除し件数列は残す | `no_score_points`(件数列だけを信用しない) | `[itg]` | PASS | ネストした select は1トランザクションにまとまらない |
 | TC-BRA-028 | シェアトークンは同時発行しても1本に収まり、2回目以降は同じ値を返す | `ensureShareToken` | 並行/冪等 | 同一バトルへ3並列 + 追加1回 | 4回とも同じ値。48桁の16進(`crypto.randomBytes(24)`) | `[itg]` | PASS | `updateMany({ shareToken: null })` → 読み直しの compare-and-set |
