@@ -19,7 +19,7 @@ const List<String> _paidPlanBenefits = [
 ];
 
 const List<String> _freePlanBenefits = [
-  '基本的な読み上げ(100件ごとに5分の休憩あり)',
+  '基本的な読み上げ(50件ごとに10分の休憩あり)',
   'その日のギフト・貢献・バトル履歴を表示',
 ];
 

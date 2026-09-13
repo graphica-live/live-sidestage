@@ -32,14 +32,14 @@ class SpeechQueueController extends ChangeNotifier {
 
   // ── FREEプランの自動インターバル ─────────────────────────────────────────
   //
-  // FREEプランは100件読み上げるごとに5分間、新規コメントの読み上げを止める。
+  // FREEプランは50件読み上げるごとに10分間、新規コメントの読み上げを止める。
   // isFreePlan は背景Isolate起動時(onStart)に、UI Isolate側で永続化された
   // plan + mobileBetaActiveから一度だけ合成して設定される(account_status_store.dart、
   // background_task_handler.dart参照)。mobileβが有効な間はこの制限をバイパスする。
   // サービス稼働中のプラン変更はリアルタイム反映しない(次回「開始」時に反映)。
 
-  static const int _freeIntervalThreshold = 100;
-  static const Duration _freeIntervalCooldown = Duration(minutes: 5);
+  static const int _freeIntervalThreshold = 50;
+  static const Duration _freeIntervalCooldown = Duration(minutes: 10);
 
   bool _isFreePlan = false;
   int _spokenSinceCooldown = 0;
