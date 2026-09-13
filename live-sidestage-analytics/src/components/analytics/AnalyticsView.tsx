@@ -7,6 +7,14 @@ import { Avatar, BattleScoreLine, BattleVersus, BATTLE_STATUS_LABELS, tiktokProf
 import { GIFT_HISTORY_MAX_RANGE_DAYS } from "@/lib/range-limits";
 import { useBattleFilterSettings } from "./useBattleFilterSettings";
 import { ShareLinkButton } from "./ShareLinkButton";
+import {
+  adjacentPrefetchDates,
+  applyAvatarUrls,
+  chunkUids,
+  mergePreservedAvatars,
+  missingAvatarUids,
+  rankingCacheKey,
+} from "./ranking-list-cache";
 
 type Period = "day" | "week" | "month" | "year" | "custom";
 type SortKey = "diamonds" | "count" | "name" | "recent";
@@ -732,10 +740,54 @@ export function AnalyticsView({
   const calendarRef = useRef<HTMLDivElement>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
+  const rankingCacheRef = useRef<Map<string, AnalyticsData>>(new Map());
+  const rankingFetchGenRef = useRef(0);
+
+  const enrichRankingAvatars = useCallback(
+    async (key: string, gen: number) => {
+      const current = rankingCacheRef.current.get(key);
+      if (!current) return;
+      const missing = missingAvatarUids(current.users);
+      if (missing.length === 0) return;
+      for (const uids of chunkUids(missing)) {
+        if (gen !== rankingFetchGenRef.current) return;
+        try {
+          const res = await fetch(`${apiBase}/gifts/avatars`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ uids }),
+          });
+          if (!res.ok) return;
+          const body = (await res.json()) as { avatars?: { tiktokUid: string; profileImageUrl: string }[] };
+          const avatars = Array.isArray(body.avatars) ? body.avatars : [];
+          const latest = rankingCacheRef.current.get(key);
+          if (!latest || gen !== rankingFetchGenRef.current) return;
+          const next: AnalyticsData = { ...latest, users: applyAvatarUrls(latest.users, avatars) };
+          rankingCacheRef.current.set(key, next);
+          const activeKey = rankingCacheKey({ apiBase, period, currentDate, customStart, customEnd });
+          if (activeKey === key) setData(next);
+        } catch {
+          return;
+        }
+      }
+    },
+    [apiBase, period, currentDate, customStart, customEnd]
+  );
 
   const fetchData = useCallback(
     async (p: Period, d: string, silent = false) => {
-      if (!silent) setLoading(true);
+      const key = rankingCacheKey({ apiBase, period: p, currentDate: d, customStart, customEnd });
+      const gen = silent ? rankingFetchGenRef.current : ++rankingFetchGenRef.current;
+      if (!silent) {
+        const cached = rankingCacheRef.current.get(key);
+        if (cached) {
+          setData(cached);
+          setLoading(false);
+          void enrichRankingAvatars(key, gen);
+        } else {
+          setLoading(true);
+        }
+      }
       try {
         let url: string;
         if (p === "custom") {
@@ -744,13 +796,40 @@ export function AnalyticsView({
           url = `${apiBase}/gifts?period=${p}&date=${d}&sort=${sortKey}&order=${sortOrder}`;
         }
         const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
-          setData(json);
-          setLastRefreshed(new Date());
-        }
+        if (!res.ok) return;
+        const json = (await res.json()) as AnalyticsData;
+        const activeKey = rankingCacheKey({ apiBase, period, currentDate, customStart, customEnd });
+        if (activeKey !== key) return;
+        if (gen !== rankingFetchGenRef.current) return;
+        const prev = rankingCacheRef.current.get(key);
+        const merged: AnalyticsData = {
+          ...json,
+          users: mergePreservedAvatars(prev?.users, json.users),
+        };
+        rankingCacheRef.current.set(key, merged);
+        setData(merged);
+        setLastRefreshed(new Date());
+        void enrichRankingAvatars(key, silent ? rankingFetchGenRef.current : gen);
       } finally {
-        if (!silent) setLoading(false);
+        if (!silent && gen === rankingFetchGenRef.current) setLoading(false);
+      }
+    },
+    [apiBase, sortKey, sortOrder, customStart, customEnd, period, currentDate, enrichRankingAvatars]
+  );
+
+  const prefetchRanking = useCallback(
+    async (p: Period, d: string) => {
+      const key = rankingCacheKey({ apiBase, period: p, currentDate: d, customStart, customEnd });
+      if (rankingCacheRef.current.has(key)) return;
+      try {
+        const url = `${apiBase}/gifts?period=${p}&date=${d}&sort=${sortKey}&order=${sortOrder}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const json = (await res.json()) as AnalyticsData;
+        if (rankingCacheRef.current.has(key)) return;
+        rankingCacheRef.current.set(key, json);
+      } catch {
+        return;
       }
     },
     [apiBase, sortKey, sortOrder, customStart, customEnd]
@@ -895,6 +974,14 @@ export function AnalyticsView({
       fetchBattles(period, currentDate);
     }
   }, [period, currentDate, viewMode, fetchData, fetchHistory, fetchBattles]);
+
+  useEffect(() => {
+    if (viewMode !== "ranking" || period === "custom") return;
+    const today = todayStr();
+    for (const date of adjacentPrefetchDates(period, currentDate, today, (per, date, dir) => navigateDate(per as Period, date, dir))) {
+      void prefetchRanking(period, date);
+    }
+  }, [viewMode, period, currentDate, prefetchRanking]);
 
   // ギフト履歴(明細)は90日で削除される(gift-retention-window.ts)ため`year`を選べない。
   // また、ランキング/バトル履歴タブ(366日まで許容)で選んだカスタム期間を引き継いで

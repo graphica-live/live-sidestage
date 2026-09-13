@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
+import { getAdminSession } from "@/lib/admin";
 import { loadRankingAvatars, parseRankingAvatarUids } from "@/lib/gift-ranking-avatars";
 
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-const buildUnregisteredResponse = () => json({ avatars: [] });
-
-export async function POST(req: NextRequest) {
-  const ctx = await resolveMobileAnalyticsContext(req, buildUnregisteredResponse);
-  if (!ctx.ok) return ctx.response;
+export async function POST(req: NextRequest, { params }: { params: { roomId: string } }) {
+  const session = await getAdminSession();
+  if (!session) return json({ error: "Unauthorized" }, 401);
 
   const body = await req.json().catch(() => null);
   const parsed = parseRankingAvatarUids(body);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
 
-  const avatars = await loadRankingAvatars(ctx.streamer.roomId, parsed.uids);
+  const avatars = await loadRankingAvatars(params.roomId, parsed.uids);
   return json({ avatars });
 }

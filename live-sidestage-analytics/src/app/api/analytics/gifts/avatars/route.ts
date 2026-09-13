@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveMobileAnalyticsContext } from "@/lib/mobile-auth";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { loadRankingAvatars, parseRankingAvatarUids } from "@/lib/gift-ranking-avatars";
 
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-const buildUnregisteredResponse = () => json({ avatars: [] });
-
 export async function POST(req: NextRequest) {
-  const ctx = await resolveMobileAnalyticsContext(req, buildUnregisteredResponse);
-  if (!ctx.ok) return ctx.response;
+  const session = await getServerSession(authOptions);
+  if (!session) return json({ error: "Unauthorized" }, 401);
+
+  const streamer = await prisma.streamer.findUnique({
+    where: { principalId: session.user.id },
+    select: { roomId: true },
+  });
+  if (!streamer?.roomId) return json({ avatars: [] });
 
   const body = await req.json().catch(() => null);
   const parsed = parseRankingAvatarUids(body);
   if (!parsed.ok) return json({ error: parsed.error }, 400);
 
-  const avatars = await loadRankingAvatars(ctx.streamer.roomId, parsed.uids);
+  const avatars = await loadRankingAvatars(streamer.roomId, parsed.uids);
   return json({ avatars });
 }

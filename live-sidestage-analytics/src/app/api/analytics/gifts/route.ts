@@ -3,6 +3,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDateRange, queryGifts } from "@/lib/gift-analytics";
+import {
+  CALENDAR_RANKING_QUERY_OPTIONS,
+  CUSTOM_RANGE_RANKING_QUERY_OPTIONS,
+} from "@/lib/gift-ranking-avatars";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -25,9 +29,13 @@ export async function GET(req: NextRequest) {
   if (startDatetime && endDatetime) {
     const startDate = new Date(startDatetime);
     const endDate = new Date(endDatetime);
-    const { users, total } = await queryGifts(streamer.roomId, streamer.id, {
-      receivedAt: { gte: startDate, lte: endDate },
-    });
+    const { users, total } = await queryGifts(
+      streamer.roomId,
+      streamer.id,
+      { receivedAt: { gte: startDate, lte: endDate } },
+      null,
+      CUSTOM_RANGE_RANKING_QUERY_OPTIONS
+    );
     return NextResponse.json({
       users,
       dateRange: { start: startDatetime, end: endDatetime },
@@ -40,6 +48,12 @@ export async function GET(req: NextRequest) {
   const date = searchParams.get("date") ?? new Date().toISOString().slice(0, 10);
   const { start, end } = getDateRange(period, date);
 
-  const { users, total } = await queryGifts(streamer.roomId, streamer.id, { dayKey: { gte: start, lte: end } });
+  const { users, total } = await queryGifts(
+    streamer.roomId,
+    streamer.id,
+    { dayKey: { gte: start, lte: end } },
+    null,
+    CALENDAR_RANKING_QUERY_OPTIONS
+  );
   return NextResponse.json({ users, dateRange: { start, end }, total, verified: streamer.verified });
 }
