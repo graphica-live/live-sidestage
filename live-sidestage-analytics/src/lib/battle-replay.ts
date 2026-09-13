@@ -246,28 +246,27 @@ async function loadGiftCatalog(giftIds: number[]): Promise<Map<number, { labelJa
 }
 
 /**
- * カタログに画像が無い giftId へ、確定時スナップショットと元 Gift 行から埋める。
+ * スナップショットもカタログも画像が無い giftId へ、元 Gift 行から埋める。
  * コミュニティギフトは gift/list/ に載らない。グローバルカタログへは書かない
  * (部屋固有ギフトが全部屋のピッカーに混ざるため)。
+ *
+ * 表示の優先は buildPayload 側: スナップショット(当時の受信URL) > カタログ(現在の公式)。
  */
 async function fillMissingGiftImages(
   giftCatalog: Map<number, { labelJa: string | null; imageUrl: string | null }>,
   row: ReplayRow
 ): Promise<void> {
   const events = row.participants.flatMap((p) => p.giftEvents);
-  const missing = [...new Set(events.map((e) => e.giftId))].filter((id) => !giftCatalog.get(id)?.imageUrl);
+  const covered = new Set<number>();
+  for (const event of events) {
+    if (sanitizeAvatarUrl(event.giftPictureUrlSnapshot) || giftCatalog.get(event.giftId)?.imageUrl) {
+      covered.add(event.giftId);
+    }
+  }
+  const missing = [...new Set(events.map((e) => e.giftId))].filter((id) => !covered.has(id));
   if (missing.length === 0) return;
 
   const missingSet = new Set(missing);
-  for (const event of events) {
-    if (!missingSet.has(event.giftId)) continue;
-    const snap = sanitizeAvatarUrl(event.giftPictureUrlSnapshot);
-    if (!snap) continue;
-    const current = giftCatalog.get(event.giftId) ?? { labelJa: null, imageUrl: null };
-    if (!current.imageUrl) giftCatalog.set(event.giftId, { ...current, imageUrl: snap });
-    missingSet.delete(event.giftId);
-  }
-  if (missingSet.size === 0) return;
 
   const sourceIds = [...new Set(events.filter((e) => missingSet.has(e.giftId)).map((e) => e.sourceGiftId))];
   if (sourceIds.length === 0) return;
@@ -555,7 +554,8 @@ export function buildPayload(
         id: event.giftId,
         // 日本語名は表示専用。一致判定には使わない(LIVEのgiftイベント名は英語固定)。
         n: catalog?.labelJa ?? giftNameById.get(event.giftId) ?? "",
-        img: catalog?.imageUrl ?? giftPictureById.get(event.giftId) ?? null,
+        // 当時の受信画像を優先。カタログはスナップショットが無い(旧行・allowlist落ち)ときの控え。
+        img: giftPictureById.get(event.giftId) ?? catalog?.imageUrl ?? null,
       });
     }
 

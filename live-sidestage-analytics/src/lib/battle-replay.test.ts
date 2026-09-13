@@ -284,7 +284,7 @@ describe("buildPayload", () => {
     expect(withoutJa.gifts[0]).toEqual({ id: 5655, n: "Rose", img: null });
   });
 
-  it("カタログに画像が無ければ giftPictureUrlSnapshot を使い、カタログがあればカタログを優先する", () => {
+  it("giftPictureUrlSnapshot を優先し、無ければカタログ画像へ落とす", () => {
     const communityUrl = "https://p16-sg.tiktokcdn.com/community.png";
     const catalogUrl = "https://p16-sg.tiktokcdn.com/rose.png";
     const fromSnapshot = buildPayload(
@@ -296,14 +296,23 @@ describe("buildPayload", () => {
     );
     expect(fromSnapshot.gifts[0].img).toBe(communityUrl);
 
-    const catalogWins = buildPayload(
+    const snapshotWins = buildPayload(
       row({ participants: [participant({ giftEvents: [giftEvent({ giftPictureUrlSnapshot: communityUrl })] }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
       "private",
       NO_AVATARS,
       NO_AVATARS,
       new Map([[5655, { labelJa: "バラ", imageUrl: catalogUrl }]])
     );
-    expect(catalogWins.gifts[0].img).toBe(catalogUrl);
+    expect(snapshotWins.gifts[0].img).toBe(communityUrl);
+
+    const catalogFallback = buildPayload(
+      row({ participants: [participant({ giftEvents: [giftEvent({ giftPictureUrlSnapshot: null })] }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
+      "private",
+      NO_AVATARS,
+      NO_AVATARS,
+      new Map([[5655, { labelJa: "バラ", imageUrl: catalogUrl }]])
+    );
+    expect(catalogFallback.gifts[0].img).toBe(catalogUrl);
 
     const rejected = buildPayload(
       row({ participants: [participant({ giftEvents: [giftEvent({ giftPictureUrlSnapshot: "javascript:alert(1)" })] }), participant({ id: "p2", tiktokUid: OPP_UID, teamIndex: 1 })] }),
