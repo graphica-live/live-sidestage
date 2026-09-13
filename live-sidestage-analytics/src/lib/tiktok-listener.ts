@@ -70,6 +70,7 @@ import {
 } from "./realtime-sync/dispatch";
 import { parseCollabGroupChange, shouldWatchCollabSnapshot, isCollabCloseMessage } from "./tiktok-collab";
 import { recordCollabSourceLink, releaseCollabSourceLinksBySource, enqueueForSource } from "./tiktok-collab-source";
+import { filterCollabWatchSubjectsForQuota } from "./plan/collab-watch-quota";
 import {
   ensureRoomWatchedForCollab,
   markRoomHandleStale,
@@ -2513,10 +2514,16 @@ async function watchDiscoveredRooms(
   ownTiktokHandle: string,
   source: CollabWatchSource,
   ownWorkerIndex: number | undefined,
-  sourceRoomId: string
+  sourceRoomId: string,
+  streamerIds: string[]
 ): Promise<Map<string, CollabWatchResult | null>> {
+  const { subjects: quotaSubjects } = await filterCollabWatchSubjectsForQuota(
+    streamerIds,
+    sourceRoomId,
+    subjects
+  );
   const targets = new Map<string, TiktokRoomSubject>();
-  for (const subject of subjects) {
+  for (const subject of quotaSubjects) {
     const tiktokUid = normalizeTikTokUserId(subject.tiktokUid);
     if (!tiktokUid) continue;
     const tiktokHandle = normalizeTiktokId(subject.tiktokHandle);
@@ -2616,7 +2623,17 @@ function recordCollabGroupChange(roomId: string, ownTiktokHandle: string, data: 
   // sourceRoomId(roomId)単位で直列化する — CLOSE処理(releaseCollabSourceLinksBySource)との
   // 到着順保証のため、enqueue自体をこの同期ハンドラ内(イベント受信直後)で行う
   // (tiktok-collab-source.tsのenqueueForSourceコメント参照)。
-  void enqueueForSource(roomId, () => watchDiscoveredRooms(parsed.subjects, ownTiktokHandle, "collab", ownWorkerIndex, roomId));
+  const collabStreamerIds = Array.from(listeners.get(roomId)?.subscriberIds ?? []);
+  void enqueueForSource(roomId, () =>
+    watchDiscoveredRooms(
+      parsed.subjects,
+      ownTiktokHandle,
+      "collab",
+      ownWorkerIndex,
+      roomId,
+      collabStreamerIds
+    )
+  );
 }
 
 /**
@@ -2688,8 +2705,16 @@ function watchBattleOpponents(roomId: string, ownTiktokHandle: string, parsed: P
 
   // sourceRoomId(roomId)単位で直列化する(recordCollabGroupChangeと同じ理由。
   // tiktok-collab-source.tsのenqueueForSourceコメント参照)。
+  const battleStreamerIds = Array.from(listeners.get(roomId)?.subscriberIds ?? []);
   enqueueForSource(roomId, () =>
-    watchDiscoveredRooms([...opponentsByTiktokUid.values()], ownTiktokHandle, "battle_start", ownWorkerIndex, roomId)
+    watchDiscoveredRooms(
+      [...opponentsByTiktokUid.values()],
+      ownTiktokHandle,
+      "battle_start",
+      ownWorkerIndex,
+      roomId,
+      battleStreamerIds
+    )
   )
     .then((results) => {
       const entries: OpponentWatch = {};

@@ -20,6 +20,8 @@ export const FEATURE_POLICIES = {
   "mobile.entitlementProbe": { requiredPlan: "PRO" },
   "mobile.history.extendedRange": { requiredPlan: "PRO", betaArea: "analytics" },
   "mobile.history.listenerFilter": { requiredPlan: "PRO", betaArea: "analytics" },
+  /** コラボ相手roomの匿名監視。FREEは1日1コラボ・最大3人まで(collab-watch-quota.ts)。 */
+  "worker.collabOpponentWatch": { requiredPlan: "PRO", betaArea: "analytics" },
 } as const satisfies Record<string, FeaturePolicy>;
 
 // keyofで導出することで、未登録キーでの呼び出しはコンパイルエラーになる
