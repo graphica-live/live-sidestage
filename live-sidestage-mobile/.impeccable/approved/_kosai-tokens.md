@@ -50,15 +50,15 @@ line `#332C3B`。**compはライトのみ。ダークのグラデーション3�
 
 | 役割 | フォント | サイズ/weight |
 |---|---|---|
-| セクション見出し(グラデ文字) | Zen Maru Gothic | 22dp / w700 |
-| プライマリボタン | Zen Maru Gothic | 17dp / w800 |
-| リスト行タイトル | Zen Kaku Gothic New | 13.5dp / w700 |
-| リスト行サブ | Zen Kaku Gothic New | 11.5dp / w400 |
-| 設定行ラベル | Zen Kaku Gothic New | 13.5dp / w500 |
-| 設定行の値 | Zen Kaku Gothic New | 13.5dp / w700(色 c2) |
-| chip | Zen Kaku Gothic New | 11dp / w700 |
-| 注記(`.note`) | Zen Kaku Gothic New | 10dp / w400(色 sub) |
-| バッジ(FREE/WIN等) | Zen Kaku Gothic New | 11dp / w800 |
+| セクション見出し(グラデ文字) | M PLUS 2 | 22dp / w800 |
+| プライマリボタン | M PLUS 2 | 17dp / w800 |
+| リスト行タイトル | M PLUS 2 | 13.5dp / w700 |
+| リスト行サブ | M PLUS 2 | 11.5dp / w400 |
+| 設定行ラベル | M PLUS 2 | 13.5dp / w500 |
+| 設定行の値 | M PLUS 2 | 13.5dp / w700(色 c2) |
+| chip | M PLUS 2 | 11dp / w700 |
+| 注記(`.note`) | M PLUS 2 | 10dp / w400(色 sub) |
+| バッジ(FREE/WIN等) | M PLUS 2 | 11dp / w800 |
 
 数字はカンマ区切り(`formatWithCommas`)。
 

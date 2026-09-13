@@ -14,7 +14,7 @@ comp caption:
 
 | # | 要素 | 仕様 |
 |---|---|---|
-| 1 | 見出し「プランを選択」 | グラデ文字(`gradBadge`)Zen Maru Gothic 22dp w700 / 下12dp |
+| 1 | 見出し「プランを選択」 | グラデ文字(`gradBadge`)M PLUS 2 22dp w800 / 下12dp |
 | 2 | Google Play接続エラー(あるときのみ) | 13dp danger / 下12dp |
 | 3 | FREEカード | 白カード |
 | 4 | 余白 | 12dp |

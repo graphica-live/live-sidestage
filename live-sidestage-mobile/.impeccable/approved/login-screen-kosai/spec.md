@@ -15,7 +15,7 @@ comp caption:
 
 | # | 要素 | 仕様 |
 |---|---|---|
-| 1 | アプリ名「LIVE Sidestage」 | **グラデ文字**(`gradBadge` c1→c2)/ Zen Maru Gothic 28dp w700 / 中央 |
+| 1 | アプリ名「LIVE Sidestage」 | **グラデ文字**(`gradBadge` c1→c2)/ M PLUS 2 28dp w800 / 中央 |
 | 2 | 余白 | 8dp |
 | 3 | サブコピー「TikTok Liveのコメントを読み上げます」 | 13dp / sub / 中央 |
 | 4 | 余白 | 36dp |
@@ -40,7 +40,7 @@ comp caption:
 - 角丸: 8dp → **999dp(Stadium)**。`_buttonRadius` を `BorderRadius.circular(999)` に変更
 - Googleボタン: 単色 `FilledButton` → **グラデーションpill + 影**
 - メールボタン: 既定 `OutlinedButton` → **1.5dp c2 枠 / 文字 c2 w800 のpill**
-- アプリ名: 黒28dp bold → **グラデ文字**(Zen Maru Gothic 28dp w700)
+- アプリ名: 黒28dp bold → **グラデ文字**(M PLUS 2 28dp w800)
 - サブコピー: `Colors.grey` → **sub `#7C7286`**、13dp
 - エラー: `Colors.red` → **テーマの `colorScheme.error`**
 - プライバシーポリシー: 既定 `TextButton` → 12dp sub + 下線

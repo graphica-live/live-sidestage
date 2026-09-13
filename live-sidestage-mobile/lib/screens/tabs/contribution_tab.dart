@@ -716,8 +716,8 @@ class _ContributionTabState extends State<ContributionTab> with WidgetsBindingOb
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
                   child: GradientText(
                     '貢献',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-                        const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w800) ??
+                        const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                   ),
                 ),
                 Padding(

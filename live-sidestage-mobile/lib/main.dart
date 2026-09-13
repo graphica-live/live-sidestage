@@ -65,7 +65,7 @@ Future<void> main() async {
 /// primaryはグラデーションの中心色バイオレットを直接指定する。
 /// **`ColorScheme.fromSeed`任せにしない**(Material3のトーンパレット生成がseed色を
 /// 意図せずシフトする問題は2026-09-01の実機確認で既知のため、数値を直接指定する)。
-/// フォントは見出し/ボタンにZen Maru Gothic、本文・ラベル/データ表示にZen Kaku Gothic Newを使う。
+/// フォントは M PLUS 2 一本化。見出し/ボタンは ExtraBold 800、本文・ラベル/データは Regular–Bold。
 ThemeData buildAppTheme(Brightness brightness) {
   final isDark = brightness == Brightness.dark;
   const accent = Color(0xFF9B6BFF); // KosaiPalette.c2
@@ -101,22 +101,30 @@ ThemeData buildAppTheme(Brightness brightness) {
   );
 
   final base = ThemeData(brightness: brightness);
-  final displayFont = GoogleFonts.zenMaruGothicTextTheme(base.textTheme);
-  final bodyFont = GoogleFonts.zenKakuGothicNewTextTheme(base.textTheme);
+  final displayFont = GoogleFonts.mPlus2TextTheme(base.textTheme);
+  final bodyFont = GoogleFonts.mPlus2TextTheme(base.textTheme);
 
-  final textTheme = bodyFont
+  final withTabs = bodyFont
       .copyWith(
-        displayLarge: displayFont.displayLarge?.copyWith(fontWeight: FontWeight.w700),
-        displayMedium: displayFont.displayMedium?.copyWith(fontWeight: FontWeight.w700),
-        displaySmall: displayFont.displaySmall?.copyWith(fontWeight: FontWeight.w700),
-        headlineLarge: displayFont.headlineLarge?.copyWith(fontWeight: FontWeight.w700),
-        headlineMedium: displayFont.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
-        headlineSmall: displayFont.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-        titleLarge: displayFont.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        titleMedium: displayFont.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-        titleSmall: displayFont.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        displayLarge: displayFont.displayLarge?.copyWith(fontWeight: FontWeight.w800),
+        displayMedium: displayFont.displayMedium?.copyWith(fontWeight: FontWeight.w800),
+        displaySmall: displayFont.displaySmall?.copyWith(fontWeight: FontWeight.w800),
+        headlineLarge: displayFont.headlineLarge?.copyWith(fontWeight: FontWeight.w800),
+        headlineMedium: displayFont.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+        headlineSmall: displayFont.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+        titleLarge: displayFont.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+        titleMedium: displayFont.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        titleSmall: displayFont.titleSmall?.copyWith(fontWeight: FontWeight.w800),
       )
       .apply(bodyColor: ink, displayColor: ink);
+  final textTheme = withTabs.copyWith(
+    bodyLarge: withTabs.bodyLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+    bodyMedium: withTabs.bodyMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+    bodySmall: withTabs.bodySmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+    labelLarge: withTabs.labelLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+    labelMedium: withTabs.labelMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+    labelSmall: withTabs.labelSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+  );
 
   // 白磁カード・chip/badge/medalの円形など、光彩は要素ごとに角丸を変える
   // (Mixer Console時代の8px単一スケールから移行)。カード類は18px、

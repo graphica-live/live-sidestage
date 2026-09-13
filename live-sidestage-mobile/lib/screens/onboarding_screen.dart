@@ -221,8 +221,8 @@ class _IntroPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final headingStyle =
-        Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-            const TextStyle(fontSize: 22, fontWeight: FontWeight.w700);
+        Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w800) ??
+            const TextStyle(fontSize: 22, fontWeight: FontWeight.w800);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -277,8 +277,8 @@ class _LinkPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final headingStyle =
-        Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) ??
-            const TextStyle(fontSize: 22, fontWeight: FontWeight.w700);
+        Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w800) ??
+            const TextStyle(fontSize: 22, fontWeight: FontWeight.w800);
     return SingleChildScrollView(
       padding: const EdgeInsets.only(top: 24),
       child: Form(
