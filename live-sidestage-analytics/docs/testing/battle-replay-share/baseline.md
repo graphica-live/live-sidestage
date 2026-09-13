@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-09-10
+last_updated: 2026-09-14
 last_risk: LOW
 last_reviewers: [Code Mode]DeepSeek(high)、2026-09-10 共有ボタンアイコン化・位置変更・再生ボタン円形化
 ---
@@ -53,6 +53,7 @@ last_reviewers: [Code Mode]DeepSeek(high)、2026-09-10 共有ボタンアイコ�
 | TC-BRS-018 | 公開ページはリスナー・配信者のアバター画像を通常どおり表示する | `/b/[token]` | 正常 | アバター保存済みのリスナーが投げているバトルを公開URLで開く | `senders[].a` が非nullの署名付きURLで、貢献者一覧・再生画面のアイコンに実画像が出る（頭文字フォールバックにならない） | `[anon]` | PASS(2026-09-08) | 配信者の明示判断でリスナーアバター非表示の制約を撤回(2026-09-08)。アバターURLのオブジェクトキーにハンドルが含まれる点は把握済みでの判断。ハンドル文字列自体(`senders[].u`)は引き続き `null` |
 | TC-BRS-009 | 公開ページは検索索引の対象にせず、参照元も渡さない | `generateMetadata` | セキュリティ/回帰 | 公開URLを開いて `<head>` を読む | `robots` が `noindex, nofollow`、`referrer` が `same-origin` | `[anon]` | PASS（`noindex, nofollow` / `same-origin`） | URLを知る人向けであってSEO対象ではない。HTTPヘッダ側は TC-BRA-032 |
 | TC-BRS-010 | 共有ページのタイトルとOGPがバトル名になる | `generateMetadata` / `replayTitleOf` | 正常 | 2陣営のバトル | `<title>` が `{自分} vs {相手} \| LIVE Sidestage`、`og:title` が `{自分} vs {相手}` | `[anon]` | PASS（`配信者 vs 配信者 \| LIVE Sidestage` / `配信者 vs 配信者`） | 表示名はニックネームのみ（ハンドルを含まない） |
+| TC-BRS-022 | 共有ページのOGP画像は配信者本人のアバターであり、貢献者画像ではない | `generateMetadata` / `selfAvatarUrlOf` | 正常/回帰 | 本人アバターありの公開URLを開き `<head>` を読む | `og:image`（と `twitter:image`）が本人 `avatarUrl` と一致する。貢献者・相手のURLは入らない | `[unit]`, `[anon]` | PASS（unit 2026-09-14） | LINE/DMは `og:image` 未指定だとページ先頭の貢献者 `<img>` をサムネイルにする |
 | TC-BRS-011 | 貢献者一覧タブはバトル全体を陣営ごとに合算し、金額降順で並べる | `teamTotalsOf` | 正常/境界/empty state | 複数陣営・複数送信者 / ギフト明細0件の陣営 / 複数人コラボの陣営 | 陣営ごとに送信者を合算し降順。同額は送信者添字順。明細0件の陣営も行が残る（`observedCoins: 0`）。複数人コラボの陣営名は参加者名を ` / ` で連結 | `[unit]` | PASS（35 tests） | 再生画面の貢献者ボード（`contributorsAt`）と違い、時刻で切らず自陣営に限定もしない（第三者向けの全体像） |
 | TC-BRS-012 | クリップボードが使えない環境ではURLを選択可能なテキストで出す | `ShareButton` | 異常/境界 | `navigator.clipboard` が無い状態でシェアを押す | 読み取り専用の入力欄に共有URLが出てフォーカスで全選択される。黙って失敗しない | `[pw]` | PASS（`readonly` の入力欄に `?v=list` 付きURL） | 非 secure context（`http://` の実機確認など）で起きる |
 | TC-BRS-013 | 管理者向けのバトル詳細でも配信者本人と同じシェアボタンが使え、発行したリンクは第三者が本人発行時と同じように開ける | `BattleDetailModal` / `ShareButton` | 正常/認可/回帰 | `/admin/rooms/<roomId>` のバトル履歴からモーダルを開く | 一覧モードで押すと `<origin>/b/<48桁トークン>?v=list` がクリップボードに入りボタン文言が「リンクをコピーした」へ変わる(TC-BRS-001と同形式)。再生モードで押すと同一トークンで `?v=replay`(TC-BRS-002と同形式)。**このトークンは本人が同じバトルで発行した場合と同一の値**(`ensureShareToken(roomId, battleId)` を共有するため)。発行したURLを別の匿名 context で開くと `/login` へ飛ばされず両モードとも再生できる(TC-BRS-003相当) | `[admin]` | PASS(2026-09-09、`?v=list`トークン一致・匿名open成功) | 2026-09-09: 発行APIが `/api/admin/rooms/[roomId]/analytics/battles/[battleId]/share` に新設され、以前の「adminには出さない」仕様を反転した。認可・404/401・冪等性の保証は `docs/testing/battle-replay-api/baseline.md` の TC-BRA-040。ShareButtonのHTTPエラー時のerror state表示は本変更で新設したものではなく既存ロジック(このbaselineに未収載の既存カバレッジギャップ、今回のスコープ外) |
