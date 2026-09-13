@@ -23,6 +23,10 @@ import '../widgets/period_selector.dart';
 import '../widgets/ranking_list_tile.dart';
 import '../widgets/user_avatar.dart';
 
+const _freeBattleCollectionLimitMessage =
+    'FREEプランでは1日1件までバトルデータを収集できます。すべてのバトルを記録するにはPROへアップグレードしてください。';
+const _freeBattleCollectionLimitCta = 'PROへアップグレード';
+
 /// バトル履歴タブ。行をタップするとそのバトル区間の貢献者一覧をボトムシートで開く。
 ///
 /// バトル終了(またはEND後のスコア確定)を受け取ると[BattleActivityNotifier]経由で
@@ -490,6 +494,11 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
               style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
+          if (planGate.showFreeBattleCollectionLimit)
+            const FreePlanLimitNotice(
+              message: _freeBattleCollectionLimitMessage,
+              ctaLabel: _freeBattleCollectionLimitCta,
+            ),
           // comp `.threshold-row`。しきい値そのものは設定タブで変えられる。
           Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),

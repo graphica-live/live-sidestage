@@ -25,4 +25,8 @@ class PlanGate {
 
   bool get canUseExtendedHistoryRange => status.hasFeature('mobile.history.extendedRange');
   bool get canUseListenerFilter => status.hasFeature('mobile.history.listenerFilter');
+
+  /// バトル履歴タブの収集制限案内。確認済みFREEのみ。
+  /// mobile β中・[AccountStatus.isFallback](未取得/通信失敗)は出さない。
+  bool get showFreeBattleCollectionLimit => isFree && !status.isFallback;
 }

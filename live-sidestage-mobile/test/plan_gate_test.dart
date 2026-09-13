@@ -22,6 +22,7 @@ void main() {
     final gate = PlanGate(_status(plan: 'FREE'));
 
     expect(gate.isFree, isTrue);
+    expect(gate.showFreeBattleCollectionLimit, isTrue);
     expect(gate.canUseRandomVoice, isFalse);
     expect(gate.canAdjustTtsSpeed, isFalse);
     expect(gate.canUseAllVoices, isFalse);
@@ -33,6 +34,7 @@ void main() {
 
     expect(gate.status.plan, 'FREE');
     expect(gate.isFree, isFalse);
+    expect(gate.showFreeBattleCollectionLimit, isFalse);
     expect(gate.canUseRandomVoice, isTrue);
     expect(gate.canAdjustTtsSpeed, isTrue);
     expect(gate.canUseAllVoices, isTrue);
@@ -54,5 +56,14 @@ void main() {
     final gate = PlanGate(_status(plan: 'PRO'));
 
     expect(gate.isFree, isFalse);
+    expect(gate.showFreeBattleCollectionLimit, isFalse);
+  });
+
+
+  test('fallback FREE does not show battle collection limit notice', () {
+    final gate = PlanGate(AccountStatus.fallback);
+    expect(gate.status.plan, 'FREE');
+    expect(gate.isFree, isTrue);
+    expect(gate.showFreeBattleCollectionLimit, isFalse);
   });
 }

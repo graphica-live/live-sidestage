@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/upgrade_notice.dart';
+import 'gradient_kit.dart';
+
 /// 貢献/ギフト履歴/バトル履歴タブ共通のエラー表示。
 ///
 /// 光彩(Kosai)では画面幅いっぱいの帯ではなく、他のカードと同じ16dpの内側に
@@ -73,6 +76,78 @@ class EmptyListNotice extends StatelessWidget {
           message,
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// FREEプラン制限の常時案内。エラー帯([AnalyticsErrorBanner])とは色を分け、
+/// [VerifiedLockNotice]と同じ控えめなカード骨格。CTA文言だけ Kosai c2 で導線と分かる。
+class FreePlanLimitNotice extends StatelessWidget {
+  const FreePlanLimitNotice({
+    super.key,
+    required this.message,
+    required this.ctaLabel,
+    this.onUpgrade,
+  });
+
+  final String message;
+  final String ctaLabel;
+  final VoidCallback? onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    final sub = Theme.of(context).colorScheme.onSurfaceVariant;
+    final ctaIndex = message.indexOf(ctaLabel);
+    final TextSpan body;
+    if (ctaIndex < 0) {
+      body = TextSpan(text: message, style: TextStyle(fontSize: 11.5, color: sub, height: 1.45));
+    } else {
+      final base = TextStyle(fontSize: 11.5, color: sub, height: 1.45);
+      body = TextSpan(
+        style: base,
+        children: [
+          TextSpan(text: message.substring(0, ctaIndex)),
+          TextSpan(
+            text: ctaLabel,
+            style: const TextStyle(
+              color: KosaiPalette.c2,
+              fontWeight: FontWeight.w800,
+              decoration: TextDecoration.underline,
+              decorationColor: KosaiPalette.c2,
+            ),
+          ),
+          TextSpan(text: message.substring(ctaIndex + ctaLabel.length)),
+        ],
+      );
+    }
+
+    return Semantics(
+      button: true,
+      label: message,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onUpgrade ?? () => openSubscriptionScreen(context),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: sub.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 28),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text.rich(body),
+              ),
+            ),
+          ),
         ),
       ),
     );

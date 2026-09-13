@@ -24,6 +24,13 @@ void _showTimedSnackBar(BuildContext context, SnackBar snackBar, Duration durati
   _timedSnackBarTimer = Timer(duration, messenger.removeCurrentSnackBar);
 }
 
+/// プラン選択画面へ進む共通導線。SnackBar・常時案内の両方から使う。
+void openSubscriptionScreen(BuildContext context) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => const SubscriptionScreen()),
+  );
+}
+
 /// ロックされた機能をタップしたときの案内。常時表示にはせず、一定時間で自動的に消す
 /// (以前は画面ごとに常時表示の警告行を持っていたが、消えないとの指摘を受けてタップ時表示に変更)。
 void showUpgradeRequiredNotice(BuildContext context, String message) {
@@ -34,9 +41,7 @@ void showUpgradeRequiredNotice(BuildContext context, String message) {
       duration: _upgradeNoticeDuration,
       action: SnackBarAction(
         label: 'アップグレード',
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => const SubscriptionScreen()),
-        ),
+        onPressed: () => openSubscriptionScreen(context),
       ),
     ),
     _upgradeNoticeDuration,
