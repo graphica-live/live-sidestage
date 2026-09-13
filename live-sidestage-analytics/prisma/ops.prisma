@@ -1,0 +1,83 @@
+// public - ops KV / catalogs / db stats
+
+
+model AppSetting {
+  key       String   @id
+  value     String?  @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@schema("public")
+}
+
+
+// TikTokの全ギフトカタログ(webcastの `gift/list/` の結果)。全部屋で共有する1枚のテーブル。
+// ギフトはほぼグローバルなので部屋ごとには持たない(部屋限定ギフトは和集合として混ざる)。
+//
+// **効果音の一致キーはgiftIdではなく名前。** gift/list/ は同じ名前に複数のgiftIdを割り当てており
+// (実測670件中29名が重複)、giftId自体もレスポンス内で重複する(実測4行)。giftId照合にすると
+// 同名の別IDを取りこぼすうえ、ピッカーに区別のつかない同名行が並ぶ。
+// giftIdを主キーにしているのはカタログを素直な鏡として持つためだけで、
+// 消費側(GET /api/mobile/gifts)は name で畳んでコイン数の範囲に集約して返す。
+//
+// upsertのみで削除はしない。したがって実体は「現在のカタログ」ではなく
+// **「これまでに観測したカタログの和集合」**になる。候補一覧を出すのが目的なので意図的にそうしている
+// (TikTok側のA/Bやproxyの地域差で一時的に欠けたギフトを消したくない)。
+model TiktokGiftCatalog {
+  giftId       Int      @id // gift/list/ の gift.id
+  name         String // 一致キー。trim + 小文字化済み(chat:giftのgiftNameと同じ正規化)
+  label        String // 表示用。カタログの元表記(英語)
+  // TikTok公式の日本語表示名。`webcast_language=ja-JP` で叩いた gift/list/ から採る。
+  // **表示専用。一致キーには使わない**(LIVEのgiftイベントは英語で来るため)。
+  // 日本語版の取得に失敗した場合や、日本語環境でも英語表記のギフト以外で埋まらない場合は null。
+  // 一時的な取得失敗で消えないよう、upsert時は COALESCE で既存値を守る。
+  labelJa      String?
+  diamondCount Int      @default(0)
+  // ギフトのアイコン。gift/list/ の `image.url_list` から isAllowedAvatarUrl() を通ったURLだけを入れる。
+  // avatar と違って**署名(x-expires)が付かないので永続化しても腐らない**。取れなければ null。
+  imageUrl     String?
+  fetchedAt    DateTime @default(now()) // 最後にカタログから見た時刻。TTL判定に使う。**upsert時に明示更新する**
+
+  @@index([name])
+  @@map("tiktok_gift_catalog")
+  @@schema("public")
+}
+
+
+// TikTok(バトル参加者・ギフト送信者)のアバター画像を自前ストレージへ恒久保存したキャッシュ。
+// TikTokの署名付きURL(数十時間で失効)への依存を切るため、圧縮のうえ1回だけダウンロードして
+// Railway Bucketへ置く。roomIdを持たない(tiktokUidはグローバルに一意なので、
+// 同じ人物が複数配信者に登場しても1回のダウンロードで済む)。
+//
+// **kindは持たない。** 2026-09の識別子統一で主体が tiktokUid(数値ID)1種類になり、
+// ホスト・ギフト送信者・イベント参加者のどれで現れても1行・1オブジェクトになった。
+model TiktokAvatarAsset {
+  id          String   @id @default(cuid())
+  tiktokUid   String
+  storageKey  String
+  contentType String
+  byteSize    Int
+  fetchedAt   DateTime @default(now()) // 7日超で再取得(avatar-storage.ts)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tiktokUid])
+  @@map("tiktok_avatar_assets")
+  @@schema("public")
+}
+
+
+// 毎朝JST6:00にevent-workerが記録する全テーブルの件数・サイズのスナップショット
+// (src/lib/db-stats/collect.ts)。前日比+25%超の増分をメールへ通知する異常検知の原本データ。
+// runDateはJST暦日単位で、@@uniqueが「その日は記録済みか」の判定と再起動時の二重実行防止を兼ねる。
+model DbStatsSnapshot {
+  id         String   @id @default(cuid())
+  runDate    DateTime @db.Date
+  schemaName String
+  tableName  String
+  rowCount   BigInt
+  totalBytes BigInt
+  recordedAt DateTime @default(now())
+
+  @@unique([runDate, schemaName, tableName])
+  @@index([schemaName, tableName, runDate])
+  @@schema("public")
+}

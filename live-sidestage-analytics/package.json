@@ -2,6 +2,9 @@
   "name": "live-analytics",
   "version": "0.1.0",
   "private": true,
+  "prisma": {
+    "schema": "prisma"
+  },
   "scripts": {
     "dev": "node server.js",
     "worker": "tsx worker.ts",

@@ -13,7 +13,7 @@ npx prisma migrate dev --name "describe_your_change"
 ```
 
 `prisma migrate dev` は以下を自動実行します:
-- `schema.prisma` の差分をスキャン
+- Prisma schema set の差分をスキャン
 - 差分に対応する migration.sql を生成
 - ローカルDBへ本番同様に適用（タイムスタンプ付きmigration.sqlをファイルとして保存）
 - TypeScript型定義の更新（`prisma generate`）
@@ -62,7 +62,7 @@ main へのマージ後、Railway の CI/CD が以下を自動実行します:
 ALTER TABLE public."Streamer" ADD COLUMN "newColumn" TEXT;
 ```
 
-- `schema.prisma` には新しい列を追加
+- Prisma schema set には新しい列を追加
 - アプリケーション側は古い列を読み書きし続ける
 - **新しい列には書き込まない**
 
@@ -96,12 +96,12 @@ npx prisma migrate dev --name "drop_old_column"
 本番DB初回セットアップ時、以下を実行してbaseline と Wave1-B CHECK制約を登録します。
 `migrate resolve --applied` は SQL を一切実行せず履歴だけを「適用済み」にするため、**手順0で実DBが本当に `0_init` + Wave1-B 相当であることを確認してから**進めること（確認せずに登録すると、不足分の DDL が永久にスキップされる）:
 
-0. 実DBが `schema.prisma` と一致し、Wave1-B の5制約が実在することを確認:
+0. 実DBが Prisma schema set と一致し、Wave1-B の5制約が実在することを確認:
    ```bash
    # 差分が空（exit 0）であること。room_monitor_leases / hostDisplayIds / scheduledStartAt / scheduledEndAt が
    # まだ残っている等で差分が出た場合は resolve せず、原因を潰してから再確認する
    DATABASE_URL=<本番PostgreSQL接続URL> npx prisma migrate diff \
-     --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+     --from-url "$DATABASE_URL" --to-schema-datamodel prisma --exit-code
    ```
    ```sql
    -- 5行返り、すべて convalidated = true であること
@@ -176,7 +176,7 @@ git revert <commit_hash>
 
 **Batch 02 のマージコミット（Dockerfile CMD の `db push` 除去）より前のイメージへは絶対に戻さないこと。**
 
-理由: Batch 02 より前のイメージの Dockerfile CMD には `prisma db push --accept-data-loss` が残っており、cutover 後に migration で追加された列・テーブルを持つ本番 DB に対して起動すると、旧 `schema.prisma` との差分をデータごと DROP します。
+理由: Batch 02 より前のイメージの Dockerfile CMD には `prisma db push --accept-data-loss` が残っており、cutover 後に migration で追加された列・テーブルを持つ本番 DB に対して起動すると、旧 Prisma schema set との差分をデータごと DROP します。
 
 ### Migration のロールバック
 
@@ -238,15 +238,15 @@ A: Railway ダッシュボードで Pre-Deploy Command のログを確認して�
 - 依存順序ミス（FK 制約などに関連） → migration 間の順序を確認
 - 権限不足 → Postgres ロールの権限を確認
 
-### Q: Schema ドリフト（DB と schema.prisma の不一致）が起きた
+### Q: Schema ドリフト（DB と Prisma schema set の不一致）が起きた
 
 A: 以下で確認・修正できます:
 
 ```bash
 # 差分を確認
 npx prisma migrate diff \
-  --from-schema-datasource prisma/schema.prisma \
-  --to-schema-datamodel prisma/schema.prisma \
+  --from-schema-datasource prisma \
+  --to-schema-datamodel prisma \
   --script --exit-code
 ```
 

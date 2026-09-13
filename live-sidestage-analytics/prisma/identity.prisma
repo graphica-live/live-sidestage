@@ -1,0 +1,405 @@
+// public - TikTok identity / rooms / Streamer / Agency
+
+
+// TikTokアカウントの正本。主キーは不変の数値ID(TLC の anchorIdStr / data.userId)。
+// tiktokHandle と nickname は「最後に観測した表示用スナップショット」で、識別キーではない。
+//
+// **tiktokHandle → tiktokUid の逆引き表として使ってはならない。**
+// 改名で空いたハンドルは第三者が取得しうるため、ハンドルから引いた tiktokUid は信用できない。
+// よって tiktokHandle に unique を張らない(同一ハンドルを別時点で別 tiktokUid が持つのは正常)。
+//
+// 書き込みは src/lib/tiktok-user.ts の recordTikTokUser() だけ。更新は「非nullの値だけ反映する」
+// last-write-wins(後続イベントが表示名を欠いていても既知の値を潰さない)。
+model TikTokUser {
+  tiktokUid    String   @id
+  tiktokHandle String?
+  nickname     String?
+  firstSeenAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tiktokHandle]) // 運用調査専用(完全一致で引く psql 用)。b-treeなのでILIKE '%…%'には効かない
+  @@map("tiktok_users")
+  @@schema("public")
+}
+
+
+// 1つのTikTokアカウント(hostTiktokUid)につき1本のTikTok Live接続を共有するための実体。
+// 複数のStreamer行(=複数ユーザー)が同じTikTokアカウントを登録した場合、全員がこのTiktokRoomを
+// 経由して同じ接続・同じGiftデータを参照する(接続リソースの重複と、orderIdユニーク制約
+// 違反によるギフト取りこぼしを防ぐため)。
+model TiktokRoom {
+  id                String    @id @default(cuid())
+  // 可変の@ハンドル。正規化済み(小文字化・trim・先頭@除去)。**同一性の判定キーではない**
+  // (room の同一性は hostTiktokUid で定義する)。改名で空いたハンドルを第三者が取得しうるので、
+  // 同じ tiktokHandle を持つ行が複数存在するのは正常。TikTok接続にはハンドルが要るので保持する。
+  tiktokHandle      String
+  deviceId          String?
+  workerId          Int? // 担当Workerプロセス番号(hash(roomId) % WORKER_COUNTで初回決定するが既定値にすぎない。worker-guardianの死亡移送・コラボ自己申告(ensureRoomWatchedForCollab)がhashと無関係な値を書くため、この列の値が常に正)
+  proxyKey          String? // TIKTOK_PROXY_POOL内のインデックス(sticky割当、egress IP分散用)
+  // このroomの監視をensureRoomWatchedForCollab()が新規作成/再開したときの発見経路。
+  // "collab"(コラボ承諾のlinkLayer検知) | "battle_start"(バトル開始action:4の補助検知)。
+  // Streamer登録・AgencyWatch・イベント監視由来はnullのまま。最初に監視を始めた経路を残す
+  // (以後同じroomが別経路で再検知されても上書きしない。tiktok-room.ts参照)。
+  watchSource       String?
+  watchSourceAt     DateTime?
+  // このroomが直近どのroomのコラボ/バトル検知によって監視対象へ引き込まれたか(発見元roomのID)。
+  // watchSourceと異なり「直近の引き金」を毎回上書きする(watchSourceは「最初の発見経路」で不変)。
+  // FK無し(発見元roomが後で削除されても残骸として残るだけで無害。EulerSignUsageの
+  // スナップショット列と同じ設計判断)。/admin/workers「コラボ署名消費」列の集計専用。
+  lastCollabSourceRoomId String?
+  lastCollabSourceAt     DateTime?
+  // 開発用フラグ。trueのroomは、コラボ相手・バトル相手発見(recordCollabGroupChange/
+  // watchBattleOpponents)のキック条件をStreamer購読と無関係に満たす(tiktok-listener.ts参照)。
+  // 管理画面(/admin/workers)の「特別監視」トグルからのみ変更する。監視対象自体の判定
+  // (watchedRoomFilter)には影響しない — あくまでコラボ発見の「発見元になれるか」のフラグ。
+  specialWatch      Boolean   @default(false)
+  listenerStatus    String?
+  listenerMessage   String?
+  listenerUpdatedAt DateTime?
+
+  // --- 表示用に正規化した接続状態 ---
+  //
+  // listenerStatus は「配信しているか」と「接続が健全か」を1つの文字列に混ぜている。
+  // 特に retrying は オフライン / 接続失敗 / 署名APIのレート制限 のすべてに使われ、
+  // updateState(..., "error") は一度も呼ばれない。この2軸に分けないと
+  // 「配信開始待ち」と「TikTok側の障害」を区別して出せない。
+  //
+  // **listenerStatus の意味は変えない。** tiktok-room-cleanup.ts の候補抽出
+  // (listenerStatus IN ('retrying','error')) をはじめ既存の消費者がそのまま動く。
+  // これらは追加の列で、書き込みは persistState() に一本化する。
+  listenerActivity String? // "live" | "offline" | "unknown"
+  listenerHealth   String? // "ok" | "connecting" | "error"
+  listenerReason   String? // scheduleReconnect() の reason。問い合わせ時の切り分け用
+
+  // 書き込み順序の正本。**単調増加で、これより小さい値の書き込みは棄却する**(fencing)。
+  //
+  // persistState() は await されず順序保証もないので、同一プロセス内でも
+  // 「古い connected heartbeat が retrying の後に着弾する」ことがある。さらにデプロイ中は
+  // 新旧Workerが同じ部屋へ並走し、旧Workerのshutdownが書く idle が新Workerの connected に
+  // 勝ちうる。壁時計は複数コンテナ間で単調ではないので、DB採番の世代(ListenerEpoch)を使う。
+  //
+  // 値は epoch * LISTENER_REVISION_STRIDE + プロセス内連番。
+  listenerRevision BigInt?
+  // イベント(event スキーマ側)が期限付きで監視を要求している場合の期限。
+  // これが未来の間は、Streamerが1人もいなくてもWorkerが接続を維持する(getMyRooms参照)。
+  // 期限切れ後は次のreconcileで切断されるが、受信済みのGiftはそのまま残る。
+  monitorUntil     DateTime?
+  createdAt        DateTime  @default(now())
+
+  // Sidestageユーザー(Streamer登録/AgencyWatch/monitorUntil)に紐づかない匿名観測room
+  // (コラボ検知等で発見されただけのroom)を対象にした、無視聴放置による自動監視停止
+  // (anonymousRoomAutoStopEnabled、tiktok-listener.ts watchedRoomFilter参照)用。
+  // 「監視指示」(resolveRoomForStreamer/ensureRoomWatchedForCollab/オーバーレイアクセス等)
+  // のたびにreviveSuspendedMonitoring()が現在時刻へ更新する。新規create時は@default(now())
+  // により初回監視指示として扱われる。
+  lastWatchInstructedAt DateTime @default(now())
+
+  // --- TikTok非実在Streamer自動削除(tiktok-room-cleanup.ts)用 ---
+  // listenerStatusがretrying/errorに入った最初の時刻。connectedに戻ったらnullに戻す。
+  // "connecting"遷移では絶対に触らない(再接続試行のたびに数十秒間隔で走るため、
+  // ここでリセットすると不健全継続時間が永久にゼロへ巻き戻ってしまう)。
+  // 書き込みはpersistState()(tiktok-listener.ts)に一本化する。
+  unhealthySince       DateTime?
+  // fetchTiktokProfile()がNOT_FOUNDを連続で返した回数。ok:trueで確定的に0へリセットする。
+  // RATE_LIMITED/ERRORでは増減しない(判定不能として無視。TikTok側の一時的なレート制限が
+  // 続く間は永久に連続回数を達成できなくなる自己矛盾を避けるため)。
+  notFoundStreak       Int       @default(0)
+  // 上記ストリークの初回NOT_FOUND検出時刻。ストリークが0に戻ったらnullに戻す。
+  notFoundFirstAt      DateTime?
+  // このRoomに対しfetchTiktokProfile()を最後に実行した時刻(結果を問わず)。
+  // 同じ部屋への過度な再チェックを防ぐクールダウンと、候補選定の公平なローテーションに使う。
+  lastExistenceCheckAt DateTime?
+
+  // --- 低価値Room監視停止(tiktok-low-value-cleanup.ts)用 ---
+  // このRoomに対し低価値クリーンアップの判定を最後に実行した時刻(結果を問わず)。
+  // lastExistenceCheckAtと同じ理由(クールダウン+候補ローテーションの公平性)で持つ。
+  // reviveSuspendedMonitoring()等の監視復帰処理からも現在時刻で書き込まれる——復帰直後
+  // すぐ次の低価値判定サイクルの対象へ戻り再停止される事故を防ぐため(CHECK_COOLDOWN_MS)。
+  lastLowValueCheckAt     DateTime?
+  // --- 403/ブロック検知によるworker再割当(worker-guardian.ts)用 ---
+  // TikTok側からの403応答(isBlockedError())が連続した回数。connectAndAttach()の
+  // 接続失敗時・conn.on("error")時にrecordBlockedAttempt()がincrementし、
+  // persistState()がstatus="connected"到達時に0へリセットする(notFoundStreakと
+  // 同じCASE式パターン)。worker-guardian.tsがこの値の閾値超過を検知して別workerへの
+  // 再割当を行う。全workerを試し尽くしても解消しなければmonitoringSuspended:trueにして
+  // give-upし、以降はreviveSuspendedMonitoring()経由の復帰でこの値も0に戻る。
+  consecutiveBlockedCount Int       @default(0)
+  // true の間、watchedRoomFilter() はこのRoomの Streamer を「監視対象」から除外する
+  // (Worker接続を維持しない)。**データは一切削除しない** — Streamer/
+  // overlayToken/Gift/BattleHistory はすべてそのまま残る。ユーザーが再ログイン/
+  // 再アクセスすると markLastActive() が自動でfalseへ戻し、次のreconcileで監視が復活する。
+  monitoringSuspended     Boolean   @default(false)
+
+  // TikTokの不変な数値ID(api-live/user/room/ の data.user.id、バトルpayloadのanchorIdStr)。
+  // **room の同一性はこの列で定義する**(ハンドルではない)。登録ゲート
+  // (requireExistingTiktokAccount)が実在確認の応答から得た値を room 作成時に必ず渡すので
+  // NOT NULL。後から埋める backfill(旧 tiktok-host-id.ts)は廃止した。
+  hostTiktokUid String    @unique
+  // 接続直前の uid 照合(tiktok-listener.ts)で「この room の tiktokHandle が別人のものになった」
+  // と判定した時刻。立っている間は接続せず、削除候補判定(suspendNotFoundRoom)からも外す。
+  // hostProfiles 観測または本人の再登録でハンドルが更新されたら null に戻す。
+  handleStaleAt DateTime?
+
+  streamers             Streamer[]
+  gifts                 Gift[]
+  listenerComments      ListenerComment[]
+  battles               TiktokBattle[]
+  battleItemUses        TiktokBattleItemUse[]
+  battleBonusMissions   TiktokBattleBonusMission[]
+  battleArmiesSnapshots TiktokBattleArmiesSnapshot[]
+  battleTapPoints       TiktokBattleTapPoint[]
+  battleHistories       BattleHistory[]
+  contributionShareTokens ContributionShareToken[]
+  watches               AgencyWatch[]
+  connectionIntervals   RoomConnectionInterval[]
+  collabSources         TiktokRoomCollabSource[]
+
+  // getMyRooms()の「担当workerId かつ (購読者あり または monitorUntilが未来)」検索用。
+  // 期限切れの監視要求が蓄積しても30秒ごとのreconcileが重くならないようにする。
+  @@index([workerId, monitorUntil])
+  // tiktok-room-cleanup.tsの候補抽出クエリ用(listenerStatus + unhealthySince の複合条件)。
+  @@index([listenerStatus, unhealthySince])
+  // 運用調査用(psqlからハンドルで引く)。**アプリコードの同一性判定には使わない**。
+  @@index([tiktokHandle])
+  // /admin/workers「コラボ署名消費」列の集計用(lastCollabSourceRoomId IN (...)で絞り込む)。
+  @@index([lastCollabSourceRoomId])
+  @@schema("public")
+}
+
+
+// コラボ相手roomの監視を「発見元roomがコラボを続けている間」だけ維持するための
+// 多対多リンク(監視対象room × 発見元room)。lastCollabSourceRoomId(TiktokRoom)とは役割が
+// 異なる — あちらは「直近の引き金1件」の集計専用スナップショットで上書き型、こちらは
+// 「現在有効な発見元の集合」を保持し、コラボ解散(TYPE_LINKER_CLOSE)検知で該当行を消す。
+//
+// 前提: 1つのsourceRoomは同時に複数の独立したコラボセッションを保持しない。コラボ検知時点
+// (messageType:18)ではセッションID(channelId)が安定して取得できない(実測: 169件全件で
+// channelIdが自分自身のroomIdと一致)ため、この前提のもとsourceRoomId単位でリンクを扱う。
+// 将来この前提が崩れた場合は{watchedRoomId, sourceRoomId, collabSessionId}のセッション単位
+// 管理へ拡張する必要がある(2026-09-12 himeka.officialでの実測を根拠に採用。tiktok-listener.ts
+// のTYPE_LINKER_CLOSE購読処理・tiktok-collab-source.tsのコメント参照)。
+model TiktokRoomCollabSource {
+  id            String   @id @default(cuid())
+  watchedRoomId String
+  // 発見元roomのID。FK無し(論理参照、lastCollabSourceRoomIdと同じ設計判断) — 発見元roomが
+  // 削除された場合、残ったリンクはlastSeenAtのTTL掃除で消えるだけで、削除済みroomから
+  // TYPE_LINKER_CLOSEは届かないため停止は起きずタイムアウトに委ねられる(安全側)。
+  sourceRoomId  String
+  createdAt     DateTime @default(now())
+  // TTL cleanupの基準はこちら(createdAtではない)。createdAtを基準にすると30分以上継続する
+  // 正常なコラボまでstale扱いになるため、再検知のたびに更新するlastSeenAtを使う。
+  lastSeenAt    DateTime @default(now())
+
+  watchedRoom TiktokRoom @relation(fields: [watchedRoomId], references: [id], onDelete: Cascade)
+
+  @@unique([watchedRoomId, sourceRoomId])
+  @@index([sourceRoomId])
+  @@index([lastSeenAt])
+  @@map("tiktok_room_collab_sources")
+  @@schema("public")
+}
+
+
+// /admin/workers管理画面からの完全削除・監視解除(一時停止)の監査ログ。
+// 既存の監査ログ3種(worker-guardian/tiktok-room-cleanup/tiktok-low-value-cleanup)は
+// AppSettingにJSON配列をtrimして保存する方式だが、完全削除の記録はtrimで失われては
+// ならない(不可逆操作の唯一の事後追跡手段のため)ので専用テーブルを新設する。
+model TiktokRoomAdminAuditLog {
+  id            String   @id @default(cuid())
+  action        String // "delete" | "suspend" | "toggle_special_watch"
+  roomId        String // 削除後はTiktokRoom自体が無いのでFKは張らない(論理参照)
+  tiktokHandle  String // 削除後にroomIdだけでは何のRoomか分からなくなるため必須保持
+  operatorEmail String // getAdminSession()経由のセッションemail(ADMIN_EMAIL固定だが将来の複数管理者化に備え記録)
+  detail        Json? // 削除時: { streamerCount, watchCount, agencyIds, giftCount, battleHistoryCount }
+  createdAt     DateTime @default(now())
+
+  @@index([roomId])
+  @@index([createdAt])
+  @@map("tiktok_room_admin_audit_logs")
+  @@schema("public")
+}
+
+
+// Room/listenerの接続区間ログ(Battle非依存の汎用観測)。バトル確定処理の
+// captureStatus/captureCoverage算出(RoomConnectionIntervalの区間unionをbattle windowに
+// 重ねて被覆率を出す)に使う。
+//
+// endedAt:nullは「接続中」を表すが、Worker crash等でこの行が更新されなくなる可能性があるため
+// lastHeartbeatAtを持つ。coverage算出時、lastHeartbeatAtが閾値(例: 90秒)を超えて更新停止していれば
+// その時刻で打ち切ったものとして扱う(でないとcrash後のバトルが偽の100%coverageになる)。
+model RoomConnectionInterval {
+  id               String    @id @default(cuid())
+  roomId           String
+  startedAt        DateTime
+  endedAt          DateTime?
+  disconnectReason String?
+  lastHeartbeatAt  DateTime  @default(now())
+
+  room TiktokRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, startedAt])
+  @@index([roomId, endedAt])
+  @@map("room_connection_intervals")
+  @@schema("public")
+}
+
+
+// EulerStream署名API(WebSocket接続用の署名)への実際のリクエストを1回につき1行記録する。
+// 「謎のAPIトークン消費」の原因究明用。
+//
+// **記録境界は `conn.connect()` ではなく、tiktok-live-connectorが実際に
+// `fetchSignedWebSocketFromEuler` を呼ぶ瞬間(`signedWebSocketProvider`)。**
+// `conn.connect()` は fetchRoomInfoOnConnect のオフライン判定(UserOfflineError)で
+// 署名取得前に終わることがあり、そちらまで1行にすると「オフライン配信者への
+// 30秒ごとの再試行」が大量に紛れ込み、実際のトークン消費と一致しなくなる。
+model EulerSignUsage {
+  id          String   @id @default(cuid())
+  // 署名リクエストを開始した時刻。fire-and-forgetでDB書き込みが遅延すると
+  // createdAt(INSERT完了時刻)とずれるため分けて持つ。
+  requestedAt DateTime
+  createdAt   DateTime @default(now())
+
+  roomId       String
+  tiktokHandle String
+
+  outcome      String // "success" | "error"
+  errorMessage String? @db.Text // outcome="error"のときだけ
+
+  // connectInstance()がどの経路から呼ばれたか。
+  // "start"(初回接続 / reconcileでの復元) | "scheduled_reconnect"(disconnected等からの通常再接続) | "watchdog"(無応答検知による強制再接続)
+  trigger String
+  // scheduleReconnect()のreason。trigger="scheduled_reconnect"のときだけ意味を持つ。
+  // ("disconnected" | "stream_end" | "error" | "rate_limited" | "connect_failed" | "user_offline")
+  reason  String?
+
+  role             String // "web" | "worker"
+  workerIndex      Int?
+  // fencing用のプロセス世代(ListenerEpoch.id)。ゼロダウンタイムデプロイ中に
+  // 新旧Workerが同じ部屋へ並走したことを見分けるため。
+  listenerEpoch    BigInt?
+  // 記録時点でDB上どのWorkerがこの部屋の担当だったか(TiktokRoom.workerId)。
+  // 上のworkerIndexと食い違っていれば、担当替え直後の旧Workerが取り残されて
+  // 接続していることが分かる。
+  assignedWorkerId Int?
+  // EulerAPIキーが設定されていたか。匿名取得は別のトークン消費経路として扱うため区別する。
+  credentialMode   String // "configured" | "anonymous"
+
+  // 記録時点のスナップショット。FK無し(部屋やイベントが後で消えても履歴は残す)。
+  // 表示名は現在のテーブルからしか解決できない — 削除・改名後は当時と異なりうる。
+  streamerPrincipalIds String[]
+  agencyIds            String[]
+  eventIds             String[]
+  roomMonitorUntil     DateTime? // 記録時点のTiktokRoom.monitorUntil
+
+  @@index([roomId, createdAt])
+  // 署名を実際に要求したハンドルの記録(観測事実のログ)。改名後は過去分が引けなくなるが、
+  // それがこのログの正しい意味。
+  @@index([tiktokHandle, createdAt])
+  @@index([createdAt])
+  @@schema("public")
+}
+
+
+// listener状態の書き込みをフェンスするための世代番号。
+//
+// プロセス起動時に1行 insert し、採番された id をそのプロセスの世代として使う。
+// **後から起動したプロセスほど必ず大きい値になる**ことだけが要件で、壁時計に依存しない
+// (複数コンテナ間でNTPずれがあっても順序が壊れない)。
+//
+// 1デプロイあたりWorker数ぶんしか増えないので、行数は年に数百のオーダー。
+model ListenerEpoch {
+  id          Int      @id @default(autoincrement())
+  // どのプロセスが取った世代か。障害時の追跡用で、判定には使わない。
+  role        String? // "worker" | "web"
+  workerIndex Int?
+  startedAt   DateTime @default(now())
+
+  @@schema("public")
+}
+
+
+// TiktokIdMergeJob / TiktokIdMergeLog は 2026-09 の識別子統一リファクタリングで削除した。
+// room の一意キーがハンドルから hostTiktokUid へ移り、改名しても room が割れなくなったため
+// 「事後にroomを合流させる」機構(src/lib/tiktok-id-migration.ts)そのものが不要になった。
+
+// 事務所・企業向けのアカウント。配信者本人(Streamer)とは独立していて、
+// 自分ではTikTok IDを持たず、監視対象(AgencyWatch)を通してのみデータを参照する。
+//
+// Principalではなくemailを識別子にしている。管理者が相手のGoogleアカウントのメールアドレスを
+// 先に登録し、本人がそのアカウントでログインした時点で使えるようにするため
+// (ログイン前はPrincipal行が存在しないので、principalIdでは紐づけられない)。
+// 事務所が存在すること自体が利用許可であり、別途の承認フラグは持たない。
+model Agency {
+  id              String   @id @default(cuid())
+  email           String   @unique // 管理者が登録したGoogleアカウント。小文字に正規化して保存する
+  name            String
+  // 企業向けAPIキーはSHA-256ハッシュで保存する(Streamer.apiKeyの平文保存は踏襲しない)。
+  // 参照は常にキー本体のハッシュで引くため、平文を持たなくても認証できる。
+  apiKeyHash      String?  @unique
+  maxWatchTargets Int      @default(10) // 監視対象の上限。1件ごとにTikTok接続とproxy枠を消費するため必須
+  createdAt       DateTime @default(now())
+
+  watches AgencyWatch[]
+
+  @@schema("public")
+}
+
+
+// 事務所が監視対象に指定したライバー。ギフトデータはTiktokRoom単位で共有されるため
+// roomIdで紐づける(Streamerと同じ設計)。tiktokHandleは事務所の入力値そのままを表示用に保持し、
+// 正規化済みの値はTiktokRoom側だけが単一の正として持つ。
+// 配信者本人の登録(Streamer)は必要なく、Streamerが0人でもwatchがあればWorkerが接続する。
+model AgencyWatch {
+  id           String   @id @default(cuid())
+  agencyId     String
+  roomId       String
+  // 登録ゲート(requireExistingTiktokAccount)が実在確認の応答から得た不変ID。監視対象の指定はこれで行う
+  tiktokUid    String
+  tiktokHandle String // 表示用。ユーザー入力値そのまま
+  label        String? // 事務所側の管理名(本名・所属チームなど)
+  createdAt    DateTime @default(now())
+
+  agency Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  room   TiktokRoom @relation(fields: [roomId], references: [id])
+
+  @@unique([agencyId, roomId])
+  @@index([roomId])
+  @@schema("public")
+}
+
+
+model Streamer {
+  id                    String    @id @default(cuid())
+  principalId           String    @unique // sidestage の Principal.id
+  // 登録ゲートが実在確認の応答から得た不変ID。room を消しても resolveRoomForStreamer() が
+  // これを使って再作成できるようにするため、TiktokRoom とは別にここでも保持する(NOT NULL)。
+  tiktokUid             String
+  tiktokHandle          String // 表示用。ユーザー入力値そのまま(正規化はTiktokRoom側でのみ行う)
+  verificationCode      String
+  verified              Boolean   @default(false)
+  verifiedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  // ユーザー操作(web /api/verify/generate, mobile PATCH /api/mobile/streamer)による
+  // tiktokHandle 設定・変更の最終時刻。7日間の再変更ロックの起点に使う。
+  tiktokHandleChangedAt DateTime?
+  roomId                String? // 実際の接続・ギフトデータを共有するTiktokRoomへの紐付け
+
+  overlayToken String? @unique // 全overlay種類共通の認証credential(OBS URL `/overlay/<kind>?token=`)。contribution専用ではない
+
+  user Principal   @relation(fields: [principalId], references: [id], onDelete: Cascade)
+  room TiktokRoom? @relation(fields: [roomId], references: [id])
+
+  // desktopの5ウィジェット移植で追加。既存のoverlay*列(contribution専用)とは分離し、
+  // 種類ごとに1テーブルへ寄せてある(Streamerへ列を積み増し続けると肥大化するため)。
+  overlayCoinListSettings         OverlayCoinListSettings?
+  overlayTopGiftSettings          OverlayTopGiftSettings?
+  overlayTapListSettings          OverlayTapListSettings?
+  overlayLikeContributionSettings OverlayLikeContributionSettings?
+  overlayTimerSettings            OverlayTimerSettings?
+  overlayTimerState               OverlayTimerState?
+  overlayContributionSettings     OverlayContributionSettings?
+  battleHistoryFilterSettings     BattleHistoryFilterSettings?
+
+  @@index([roomId])
+  @@schema("public")
+}

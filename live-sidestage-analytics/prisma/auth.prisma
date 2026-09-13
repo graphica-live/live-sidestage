@@ -1,0 +1,303 @@
+// public - auth / billing / principal
+
+
+// ============================================================================
+// public — TikTok Live の受信データと認証
+// ============================================================================
+
+model Principal {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  createdAt     DateTime  @default(now())
+  // 最終アクティブ日時。列新設直後はnull(=未記録)で、監視枠の低価値クリーンアップは
+  // nullを「保護対象」として扱う(古いユーザーの誤削除防止)。ログイン成功時に加え、
+  // 有効セッション/トークンでの日常アクセス時にもスロットル付きで更新する
+  // (markLastActive()参照)。「ログイン」ではなく「アクティブ」なのは、JWTセッション/
+  // 90日有効なモバイルトークンだと再ログインなしで長期間使われ続けるため。
+  lastActiveAt  DateTime?
+
+  accounts               OAuthAccount[]
+  sessions               Session[]
+  streamer               Streamer?
+  subscriptions          Subscription[]
+  stripeCustomerLink     StripeCustomerLink?
+  pendingPurchaseIntents PendingPurchaseIntent[]
+  ambassador             Ambassador?
+  ambassadorInvitesUsed  AmbassadorInvite[]
+  refreshTokens          RefreshToken[]
+
+  @@map("User")
+  @@schema("public")
+}
+
+
+// OAuth2的refresh token。access token(mobile JWT)の再発行に使う。
+// rotation方式: 使用のたびに新しい行を発行し、古い行はrevokedAt/replacedByIdで
+// 無効化する(生の値ではなくSHA-256ハッシュのみ保存する)。
+// familyIdは初回発行時に採番し、rotationチェーン全体で共有する(盗難検知の単位)。
+// expiresAtはrotationのたびに30日延長されるsliding expiry。absoluteExpiresAtは
+// family初回発行時刻+90日で固定され、rotationでも延長しない(無期限延長の防止)。
+model RefreshToken {
+  id                String    @id @default(cuid())
+  principalId       String
+  // 発行時点のstreamerId(参考情報)。access token再発行時のクレームには使わない
+  // (mobile-auth.tsが毎回principalIdからDBを引き直す。発見4と同じ規律)。
+  streamerId        String?
+  tokenHash         String    @unique
+  familyId          String
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  absoluteExpiresAt DateTime
+  revokedAt         DateTime?
+  replacedById      String?
+  principal         Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  @@index([principalId])
+  @@index([familyId])
+  @@schema("public")
+}
+
+
+// rotation時の原子的updateMany(1トランザクション)が成功した直後の結果
+// (access token・新しいraw refresh token)を30秒だけ持つ、プロセスをまたいで
+// 共有される永続化replayキャッシュ。マルチIsolate/ネットワーク再試行による
+// 「同じ古いtokenでの正常な同時提示」を、プロセス依存のin-memory Mapではなく
+// ここから同一の結果で応答することでidempotentに吸収する(2026-09-09追記2、
+// VALID項目2)。
+// (2026-09-09追記3) 生のトークン値を平文で持つと、このテーブルの漏洩(バックアップ
+// 流出・内部者アクセス等)だけで30秒間有効な生のrefresh tokenがそのまま漏れ、
+// 「refresh tokenの生の値をDBに残さない」というInvariantと矛盾する
+// (entity-design Skillで検出)。そのためaccessToken/refreshTokenは平文ではなく、
+// アプリケーション層の対称鍵(`REFRESH_TOKEN_REPLAY_ENC_KEY`環境変数、DB接続情報とは
+// 別管理)でAES-256-GCM暗号化した値(`<iv>:<authTag>:<ciphertext>`をbase64で連結した
+// 文字列)を保持する。30秒TTLの短命データに限定した意図的な例外である点は変わらない。
+model RefreshTokenReplay {
+  oldTokenHash    String   @id
+  principalId     String
+  streamerId      String?
+  // AES-256-GCM暗号化済み(平文ではない)。復号には`REFRESH_TOKEN_REPLAY_ENC_KEY`が要る。
+  accessTokenEnc  String
+  refreshTokenEnc String
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+
+  @@schema("public")
+}
+
+
+// アンバサダー資格そのもの。Ambassador行がある = PROプラン無料(getUserPlan()参照)。
+// 管理者画面(/admin/ambassadors)から招待URL経由の先着1名指定、または既存ユーザーへの
+// 直接指定のいずれかで作られる。
+model Ambassador {
+  id          String   @id @default(cuid())
+  principalId String   @unique
+  createdAt   DateTime @default(now())
+  user        Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+
+// アンバサダー招待URLの発行記録。token経由で新規登録した先着1名だけが
+// usedAt/usedByPrincipalIdを埋めてAmbassadorへ確定する(claim-ambassador-invite.ts)。
+// 期限切れ(expiresAt超過)の行は ambassador-invite-retention.ts が定期削除する
+// (使用済み・未使用を問わない。Ambassador本体は別テーブルに残るため削除して問題ない)。
+model AmbassadorInvite {
+  id                String    @id @default(cuid())
+  token             String    @unique
+  createdAt         DateTime  @default(now())
+  expiresAt         DateTime
+  usedAt            DateTime?
+  usedByPrincipalId String?
+  usedByUser        Principal? @relation(fields: [usedByPrincipalId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  @@schema("public")
+}
+
+
+enum PlanTier {
+  FREE
+  PRO
+  ULTRA
+
+  @@schema("public")
+}
+
+
+enum SubscriptionProvider {
+  STRIPE
+  GOOGLE_PLAY
+  APPLE
+
+  @@schema("public")
+}
+
+
+// Principal単位の課金プラン。行が無いPrincipal = FREE扱い(全Principalに先回りして作らない)。
+// **1ユーザーが複数の有効な行を同時に持ちうる**(Web/Stripeとモバイル/Google Play・Appleは
+// 別契約として独立に成立する)。getUserPlan()は有効な全行から最上位プランを算出する。
+// event機能はPrincipal.idへの生FKを張らない方針(Event.ownerPrincipalId参照)なので、
+// event側からもこのモデルをprincipalIdの一致だけで参照する。
+//
+// フェーズA(拡張のみ)時点のスキーマ。provider/providerSubscriptionId等はnullable。
+// 旧列(stripeCustomerId/stripeSubscriptionId/status)はフェーズB(破壊的クリーンアップ、
+// 別コミット)まで残す。詳細は scripts/migrate-subscription-provider.ts。
+// **principalIdに一意制約は無い(元から無い、フェーズBで消える予定の列でもない)。**
+// 1ユーザーが複数provider(Stripe/Google Play/Apple)で同時に有効な行を持つのが
+// 正しい状態のため。実装後レビューでコメント記載(旧版)が「principalId一意制約はフェーズBまで
+// 残す」と誤っており、その前提でsync-subscription.tsのP2002 fallbackが書かれていたが、
+// スキーマ上そもそも存在しない制約だった。fallbackはprovider+providerSubscriptionId
+// 複合uniqueの衝突だけを扱うよう修正済み。
+model Subscription {
+  id          String   @id @default(cuid())
+  principalId String
+  plan        PlanTier @default(FREE)
+
+  // フェーズA以降の新列。バックフィル前はnull。
+  provider               SubscriptionProvider?
+  // providerごとの一意キー。STRIPE: Subscription ID。GOOGLE_PLAY: purchaseToken
+  // (再購読で新token発行時は別行、旧行はentitlementActive=falseに)。
+  // APPLE: originalTransactionId(更新をまたいで不変)。
+  providerSubscriptionId String?
+
+  stripePriceId             String? // STRIPEのみ
+  googleProductId           String? // GOOGLE_PLAYのみ
+  googleObfuscatedAccountId String? // GOOGLE_PLAYのみ、横流し防止用
+  appleProductId            String? // APPLEのみ
+  appleAppAccountToken      String? // APPLEのみ、横流し防止用
+
+  rawStatus         String? // providerの生status文字列
+  entitlementActive Boolean   @default(false) // getUserPlan()が見るのはこれだけ
+  lastVerifiedAt    DateTime? // sync系関数がre-fetchを開始した時刻。古いfetch結果による上書きを防ぐガードに使う
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // --- 旧列(フェーズBで削除) ---
+  // **@uniqueを持たせない。** 複数行モデルへの移行後、同一Stripe Customerが解約→再購読すると
+  // 旧行(entitlementActive=falseになっても行自体は残る)が同じstripeCustomerIdを持ったままなので、
+  // 新規Subscription行のcreateが一意制約違反でP2002になり、複合key(provider,providerSubscriptionId)
+  // 基準のP2002フォールバックでは救済できず、webhookが永久に失敗してentitlementが付かない
+  // (実装後レビュー指摘)。customer↔userの一意な紐付けは既にStripeCustomerLinkが担っており、
+  // ここは表示・フェーズB前の互換用ミラーでしかないためunique制約は不要。
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String? // Stripeのsubscription.statusをそのまま保存(active/past_due/canceled等)
+
+  // onDelete: Cascadeで行ごと消える。DELETE /api/mobile/account はこの削除より前に
+  // stripe.customers.del()でStripe側のCustomer(=関連subscription全て)を先に消しており、
+  // 課金が残ったままDB上の紐付けだけ失う、という状態にはならない。
+  user Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  // nullable列を含む複合unique。旧行はprovider=nullのまま共存でき、
+  // 新規行だけが実質的な一意性チェックを受ける(Postgresの複合unique indexの仕様)。
+  @@unique([provider, providerSubscriptionId])
+  @@index([principalId, entitlementActive])
+  @@schema("public")
+}
+
+
+// 購読成立前の「Stripe Customerは作ったが未購読」の置き場(旧Subscriptionの間借り先を分離)
+model StripeCustomerLink {
+  principalId      String   @id
+  stripeCustomerId String   @unique
+  createdAt        DateTime @default(now())
+
+  user Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+
+// 購入開始時に発行するobfuscatedAccountId/appAccountTokenとprincipalIdの対応表。
+// Subscription行は購入成立後にしか存在しないため、webhook(RTDN/App Store Server Notifications)が
+// verify-purchaseより先に届いた場合、この表が無いとpurchaseToken/transactionIdからprincipalIdを解決できない
+// (Stripeはcheckout session作成時にsubscription.metadata.principalIdを仕込めるが、Google/Appleの購入は
+// クライアント発のapplicationUserNameしか経路が無いため、サーバー側で先に対応表を持つ必要がある)。
+model PendingPurchaseIntent {
+  id          String               @id @default(cuid())
+  principalId String
+  provider    SubscriptionProvider // GOOGLE_PLAY | APPLE のみ想定(STRIPEはmetadata.principalIdで完結)
+  token       String // GOOGLE_PLAY: googleObfuscatedAccountId、APPLE: appAccountToken。サーバーが発行する
+  expiresAt   DateTime // 発行から1時間
+  consumedAt  DateTime? // Subscription行作成時に埋める。以後は解決対象から除外する
+
+  createdAt DateTime @default(now())
+
+  user Principal @relation(fields: [principalId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, token])
+  @@schema("public")
+}
+
+
+// **OAuthAccount.userId と Session.userId は識別子命名規約(principalId)の唯一の例外。**
+// @next-auth/prisma-adapter が Prisma のフィールド名を直書きするため改名できない
+// (@map で DB 列名だけ変えても Prisma フィールド名は変わらない)。この2つ以外に userId は存在しない。
+model OAuthAccount {
+  id                String  @id @default(cuid())
+  userId            String // 例外(NextAuth PrismaAdapter 制約)。実体は Principal.id = principalId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  // プロバイダが申告したメール。**表示・運用のためだけに持つ**。
+  //
+  // アカウントのリンク判定に使ってはいけない(それは Principal.email の役割)。
+  // Apple 経由の Principal は「Google と統合されない」ために Principal.email を持たないので、
+  // 画面に出すメールはここから取る。詳細は src/lib/apple-account.ts
+  //
+  // 列名を email にしないのは、PrismaAdapter が渡された data を絞らず
+  // account.create({ data }) へ素通しするため。将来プロバイダが email を含む
+  // account オブジェクトを返したときに、意図せずここへ書かれるのを避ける。
+  // unique も付けない(付けると同じメールで別プロバイダにログインできなくなる)。
+  providerEmail String?
+
+  // Apple の refresh_token を revoke するには、発行時に使った client_id が要る
+  // (iOSは Bundle ID、Androidは Services ID。Apple revoke APIの要件)。
+  // 発行後に Apple 側の設定(Services ID等)が変わっても正しくrevokeできるよう、
+  // 都度 resolveClient() が返した値をそのまま保存する。Apple以外のprovider(Google)
+  // では常にnull。詳細は src/lib/apple-auth.ts の revokeAppleToken()
+  appleClientId String?
+
+  user Principal @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("Account")
+  @@schema("public")
+}
+
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String // 例外(NextAuth PrismaAdapter 制約)。実体は Principal.id = principalId
+  expires      DateTime
+
+  user Principal @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@schema("public")
+}
+
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@schema("public")
+}
