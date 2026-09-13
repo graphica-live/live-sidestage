@@ -1,0 +1,13 @@
+---
+description: モノレポ横断はソース限定。依存・生成物を Grep/Glob しない
+alwaysApply: true
+---
+
+# Agent file search
+
+横断解析は維持する。止めるのは依存ツリーとビルド成果の走査。
+
+- Grep / Glob の `path` は各プロジェクトのソース（`src/`、`lib/`、`backend/`、`app/` 等）。`node_modules`、`.next`、`dist`、`build`、`.dart_tool`、`.tmp`、`.codegraph`、`.claude/worktrees` を対象にしない。
+- ワークスペースルートの `**/*` 一発 Glob は使わない。複数プロジェクトを並列に `path` 指定する。
+- `live-sidestage-desktop` は先に `codegraph_explore`。グラフで足りないときだけ Grep。
+- Windows で built-in Grep/Glob が止まる → 同じルート広域パターンを再試行しない。ターミナル `rg` と `--glob` 除外を使う。
