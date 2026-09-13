@@ -3,6 +3,26 @@
 // 同一roomへの二重キック防止(created===trueは生涯1回だけ)を検証する。
 // tiktok-live-connectorのWebcastPushConnectionをモックし、実際のTikTok接続は行わない。
 import { describe, it, expect, afterAll, vi, beforeEach } from "vitest";
+const { filterCollabWatchSubjectsForQuotaMock } = vi.hoisted(() => ({
+  filterCollabWatchSubjectsForQuotaMock: vi.fn(async (_streamerIds: string[], _sourceRoomId: string, subjects: unknown[]) => ({
+    subjects,
+    quota: {
+      unlimited: true,
+      remainingNewOpponents: Number.POSITIVE_INFINITY,
+      sessionExhaustedToday: false,
+      activeLinkCount: 0,
+      sessionOpponentCount: 0,
+    },
+  })),
+}));
+
+vi.mock("./plan/collab-watch-quota", () => ({
+  filterCollabWatchSubjectsForQuota: filterCollabWatchSubjectsForQuotaMock,
+  FREE_COLLAB_WATCH_SESSIONS_PER_DAY: 1,
+  FREE_COLLAB_OPPONENTS_PER_SESSION: 3,
+}));
+
+
 import { prisma } from "./prisma";
 import { startListener, stopListener, getListenerStatus, ensureAllListenersAlive } from "./tiktok-listener";
 import { resolveRoomForStreamer } from "./tiktok-room";

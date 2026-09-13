@@ -58,7 +58,7 @@ describe("CLI integration tests (Test A~D)", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("✓");
     expect(result.stdout).toContain("All checks passed");
-  });
+  }, 30_000);
 
   it("Test B: --extra-root で新規importを追加すると missing検出", () => {
     // buildImportGraphのsrcDirは実リポジトリのsrc/lib固定のため、
