@@ -49,7 +49,7 @@ html.is-electron-shell .win {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 14px;
+  padding: 0 0 0 14px;
   background: rgba(38, 32, 26, .55);
   border-bottom: 1px solid rgba(232, 214, 176, .12);
   color: #c6bba8;
@@ -58,16 +58,32 @@ html.is-electron-shell .win {
   -webkit-app-region: drag;
 }
 body.control-desk .tb input,
-body.control-desk .dots {
+body.control-desk .caption,
+body.control-desk .cap {
   -webkit-app-region: no-drag;
 }
-body.control-desk .dots { cursor: pointer; }
 .tb-version { color: #6f6a62; letter-spacing: 0; font-size: 11px; }
-.dots { display: flex; gap: 6px; margin-right: 8px; }
-.dots i { width: 10px; height: 10px; border-radius: 99px; display: block; }
-.dots i:nth-child(1) { background: #ff5f57; }
-.dots i:nth-child(2) { background: #febc2e; }
-.dots i:nth-child(3) { background: #28c840; }
+.caption {
+  display: flex;
+  align-self: stretch;
+  margin-left: 4px;
+  height: 38px;
+}
+.cap {
+  width: 46px;
+  height: 38px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #c6bba8;
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+.cap svg { width: 10px; height: 10px; display: block; }
+.cap:hover { background: rgba(255, 255, 255, .08); color: #f3efe8; }
+.cap-close:hover { background: #c42b1c; color: #fff; }
 body.control-desk .tb input[type="search"] {
   all: unset;
   box-sizing: border-box;
@@ -371,7 +387,7 @@ html.in-control-shell .hero-status-grid > * {
   color: #cfc8bc !important;
   box-shadow: none !important;
 }
-html.in-control-shell button:not(.dots):not(.n):not(.file) {
+html.in-control-shell button:not(.cap):not(.n):not(.file) {
   border-radius: 6px !important;
   border: 1px solid rgba(255,255,255,.1) !important;
   background: #2a2622 !important;

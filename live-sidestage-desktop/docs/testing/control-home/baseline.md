@@ -16,7 +16,7 @@
 | TC-CH-011 | 既定では TikTok 接続ポートは 38100 のまま | TIKEFFECT_PORT / DISABLE | 回帰 | インストール版 | 開発 38300 と本番 38100 が同時に Listen。DISABLE_TIKTOK=1 の開発は接続しない | netstat + /api/state |PASS |
 | TC-CH-012 | ギフト iframe が漆トーン | gifts.html in-control-shell | UI | ナビ「ギフト」 | ネイビーの大きなヒーローではなく暗いパネル＋表 | 実ブラウザ |PASS |
 
-| TC-CH-013 | Electron 信号灯で窓を操作し、漆がネイティブ窓いっぱいになる | electron/preload-control.js / html.is-electron-shell | 正常 | APP_DATA_DIR 分離の Electron で赤黄緑。緑で最大化 | 黄で最小化、緑で最大化切替。html.is-electron-shell で desk 余白が消える。ブラウザではクラスも IPC も無い | npm run electron + 環境変数 |PASS: 窓いっぱい・信号灯表示・DISABLE。黄クリックは未実施 |
+| TC-CH-013 | Electron 右上の Win 操作で窓を動かし、漆がネイティブ窓いっぱいになる | electron/preload-control.js / .caption | 正常 | APP_DATA_DIR 分離の Electron。右上 ─ □ ✕ | 最小化・最大化切替・閉じる。左上に Mac 信号灯は無い。html.is-electron-shell で desk 余白が消える。ブラウザでは見た目のみ | npm run electron + 環境変数 |PASS |
 | TC-CH-014 | TONIGHT/庫でプレビューを切り替える | control-home.js applySelection | 正常 | effects 汎用または goal-gifts をクリック | タイトルと overlay iframe src が選んだウィジェットになる | 実ブラウザ |PASS |
 | TC-CH-016 | インストール版と開発 Electron が同時に動く | APP_DATA_DIR + TIKEFFECT_PORT | 回帰 | 38100 の TikEffect.exe を残したまま 38300 Electron | 両方 Listen。開発は DISABLE_TIKTOK=1 | netstat |PASS |
 

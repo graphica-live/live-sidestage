@@ -17,10 +17,20 @@
         <div class="desk">
         <div class="win" id="control-win">
             <div class="tb">
-                <div class="dots" role="group" aria-label="ウィンドウ操作"><i title="閉じる"></i><i title="最小化"></i><i title="最大化"></i></div>
                 <span class="tb-title">TikEffect</span>
                 <span class="tb-version" id="app-version"></span>
                 <input type="search" id="control-search" placeholder="接続、ウィジェット、ギフト…" aria-label="検索" />
+                <div class="caption" role="group" aria-label="ウィンドウ操作">
+                    <button type="button" class="cap cap-min" title="最小化" aria-label="最小化">
+                        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5h8" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+                    </button>
+                    <button type="button" class="cap cap-max" title="最大化" aria-label="最大化">
+                        <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1.2" y="1.2" width="7.6" height="7.6" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+                    </button>
+                    <button type="button" class="cap cap-close" title="閉じる" aria-label="閉じる">
+                        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+                    </button>
+                </div>
             </div>
             <div class="body">
                 <aside class="side">
@@ -281,13 +291,14 @@
         if (window.tikEffectWindow) {
             document.documentElement.classList.add('is-electron-shell');
         }
-        document.querySelector('.dots')?.addEventListener('click', (event) => {
+        document.querySelector('.caption')?.addEventListener('click', (event) => {
             const api = window.tikEffectWindow;
             if (!api) return;
-            const index = Array.from(event.currentTarget.children).indexOf(event.target.closest('i'));
-            if (index === 0) api.close();
-            else if (index === 1) api.minimize();
-            else if (index === 2) api.toggleMax();
+            const button = event.target.closest('.cap');
+            if (!button) return;
+            if (button.classList.contains('cap-min')) api.minimize();
+            else if (button.classList.contains('cap-max')) api.toggleMax();
+            else if (button.classList.contains('cap-close')) api.close();
         });
 
 
