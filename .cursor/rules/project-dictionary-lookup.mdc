@@ -5,7 +5,7 @@ alwaysApply: true
 
 # 用語確認（「Xとは」「Xの意味」）
 
-agent-file-search よりこの規則が勝つ。コーディングではない。analytics / mobile / desktop を並列 Grep しない。Glob しない。GetDynamicTools / Serena を呼ばない。SKILL.md を探さない。思考で「辞書とコード」と書かない。
+agent-file-search よりこの規則が勝つ。コーディングではない。analytics / mobile / desktop を並列 Grep しない。Glob / Searched files / Explored N search を出さない。GetDynamicTools / Serena を呼ばない。SKILL.md を探さない。思考で「辞書とコード」と書かない。
 
-1手目: Grep path: git-root/docs/project-dictionary.md pattern: 語 -A: 50
-切断時のみ同ファイルのその節を Read 1回。
+1手目: Grep `path`: `<git-root>/docs/project-dictionary.md`  `pattern`: `<語>`  `-A: 50`
+`-A` 省略は手順違反。切断、または答えから経路表・Not が欠ける → 同ファイルのその節を Read 1回。
