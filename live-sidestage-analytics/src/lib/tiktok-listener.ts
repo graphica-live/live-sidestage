@@ -1331,7 +1331,7 @@ export function resolveMsgId(data: Record<string, unknown>): string | null {
  * msgId と同じく protobuf の既定値 "0" が流れてくる(本番の gifts に groupId="0" が3655行)。
  * `data.groupId ? ... : null` では文字列 "0" が truthy なのですり抜け、combo キーにすると
  * **別ユーザー・別ギフトが1つの pending state / 1つの集計グループを共有する**。
- * docs/tiktok-live-connector-guide.md 14-2 参照。
+ * shared/tiktok-live-connector/USAGE.md 14-2 参照。
  *
  * 実測では giftType=1 の265行すべてが実 groupId を持ち "0" は0件なので現状の実害はないが、
  * saveComboGift() は groupId 単位で SUM して delta を出すため、ここを緩めると

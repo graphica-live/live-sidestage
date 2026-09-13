@@ -18,6 +18,7 @@ analytics は Docker ビルドの context が `live-sidestage-analytics` ディ�
 6. `shared/tiktok-live-connector/` と3プロジェクトの `vendor/*.tgz` + `package.json` + `package-lock.json` をまとめて commit する
 
 **バトルイベント対応(グローブ・ボーナスミッション・初ギフトx倍等)** は [BATTLE-EVENTS.md](./BATTLE-EVENTS.md) を参照。
+**各アプリでの接続・再接続・ギフトコンボ・dedup** は [USAGE.md](./USAGE.md) を参照。
 
 ---
 
