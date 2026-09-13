@@ -87,8 +87,8 @@ void main() {
   });
 
   group('AppConfig.duplicateSpeechSkipEnabled', () {
-    test('既定値はtrue', () {
-      expect(const AppConfig().duplicateSpeechSkipEnabled, isTrue);
+    test('既定値はfalse', () {
+      expect(const AppConfig().duplicateSpeechSkipEnabled, isFalse);
     });
 
     test('encode/decodeで往復する', () {
@@ -96,9 +96,9 @@ void main() {
       expect(decoded.duplicateSpeechSkipEnabled, isFalse);
     });
 
-    test('キーを持たない旧設定はtrue', () {
+    test('キーを持たない旧設定はfalse', () {
       final raw = jsonEncode({'schemaVersion': 3, 'revision': 3, 'ttsEnabled': true});
-      expect(AppConfig.decode(raw).duplicateSpeechSkipEnabled, isTrue);
+      expect(AppConfig.decode(raw).duplicateSpeechSkipEnabled, isFalse);
     });
 
     test('falseを明示的に保存していればfalseで読み込まれる', () {
@@ -107,8 +107,8 @@ void main() {
 
       expect(skipEnabledOf(false), isFalse);
       expect(skipEnabledOf(true), isTrue);
-      expect(skipEnabledOf(null), isTrue);
-      expect(skipEnabledOf('false'), isTrue);
+      expect(skipEnabledOf(null), isFalse);
+      expect(skipEnabledOf('false'), isFalse);
     });
 
     test('bumpedはrevisionを進めて他の設定を保つ', () {

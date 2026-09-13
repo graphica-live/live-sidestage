@@ -103,7 +103,7 @@ class SettingsTab extends StatelessWidget {
                   : () => _showUpgradeRequired(context, 'PRO/ULTRAプランで利用できます'),
             ),
             _SettingSwitchRow(
-              title: '定型文の読み上げを制限',
+              title: 'お楽しみ袋などの連投文読み上げ無効',
               subtitle: '同じ内容のコメントが短時間に繰り返されたら読み上げを止めます',
               value: store.config.duplicateSpeechSkipEnabled,
               enabled: canEdit,
