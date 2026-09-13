@@ -1,7 +1,7 @@
 ---
 last_updated: 2026-09-14
 last_risk: LOW
-last_reviewers: [Code Mode]DeepSeek(high)、2026-09-10 共有ボタンアイコン化・位置変更・再生ボタン円形化
+last_reviewers: [Code Mode] Gemini 3.7 Flash (agy, 2026-09-14 tab unify)
 ---
 
 # バトル再生の共有リンク
@@ -62,11 +62,11 @@ last_reviewers: [Code Mode]DeepSeek(high)、2026-09-10 共有ボタンアイコ�
 | TC-BRS-016 | mobile向けshare routeは認証・所有者境界を守る | 同上route | 異常/認可/境界 | (a)トークン無し (b)room未接続JWT (c)別roomにのみ存在するbattleId (d)存在しないbattleId | (a)401でtoken発行なし (b)(c)(d)いずれも404 | 同上コマンド | PASS(2026-09-08) | (c)は所有者境界(Codex Design Review medium effortの指摘で追加) |
 | TC-BRS-017 | mobile向けshare routeは既発行tokenを再利用する | 同上route | 回帰 | 同じbattleIdへ2回POST | 2回目も同じURLを返す(新規token発行しない) | 同上コマンド | PASS(2026-09-08) | Web版と同じ`ensureShareToken`の冪等性 |
 | TC-BRS-019 | 公開ページヘッダーのコピーボタンはシェアアイコンで表示され、コピー成功でチェックアイコンへ変わる | `PublicBattleClient` の `CopyLinkButton` | 正常 | `/b/[token]` を開いてボタンを押す | 押す前は共有(share)アイコンかつ `aria-label="リンクをコピー"`。押すとクリップボードへURLが入り、アイコンがチェックへ変わり `aria-label="コピーした"` に。2秒後に共有アイコンへ戻る | `[anon]` | PASS(2026-09-08) | クリップボード不可時のテキスト入力フォールバックは TC-BRS-012 と共通ロジック |
-| TC-BRS-020 | 公開ページのモード切替タブは、配信者ページの再生ボタンと同じ見た目を使う(シェアボタンの有無だけが差) | `PublicBattleClient` の `ReplayTab` | 正常/回帰 | `/b/[token]` を開き、選択中/非選択のタブそれぞれを見る | 「バトルを再生」タブは選択中のとき配信者ページの再生ボタンと同じ円形+大きい▶アイコンになる(`aria-label="バトルを再生"`)。非選択タブは枠線+ミュートテキストの小さいボタン(`▶ バトルを再生`の文言)。選択の切替はこれまでどおりクリックで即時反映され、URLの `?v=` も連動する | `[anon]` | PASS(2026-09-10、42/43番スクショで非選択・選択中両状態を実機確認) | ユーザー指示「公開ページと自分のページでシェアボタンの有無以外で差を出さないで」への対応。2026-09-10、配信者ページの再生ボタンが円形+大アイコン+下ラベルへ変更されたのに合わせ、公開ページの選択中タブも同じ円形+アイコンへ追従(ユーザー確認済み)。配信者ページは常時タブ形式ではなく片方向ボタン+下ラベルのため、タブ構造自体(非選択タブの見た目・ラベル配置)は据え置き |
+| TC-BRS-020 | 公開ページのモード切替タブは「バトルを再生」と「貢献者一覧」で同じ選択表示を使う | `PublicBattleClient` の `ModeTab` | 正常/回帰 | `/b/[token]` を開き、選択中/非選択のタブそれぞれを見る | 両タブとも選択中は brand 塗りつぶしのテキストボタン、非選択は枠線+ミュートテキストの小さいボタン。文言は「バトルを再生」「貢献者一覧」(▶なし)。選択の切替はクリックで即時反映され、URLの `?v=` も連動する。円形再生アイコンにはしない(本体の再生ボタンと錯覚させない) | `[anon]` | PASS(2026-09-14、Playwright 390px: 選択中は brand テキストボタン、非選択は枠線。文言「バトルを再生」に▶なし、rounded-fullなし、?v=list連動) | 2026-09-14: 選択中タブを配信者ページの円形再生ボタンに合わせていたが、本体の再生ボタンと錯覚するため貢献者一覧と同じ選択表示へ戻した。配信者詳細モーダルの円形再生ボタン(実際の再生開始)は対象外 |
 
 ## Quality Gate
 
-- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-10、共有ボタンアイコン化・位置変更・再生ボタン円形化)
+- `npm run typecheck`（`tsc --noEmit`）→ PASS(2026-09-14、公開ページタブを ModeTab に統一)
 - `npm run test:unit` → 1520 tests PASS(2026-09-10)
 - `npm run test:integration` → 919 tests PASS(2026-09-10)
 - `npx next build`（`npm run build` は `prisma db push --accept-data-loss` を伴うので使わない）→ NOT RUN(2026-09-10、typecheck + 実ブラウザ確認で代替。前回2026-09-09はNOT RUN、2026-09-08はPASS)
