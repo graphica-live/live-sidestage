@@ -20,6 +20,7 @@ last_reviewers: skipped (local hooks / test DB helper)
 | TC-LTD-004 | 5433 だけ書き換え対象 | `isLocalDockerTestUrl` | negative | 5433 / 5432 / Railway URL | 5433 のみ true | 同上 | PASS | CI は 5432 |
 | TC-LTD-005 | 手動 npm test も同じ helper | `package.json` test:integration / db:push:local | 正常 | スクリプト定義 | `with-local-test-db.mjs` 経由。`.env.local.test` は未変更 | ファイル確認 | PASS | |
 | TC-LTD-006 | この worktree で専用DBが作られる | helper `--print-name` | 正常 | Docker Postgres 起動 | `liveanalytics_test_local_test_db_per_worktree_*` を表示し DB が存在する | `node scripts/with-local-test-db.mjs --print-name` | PASS | drop しない |
+| TC-LTD-007 | analytics 配下から worktree root を特定 | `findGitRootFrom` | 正常 / 回帰 | `live-sidestage-analytics` を起点。pre-commit の `GIT_DIR=.git` でも可 | 末尾が `live-sidestage-analytics` でない git root。DB名に `_live_sidestage_analytics_` を含まない | `npx vitest run scripts/with-local-test-db.test.ts` と `GIT_DIR=.git` 付き `--print-name` | PASS | hook が subdirectory に cd するため |
 
 ## Quality Gate
 

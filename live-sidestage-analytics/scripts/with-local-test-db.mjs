@@ -88,11 +88,27 @@ export function withDatabaseName(urlString, databaseName) {
   return url.toString();
 }
 
+/** `.git` ファイルまたはディレクトリがある最も近い祖先。pre-commit の GIT_DIR に依存しない。 */
+export function findGitRootFrom(startDir) {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".git"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 export function gitWorktreeRoot(cwd = process.cwd()) {
+  const fromScript = findGitRootFrom(analyticsRoot());
+  if (fromScript) return fromScript;
+  const fromCwd = findGitRootFrom(cwd);
+  if (fromCwd) return fromCwd;
   const result = spawnSync("git", ["rev-parse", "--show-toplevel"], {
     cwd,
     encoding: "utf8",
     windowsHide: true,
+    env: { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined },
   });
   if (result.status !== 0) {
     throw new Error(`git rev-parse --show-toplevel failed: ${result.stderr || result.error}`);

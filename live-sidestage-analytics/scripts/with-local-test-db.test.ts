@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalWorktreePath,
   databaseNameForWorktree,
+  findGitRootFrom,
   hashFromCanonicalPath,
   isLocalDockerTestUrl,
   slugFromWorktreePath,
@@ -15,6 +16,14 @@ describe("with-local-test-db", () => {
     expect(a).not.toBe(b);
     expect(a).toMatch(/^liveanalytics_test_[a-z0-9_]+_[0-9a-f]{8}$/);
     expect(b).toMatch(/^liveanalytics_test_[a-z0-9_]+_[0-9a-f]{8}$/);
+  });
+
+  it("walks up from analytics/ to the git worktree root", () => {
+    const analyticsDir = process.cwd();
+    const gitRoot = findGitRootFrom(analyticsDir);
+    expect(gitRoot).toBeTruthy();
+    expect(gitRoot).not.toMatch(/live-sidestage-analytics$/);
+    expect(databaseNameForWorktree(gitRoot!)).not.toContain("_live_sidestage_analytics_");
   });
 
   it("same canonical path is stable", () => {
