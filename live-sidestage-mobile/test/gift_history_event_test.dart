@@ -24,6 +24,7 @@ void main() {
       expect(event.tiktokHandle, 'user_a_handle');
       expect(event.nickname, 'ユーザーA');
       expect(event.giftName, 'Rose');
+      expect(event.giftPictureUrl, 'https://example.com/rose.png');
       expect(event.repeatCount, 3);
       expect(event.totalDiamonds, 15);
     });

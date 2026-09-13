@@ -13,6 +13,7 @@ import '../../models/app_config.dart';
 import '../gift_sound_edit_screen.dart';
 import '../home_screen.dart' show SoundState;
 import '../widgets/feature_status_bar.dart';
+import '../widgets/gift_thumbnail.dart';
 import '../widgets/gradient_kit.dart';
 
 /// セットタブを押したときの案内。運用中は使うセットを変えられない。
