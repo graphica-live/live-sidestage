@@ -64,7 +64,7 @@ components:
 
 **Creative North Star: "机の上の漆窓"**
 
-Control（`backend/public/db`、正本は `.impeccable/approved/control-home/`）は Cursor 型の浮き窓。暗い無地の上に、半透明の漆（`rgba(22,18,14,0.72)` + `blur(22px)`）が乗る。左 220px が今夜のファイル、中央が ON AIR プレビュー、右 280px が直近発火。大きなベージュ塗り面はモニター色被りになるので禁止。OBS ウィジェット本体は透過キャンバスのまま、この世界の対象外。
+Control（`backend/public/db`、正本は `.impeccable/approved/control-home/`）は Cursor 型の浮き窓。ブラウザでは暗い無地の上に半透明の漆（`rgba(22,18,14,0.72)` + `blur(22px)`）が乗る。Electron の枠なし窓ではその漆がネイティブウィンドウいっぱいに広がる（`html.is-electron-shell`）。左 220px が今夜のファイル、中央が ON AIR プレビュー、右 280px が直近発火。大きなベージュ塗り面はモニター色被りになるので禁止。OBS ウィジェット本体は透過キャンバスのまま、この世界の対象外。
 
 旧「紺サイドバー + 寒色ライトパネル」は棄却済み。
 

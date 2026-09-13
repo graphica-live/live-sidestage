@@ -17,7 +17,7 @@
         <div class="desk">
         <div class="win" id="control-win">
             <div class="tb">
-                <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+                <div class="dots" role="group" aria-label="ウィンドウ操作"><i title="閉じる"></i><i title="最小化"></i><i title="最大化"></i></div>
                 <span class="tb-title">TikEffect</span>
                 <span class="tb-version" id="app-version"></span>
                 <input type="search" id="control-search" placeholder="接続、ウィジェット、ギフト…" aria-label="検索" />
@@ -278,6 +278,9 @@
             window.currentControlRoute = currentRoute;
         }
         window.setCurrentRoute = setCurrentRoute;
+        if (window.tikEffectWindow) {
+            document.documentElement.classList.add('is-electron-shell');
+        }
         document.querySelector('.dots')?.addEventListener('click', (event) => {
             const api = window.tikEffectWindow;
             if (!api) return;

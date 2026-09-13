@@ -3374,6 +3374,16 @@ function ensureTikTokConnection() {
 }
 
 async function connectToTikTok() {
+    if (normalizeBooleanEnv(process.env.TIKEFFECT_DISABLE_TIKTOK, false)) {
+        setTikTokConnectionState('not_configured', '開発モードのため TikTok 接続は無効です。', {
+            transportMethod: 'unknown',
+            websocketReasonCode: 'disabled',
+            websocketReasonLabel: 'TikTok 接続は無効です。',
+            websocketReasonDetail: 'TIKEFFECT_DISABLE_TIKTOK=1 のため接続しません。'
+        });
+        return;
+    }
+
     if (tiktokState.connectPromise) {
         return tiktokState.connectPromise;
     }
