@@ -112,7 +112,7 @@ const {
     emitAdminCommentAppended,
 } = commentFeedModule;
 
-const APP_NAME = 'TikEffect';
+const { APP_NAME, DISPLAY_NAME } = require('./lib/app-identity');
 const APP_VERSION = require('../package.json').version;
 function parseListenPort(value, fallback) {
     const parsed = Number.parseInt(String(value || ''), 10);
@@ -140,7 +140,7 @@ const PERSISTED_TIKTOK_DEVICE_ID = loadOrCreatePersistedDeviceId();
 const REQUESTED_PORT = FIXED_PORT;
 
 function buildPortInUseMessage(port) {
-    return `ポート ${port} は既に使用中です。該当アプリを終了してから TikEffect を再起動してください。`;
+    return `ポート ${port} は既に使用中です。該当アプリを終了してから Live Sidestage Desktop を再起動してください。`;
 }
 
 function extractAuthenticatedBroadcasterId(accountInfo) {
@@ -2621,7 +2621,7 @@ async function shutdownApplication(reason = 'manual') {
 
     isShuttingDown = true;
     shutdownPromise = (async () => {
-        console.log(`ℹ️ Shutting down TikEffect (${reason})...`);
+        console.log(`ℹ️ Shutting down Live Sidestage Desktop (${reason})...`);
 
         stopCommentReadAloud();
 
@@ -2663,7 +2663,7 @@ async function shutdownApplication(reason = 'manual') {
             console.warn('⚠️ Failed to close SQLite cleanly:', error);
         }
 
-        console.log('ℹ️ TikEffect shutdown completed.');
+        console.log('ℹ️ Live Sidestage Desktop shutdown completed.');
     })();
 
     return shutdownPromise;

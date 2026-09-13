@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, shell, dialog, screen } = require('electron');
+const { DISPLAY_NAME } = require('../backend/lib/app-identity');
 let autoUpdater = null;
 
 
@@ -243,9 +244,9 @@ const MAIN_WINDOW_BOUNDS = {
 };
 
 const POPOUT_WINDOW_CONFIG = {
-    comments: { path: '/comments', title: 'TikEffect - コメント欄', width: 480, height: 760 },
-    gifts: { path: '/gifts', title: 'TikEffect - ギフト履歴', width: 480, height: 760 },
-    'comments-gifts': { path: '/comments-gifts', title: 'TikEffect - コメント＆ギフト', width: 900, height: 760 }
+    comments: { path: '/comments', title: `${DISPLAY_NAME} - コメント欄`, width: 480, height: 760 },
+    gifts: { path: '/gifts', title: `${DISPLAY_NAME} - ギフト履歴`, width: 480, height: 760 },
+    'comments-gifts': { path: '/comments-gifts', title: `${DISPLAY_NAME} - コメント＆ギフト`, width: 900, height: 760 }
 };
 
 function popoutBoundsStateKey(kind) {
@@ -434,7 +435,7 @@ function showAutoUpdateNotification(body) {
 
     try {
         new Notification({
-            title: 'TikEffect',
+            title: DISPLAY_NAME,
             body,
             silent: true
         }).show();
@@ -576,7 +577,7 @@ function createMainWindow(initialUrl = APP_URL) {
         minWidth: MAIN_WINDOW_BOUNDS.minWidth,
         minHeight: MAIN_WINDOW_BOUNDS.minHeight,
         useContentSize: true,
-        title: 'TikEffect',
+        title: DISPLAY_NAME,
         icon: iconPath,
         show: false,
         frame: false,
@@ -606,7 +607,7 @@ function createMainWindow(initialUrl = APP_URL) {
         .catch((error) => {
             console.error('[control] loader wait failed:', error);
             dialog.showErrorBox(
-                'TikEffect',
+                DISPLAY_NAME,
                 `Control の起動に失敗しました (loader ${LOADER_PORT}): ${error.message}`
             );
         });
@@ -998,7 +999,7 @@ function ensureCommentReadAloudWindow() {
         transparent: true,
         skipTaskbar: true,
         focusable: false,
-        title: 'TikEffect Screen1 Read Aloud',
+        title: 'Live Sidestage Desktop Screen1 Read Aloud',
         icon: iconPath,
         webPreferences: {
             nodeIntegration: false,
@@ -1019,7 +1020,7 @@ function ensureCommentReadAloudWindow() {
 function createTray() {
     const icon = nativeImage.createFromPath(iconPath);
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-    tray.setToolTip('TikEffect');
+    tray.setToolTip(DISPLAY_NAME);
 
     const contextMenu = Menu.buildFromTemplate([
         {

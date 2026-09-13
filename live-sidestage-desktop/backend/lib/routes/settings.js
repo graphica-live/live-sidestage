@@ -1,5 +1,7 @@
 'use strict';
 
+const { DISPLAY_NAME } = require('../app-identity');
+
 const express = require('express');
 const { EXPORTABLE_SCOPED_SETTINGS_KEYS, EXPORTABLE_GLOBAL_SETTINGS_KEYS, EULER_STREAM_API_KEY_STATE_KEY } = require('../constants');
 
@@ -115,7 +117,7 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         }
         const { app: electronApp } = require('electron');
         const launchItems = electronApp.getLoginItemSettings().launchItems || [];
-        const item = launchItems.find((entry) => entry.name === 'TikEffect');
+        const item = launchItems.find((entry) => entry.name === DISPLAY_NAME);
         res.json({ available: true, enabled: Boolean(item && item.enabled) });
     });
 
@@ -127,7 +129,7 @@ module.exports = function registerSettingsRoutes({ app, dbStore, io, serverEvent
         const { app: electronApp } = require('electron');
         electronApp.setLoginItemSettings({
             openAtLogin: enabled,
-            name: 'TikEffect',
+            name: DISPLAY_NAME,
             path: process.execPath
         });
         res.json({ ok: true, enabled });

@@ -1,5 +1,5 @@
 ---
-name: TikEffect
+name: Live Sidestage Desktop
 description: TikTok Live配信者向けのローカル完結型オーバーレイ演出ツール
 colors:
   desk-bg: "#12110f"
@@ -58,7 +58,7 @@ components:
     padding: "0"
 ---
 
-# Design System: TikEffect
+# Design System: Live Sidestage Desktop
 
 ## Overview
 

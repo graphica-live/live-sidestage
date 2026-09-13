@@ -62,6 +62,13 @@ body.control-desk .caption,
 body.control-desk .cap {
   -webkit-app-region: no-drag;
 }
+.tb-title {
+  letter-spacing: .04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .tb-version { color: #6f6a62; letter-spacing: 0; font-size: 11px; }
 .caption {
   display: flex;

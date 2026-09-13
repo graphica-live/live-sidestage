@@ -6,7 +6,7 @@ const updateUrl = (process.env.TIKEFFECT_AUTO_UPDATE_URL || DEFAULT_AUTO_UPDATE_
 const config = {
     buildDependenciesFromSource: true,
     appId: 'com.tikeffect',
-    productName: 'TikEffect',
+    productName: 'Live Sidestage Desktop',
     copyright: 'Copyright © 2025',
     directories: {
         output: 'dist/electron'
@@ -35,7 +35,7 @@ const config = {
         allowToChangeInstallationDirectory: true,
         createDesktopShortcut: true,
         createStartMenuShortcut: true,
-        shortcutName: 'TikEffect',
+        shortcutName: 'Live Sidestage Desktop',
         runAfterFinish: true,
         include: 'installer/nsis/uninstall-cleanup.nsh'
     },

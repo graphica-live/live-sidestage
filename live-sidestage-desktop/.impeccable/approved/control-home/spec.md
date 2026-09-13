@@ -1,6 +1,6 @@
 # Control Home — approved spec
 
-Surface: TikEffect Control ホーム（Electron 管理画面の第一画面）
+Surface: Live Sidestage Desktop Control ホーム（Electron 管理画面の第一画面）
 Approved: 2026-09-13
 Comp: comp.png / comp.html
 World: Cursor の浮き窓 + 暗い無地 + 透ける漆。書体 Zen Kaku Gothic New。油彩背景は不採用。
@@ -25,7 +25,7 @@ Monitor constraint: 大きな明るい面・ベージュ塗り禁止（配信者
 
 - ファミリー: Zen Kaku Gothic New, Yu Gothic UI, sans-serif
 - body: 15px / 1.55 / weight 500 / letter-spacing 0.01em / antialiased
-- タイトルバー TikEffect: 12px / letter-spacing 0.08em / color #c6bba8
+- タイトルバー Live Sidestage Desktop: 12px / letter-spacing 0.08em / color #c6bba8
 - 検索 placeholder: 12px
 - nav: 15px inherited / 非選択 #b7b1a7 / 選択 #f3efe8
 - h1: 16px / weight 600 / #f3efe8
@@ -91,7 +91,7 @@ Monitor constraint: 大きな明るい面・ベージュ塗り禁止（配信者
 
 - 背景: 暗い無地。データなし
 - キャプション: 右上 Win11 フルブリード（最小化・最大化・閉じる）。左上の Mac 信号灯は使わない
-- タイトル TikEffect
+- タイトル Live Sidestage Desktop
 - 検索 input: 接続・ウィジェット・ギフト。Ctrl 相当のコマンドパレット。未定義: 実検索結果UI
 - nav: ホーム / ウィジェット / エフェクト / ギフト / コメント / 設定。クリックで各ページ。ホームが current
 - TONIGHT: top-gift.html 使用中、effects 汎用 12。出典: ローカル設定 / イベント数

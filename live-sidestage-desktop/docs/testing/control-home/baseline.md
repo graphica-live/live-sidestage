@@ -4,7 +4,7 @@
 
 | ID | 目的 | 対象 | 観点 | 前提・入力 | 期待結果 | 実行方法 | 結果 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TC-CH-001 | ホームが暗い無地＋浮き窓の3カラムで開く | live-sidestage-desktop/backend/public/db/home.html | UI | Control を開く | タイトルバーに TikEffect、左にホーム〜設定、中央にトップギフトランキング、右に直近と疑似ギフト欄。油彩壁紙も大きなベージュ塗りも無い | 実ブラウザ http://127.0.0.1:38300/ |PASS |
+| TC-CH-001 | ホームが暗い無地＋浮き窓の3カラムで開く | live-sidestage-desktop/backend/public/db/home.html | UI | Control を開く | タイトルバーに Live Sidestage Desktop、左にホーム〜設定、中央にトップギフトランキング、右に直近と疑似ギフト欄。油彩壁紙も大きなベージュ塗りも無い | 実ブラウザ http://127.0.0.1:38300/ |PASS |
 | TC-CH-002 | ナビが iframe ページへ切り替わる | home.html setCurrentRoute | 正常 | ウィジェットをクリック | 右レールが消え、中央がウィジェット管理。ホーム以外の aria-current はウィジェットのみ | 実ブラウザ |PASS |
 | TC-CH-003 | URLコピーが今の origin の overlay を載せる | control-home.js copyOverlay | 正常 | 非パッケージ（node）で URLをコピー | clipboard が `http://127.0.0.1:<port>/overlays/top-gift`（死んだ loader ポートではない） | 実ブラウザ |PASS |
 | TC-CH-004 | 疑似ギフト送信がテスト API を叩く | POST /api/effects/gift-test | 正常 | テキスト Rose、今のギフトで出す | 400 にならず JSON ok | curl |PASS |
