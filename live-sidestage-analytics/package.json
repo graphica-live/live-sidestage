@@ -32,12 +32,12 @@
     "event-worker:local": "dotenv -e .env.local.test --override -- tsx event-worker.ts",
     "bench:aggregate:local": "dotenv -e .env.local.test --override -- tsx scripts/bench-aggregate.ts",
     "cleanup:nonexistent-streamers:local": "dotenv -e .env.local.test --override -- tsx scripts/cleanup-nonexistent-streamers.ts",
-    "check:worker-watch-patterns": "tsx scripts/check-worker-watch-patterns.ts",
     "test:unit": "vitest run --exclude \"**/*.integration.test.ts\"",
     "test:integration": "dotenv -e .env.local.test --override -- vitest run integration",
     "test": "npm run test:unit && npm run test:integration",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "check:worker-restart-proposal": "tsx scripts/check-worker-restart-proposal.ts"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^3.1.0",
