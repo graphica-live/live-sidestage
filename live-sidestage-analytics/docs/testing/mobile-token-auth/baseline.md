@@ -1,7 +1,7 @@
 ---
 project: live-sidestage-analytics
 feature: mobile-token-auth
-last_updated: 2026-09-09
+last_updated: 2026-09-14
 last_risk: CRITICAL
 last_reviewers: Codex-terra+Gemini(code-reviewで同時実施)+DeepSeek(利用不能)
 ---
@@ -23,6 +23,7 @@ desktop向けAPIキー発行・検証機能、`Streamer.apiKey`列は完全削�
 | TC-MTA-003 | streamerId はトークン記録値でなく現在のDB値で解決する | `rotateRefreshToken` | 正常 | rotation 後に Streamer 行が変わっている状態 | 新しい access token の streamerId claim は現在のDB値 | `npx vitest run src/lib/mobile-auth.test.ts` | PASS | |
 | TC-MTA-004 | 猶予期間(30秒)内の同時提示は書き込みなしで同じペアを返す(盗難扱いにしない) | `rotateRefreshToken` + `RefreshTokenReplay` | 境界 | 同一 refresh token を30秒以内に複数回提示(メイン/背景Isolate、ネットワーク再試行相当) | 全リクエストが同じ access+refresh ペアを返す。DB書き込みは1回のみ | `npx vitest run src/lib/mobile-auth.test.ts`(fakePrismaでのunit) + `npx dotenv -e .env.local.test -- vitest run src/app/api/mobile/auth/refresh/route.integration.test.ts -t "同一 refresh token を実DB上で同時提示"`(実PostgreSQLでの5並列統合テスト) | PASS | 2026-09-09追加。DeepSeek TestCaseレビューでunit(fakePrisma)のみでは行ロック競合を再現できない指摘、実DB統合テストを新規追加 |
 | TC-MTA-005 | 猶予期間を過ぎた再提示は TOKEN_REUSE_DETECTED になり family 全体を失効させる | `rotateRefreshToken` | 異常 | 30秒経過後に既に無効化済みの refresh token を提示 | `TOKEN_REUSE_DETECTED` を返し、同一 family の全 refresh token が失効する | `npx vitest run src/lib/mobile-auth.test.ts` | PASS | |
+| TC-MTA-029 | desktop に mobile の revoke 済み refresh を渡しても mobile family は失効しない | `rotateRefreshToken` | negative | 同一 principal で mobile rotation 後、猶予期間外の旧 token を client=desktop で提示 | INVALID_REFRESH_TOKEN。mobile の新 refresh はまだ使える | `npx vitest run src/lib/mobile-auth.test.ts` | PASS | Codex-terra VALID |
 | TC-MTA-006 | 存在しない refresh token は INVALID_REFRESH_TOKEN | `rotateRefreshToken` | 異常 | DBに存在しないトークン文字列 | `INVALID_REFRESH_TOKEN` | `npx vitest run src/lib/mobile-auth.test.ts` | PASS | |
 | TC-MTA-007 | sliding expiresAt 超過は reuse 扱いにせず INVALID_REFRESH_TOKEN | `rotateRefreshToken` | 境界 | `expiresAt` を過ぎた refresh token | `INVALID_REFRESH_TOKEN`(family失効しない) | `npx vitest run src/lib/mobile-auth.test.ts` | PASS | |
 | TC-MTA-008 | absoluteExpiresAt 超過は expiresAt が未来でも INVALID_REFRESH_TOKEN | `rotateRefreshToken` | 境界 | `absoluteExpiresAt` のみ超過 | `INVALID_REFRESH_TOKEN` | `npx vitest run src/lib/mobile-auth.test.ts` | PASS | |
@@ -41,6 +42,9 @@ desktop向けAPIキー発行・検証機能、`Streamer.apiKey`列は完全削�
 | TC-MTA-023 | `POST /api/mobile/auth/logout`は常に200を返しfamilyを失効させる(端末を止めないbest-effort) | `src/app/api/mobile/auth/logout/route.ts` | 正常/異常 | 有効なrefresh token、知らないtoken、壊れたbody | 200(いずれも)。有効な場合はfamily全体の`revokedAt`が立ち、以後の当該refresh tokenでのrefreshは401 | `npx dotenv -e .env.local.test -- vitest run src/app/api/mobile/auth/refresh/route.integration.test.ts -t "POST /api/mobile/auth/logout"` | PASS | 2026-09-09追加。同上 |
 | TC-MTA-024 | `GET /api/mobile/listener-status`はJWTからprincipalId解決しstreamerId claim欠落でも動作する | `src/app/api/mobile/listener-status/route.ts` | 正常/異常/回帰 | トークン無し、Streamer未登録、streamerIdクレーム欠落、verified=false | トークン無し→401、Streamer未登録→401、streamerIdクレーム欠落でもprincipalIdから解決、verified=falseでも401にしない | `npx dotenv -e .env.local.test -- vitest run src/app/api/mobile/listener-status/route.integration.test.ts` | PASS | 2026-09-09追加。DeepSeek TestCaseレビューでx-api-key撤去に伴うregression testのbaseline記載漏れを指摘され追加(自動テスト自体は実装時から存在) |
 | TC-MTA-020 | `Streamer.apiKey`列・desktop向けAPIキー発行/検証エンドポイントが完全に削除されている | `prisma/schema.prisma`、`src/app/api/streamer/api-key/route.ts` | negative | 削除後のschema・APIルート一覧 | `Streamer`モデルに`apiKey`フィールドが存在しない。`/api/streamer/api-key`ルートが存在しない(404) | `npm run typecheck` + `grep -rn apiKey prisma/schema.prisma` | PASS | Geminiレビューで67ファイル中の削除漏れ無しを確認済み |
+| TC-MTA-025 | desktop access JWT は MOBILE_JWT_SECRET では検証できず aud は desktop | signDesktopToken / verifyDesktopToken | negative | 同一 principalId で mobile JWT と desktop JWT を発行 | desktop JWT は mobile secret で verify できず、decode の aud は desktop。mobile JWT は verifyDesktopToken が null | npx vitest run src/lib/desktop-auth.test.ts | PASS | |
+| TC-MTA-027 | middleware は /api/desktop を NextAuth 保護から外す | src/middleware.ts | 正常 | /api/desktop/auth/refresh | matcher 公開パスに含まれる | npx vitest run src/middleware.test.ts | PASS | |
+| TC-MTA-028 | desktop HTTP 認証契約（login/refresh/logout）と client 非干渉 | /api/desktop/auth/* | 正常/異常 | email 正誤、desktop refresh 再利用、同一 principal の mobile refresh | login は token+refreshToken+onboardingRequired。desktop refresh の aud は desktop。reuse は desktop family のみ失効 | 未実装の integration | NOT RUN: desktop auth の HTTP integration テスト未追加 |
 | TC-MTA-021 | REFRESH_TOKEN_REPLAY_ENC_KEY未設定/不正長のまま本番起動しようとするとfail-fastする | `server.js` 起動時チェック | 異常 | `NODE_ENV=production`かつ環境変数未設定または32byteでない | 起動せず`process.exit(1)` | 手動確認(起動スクリプトの分岐を読んで確認。実プロセス起動はローカル`.env.local`が正しく設定済みのため未実施) | NOT RUN: 本番相当の異常系プロセス起動はローカルdev環境の性質上再現困難。コードレビュー(Codex-terra finding是正)とコードパスの目視確認で代替 | 2026-09-09追加。Codex-terra findingへの対応 |
 
 ## Quality Gate

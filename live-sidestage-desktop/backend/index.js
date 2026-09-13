@@ -14,7 +14,7 @@ const express = require('express');
 const multer = require('multer');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-const { WebcastPushConnection, TikTokWebClient } = require('TLC-sidestage');
+const { createAnalyticsLiveClient } = require('./lib/analytics-live-client');
 const { createDbStore } = require('./lib/db/store');
 const { renderContributorsOverlayHtml } = require('../overlays/contributors/render');
 const tiktokState = require('./lib/tiktok-state');
@@ -175,6 +175,9 @@ const {
     TIME_ZONE,
     BROADCASTER_ID_STATE_KEY,
     EULER_STREAM_API_KEY_STATE_KEY,
+    ANALYTICS_BASE_URL_STATE_KEY,
+    ANALYTICS_REFRESH_TOKEN_STATE_KEY,
+    ANALYTICS_ACCESS_TOKEN_STATE_KEY,
     DISPLAY_STATE_KEY,
     DISPLAY_DAY_REFERENCE_STATE_KEY,
     CONTRIBUTORS_DISPLAY_RANGE_STATE_KEY,
@@ -1509,6 +1512,34 @@ function getStoredBroadcasterId() {
 
 function getInitialBroadcasterId() {
     return getStoredBroadcasterId() || normalizeBroadcasterId(ENV_TIKTOK_USERNAME);
+}
+
+
+function getAnalyticsAuth() {
+    return {
+        baseUrl: String(getGlobalStateValue(ANALYTICS_BASE_URL_STATE_KEY) || '').replace(/\/$/, ''),
+        token: getGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY) || '',
+        refreshToken: getGlobalStateValue(ANALYTICS_REFRESH_TOKEN_STATE_KEY) || ''
+    };
+}
+
+async function refreshAnalyticsAccessTokenIfNeeded() {
+    const auth = getAnalyticsAuth();
+    if (!auth.baseUrl || !auth.refreshToken) return auth;
+    try {
+        const response = await fetch(auth.baseUrl + '/api/desktop/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: auth.refreshToken })
+        });
+        if (!response.ok) return auth;
+        const body = await response.json();
+        if (body.token) setGlobalStateValue(ANALYTICS_ACCESS_TOKEN_STATE_KEY, body.token);
+        if (body.refreshToken) setGlobalStateValue(ANALYTICS_REFRESH_TOKEN_STATE_KEY, body.refreshToken);
+    } catch (error) {
+        console.warn('[analytics-auth] refresh failed:', error?.message || error);
+    }
+    return getAnalyticsAuth();
 }
 
 function getBroadcasterId() {
@@ -2991,7 +3022,7 @@ require('./lib/routes/data')({
 
 
 
-require('./lib/routes/settings')({ app, dbStore, io, serverEvents, getBroadcasterId, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON });
+require('./lib/routes/settings')({ app, dbStore, io, serverEvents, getBroadcasterId, setBroadcasterId, connectToTikTok, resetTikTokConnection, getScopedStateValue, setScopedStateValue, getTimestamp, IS_ELECTRON, IS_PACKAGED_ELECTRON });
 
 
 currentBroadcasterId = getInitialBroadcasterId();
@@ -3059,26 +3090,14 @@ const tiktokConnectionOptions = {
         ...TIKTOK_JA_LOCALE_HEADERS,
         'User-Agent': TIKTOK_DESKTOP_USER_AGENT
     },
-    signedWebSocketProvider: IS_ELECTRON ? async (params) => {
-        const webClient = new TikTokWebClient({
-            customHeaders: {
-                ...TIKTOK_JA_LOCALE_HEADERS
-            },
-            axiosOptions: {},
-            clientParams: {
-                ...TIKTOK_JA_LOCALE_CLIENT_PARAMS
-            },
-            authenticateWs: false,
-            signApiKey: getEulerStreamApiKey()
-        });
-        return webClient.fetchSignedWebSocketFromEuler(params);
-    } : undefined
+    signedWebSocketProvider: undefined
 };
 
 giftCatalogModule.initGiftCatalog({
     dbStore,
     getBroadcasterId,
     getConnectionOptions: () => tiktokConnectionOptions,
+    getAnalyticsAuth,
 });
 
 // 前回貯めたカタログから日本語表示名の索引を作る。**取得を待たずに引けるようにする**ため。
@@ -3088,6 +3107,11 @@ loadGiftCatalogIndex(getBroadcasterId());
 
 function ensureTikTokConnection() {
     if (normalizeBooleanEnv(process.env.TIKEFFECT_DISABLE_TIKTOK, false)) {
+        return null;
+    }
+
+    const analyticsAuth = getAnalyticsAuth();
+    if (!analyticsAuth.baseUrl || (!analyticsAuth.token && !analyticsAuth.refreshToken)) {
         return null;
     }
 
@@ -3104,7 +3128,12 @@ function ensureTikTokConnection() {
     clearRecentTikTokComments();
     emitAdminCommentsUpdate();
 
-    tiktokState.liveConnection = new WebcastPushConnection(broadcasterId, tiktokConnectionOptions);
+    tiktokState.liveConnection = createAnalyticsLiveClient({
+        getConfig: async () => {
+            await refreshAnalyticsAccessTokenIfNeeded();
+            return getAnalyticsAuth();
+        }
+    });
     tiktokState.activeUsername = broadcasterId;
     tiktokState.lastEventAt = Date.now();
 
@@ -3411,6 +3440,15 @@ async function connectToTikTok() {
     }
 
     const connection = ensureTikTokConnection();
+    if (!connection) {
+        setTikTokConnectionState('not_configured', 'analytics にログインしてください。', {
+            transportMethod: 'unknown',
+            websocketReasonCode: 'analytics_not_configured',
+            websocketReasonLabel: 'analytics 未ログインです。',
+            websocketReasonDetail: 'Control の設定から analytics にログインすると、監視中の配信からギフトとコメントを受け取ります。'
+        });
+        return;
+    }
     if (tiktokState.liveConnection === connection && tiktokState.activeUsername === broadcasterId && tiktokState.connectionState.status === 'connected') {
         return connection;
     }

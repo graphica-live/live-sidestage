@@ -35,6 +35,7 @@ Web の socket.io が `chat:{streamerId}` ルームへ `chat:comment` として�
 | TC-CCD-006 | Web/Worker 同居時（回帰） | `WEB_INTERNAL_URL` 未設定（ローカル単一プロセス / dev） | `chat` を1件受信 | HTTP を経由せず `emitChatComment()` を購読者ごとに直接呼ぶ | `npm run test:unit`（`chat-feed.test.ts` が emit 側の契約を固定） | PASS |
 | TC-CCD-007 | 端末への重複配信抑止（回帰） | 同一 `msgId` のコメントが Web へ2回到達 | `emitChatComment()` を2回呼ぶ | `chat:comment` の emit は1回だけ | `npm run test:unit -- chat-feed` | PASS |
 | TC-CCD-008 | 旧 Worker 互換（境界） | デプロイ中に旧 Worker が単数形 `chatEvent` を送る | 内部 API に `chatEvent` のみの body を POST | 従来どおり `emitChatComment` が1回呼ばれる | `npx vitest run src/app/api/internal/gift-event/route.chat-comment.test.ts` | PASS |
+| TC-CCD-014 | desktop mirror | emitChatComment | 正常 | comment emit | chat:comment plus desktop:comment to desktop:{streamerId} | npx vitest run src/lib/chat-feed.test.ts | PASS |
 | TC-CCD-013 | 枠溢れ時は再送しない（境界） | 転送キューが `FORWARD_MAX_QUEUE` を超えている | `chat` を1件受信 | 転送を試みず破棄する（再送もしない） | 実装上、再送ループは `acquireForwardSlot()` 成功後にのみ入る構造 | NOT RUN: 256件のキュー溢れを integration ハーネスで安定再現できない。構造で担保 |
 
 ## Quality Gate

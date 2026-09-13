@@ -47,6 +47,9 @@ model RefreshToken {
   // 発行時点のstreamerId(参考情報)。access token再発行時のクレームには使わない
   // (mobile-auth.tsが毎回principalIdからDBを引き直す。発見4と同じ規律)。
   streamerId        String?
+  // mobile JWT と desktop JWT の refresh を同じテーブルで持つ。既存行は "mobile"。
+  // 端末の跡跡を防ぐため、rotation は同一 client の行だけを無効化する。
+  client            String    @default("mobile")
   tokenHash         String    @unique
   familyId          String
   createdAt         DateTime  @default(now())
@@ -84,6 +87,8 @@ model RefreshTokenReplay {
   refreshTokenEnc String
   createdAt       DateTime @default(now())
   expiresAt       DateTime
+  // rotation replay も client 区切り。desktop の replay を mobile refresh が返さないようにする。
+  client          String   @default("mobile")
 
   @@schema("public")
 }

@@ -20,14 +20,14 @@ TikTok Live配信中に届くギフト・コメント・視聴イベントをリ
 
 TikFinity等の既存の類似ツールに対し、ローカル完結型で動作しウィジェットの見た目・トリガー条件を配信者自身が細かくカスタマイズできる自由度の高さが差別化点。日本語配信者向けのローカライズ(ギフト名の日本語対応など)にも力を入れている。
 
-ローカル完結は維持しつつ、周辺プロダクトのハブにもなりつつある。称号ウィジェットは LIVE Sidestage Analytics の `GET /api/analytics/monthly-contributors?month=YYYY-MM` から先月のMVP/TOP5を取り込む(APIキー経由の一方向・任意設定)。また TikEffect のsocket.io(ポート38100固定)へ接続する専属アプリ **MyDesktop**(`live-sidestage-mydesktop`)が別プロジェクトとして生まれ、`effects:video-playing` を購読している。TikEffect本体は引き続きこれらが無くても単体で動作する。
+ウィジェット設定・演出再生・OBS 配信はローカルで完結する。LIVE のギフト/コメント入力は LIVE Sidestage Analytics の worker 監視を正本とし、desktop 専用 JWT で `desktop:{streamerId}` を購読する。analytics 未ログインではライブ演出は動かない。称号ウィジェットの monthly-contributors API は廃止済み。MyDesktop はこれまでどおり localhost:38100 の観測者。
 
 ## Operating Context
 
 - Electronデスクトップアプリ(Windows)としてローカルで起動。内部でExpressバックエンド(`backend/index.js`)+ socket.ioがリアルタイム通信を担う
 - 配信者はローカル管理画面(`backend/public/db/*.html`、通称「Control」)でウィジェットの表示/非表示・テーマ・トリガー条件を設定する
 - 設定したウィジェット(`backend/public/widgets/*.html`)のURLをOBS等の配信ソフトのブラウザソースとして読み込み、配信画面に重ねて表示する
-- TikTok Live接続に`tiktok-live-connector`を使用し、レート制限のある外部API(EulerStream)に依存する箇所がある
+- LIVE 入力は analytics API / socket。このアプリは TikTok と Euler に直接接続しない
 - ローカルDBに`better-sqlite3`を使用し、ギフト履歴・コメント・各種設定を保存する。実行データの置き場は`%LOCALAPPDATA%\TikEffect`
 - バックエンドのポートは**38100固定**で自動フォールバックしない。管理UIが配布するウィジェットURLは`127.0.0.1.sslip.io`ベース(TikTok LIVE Studioがbare `localhost`を無効扱いするための回避)
 - 外部ソフト連携はいずれも任意設定。TikTok LIVE Studio(純正Stream Deckプラグインのwsポートへ送出)、MIDI出力、VirtualDJ、および LIVE Sidestage Analytics の月間貢献者API
@@ -54,7 +54,7 @@ TikFinity等の既存の類似ツールに対し、ローカル完結型で動�
 
 ## Product Principles
 
-1. ローカル完結を保つ — 配信者のPC内で完結する設計を維持し、不要なクラウド依存を増やさない
+1. 演出と設定はローカル完結、LIVE 入力は analytics 必須 — クラウド依存は入力面に限定する
 2. カスタマイズ自由度を最大化する — ウィジェットの色・フォント・トリガー条件を配信者が自分で作り込めるようにする
 3. 日本語配信者向けの品質を優先する — 表記・ローカライズの精度を保つ
 4. 配信画面での視認性とパフォーマンスを損なわない軽量な演出を優先する

@@ -43,7 +43,7 @@ npm run build:publish       # ビルド + Cloudflare R2 へ publish
 
 ### 連携先
 
-- analytics との連携は削除済み(2026-09)。以前の月間MVP/TOP5反映API(`GET /api/analytics/monthly-contributors`)とAPIキー発行機能が廃止された。称号ウィジェット（[backend/lib/monthly-mvp-client.js](backend/lib/monthly-mvp-client.js)）は自動反映不可になった
+- LIVE 入力は analytics 専用クライアント（`backend/lib/analytics-live-client.js`）。Control で analytics ログインし、`desktop:{streamerId}` を購読する。TikTok / Euler へはこのアプリから接続しない。月間MVP/TOP5 API は廃止のまま
 - モノレポ化以前は `C:\dev\tiktok-app` にあった。`.mcp.json` の `cwd` と `.claude/settings.json` の hooks が旧パスを指したままで実在しない（code-review-graph MCP はこの状態では動かない）
 
 ## フロントエンドの完了条件

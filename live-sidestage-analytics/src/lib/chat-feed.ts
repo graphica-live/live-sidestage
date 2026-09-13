@@ -4,6 +4,7 @@ import { nextVersion } from "./realtime-sync/version-store";
 import type { RankingSnapshot } from "./chat-ranking";
 import type { GiftHistoryEvent } from "./gift-history";
 import type { BattleListItem } from "./battle-history";
+import { mirrorChatToDesktop } from "./desktop-feed";
 
 export const CHAT_EVENT_SCHEMA_VERSION = 1;
 
@@ -408,6 +409,7 @@ export async function emitChatComment(payload: ChatCommentPayload): Promise<bool
     return true;
   }
   g.__io?.to(`chat:${payload.streamerId}`).emit("chat:comment", payload);
+  mirrorChatToDesktop(payload.streamerId, "chat:comment", payload as unknown as Record<string, unknown>);
   return true;
 }
 
@@ -418,6 +420,7 @@ export async function emitChatFollow(input: ChatFollowInput): Promise<boolean> {
   }
   const payload: ChatFollowPayload = { schemaVersion: CHAT_EVENT_SCHEMA_VERSION, ...input };
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:follow", payload);
+  mirrorChatToDesktop(input.streamerId, "chat:follow", payload as unknown as Record<string, unknown>);
   return true;
 }
 
@@ -496,6 +499,7 @@ export async function emitChatGift(input: ChatGiftInput): Promise<boolean> {
   };
 
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:gift", payload);
+  mirrorChatToDesktop(input.streamerId, "chat:gift", payload as unknown as Record<string, unknown>);
 
   // タイマーのギフト連動(desktop 5ウィジェット移植)。emitChatGiftは「コンボのdedupと
   // tickごとの正味増分(delta)」をWebプロセス単独で確定させる唯一の場所であり、
@@ -520,6 +524,7 @@ export async function emitChatListener(input: ChatListenerInput): Promise<boolea
   if (!isIoReady()) return false;
   const payload: ChatListenerPayload = { schemaVersion: CHAT_EVENT_SCHEMA_VERSION, ...input };
   g.__io?.to(`chat:${input.streamerId}`).emit("chat:listener", payload);
+  mirrorChatToDesktop(input.streamerId, "chat:listener", payload as unknown as Record<string, unknown>);
   return true;
 }
 

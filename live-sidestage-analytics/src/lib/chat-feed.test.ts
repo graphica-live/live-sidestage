@@ -76,6 +76,14 @@ function makeGift(overrides: Partial<ChatGiftInput> = {}): ChatGiftInput {
   };
 }
 
+function chatEmitted() {
+  return emitted.filter((e) => e.event.startsWith("chat:"));
+}
+
+function desktopEmitted() {
+  return emitted.filter((e) => e.event.startsWith("desktop:"));
+}
+
 function giftPayloads(): ChatGiftPayload[] {
   return emitted.filter((e) => e.event === "chat:gift").map((e) => e.payload as ChatGiftPayload);
 }
@@ -96,25 +104,31 @@ describe("emitChatComment", () => {
     const payload = makeComment();
     await emitChatComment(payload);
     await emitChatComment(payload);
-    expect(emitted).toHaveLength(1);
+    expect(chatEmitted()).toHaveLength(1);
+  });
+
+  it("desktop:{streamerId} にも chat:comment を鏡る", async () => {
+    await emitChatComment(makeComment());
+    expect(desktopEmitted().map((e) => e.event)).toEqual(["desktop:comment"]);
+    expect(desktopEmitted()[0].room).toBe("desktop:streamer_1");
   });
 
   it("msgIdが異なれば両方配信する", async () => {
     await emitChatComment(makeComment({ msgId: "msg_a" }));
     await emitChatComment(makeComment({ msgId: "msg_b" }));
-    expect(emitted).toHaveLength(2);
+    expect(chatEmitted()).toHaveLength(2);
   });
 
   it("msgIdがnullの場合はdedupせずそのまま配信する(欠損時に握りつぶさない)", async () => {
     await emitChatComment(makeComment({ msgId: null }));
     await emitChatComment(makeComment({ msgId: null }));
-    expect(emitted).toHaveLength(2);
+    expect(chatEmitted()).toHaveLength(2);
   });
 
   it("streamerIdが異なれば同じmsgIdでも両方配信する", async () => {
     await emitChatComment(makeComment({ streamerId: "a", msgId: "shared" }));
     await emitChatComment(makeComment({ streamerId: "b", msgId: "shared" }));
-    expect(emitted).toHaveLength(2);
+    expect(chatEmitted()).toHaveLength(2);
   });
 });
 
@@ -134,7 +148,7 @@ describe("dedupのnamespace分離", () => {
     });
     await emitChatGift(makeGift({ isCombo: false, orderId: shared, groupId: null }));
 
-    expect(emitted.map((e) => e.event)).toEqual(["chat:comment", "chat:follow", "chat:gift"]);
+    expect(chatEmitted().map((e) => e.event)).toEqual(["chat:comment", "chat:follow", "chat:gift"]);
   });
 });
 
@@ -193,7 +207,7 @@ describe("emitChatGift — groupIdのあるコンボ", () => {
     await emitChatGift(makeGift({ streamerId: "b", repeatCount: 4 }));
 
     expect(giftPayloads().map((p) => p.streamerId)).toEqual(["a", "b"]);
-    expect(emitted.map((e) => e.room)).toEqual(["chat:a", "chat:b"]);
+    expect(chatEmitted().map((e) => e.room)).toEqual(["chat:a", "chat:b"]);
   });
 });
 
@@ -331,7 +345,7 @@ describe("socket.ioサーバー未初期化時", () => {
         msgId: "f1",
       })
     ).toBe(false);
-    expect(emitted).toHaveLength(0);
+    expect(chatEmitted()).toHaveLength(0);
   });
 
   it("状態を進めないので、再送されたtickを取りこぼさない", async () => {
@@ -365,13 +379,13 @@ describe("emitChatFollow", () => {
   it("同じmsgIdの再送はスキップする", async () => {
     await emitChatFollow(follow("f1"));
     await emitChatFollow(follow("f1"));
-    expect(emitted).toHaveLength(1);
+    expect(chatEmitted()).toHaveLength(1);
   });
 
   it("msgIdがnullならdedupせず配信する", async () => {
     await emitChatFollow(follow(null));
     await emitChatFollow(follow(null));
-    expect(emitted).toHaveLength(2);
+    expect(chatEmitted()).toHaveLength(2);
   });
 
   it("schemaVersionを付与してchat:followとして配信する", async () => {
@@ -430,7 +444,7 @@ describe("realtime-sync push(ranking/gift-history/battle-history)", () => {
   it("emitChatRankingSnapshotはSyncEnvelope(kind: snapshot)をchat:ranking:snapshotとして配信する", async () => {
     const ok = await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot());
     expect(ok).toBe(true);
-    expect(emitted).toHaveLength(1);
+    expect(chatEmitted()).toHaveLength(1);
     expect(emitted[0].event).toBe("chat:ranking:snapshot");
     expect(emitted[0].room).toBe("chat:streamer_1");
     const envelope = emitted[0].payload as { kind: string; version: number; streamerId: string };
@@ -469,7 +483,7 @@ describe("realtime-sync push(ranking/gift-history/battle-history)", () => {
     expect(await emitChatRankingSnapshot("streamer_1", makeRankingSnapshot())).toBe(false);
     expect(await emitChatGiftHistoryAppend("streamer_1", makeGiftHistoryEvent())).toBe(false);
     expect(await emitChatBattleHistoryUpsert("streamer_1", makeBattleListItem())).toBe(false);
-    expect(emitted).toHaveLength(0);
+    expect(chatEmitted()).toHaveLength(0);
   });
 
   it("ranking/gift-history/battle-historyのversionは互いに独立したnamespaceを持つ", async () => {

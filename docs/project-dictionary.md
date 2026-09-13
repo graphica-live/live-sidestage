@@ -126,14 +126,32 @@ TikTokが発行するバトルの識別子。**API上stringなので数値化し
 ### apiKey / overlayToken / shareToken
 
 #### Definition
-サーバーが発行するシークレット。`Streamer.apiKey`（**平文保存**）/ `Streamer.overlayToken` / `BattleHistory.shareToken` / `AmbassadorInvite.token` / `PendingPurchaseIntent.token` / `Agency.apiKeyHash`（SHA-256）。
+サーバーが発行するシークレット。`Streamer.overlayToken` / `BattleHistory.shareToken` / `AmbassadorInvite.token` / `PendingPurchaseIntent.token` / `Agency.apiKeyHash`（SHA-256）。`Streamer.apiKey`（平文）は廃止済み。desktop は `RefreshToken.client="desktop"` と `DESKTOP_JWT_SECRET`（`aud: desktop`）で認証し、socket は `desktop:{streamerId}` ルームへ入る。
 
 #### Not
 - 識別子ではない。認可の材料であって、同一性の判定キーに使わない
-- `Agency` はハッシュ、`Streamer` は平文という非対称は**意図的**（schemaに「Streamerの平文保存は踏襲しない」と明記）
+- `Agency.apiKeyHash` はハッシュ保存。desktop / mobile の refresh も SHA-256。新しいシークレット列で `Streamer.apiKey` の平文方式を復活させない
 
 #### Naming
 新しいシークレット列で `Streamer.apiKey` の平文方式を踏襲しない。
+
+---
+
+### RefreshToken.client / DESKTOP_JWT_SECRET / desktop:{streamerId}
+
+#### Definition
+RefreshToken.client は refresh の発行元 (mobile | desktop)。既存行の default は mobile。desktop の access JWT は DESKTOP_JWT_SECRET と ud: desktop で署名し、socket は desktop:{streamerId} に join する。モバイル JWT・chat:{streamerId} とは secret / audience / 事件集合が違う。
+
+#### Not
+- モバイル MOBILE_JWT_SECRET / chat:{streamerId} と共用しない
+- 廃止済みの Streamer.apiKey 平文を復活させない
+- overlay の overlay:{streamerId} でもない
+
+#### Usage
+- desktop Control の analytics ログイン、/api/desktop/*、worker 経由のライブ事件転送
+
+#### Naming
+DesktopRefreshToken テーブルは作らない。rotation は同一 client の行と replay だけを対象にする。
 
 ---
 

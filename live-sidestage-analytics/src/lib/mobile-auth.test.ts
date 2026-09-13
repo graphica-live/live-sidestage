@@ -295,6 +295,20 @@ describe("rotateRefreshToken", () => {
     expect(await rotateRefreshToken(first.refreshToken)).toEqual({ error: "TOKEN_REUSE_DETECTED" });
   });
 
+  it("desktop へ mobile の revoke 済み refresh を渡しても mobile family は失効しない", async () => {
+    const { rawToken } = await setupUser();
+    const first = await rotateRefreshToken(rawToken);
+    if ("error" in first) throw new Error("rotation に失敗した");
+    fake.replays[0].expiresAt = new Date(Date.now() - 1);
+
+    expect(await rotateRefreshToken(rawToken, { client: "desktop" })).toEqual({
+      error: "INVALID_REFRESH_TOKEN",
+    });
+    expect(tokenRow(1).revokedAt).toBeNull();
+    const again = await rotateRefreshToken(first.refreshToken);
+    expect("error" in again).toBe(false);
+  });
+
   it("存在しない refresh token は INVALID_REFRESH_TOKEN", async () => {
     expect(await rotateRefreshToken("no-such-token")).toEqual({ error: "INVALID_REFRESH_TOKEN" });
   });
