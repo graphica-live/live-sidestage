@@ -14,7 +14,7 @@
 npm run dev                 # server.js (Next + socket.io) を .env.local で起動
 npm run dev:local           # ローカルPostgres(.env.local.test)向けに起動。dev用の簡易ログイン有効
 docker compose up -d db     # ローカルテストDB (postgres:16, localhost:5433)
-npm run db:push:local       # ローカルDBへスキーマ反映
+npm run db:push:local       # ローカルDBへスキーマ反映（worktree 専用DB。scripts/with-local-test-db.mjs）
 npm run seed:local
 npm run typecheck           # tsc --noEmit
 npm run test:unit           # vitest（*.integration.test.ts を除外）
