@@ -43,6 +43,7 @@ if touched live-sidestage-analytics; then
     fi
 
     echo "[pre-commit] live-sidestage-analytics: ローカルテストDBへスキーマ反映..."
+    # DATABASE_URL は scripts/with-local-test-db.mjs が worktree 専用DBへ差し替える。
     npm run db:push:local -- --skip-generate --accept-data-loss
 
     # イベント機能(src/event, src/app/**/events, src/app/(public)/e)のテストも
