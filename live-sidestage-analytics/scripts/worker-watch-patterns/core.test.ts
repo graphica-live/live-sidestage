@@ -258,3 +258,78 @@ describe("buildExpectedPatterns", () => {
     expect(expected.has("custom/src/lib/test.ts")).toBe(true);
   });
 });
+
+describe("normalizeRepoRelativePath", () => {
+  it("src/lib 相対に analytics プレフィックスを付ける", () => {
+    expect(normalizeRepoRelativePath("src/lib/foo.ts")).toBe(
+      "live-sidestage-analytics/src/lib/foo.ts"
+    );
+  });
+  it("既にプレフィックス付きなら二重付与しない", () => {
+    expect(
+      normalizeRepoRelativePath("live-sidestage-analytics/src/lib/foo.ts")
+    ).toBe("live-sidestage-analytics/src/lib/foo.ts");
+  });
+  it("バックスラッシュと先頭 ./ を正規化する", () => {
+    expect(normalizeRepoRelativePath(".\\src\\lib\\foo.ts")).toBe(
+      "live-sidestage-analytics/src/lib/foo.ts"
+    );
+  });
+});
+
+describe("patternMatches", () => {
+  it("完全一致", () => {
+    expect(
+      patternMatches(
+        "live-sidestage-analytics/worker.ts",
+        "live-sidestage-analytics/worker.ts"
+      )
+    ).toBe(true);
+  });
+  it("prisma/** は配下にマッチし兄弟にはマッチしない", () => {
+    expect(
+      patternMatches(
+        "live-sidestage-analytics/prisma/schema.prisma",
+        "live-sidestage-analytics/prisma/**"
+      )
+    ).toBe(true);
+    expect(
+      patternMatches(
+        "live-sidestage-analytics/prisma-not/schema.prisma",
+        "live-sidestage-analytics/prisma/**"
+      )
+    ).toBe(false);
+  });
+});
+
+describe("intersectChangedWithExpected", () => {
+  const expected = new Set([
+    "live-sidestage-analytics/worker.ts",
+    "live-sidestage-analytics/prisma/**",
+    "live-sidestage-analytics/src/lib/tiktok-listener.ts",
+  ]);
+  it("hit をソート一意で返す", () => {
+    expect(
+      intersectChangedWithExpected(
+        [
+          "src/lib/tiktok-listener.ts",
+          "live-sidestage-analytics/worker.ts",
+          "live-sidestage-analytics/src/app/page.tsx",
+          "live-sidestage-analytics/worker.ts",
+        ],
+        expected
+      )
+    ).toEqual([
+      "live-sidestage-analytics/src/lib/tiktok-listener.ts",
+      "live-sidestage-analytics/worker.ts",
+    ]);
+  });
+  it("page だけなら空", () => {
+    expect(
+      intersectChangedWithExpected(
+        ["live-sidestage-analytics/src/app/page.tsx"],
+        expected
+      )
+    ).toEqual([]);
+  });
+});

@@ -11,7 +11,7 @@
  *   1: import graph など起動不能な致命エラー
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -51,9 +51,10 @@ function getChangedFilesFromGit(
   headRef: string
 ): string[] {
   try {
-    const diffOutput = execSync(
-      `git diff --name-only --diff-filter=ACMR ${baseRef}...${headRef}`,
-      { cwd: monorepoRoot, encoding: "utf8" }
+    const diffOutput = execFileSync(
+      "git",
+      ["diff", "--name-only", "--diff-filter=ACMRD", `${baseRef}...${headRef}`],
+      { cwd: monorepoRoot, encoding: "utf8", windowsHide: true }
     ).trim();
 
     if (!diffOutput) {

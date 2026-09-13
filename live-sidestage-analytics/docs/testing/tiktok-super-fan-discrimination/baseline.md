@@ -22,4 +22,3 @@ SF 入室は `WebcastBarrageMessage` の `displayType` で解決し、
 | TC-TSF-004 | SF 入室 displayType を検出 | `isSuperFanBarrageDisplayType` | 正常 | `ttlive_superFan_commentNotif_superFanJoined` | `true` | 同上 | PASS | |
 | TC-TSF-005 | FC 入室のみは SF 扱いしない | 同上 | negative | `pm_mt_fan_live_join` | `false` | 同上 | PASS | |
 | TC-TSF-006 | barrage schema から user_id を抽出 | `resolveSuperFanJoinUserId` | 正常 | `user_id=123` を含む schema | `"123"` | 同上 | PASS | |
-| TC-WWP-010 | watchPatterns snapshot が import graph と一致 | CLI mock snapshot | 回帰 | 本番相当 snapshot(71項目) | exit 0、`All checks passed` | `npx vitest run scripts/worker-watch-patterns/cli.test.ts` | PASS | `super-fan-status.ts` 追加反映済み |

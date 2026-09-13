@@ -57,4 +57,16 @@ describe("check-worker-restart-proposal CLI", () => {
     expect(result.stdout).toContain("WORKER_RESTART_NOT_NEEDED");
     expect(result.stdout).not.toContain("WORKER_RESTART_RECOMMENDED");
   }, 60_000);
+
+  it("prisma path still recommends restart", () => {
+    const changedFilesPath = writeChangedFiles([
+      "live-sidestage-analytics/prisma/schema.prisma",
+    ]);
+    const result = runCli(`--changed-files=${changedFilesPath}`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("WORKER_RESTART_RECOMMENDED");
+    expect(result.stdout).toContain("live-sidestage-analytics/prisma/schema.prisma");
+  }, 60_000);
+
 });
