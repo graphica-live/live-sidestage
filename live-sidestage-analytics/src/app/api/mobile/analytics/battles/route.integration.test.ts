@@ -143,6 +143,21 @@ describe("GET /api/mobile/analytics/battles", () => {
     expect(res.status).toBe(400);
   });
 
+  it("不正なlimit/offsetは400。省略時limitは200契約で通る", async () => {
+    expect((await GET(request("?period=day&date=2026-08-24&limit=0", token))).status).toBe(400);
+    expect((await GET(request("?period=day&date=2026-08-24&limit=201", token))).status).toBe(400);
+    expect((await GET(request("?period=day&date=2026-08-24&offset=-1", token))).status).toBe(400);
+    expect((await GET(request("?period=day&date=2026-08-24", token))).status).toBe(200);
+    expect((await GET(request("?period=day&date=2026-08-24&limit=50", token))).status).toBe(200);
+  });
+
+  it("cursorStartedAt/cursorBattleIdの片方だけは400", async () => {
+    expect(
+      (await GET(request("?period=day&date=2026-08-24&cursorStartedAt=2026-08-24T10%3A00%3A00Z", token))).status
+    ).toBe(400);
+    expect((await GET(request("?period=day&date=2026-08-24&cursorBattleId=itest-battle-1", token))).status).toBe(400);
+  });
+
   describe("プラン制限(requireHistoryPlan)", () => {
     it("FREEユーザーのdayは通る(拡張範囲でなければプラン判定を通過する)", async () => {
       const res = await GET(request("?period=day&date=2026-08-24", freeToken));

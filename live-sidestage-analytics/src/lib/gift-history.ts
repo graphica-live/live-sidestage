@@ -97,12 +97,22 @@ export async function buildGiftHistoryEventById(giftId: string): Promise<GiftHis
   return event ?? null;
 }
 
+export type GiftHistoryCursor = { receivedAt: Date; id: string };
+
+export type GiftHistoryPaging = {
+  /** 追加ページの正本。receivedAt desc, id desc の次行から取る。 */
+  cursor?: GiftHistoryCursor;
+  /** カーソル未指定時のみ。初回互換用。ライブ先頭挿入後の追加ページには使わない。 */
+  offset?: number;
+};
+
 // listenerQuery: tiktokHandle / nickname の部分一致(大小文字無視)で絞り込む。省略時は全件。
 export async function queryGiftHistory(
   roomId: string,
   where: { dayKey?: { gte: string; lte: string }; receivedAt?: { gte: Date; lte: Date } },
   limit: number,
-  listenerQuery?: string | null
+  listenerQuery?: string | null,
+  paging?: GiftHistoryPaging
 ): Promise<{ events: GiftHistoryEvent[]; total: { count: number; diamonds: number }; hasMore: boolean }> {
   // Gift は表示用の列を持たないので、名前での絞り込みは TikTokUser 側を先に引いて
   // tiktokUid の集合へ落とす。**room + 期間で先に絞ってから当てる**(グローバルな
@@ -129,23 +139,52 @@ export async function queryGiftHistory(
     ...where,
   };
 
-  // limit+1件取ることで、取得後にスライスするだけでhasMoreを判定できる(追加のcountクエリ不要)。
-  const rows = await prisma.gift.findMany({
-    where: fullWhere,
-    orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
-    take: limit + 1,
-    select: GIFT_HISTORY_ROW_SELECT,
-  });
+  const cursor = paging?.cursor;
+  const offset = cursor ? 0 : (paging?.offset ?? 0);
+  const pageWhere = cursor
+    ? {
+        AND: [
+          fullWhere,
+          {
+            OR: [
+              { receivedAt: { lt: cursor.receivedAt } },
+              { receivedAt: cursor.receivedAt, id: { lt: cursor.id } },
+            ],
+          },
+        ],
+      }
+    : fullWhere;
+
+  // limit+1件取ることで、取得後にスライスするだけでhasMoreを判定できる。
+  // total は期間(fullWhere)全体。追加ページ(cursor)では aggregate を省略し 0 を返す
+  // (モバイルは先頭ページの total を保持する)。
+  const [rows, agg] = await Promise.all([
+    prisma.gift.findMany({
+      where: pageWhere,
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+      skip: offset,
+      take: limit + 1,
+      select: GIFT_HISTORY_ROW_SELECT,
+    }),
+    cursor
+      ? Promise.resolve({ _sum: { repeatCount: null, totalDiamonds: null } })
+      : prisma.gift.aggregate({
+          where: fullWhere,
+          _sum: { repeatCount: true, totalDiamonds: true },
+        }),
+  ]);
 
   const hasMore = rows.length > limit;
   const pageRows = hasMore ? rows.slice(0, limit) : rows;
 
   const events = await decorateGiftHistoryRows(pageRows);
 
-  const total = events.reduce(
-    (acc, e) => ({ count: acc.count + e.repeatCount, diamonds: acc.diamonds + e.totalDiamonds }),
-    { count: 0, diamonds: 0 }
-  );
+  const total = cursor
+    ? { count: 0, diamonds: 0 }
+    : {
+        count: agg._sum.repeatCount ?? 0,
+        diamonds: agg._sum.totalDiamonds ?? 0,
+      };
 
   return { events, total, hasMore };
 }

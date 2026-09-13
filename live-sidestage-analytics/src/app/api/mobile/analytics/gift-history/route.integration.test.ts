@@ -338,4 +338,22 @@ describe("GET /api/mobile/analytics/gift-history", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe("cursorReceivedAt/cursorId", () => {
+    it("片方だけの指定は400", async () => {
+      const onlyAt = await GET(
+        request("?period=day&date=2026-08-20&cursorReceivedAt=2026-08-20T10%3A00%3A00Z", token)
+      );
+      expect(onlyAt.status).toBe(400);
+      const onlyId = await GET(request("?period=day&date=2026-08-20&cursorId=clxxxxxxxx", token));
+      expect(onlyId.status).toBe(400);
+    });
+
+    it("不正なcursorReceivedAtは400", async () => {
+      const res = await GET(
+        request("?period=day&date=2026-08-20&cursorReceivedAt=not-a-date&cursorId=clxxxxxxxx", token)
+      );
+      expect(res.status).toBe(400);
+    });
+  });
 });

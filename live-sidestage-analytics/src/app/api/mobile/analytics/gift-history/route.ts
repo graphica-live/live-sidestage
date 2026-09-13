@@ -4,7 +4,7 @@ import { getDateRange } from "@/lib/gift-analytics";
 import { queryGiftHistory } from "@/lib/gift-history";
 import { sanitizeAvatarUrl } from "@/lib/tiktok-profile";
 import { jstDateKey } from "@/lib/overlay/day-key";
-import { parseRangeQuery, parseLimit, parseListenerQuery, requireHistoryPlan } from "@/lib/mobile-analytics-query";
+import { parseRangeQuery, parseLimit, parseListenerQuery, parseGiftHistoryCursor, requireHistoryPlan } from "@/lib/mobile-analytics-query";
 import {
   clampGiftHistoryDayRange,
   clampGiftHistoryDatetimeRange,
@@ -37,6 +37,9 @@ export async function GET(req: NextRequest) {
   const listenerQuery = parseListenerQuery(searchParams);
   if (!listenerQuery.ok) return listenerQuery.response;
 
+  const cursor = parseGiftHistoryCursor(searchParams);
+  if (!cursor.ok) return cursor.response;
+
   const planDenied = await requireHistoryPlan(ctx.streamer.principalId, {
     range: query.value,
     listenerQuery: listenerQuery.value,
@@ -67,7 +70,8 @@ export async function GET(req: NextRequest) {
     ctx.streamer.roomId,
     where,
     limit.value,
-    listenerQuery.value
+    listenerQuery.value,
+    cursor.value ? { cursor: cursor.value } : undefined
   );
 
   return NextResponse.json(

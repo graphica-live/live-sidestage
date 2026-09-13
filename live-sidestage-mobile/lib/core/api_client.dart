@@ -591,7 +591,7 @@ class LiveAnalyticsApi {
     return out;
   }
 
-  /// ギフト履歴タブ。[hasMore] が true なら「期間全体」ではなく「直近[limit]件」であることを示す。
+  /// ギフト履歴タブ。[hasMore] は期間にまだ古い行があること。[total] は期間全体。
   Future<GiftHistoryResult> fetchGiftHistory({
     required String token,
     required String period,
@@ -600,6 +600,8 @@ class LiveAnalyticsApi {
     DateTime? startDatetime,
     DateTime? endDatetime,
     String? listenerQuery,
+    DateTime? cursorReceivedAt,
+    String? cursorId,
   }) async {
     final query = Uri(
       queryParameters: {
@@ -611,6 +613,10 @@ class LiveAnalyticsApi {
         ),
         'limit': '$limit',
         if (listenerQuery != null && listenerQuery.isNotEmpty) 'listenerQuery': listenerQuery,
+        if (cursorReceivedAt != null && cursorId != null && cursorId.isNotEmpty) ...{
+          'cursorReceivedAt': cursorReceivedAt.toUtc().toIso8601String(),
+          'cursorId': cursorId,
+        },
       },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/gift-history?$query', null, token: token);
@@ -653,7 +659,7 @@ class LiveAnalyticsApi {
     return GiftBreakdownResult.tryParse(data);
   }
 
-  /// バトル履歴タブの一覧。
+  /// バトル履歴タブの一覧。新クライアントは [limit]=50 を明示する(省略時サーバは200)。
   Future<BattleListResult> fetchBattles({
     required String token,
     required String period,
@@ -661,6 +667,10 @@ class LiveAnalyticsApi {
     DateTime? startDatetime,
     DateTime? endDatetime,
     String? listenerQuery,
+    int limit = 50,
+    int offset = 0,
+    DateTime? cursorStartedAt,
+    String? cursorBattleId,
   }) async {
     final query = Uri(
       queryParameters: {
@@ -670,7 +680,13 @@ class LiveAnalyticsApi {
           startDatetime: startDatetime,
           endDatetime: endDatetime,
         ),
+        'limit': '$limit',
+        if (offset > 0 && (cursorStartedAt == null || cursorBattleId == null)) 'offset': '$offset',
         if (listenerQuery != null && listenerQuery.isNotEmpty) 'listenerQuery': listenerQuery,
+        if (cursorStartedAt != null && cursorBattleId != null && cursorBattleId.isNotEmpty) ...{
+          'cursorStartedAt': cursorStartedAt.toUtc().toIso8601String(),
+          'cursorBattleId': cursorBattleId,
+        },
       },
     ).query;
     final data = await _send('GET', '/api/mobile/analytics/battles?$query', null, token: token);

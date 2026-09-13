@@ -5,6 +5,8 @@ import {
   parseListenerQuery,
   parseOptionalLimit,
   parseOffset,
+  parseGiftHistoryCursor,
+  parseBattleHistoryCursor,
   escapeLikePattern,
 } from "./mobile-analytics-query";
 
@@ -203,3 +205,47 @@ describe("parseOffset", () => {
   });
 });
 
+
+describe("parseGiftHistoryCursor", () => {
+  it("両方未指定ならnull", () => {
+    const r = parseGiftHistoryCursor(params({}));
+    expect(r).toEqual({ ok: true, value: null });
+  });
+
+  it("両方妥当ならcursorを返す", () => {
+    const r = parseGiftHistoryCursor(
+      params({ cursorReceivedAt: "2026-08-15T10:00:00.000Z", cursorId: "gift_1" })
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value?.id).toBe("gift_1");
+    expect(r.value?.receivedAt.toISOString()).toBe("2026-08-15T10:00:00.000Z");
+  });
+
+  it("片方だけなら400", () => {
+    expect(parseGiftHistoryCursor(params({ cursorId: "gift_1" })).ok).toBe(false);
+    expect(parseGiftHistoryCursor(params({ cursorReceivedAt: "2026-08-15T10:00:00Z" })).ok).toBe(false);
+  });
+});
+
+describe("parseBattleHistoryCursor", () => {
+  it("両方未指定ならnull", () => {
+    const r = parseBattleHistoryCursor(params({}));
+    expect(r).toEqual({ ok: true, value: null });
+  });
+
+  it("両方妥当ならcursorを返す", () => {
+    const r = parseBattleHistoryCursor(
+      params({ cursorStartedAt: "2026-08-15T10:00:00.000Z", cursorBattleId: "b1" })
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value?.battleId).toBe("b1");
+    expect(r.value?.startedAt.toISOString()).toBe("2026-08-15T10:00:00.000Z");
+  });
+
+  it("片方だけなら400", () => {
+    expect(parseBattleHistoryCursor(params({ cursorBattleId: "b1" })).ok).toBe(false);
+    expect(parseBattleHistoryCursor(params({ cursorStartedAt: "2026-08-15T10:00:00Z" })).ok).toBe(false);
+  });
+});

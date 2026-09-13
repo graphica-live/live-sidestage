@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -42,15 +43,25 @@ class BattleHistoryTab extends StatefulWidget {
 }
 
 class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBindingObserver {
+  static const _pageSize = 50;
+
   final LiveAnalyticsApi _api = LiveAnalyticsApi();
 
   AnalyticsPeriodSelection _selection = AnalyticsPeriodSelection.today();
   DateTimeRange? _customRange;
   String? _listenerQuery;
   BattleListResult? _result;
+  List<BattleSummary> _battles = const [];
   String? _error;
   bool _loading = false;
+  bool _loadingMore = false;
   int _requestGeneration = 0;
+
+  final Map<String, _BattleHistoryCacheEntry> _historyCache = {};
+
+  /// いま画面に載せている REST 窓のキャッシュキー。同じキーの silent 再取得では
+  /// 先頭ページと既存窓を merge し、loadMore 済みの末尾を消さない。
+  String? _loadedCacheKey;
 
   /// 見えていない間に届いた通知。次に見えたとき／前面へ戻ったときに1回だけ取り直す。
   bool _dirty = false;
@@ -65,7 +76,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
   /// 直前の取得結果に進行中バトルが1件でも含まれるか。リスナー名フィルタ中のギフト到着を
   /// 再取得のトリガーにすべきか判定するのに使う(JST日付境界をまたぐ進行中バトルでも
   /// 正しく判定できるよう、日付ベースの判定は使わない — 詳細はplan §3)。
-  bool get _hasOpenBattleInView => _result?.battles.any((b) => b.status == BattleStatus.live) ?? false;
+  bool get _hasOpenBattleInView => _battles.any((b) => b.status == BattleStatus.live);
 
   @override
   void initState() {
@@ -209,8 +220,167 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     _load(silent: true);
   }
 
-  /// [silent] はバトル終了通知による自動更新。**読み込み中の表示を出さない。**
-  /// 出すと期間セレクタが `enabled: !_loading` で点滅的に無効化され、操作を邪魔する。
+  String _cacheKeyFor({
+    required AnalyticsPeriodSelection selection,
+    DateTimeRange? customRange,
+    String? listenerQuery,
+  }) {
+    final rangePart = customRange == null
+        ? ''
+        : '${customRange.start.toIso8601String()}_${customRange.end.toIso8601String()}';
+    return '${selection.period.apiValue}|${selection.date}|${listenerQuery ?? ''}|$rangePart';
+  }
+
+  String _currentCacheKey() => _cacheKeyFor(
+        selection: _selection,
+        customRange: _customRange,
+        listenerQuery: _listenerQuery,
+      );
+
+  void _storeFirstPageCache({
+    required BattleListResult result,
+    required List<BattleSummary> battles,
+  }) {
+    _historyCache[_currentCacheKey()] = _BattleHistoryCacheEntry(
+      result: BattleListResult(
+        battles: battles,
+        dateRange: result.dateRange,
+        hasMore: result.hasMore,
+        verified: result.verified,
+        bootId: result.bootId,
+        version: result.version,
+      ),
+      battles: List<BattleSummary>.from(battles),
+    );
+  }
+
+  Future<void> _prefetchDayBattles({
+    required AnalyticsPeriodSelection selection,
+    required String token,
+    required Future<String?> Function()? refreshToken,
+  }) async {
+    final key = _cacheKeyFor(selection: selection, customRange: null, listenerQuery: _listenerQuery);
+    if (_historyCache.containsKey(key)) return;
+    try {
+      final result = await withTokenRefresh(
+        call: (t) => _api.fetchBattles(
+          token: t,
+          period: selection.period.apiValue,
+          date: selection.date,
+          limit: _pageSize,
+          offset: 0,
+          listenerQuery: _listenerQuery,
+        ),
+        token: token,
+        refreshToken: refreshToken,
+      );
+      _historyCache[key] = _BattleHistoryCacheEntry(
+        result: result,
+        battles: List<BattleSummary>.from(result.battles),
+      );
+    } catch (e) {
+      debugPrint('[battle] prefetch失敗 ($key): $e');
+    }
+  }
+
+  void _prefetchAdjacentDays({required String token, required Future<String?> Function()? refreshToken}) {
+    if (_customRange != null || _selection.period != AnalyticsPeriod.day) return;
+    unawaited(_prefetchDayBattles(selection: _selection.shiftPrevious(), token: token, refreshToken: refreshToken));
+    unawaited(_prefetchDayBattles(selection: _selection.shiftNext(), token: token, refreshToken: refreshToken));
+  }
+
+  List<BattleSummary> _unionByBattleId(List<BattleSummary> store, List<BattleSummary> loaded) {
+    final byId = <String, BattleSummary>{};
+    for (final b in loaded) {
+      byId[b.battleId] = b;
+    }
+    for (final b in store) {
+      byId[b.battleId] = b;
+    }
+    final list = byId.values.toList();
+    list.sort((a, b) {
+      final at = a.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bt = b.startedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bt.compareTo(at);
+    });
+    return list;
+  }
+
+  Future<void> _loadMore() async {
+    final result = _result;
+    if (result == null || !result.hasMore || _loadingMore || _loading) return;
+
+    final sessions = context.read<SessionController>();
+    final token = sessions.session?.token;
+    if (token == null) return;
+    if (_battles.isEmpty) return;
+    final last = _battles.last;
+    final cursorAt = last.startedAt;
+    if (cursorAt == null) return;
+
+    setState(() => _loadingMore = true);
+    final generation = _requestGeneration;
+    final customRange = _customRange;
+
+    try {
+      final page = await withTokenRefresh(
+        call: (t) => _api.fetchBattles(
+          token: t,
+          period: _selection.period.apiValue,
+          date: _selection.date,
+          limit: _pageSize,
+          startDatetime: customRange?.start,
+          endDatetime: customRange?.end,
+          listenerQuery: _listenerQuery,
+          cursorStartedAt: cursorAt,
+          cursorBattleId: last.battleId,
+        ),
+        token: token,
+        refreshToken: sessions.refreshToken,
+      );
+      if (!mounted || generation != _requestGeneration) return;
+
+      final existingIds = _battles.map((b) => b.battleId).toSet();
+      final newBattles = page.battles.where((b) => !existingIds.contains(b.battleId)).toList();
+      setState(() {
+        _battles = [..._battles, ...newBattles];
+        _result = BattleListResult(
+          battles: _battles,
+          dateRange: page.dateRange,
+          hasMore: page.hasMore,
+          verified: page.verified,
+          bootId: page.bootId,
+          version: page.version,
+        );
+      });
+
+      if (newBattles.isNotEmpty && mounted) {
+        context.read<BattleHistorySyncStore>().mergeIntoHistory(newBattles.map((b) => b.toMap()).toList());
+      }
+    } on ApiException catch (e) {
+      if (mounted && generation == _requestGeneration) {
+        debugPrint('[battle] 追加ページの取得に失敗: ${e.message}');
+      }
+    } catch (e) {
+      if (mounted && generation == _requestGeneration) {
+        debugPrint('[battle] 追加ページの取得で予期せぬエラー: $e');
+      }
+    } finally {
+      if (mounted && generation == _requestGeneration && _loadingMore) {
+        setState(() => _loadingMore = false);
+      }
+    }
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    final metrics = notification.metrics;
+    if (metrics.maxScrollExtent > 0 && metrics.pixels >= metrics.maxScrollExtent - 240) {
+      _loadMore();
+    }
+    return false;
+  }
+
+  /// [silent] はバトル終了通知による自動更新。期間セレクタは無効化しない。
   /// 失敗も黙って捨てる(既存の表示を残す) — 次の通知か手動更新で拾い直せる。
   Future<void> _load({bool silent = false}) async {
     final generation = ++_requestGeneration;
@@ -222,7 +392,13 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     if (!silent) {
       setState(() {
         _loading = true;
+        _loadingMore = false;
         _error = null;
+      });
+    } else if (_result != null) {
+      setState(() {
+        _loading = true;
+        _loadingMore = false;
       });
     }
 
@@ -233,6 +409,8 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
           token: t,
           period: _selection.period.apiValue,
           date: _selection.date,
+          limit: _pageSize,
+          offset: 0,
           startDatetime: customRange?.start,
           endDatetime: customRange?.end,
           listenerQuery: _listenerQuery,
@@ -241,28 +419,50 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
         refreshToken: sessions.refreshToken,
       );
       if (!mounted || generation != _requestGeneration) return;
+
+      final currentKey = _currentCacheKey();
+      final existing = List<BattleSummary>.from(_battles);
+      final sameWindow = silent && _loadedCacheKey == currentKey && existing.isNotEmpty;
+      final head = result.battles;
+      final headIds = head.map((b) => b.battleId).toSet();
+      final tail = sameWindow ? existing.where((b) => !headIds.contains(b.battleId)).toList() : const <BattleSummary>[];
+      final merged = sameWindow ? [...head, ...tail] : head;
+      final previousHasMore = _result?.hasMore;
+      if (!sameWindow) {
+        _loadedCacheKey = currentKey;
+      }
+
       setState(() {
-        _result = result;
+        _result = BattleListResult(
+          battles: merged,
+          dateRange: result.dateRange,
+          hasMore: tail.isNotEmpty ? (previousHasMore ?? result.hasMore) : result.hasMore,
+          verified: result.verified,
+          bootId: result.bootId,
+          version: result.version,
+        );
+        _battles = merged;
         _loading = false;
         _dirty = false;
       });
 
       // Batch 06: REST取得成功時、BattleHistorySyncStore へ完全なフィールドと
-      // versionを反映。(Batch 05時点ではbattleId/statusしか渡さないバグと reset()
-      // による version欠損誤判定バグがあった)
+      // versionを反映。silent かつ同一キーなら loadMore 末尾を含めた merge を渡す。
       if (mounted) {
         final store = context.read<BattleHistorySyncStore>();
-        final battles = result.battles.map((b) => b.toMap()).toList();
         store.acknowledgeResync(
-          battles: battles,
+          battles: merged.map((b) => b.toMap()).toList(),
           bootId: result.bootId,
           version: result.version,
         );
+        _storeFirstPageCache(result: result, battles: result.battles);
+        _prefetchAdjacentDays(token: token, refreshToken: sessions.refreshToken);
       }
     } on ApiException catch (e) {
       if (!mounted || generation != _requestGeneration) return;
       if (silent) {
         debugPrint('[battle] 自動更新に失敗: ${e.message}');
+        setState(() => _loading = false);
         return;
       }
       setState(() {
@@ -272,9 +472,24 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     }
   }
 
+  Future<void> _changePeriod(void Function() applyChange) async {
+    setState(applyChange);
+    final cached = _historyCache[_currentCacheKey()];
+    if (cached != null) {
+      setState(() {
+        _result = cached.result;
+        _battles = List<BattleSummary>.from(cached.battles);
+        _error = null;
+        _loading = true;
+      });
+      await _load(silent: true);
+      return;
+    }
+    await _load(silent: _result != null);
+  }
+
   void _onPeriodChanged(AnalyticsPeriodSelection selection) {
-    setState(() => _selection = selection);
-    _load();
+    _changePeriod(() => _selection = selection);
   }
 
   Future<void> _openCustomRangeFilter() async {
@@ -294,7 +509,7 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
       _listenerQuery = newQuery;
     });
     _updateGiftListenerSubscription(previousQuery, newQuery);
-    _load();
+    await _changePeriod(() {});
   }
 
   /// 詳細フィルタ(日時範囲)中に◀/▶が押されたとき。現在の範囲の外へ出て`day`選択に
@@ -306,11 +521,10 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
       period: AnalyticsPeriod.day,
       date: jstDateKeyOf(forward ? customRange.end : customRange.start),
     );
-    setState(() {
+    _changePeriod(() {
       _selection = forward ? anchor.shiftNext() : anchor.shiftPrevious();
       _customRange = null;
     });
-    _load();
   }
 
   /// [_listenerQuery]の空⇄非空が切り替わったときだけ[GiftActivityNotifier]への
@@ -436,10 +650,10 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     final customRange = _customRange;
     final containsToday = customRange != null ? customRangeContainsNow(customRange) : _selection.containsJstToday();
     final storeBattles = containsToday ? context.watch<BattleHistorySyncStore>().getBattles() : const <Map<String, dynamic>>[];
-    final allBattles = storeBattles.isNotEmpty
-        ? storeBattles.map(BattleSummary.tryParse).whereType<BattleSummary>().toList()
-        : result?.battles ?? const <BattleSummary>[];
+    final storeParsed = storeBattles.map(BattleSummary.tryParse).whereType<BattleSummary>().toList();
+    final allBattles = containsToday ? _unionByBattleId(storeParsed, _battles) : _battles;
     final planGate = PlanGate(context.watch<AccountStatusStore>().status);
+    final refreshing = _loading && result != null;
     scheduleClampToDayOnlyHistoryPeriod(
       mounted: mounted,
       extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
@@ -470,18 +684,21 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
         : allBattles;
     final hiddenCount = allBattles.length - battles.length;
 
-    return RefreshIndicator(
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScrollNotification,
+      child: RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           const KosaiSectionHeading('バトル履歴', top: 8),
+          if (refreshing) const LinearProgressIndicator(minHeight: 2),
           PeriodSelectorBar(
             selection: _selection,
             rangeLabel: _rangeLabel,
             onChanged: _onPeriodChanged,
             extendedRangeAllowed: planGate.canUseExtendedHistoryRange,
-            enabled: !_loading,
+            enabled: true,
             customRangeActive: _customRange != null,
             filterActive: _customRange != null || (_listenerQuery?.isNotEmpty ?? false),
             onOpenCustomRangeFilter: _openCustomRangeFilter,
@@ -552,21 +769,24 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
                 ),
               ),
             ),
-          if (result?.hasMore ?? false)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Center(
-                child: Text(
-                  '直近分のみ表示',
-                  style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ),
+          if (_loadingMore)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
           const SizedBox(height: 16),
         ],
       ),
+    ),
     );
   }
+}
+
+class _BattleHistoryCacheEntry {
+  const _BattleHistoryCacheEntry({required this.result, required this.battles});
+
+  final BattleListResult result;
+  final List<BattleSummary> battles;
 }
 
 /// バトル1件のカード(comp `.card.flat.battle-card`)。

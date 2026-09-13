@@ -834,6 +834,94 @@ describe("queryBattles listenerQuery", () => {
     expect(over.hasMore).toBe(true);
   }, 30000);
 
+  it("offset=2 limit=2 なら3件目以降の一致バトルを返す", async () => {
+    const rangeStart = new Date("2026-09-01T00:00:00Z");
+    const rangeEnd = new Date("2026-09-02T00:00:00Z");
+    const battles = Array.from({ length: 5 }, (_, i) =>
+      battleData(`page_off_${i}`, new Date(rangeEnd.getTime() - (i + 1) * 60 * 1000))
+    );
+    await prisma.tiktokBattle.createMany({ data: battles });
+    const tiktokHandle = "page_off_listener";
+    const tiktokUid = makeTiktokUid(tiktokHandle);
+    createdTiktokUids.add(tiktokUid);
+    await prisma.tikTokUser.upsert({
+      where: { tiktokUid },
+      create: { tiktokUid, tiktokHandle, nickname: "ページングリスナー" },
+      update: { tiktokHandle, nickname: "ページングリスナー" },
+    });
+    await prisma.gift.createMany({
+      data: battles.map((b) => ({
+        roomId: listenerRoomId,
+        tiktokUid,
+        giftId: 1,
+        giftName: "Rose",
+        repeatCount: 1,
+        diamondCount: 1,
+        totalDiamonds: 1,
+        dayKey: "2026-09-01",
+        receivedAt: new Date((b.startedAt as Date).getTime() + 30 * 1000),
+      })),
+    });
+
+    const page = await queryBattles(
+      listenerRoomId,
+      "itest-battle-viewer",
+      { start: rangeStart, end: rangeEnd },
+      { listenerQuery: "page_off_listener", limit: 2, offset: 2 }
+    );
+    expect(page.battles.map((b) => b.battleId)).toEqual(["page_off_2", "page_off_3"]);
+    expect(page.hasMore).toBe(true);
+  });
+
+  it("cursor指定の2ページ目は先頭ページとbattleIdが重複しない", async () => {
+    const rangeStart = new Date("2026-09-05T00:00:00Z");
+    const rangeEnd = new Date("2026-09-06T00:00:00Z");
+    const battles = Array.from({ length: 4 }, (_, i) =>
+      battleData(`page_cur_${i}`, new Date(rangeEnd.getTime() - (i + 1) * 60 * 1000))
+    );
+    await prisma.tiktokBattle.createMany({ data: battles });
+    const tiktokHandle = "page_cur_listener";
+    const tiktokUid = makeTiktokUid(tiktokHandle);
+    createdTiktokUids.add(tiktokUid);
+    await prisma.tikTokUser.upsert({
+      where: { tiktokUid },
+      create: { tiktokUid, tiktokHandle, nickname: "カーソルリスナー" },
+      update: { tiktokHandle, nickname: "カーソルリスナー" },
+    });
+    await prisma.gift.createMany({
+      data: battles.map((b) => ({
+        roomId: listenerRoomId,
+        tiktokUid,
+        giftId: 1,
+        giftName: "Rose",
+        repeatCount: 1,
+        diamondCount: 1,
+        totalDiamonds: 1,
+        dayKey: "2026-09-05",
+        receivedAt: new Date((b.startedAt as Date).getTime() + 30 * 1000),
+      })),
+    });
+
+    const range = { start: rangeStart, end: rangeEnd };
+    const page1 = await queryBattles(listenerRoomId, "itest-battle-viewer", range, {
+      listenerQuery: "page_cur_listener",
+      limit: 2,
+    });
+    expect(page1.battles.map((b) => b.battleId)).toEqual(["page_cur_0", "page_cur_1"]);
+    expect(page1.hasMore).toBe(true);
+
+    const last = page1.battles[page1.battles.length - 1];
+    const page2 = await queryBattles(listenerRoomId, "itest-battle-viewer", range, {
+      listenerQuery: "page_cur_listener",
+      limit: 2,
+      cursor: { startedAt: new Date(last.startedAt), battleId: last.battleId },
+    });
+    expect(page2.battles.map((b) => b.battleId)).toEqual(["page_cur_2", "page_cur_3"]);
+    expect(page2.hasMore).toBe(false);
+    const page1Ids = new Set(page1.battles.map((b) => b.battleId));
+    expect(page2.battles.every((b) => !page1Ids.has(b.battleId))).toBe(true);
+  });
+
   it("一致するバトルが無ければ空配列とhasMore=falseを返す(レンジを走査し切って終了する)", async () => {
     const rangeStart = new Date("2026-08-30T00:00:00Z");
     const rangeEnd = new Date("2026-08-31T00:00:00Z");
@@ -848,6 +936,90 @@ describe("queryBattles listenerQuery", () => {
 
     expect(battles).toEqual([]);
     expect(hasMore).toBe(false);
+  });
+
+  it("listenerQuery省略時は limit+1 方式: 件数ちょうどならhasMore=false、超過ならtrue", async () => {
+    const rangeStart = new Date("2026-09-03T00:00:00Z");
+    const rangeEnd = new Date("2026-09-04T00:00:00Z");
+    await prisma.tiktokBattle.createMany({
+      data: Array.from({ length: 3 }, (_, i) =>
+        battleData(`nolistener_page_${i}`, new Date(rangeEnd.getTime() - (i + 1) * 60 * 1000))
+      ),
+    });
+
+    const exact = await queryBattles(
+      listenerRoomId,
+      "itest-battle-viewer",
+      { start: rangeStart, end: rangeEnd },
+      { limit: 3, offset: 0 }
+    );
+    expect(exact.battles).toHaveLength(3);
+    expect(exact.hasMore).toBe(false);
+
+    const over = await queryBattles(
+      listenerRoomId,
+      "itest-battle-viewer",
+      { start: rangeStart, end: rangeEnd },
+      { limit: 2, offset: 0 }
+    );
+    expect(over.battles.map((b) => b.battleId)).toEqual(["nolistener_page_0", "nolistener_page_1"]);
+    expect(over.hasMore).toBe(true);
+
+    const page2 = await queryBattles(
+      listenerRoomId,
+      "itest-battle-viewer",
+      { start: rangeStart, end: rangeEnd },
+      { limit: 2, offset: 2 }
+    );
+    expect(page2.battles.map((b) => b.battleId)).toEqual(["nolistener_page_2"]);
+    expect(page2.hasMore).toBe(false);
+  });
+
+  it("listenerQuery省略時もcursorの2ページ目は先頭と重複しない", async () => {
+    const rangeStart = new Date("2026-09-07T00:00:00Z");
+    const rangeEnd = new Date("2026-09-08T00:00:00Z");
+    await prisma.tiktokBattle.createMany({
+      data: Array.from({ length: 4 }, (_, i) =>
+        battleData(`nolistener_cur_${i}`, new Date(rangeEnd.getTime() - (i + 1) * 60 * 1000))
+      ),
+    });
+
+    const range = { start: rangeStart, end: rangeEnd };
+    const page1 = await queryBattles(listenerRoomId, "itest-battle-viewer", range, { limit: 2 });
+    expect(page1.battles.map((b) => b.battleId)).toEqual(["nolistener_cur_0", "nolistener_cur_1"]);
+    expect(page1.hasMore).toBe(true);
+
+    const last = page1.battles[page1.battles.length - 1];
+    const page2 = await queryBattles(listenerRoomId, "itest-battle-viewer", range, {
+      limit: 2,
+      cursor: { startedAt: new Date(last.startedAt), battleId: last.battleId },
+    });
+    expect(page2.battles.map((b) => b.battleId)).toEqual(["nolistener_cur_2", "nolistener_cur_3"]);
+    expect(page2.hasMore).toBe(false);
+    const page1Ids = new Set(page1.battles.map((b) => b.battleId));
+    expect(page2.battles.every((b) => !page1Ids.has(b.battleId))).toBe(true);
+  });
+
+  it("同じstartedAtの2件はbattleId降順で並び、cursorで残り1件を取れる", async () => {
+    const rangeStart = new Date("2026-09-09T00:00:00Z");
+    const rangeEnd = new Date("2026-09-10T00:00:00Z");
+    const startedAt = new Date("2026-09-09T10:00:00.000Z");
+    await prisma.tiktokBattle.createMany({
+      data: [battleData("tie_b", startedAt), battleData("tie_a", startedAt)],
+    });
+
+    const range = { start: rangeStart, end: rangeEnd };
+    const page1 = await queryBattles(listenerRoomId, "itest-battle-viewer", range, { limit: 1 });
+    expect(page1.battles.map((b) => b.battleId)).toEqual(["tie_b"]);
+    expect(page1.hasMore).toBe(true);
+
+    const last = page1.battles[0];
+    const page2 = await queryBattles(listenerRoomId, "itest-battle-viewer", range, {
+      limit: 1,
+      cursor: { startedAt: new Date(last.startedAt), battleId: last.battleId },
+    });
+    expect(page2.battles.map((b) => b.battleId)).toEqual(["tie_a"]);
+    expect(page2.hasMore).toBe(false);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   giftMatchesListenerQuery,
   battleIdsWithGiftInWindow,
   aggregateGiftEventsToContributors,
+  isAfterBattleKeysetCursor,
   type BattleRow,
   type GiftEventForContribution,
 } from "./battle-history";
@@ -580,5 +581,28 @@ describe("resolveBattleSides", () => {
     expect(
       resolveBattleSides({ kind: "1v1", selfScore: null, opponentTiktokUid: "B", opponentScore: null, factions: [] }, null)
     ).toEqual({ selfTeamTiktokUids: null, opponentTeamTiktokUids: null });
+  });
+});
+
+describe("isAfterBattleKeysetCursor", () => {
+  const t = new Date("2026-09-01T10:00:00.000Z");
+  const cursor = { startedAt: t, battleId: "m" };
+
+  it("より古いstartedAtは次ページ", () => {
+    expect(isAfterBattleKeysetCursor({ startedAt: new Date("2026-09-01T09:59:00.000Z"), battleId: "z" }, cursor)).toBe(
+      true
+    );
+  });
+
+  it("より新しいstartedAtは次ページではない", () => {
+    expect(isAfterBattleKeysetCursor({ startedAt: new Date("2026-09-01T10:01:00.000Z"), battleId: "a" }, cursor)).toBe(
+      false
+    );
+  });
+
+  it("同じstartedAtならbattleIdが小さい方が次ページ", () => {
+    expect(isAfterBattleKeysetCursor({ startedAt: t, battleId: "l" }, cursor)).toBe(true);
+    expect(isAfterBattleKeysetCursor({ startedAt: t, battleId: "m" }, cursor)).toBe(false);
+    expect(isAfterBattleKeysetCursor({ startedAt: t, battleId: "n" }, cursor)).toBe(false);
   });
 });
