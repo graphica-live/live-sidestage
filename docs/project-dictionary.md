@@ -243,7 +243,7 @@ sidestageユーザーによる**TikTokアカウントの所有主張**と、cont
 
 ### TLC
 
-`tiktok-live-connector`。ギフト/コメント受信の共通土台となるライブラリ。「TLC payload」はこのライブラリが渡してくる生イベント。
+`tiktok-live-connector`。ギフト/コメント受信の共通土台となるライブラリ。「TLC payload」はこのライブラリが渡してくる生イベント。正本は [shared/tiktok-live-connector](../shared/tiktok-live-connector/README.md)（消費パターンは [USAGE.md](../shared/tiktok-live-connector/USAGE.md)）。
 
 ### 製品名 / ディレクトリ名 / パッケージ名は三者三様
 
