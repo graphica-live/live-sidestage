@@ -8,6 +8,8 @@ import { normalizeTikTokUserId } from "@/lib/tiktok-user";
 export const FREE_COLLAB_WATCH_SESSIONS_PER_DAY = 1;
 export const FREE_COLLAB_OPPONENTS_PER_SESSION = 3;
 
+// 複数worker同時の読取→書込はソフトリミット(tiktok-room.tsのMAX_COLLAB_DISCOVERED_ROOMSと同趣旨)。
+
 export type CollabWatchQuotaState = {
   unlimited: boolean;
   remainingNewOpponents: number;
@@ -15,6 +17,31 @@ export type CollabWatchQuotaState = {
   activeLinkCount: number;
   sessionOpponentCount: number;
 };
+
+async function resolveSessionOpponentUids(
+  sourceRoomId: string,
+  start: Date,
+  end: Date,
+  activeLinks: { watchedRoomId: string }[]
+): Promise<Set<string>> {
+  // 継続中セッションは TiktokRoomCollabSource を正とする。lastCollabSource* は別発見元で
+  // 上書きされうるため、active 時にそちらだけ数えると枠を食い逃がす。
+  if (activeLinks.length > 0) {
+    const rooms = await prisma.tiktokRoom.findMany({
+      where: { id: { in: activeLinks.map((l) => l.watchedRoomId) } },
+      select: { hostTiktokUid: true },
+    });
+    return new Set(rooms.map((r) => r.hostTiktokUid));
+  }
+  const sessionOpponentRooms = await prisma.tiktokRoom.findMany({
+    where: {
+      lastCollabSourceRoomId: sourceRoomId,
+      lastCollabSourceAt: { gte: start, lt: end },
+    },
+    select: { hostTiktokUid: true },
+  });
+  return new Set(sessionOpponentRooms.map((r) => r.hostTiktokUid));
+}
 
 async function principalIdsForStreamers(streamerIds: string[]): Promise<string[]> {
   if (streamerIds.length === 0) return [];
@@ -43,18 +70,18 @@ export async function resolveCollabWatchQuota(
   const todayKey = dayKeyOf(new Date());
   const { start, end } = jstDateRangeToUtc("day", todayKey);
 
-  const [activeLinkCount, sessionOpponentRooms] = await Promise.all([
-    prisma.tiktokRoomCollabSource.count({ where: { sourceRoomId } }),
-    prisma.tiktokRoom.findMany({
-      where: {
-        lastCollabSourceRoomId: sourceRoomId,
-        lastCollabSourceAt: { gte: start, lt: end },
-      },
-      select: { hostTiktokUid: true },
-    }),
-  ]);
-
-  const sessionOpponentCount = sessionOpponentRooms.length;
+  const activeLinks = await prisma.tiktokRoomCollabSource.findMany({
+    where: { sourceRoomId },
+    select: { watchedRoomId: true },
+  });
+  const activeLinkCount = activeLinks.length;
+  const sessionOpponentUids = await resolveSessionOpponentUids(
+    sourceRoomId,
+    start,
+    end,
+    activeLinks
+  );
+  const sessionOpponentCount = sessionOpponentUids.size;
   const sessionExhaustedToday = activeLinkCount === 0 && sessionOpponentCount > 0;
 
   if (unlimited) {
@@ -115,14 +142,16 @@ export async function filterCollabWatchSubjectsForQuota(
 
   const todayKey = dayKeyOf(new Date());
   const { start, end } = jstDateRangeToUtc("day", todayKey);
-  const sessionOpponentRooms = await prisma.tiktokRoom.findMany({
-    where: {
-      lastCollabSourceRoomId: sourceRoomId,
-      lastCollabSourceAt: { gte: start, lt: end },
-    },
-    select: { hostTiktokUid: true },
+  const activeLinks = await prisma.tiktokRoomCollabSource.findMany({
+    where: { sourceRoomId },
+    select: { watchedRoomId: true },
   });
-  const sessionOpponentUids = new Set(sessionOpponentRooms.map((r) => r.hostTiktokUid));
+  const sessionOpponentUids = await resolveSessionOpponentUids(
+    sourceRoomId,
+    start,
+    end,
+    activeLinks
+  );
 
   const filtered = applyCollabWatchQuotaToSubjects(subjects, quota, sessionOpponentUids);
   if (filtered.length < subjects.length) {
