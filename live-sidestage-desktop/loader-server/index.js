@@ -3,8 +3,12 @@
 const http = require('http');
 const net = require('net');
 
-const LOADER_PORT = 38099;
-const BACKEND_PORT = 38100;
+function parseListenPort(value, fallback) {
+    const parsed = Number.parseInt(String(value || ''), 10);
+    return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : fallback;
+}
+const LOADER_PORT = parseListenPort(process.env.TIKEFFECT_LOADER_PORT, 38099);
+const BACKEND_PORT = parseListenPort(process.env.TIKEFFECT_PORT, 38100);
 
 /**
  * バックエンド（ポート 38100）が TCP レベルで応答可能か確認する。

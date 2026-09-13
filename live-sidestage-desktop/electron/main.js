@@ -10,11 +10,31 @@ process.on('uncaughtException', (err) => {
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, shell, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, shell, dialog, screen } = require('electron');
 let autoUpdater = null;
 
-const PORT = 38100;
-const LOADER_PORT = 38099;
+
+ipcMain.on('control-window:minimize', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.minimize();
+});
+ipcMain.on('control-window:toggle-max', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+});
+ipcMain.on('control-window:close', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.close();
+});
+
+
+function parseListenPort(value, fallback) {
+    const parsed = Number.parseInt(String(value || ''), 10);
+    return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : fallback;
+}
+const PORT = parseListenPort(process.env.TIKEFFECT_PORT, 38100);
+const LOADER_PORT = parseListenPort(process.env.TIKEFFECT_LOADER_PORT, 38099);
 const APP_URL = `http://localhost:${LOADER_PORT}/`;
 const COMMENT_READ_ALOUD_SCREEN_URL = `http://localhost:${PORT}/overlays/effects/1?readAloudOnly=1`;
 const SETUP_URL = `http://localhost:${LOADER_PORT}/setup`;
@@ -509,8 +529,11 @@ function createMainWindow(initialUrl = APP_URL) {
         useContentSize: true,
         title: 'TikEffect',
         icon: iconPath,
+        frame: false,
+        backgroundColor: '#12110f',
         autoHideMenuBar: true,
         webPreferences: {
+            preload: path.join(__dirname, 'preload-control.js'),
             nodeIntegration: false,
             contextIsolation: true
         }

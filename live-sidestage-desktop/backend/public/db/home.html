@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja" class="control-root">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,644 +7,76 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/shared/update-banner.js"></script>
     <script src="/shared/playback-error-banner.js"></script>
-    <link rel="stylesheet" href="/db/admin-buttons.css">
-    <style>
-        :root {
-            --bg: #dfe6f0;
-            --panel: rgba(248, 250, 252, 0.86);
-            --panel-strong: rgba(255, 255, 255, 0.92);
-            --line: rgba(33, 45, 69, 0.12);
-            --line-strong: rgba(33, 45, 69, 0.18);
-            --text: #0f172a;
-            --muted: #5b6880;
-            --accent: #ef4444;
-            --accent-strong: #dc2626;
-            --accent-soft: rgba(239, 68, 68, 0.12);
-            --sidebar-bg: linear-gradient(180deg, #101826 0%, #121f35 42%, #1c2740 100%);
-            --sidebar-line: rgba(255, 255, 255, 0.12);
-            --sidebar-text: #ecf3ff;
-            --sidebar-muted: rgba(236, 243, 255, 0.72);
-            --content-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(226, 234, 244, 0.74) 100%);
-            --shadow: 0 22px 50px rgba(15, 23, 42, 0.16);
-        }
 
-        * {
-            box-sizing: border-box;
-        }
-
-        html {
-            height: 100%;
-        }
-
-        body {
-            margin: 0;
-            height: 100vh;
-            overflow: hidden;
-            color: var(--text);
-            font-family: "Bahnschrift", "Yu Gothic UI", sans-serif;
-            background:
-                radial-gradient(circle at top left, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 34%),
-                linear-gradient(135deg, #eef3f8 0%, #dce5f0 50%, #cfd9e6 100%);
-        }
-
-        h1, h2, p {
-            margin: 0;
-        }
-
-        button,
-        input,
-        iframe {
-            font: inherit;
-        }
-
-        .app-shell {
-            height: 100vh;
-            display: grid;
-            grid-template-columns: minmax(200px, 13vw) minmax(0, 1fr);
-        }
-
-        .sidebar {
-            position: relative;
-            min-height: 0;
-            overflow-x: hidden;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            padding: 22px 14px 18px;
-            color: var(--sidebar-text);
-            background: var(--sidebar-bg);
-            border-right: 1px solid var(--sidebar-line);
-        }
-
-        .sidebar::before,
-        .sidebar::after {
-            content: "";
-            position: absolute;
-            border-radius: 999px;
-            pointer-events: none;
-            filter: blur(4px);
-        }
-
-        .sidebar::before {
-            top: -72px;
-            right: -48px;
-            width: 180px;
-            height: 180px;
-            background: rgba(56, 189, 248, 0.16);
-        }
-
-        .sidebar::after {
-            bottom: 84px;
-            left: -42px;
-            width: 160px;
-            height: 160px;
-            background: rgba(244, 63, 94, 0.14);
-        }
-
-        .sidebar > * {
-            position: relative;
-            z-index: 1;
-        }
-
-        .brand-block {
-            display: grid;
-            gap: 8px;
-        }
-
-        .brand-chip {
-            width: fit-content;
-            padding: 4px 9px;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--sidebar-muted);
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-        }
-
-        .brand-title {
-            font-size: 22px;
-            font-weight: 700;
-            line-height: 1;
-            letter-spacing: 0.02em;
-        }
-
-        .brand-title-row {
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
-        }
-
-        .brand-version {
-            font-size: 10px;
-            font-weight: 500;
-            opacity: 0.5;
-            letter-spacing: 0.04em;
-        }
-
-        .brand-copy {
-            display: none;
-        }
-
-        .sidebar-divider {
-            height: 1px;
-            background: rgba(255, 255, 255, 0.08);
-            margin: 2px 0;
-        }
-
-        .sidebar-section {
-            display: grid;
-            gap: 8px;
-        }
-
-        .sidebar-label {
-            color: rgba(236, 243, 255, 0.5);
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            padding: 0 2px;
-        }
-
-        .status-stack {
-            display: grid;
-            gap: 8px;
-        }
-
-        .status {
-            display: grid;
-            gap: 4px;
-            padding: 10px 11px;
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            border-radius: 14px;
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--sidebar-text);
-        }
-
-        .status strong {
-            font-size: 12px;
-            letter-spacing: 0.02em;
-        }
-
-        .status span {
-            color: var(--sidebar-muted);
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        .status.is-success {
-            border-color: rgba(74, 222, 128, 0.24);
-            background: rgba(22, 163, 74, 0.12);
-        }
-
-        .status.is-warning {
-            border-color: rgba(251, 146, 60, 0.28);
-            background: rgba(249, 115, 22, 0.12);
-        }
-
-        .status.is-error {
-            border-color: rgba(251, 113, 133, 0.3);
-            background: rgba(190, 24, 93, 0.12);
-        }
-
-        .status-label-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .status-edit-btn {
-            background: none;
-            border: none;
-            padding: 2px 4px;
-            cursor: pointer;
-            font-size: 13px;
-            line-height: 1;
-            color: var(--sidebar-muted);
-            border-radius: 6px;
-            transition: color 0.15s, background 0.15s;
-        }
-
-        .status-edit-btn:hover {
-            color: var(--sidebar-text);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        /* Dark-sidebar button overrides */
-        .sidebar button {
-            --button-border: rgba(255, 255, 255, 0.14);
-            --button-bg: rgba(255, 255, 255, 0.07);
-            --button-bg-hover: rgba(255, 255, 255, 0.13);
-            --button-text: var(--sidebar-text);
-            --button-shadow-hover: none;
-            font-size: 12px;
-            font-weight: 500;
-        }
-
-        .sidebar-actions {
-            display: grid;
-            gap: 6px;
-        }
-
-        .sidebar-actions button {
-            width: 100%;
-            justify-content: center;
-        }
-
-        .nav-list {
-            display: grid;
-            gap: 6px;
-        }
-
-        .nav-link {
-            position: relative;
-            width: 100%;
-            display: flex;
-            align-items: center;
-            gap: 9px;
-            padding: 10px 12px;
-            text-align: left;
-            border-radius: 11px;
-            border: 1px solid transparent;
-            background: rgba(255, 255, 255, 0.04);
-            color: var(--sidebar-text);
-            font-size: 13px;
-            font-weight: 500;
-            transition: background 130ms ease, border-color 130ms ease, transform 130ms ease;
-        }
-
-        .nav-link:hover:not(:disabled) {
-            transform: translateX(2px);
-            background: rgba(255, 255, 255, 0.09);
-            border-color: rgba(255, 255, 255, 0.11);
-            box-shadow: none;
-        }
-
-        .nav-link[aria-current="page"] {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.26) 0%, rgba(59, 130, 246, 0.12) 100%);
-            border-color: rgba(255, 255, 255, 0.18);
-            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-        }
-
-        .nav-link-icon {
-            flex: 0 0 auto;
-            font-size: 14px;
-            line-height: 1;
-            opacity: 0.82;
-        }
-
-        .nav-link-title {
-            flex: 1 1 auto;
-            font-size: 13px;
-            font-weight: 600;
-            line-height: 1.2;
-        }
-
-
-
-        .nav-footnote {
-            color: rgba(236, 243, 255, 0.62);
-            font-size: 11px;
-            line-height: 1.5;
-        }
-
-        .content-pane {
-            min-width: 0;
-            min-height: 0;
-            overflow-y: auto;
-            padding: 0;
-            background: transparent;
-        }
-
-        .content-shell {
-            height: 100vh;
-            min-height: 680px;
-            display: block;
-        }
-
-        .panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 24px;
-            box-shadow: var(--shadow);
-            backdrop-filter: blur(18px);
-        }
-
-        .content-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 16px;
-            padding: 22px 24px;
-        }
-
-        .content-copy {
-            display: grid;
-            gap: 8px;
-            min-width: 0;
-        }
-
-        .content-kicker {
-            color: var(--accent-strong);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-        }
-
-        .content-title {
-            font-size: 28px;
-            line-height: 1.1;
-        }
-
-        .content-description {
-            color: var(--muted);
-            font-size: 14px;
-            line-height: 1.7;
-        }
-
-        .content-actions {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            gap: 10px;
-        }
-
-        .content-frame-card {
-            position: relative;
-            height: 100%;
-            min-height: 0;
-            overflow: hidden;
-            padding: 0;
-            background: transparent;
-            border: 0;
-            box-shadow: none;
-            backdrop-filter: none;
-        }
-
-        .frame-shell {
-            position: relative;
-            height: 100%;
-            min-height: 0;
-            border-radius: 0;
-            overflow: hidden;
-            border: 0;
-            background: transparent;
-        }
-
-        .content-frame {
-            width: 100%;
-            height: 100%;
-            border: 0;
-            background: #ffffff;
-        }
-
-
-        .admin-settings-modal {
-            position: fixed;
-            inset: 0;
-            z-index: 40;
-            display: grid;
-            place-items: center;
-            padding: 20px;
-            background: rgba(15, 23, 42, 0.52);
-        }
-
-        .admin-settings-modal[hidden] {
-            display: none;
-        }
-
-        .admin-settings-card {
-            width: min(480px, 100%);
-            display: grid;
-            gap: 18px;
-            padding: 24px;
-            border: 1px solid var(--line);
-            border-radius: 24px;
-            background: var(--panel-strong);
-            box-shadow: var(--shadow);
-        }
-
-        .admin-settings-head {
-            display: grid;
-            gap: 8px;
-        }
-
-        .admin-settings-head p,
-        .admin-settings-note p {
-            color: var(--muted);
-            font-size: 14px;
-            line-height: 1.7;
-        }
-
-        .admin-settings-section {
-            display: grid;
-            gap: 8px;
-        }
-
-        .admin-settings-label {
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--muted);
-        }
-
-        .admin-settings-select {
-            width: 100%;
-            padding: 11px 12px;
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            background: #fff;
-            color: var(--text);
-        }
-
-        .admin-settings-note {
-            display: grid;
-            gap: 6px;
-            padding: 14px 16px;
-            border-radius: 16px;
-            border: 1px solid var(--line);
-            background: rgba(255, 255, 255, 0.58);
-        }
-
-        .admin-settings-actions {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .admin-settings-data-row {
-            display: flex;
-            gap: 8px;
-        }
-
-        .admin-settings-data-row button {
-            flex: 1;
-            justify-content: center;
-        }
-
-        @media (max-width: 1079px) {
-            body {
-                height: auto;
-                min-height: 100vh;
-                overflow: auto;
-            }
-
-            .app-shell {
-                height: auto;
-                min-height: 100vh;
-                grid-template-columns: 1fr;
-                grid-template-rows: auto minmax(0, 1fr);
-            }
-
-            .sidebar {
-                border-right: 0;
-                border-bottom: 1px solid var(--sidebar-line);
-            }
-
-            .content-pane {
-                overflow: visible;
-                padding: 0;
-            }
-
-            .content-shell {
-                height: auto;
-                min-height: 100vh;
-            }
-        }
-
-        @media (max-width: 720px) {
-            .sidebar,
-            .content-pane {
-                padding: 0;
-            }
-
-            .content-shell {
-                min-height: 100vh;
-            }
-
-            .content-header {
-                flex-direction: column;
-                padding: 18px;
-            }
-
-            .content-actions {
-                width: 100%;
-                justify-content: stretch;
-            }
-
-            .content-actions button {
-                flex: 1 1 100%;
-            }
-
-            .content-frame-card {
-                padding: 0;
-            }
-
-            .placeholder-card {
-                padding: 22px;
-            }
-
-            .placeholder-title {
-                font-size: 24px;
-            }
-        }
-    </style>
     <script>
         document.documentElement.dataset.adminTheme = localStorage.getItem('tikeffect-admin-theme') || 'current';
     </script>
-    <link rel="stylesheet" href="/db/admin-theme-presets.css">
+    <link rel="stylesheet" href="/db/control-world.css">
 </head>
-<body data-admin-settings-root="true">
-    <div class="app-shell">
-        <aside class="sidebar">
-            <section class="brand-block">
-                <div class="brand-chip">Control Room</div>
-                <div class="brand-title-row">
-                    <h1 class="brand-title">TikEffect</h1>
-                    <span class="brand-version" id="app-version"></span>
-                </div>
-                <p class="brand-copy">TikFinity のように左で機能を切り替え、右で管理画面を表示するシングルシェルです。認証と各機能への移動をここに集約します。</p>
-            </section>
-
-            <div class="sidebar-divider"></div>
-            <section class="sidebar-section">
-                <div class="sidebar-label">Live Status</div>
-                <div class="status-stack">
-                    <div class="status" id="broadcaster-id-status">
-                        <div class="status-label-row">
-                            <strong>配信ユーザーID</strong>
-                            <button type="button" class="status-edit-btn" id="edit-broadcaster-id-button" title="配信ユーザーIDを変更" aria-label="配信ユーザーIDを変更">✏️</button>
+<body class="control-desk" data-admin-settings-root="true">
+        <div class="desk">
+        <div class="win" id="control-win">
+            <div class="tb">
+                <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+                <span class="tb-title">TikEffect</span>
+                <span class="tb-version" id="app-version"></span>
+                <input type="search" id="control-search" placeholder="接続、ウィジェット、ギフト…" aria-label="検索" />
+            </div>
+            <div class="body">
+                <aside class="side">
+                    <nav aria-label="管理機能ナビゲーション">
+                        <button type="button" class="n on" data-view-path="/home" aria-current="page">ホーム</button>
+                        <button type="button" class="n" data-view-path="/widgets">ウィジェット</button>
+                        <button type="button" class="n" data-view-path="/event-categories">エフェクト</button>
+                        <button type="button" class="n" data-view-path="/gifts">ギフト</button>
+                        <button type="button" class="n" data-view-path="/comments">コメント</button>
+                        <button type="button" class="n" id="open-admin-settings-button">設定</button>
+                    </nav>
+                    <div class="sec">TONIGHT</div>
+                    <button type="button" class="file on" data-widget="top-gift"><span>top-gift.html</span><span>使用中</span></button>
+                    <button type="button" class="file" data-widget="effects"><span>effects 汎用</span><span id="tonight-effect-count">—</span></button>
+                    <div class="sec">庫</div>
+                    <button type="button" class="file" data-widget="goal-gifts"><span>goal-gifts</span></button>
+                    <button type="button" class="file" data-view-path="/comments"><span>comments</span></button>
+                    <button type="button" class="file" data-widget="timer"><span>timer</span></button>
+                    <div class="me">
+                        <div id="broadcaster-id-status">
+                            <span class="ok" id="connection-dot"></span>
+                            <button type="button" class="id-edit" id="edit-broadcaster-id-button" title="配信ユーザーIDを変更">
+                                <span id="broadcaster-id-value">読み込み中</span>
+                            </button>
                         </div>
-                        <span id="broadcaster-id-value">読み込み中</span>
+                        <div id="tiktok-connection-status" class="warn">TikTok接続を読み込み中</div>
+                        <p class="path" id="sidebar-footnote" hidden></p>
                     </div>
-                    <div class="status" id="tiktok-connection-status">
-                        <strong>TikTok接続</strong>
-                        <span>読み込み中</span>
+                </aside>
+                <section class="main">
+                    <div class="home-stage">
+                        <h1 id="home-title">トップギフトランキング</h1>
+                        <p class="path" id="home-path">widgets / top-gift</p>
+                        <div class="preview is-live">
+                            <iframe id="overlay-preview" title="ウィジェットプレビュー"></iframe>
+                        </div>
+                        <div class="row">
+                            <button type="button" class="p" id="copy-overlay-url">URLをコピー</button>
+                            <button type="button" id="fire-current-gift">今のギフトで出す</button>
+                            <button type="button" id="open-widget-detail">詳細</button>
+                        </div>
                     </div>
-                </div>
-            </section>
-
-            <div class="sidebar-divider"></div>
-            <section class="sidebar-section">
-                <div class="sidebar-label">Preferences</div>
-<button type="button" class="nav-link" id="open-admin-settings-button">
-                    <span class="nav-link-icon">⚙</span>
-                    <span class="nav-link-title">設定</span>
-                </button>
-                <p class="nav-footnote" id="sidebar-footnote">認証後に各管理画面へ切り替えられます。</p>
-            </section>
-
-            <div class="sidebar-divider"></div>
-            <section class="sidebar-section">
-                <div class="sidebar-label">Workspace</div>
-                <nav class="nav-list" aria-label="管理機能ナビゲーション">
-                    <button type="button" class="nav-link" data-view-path="/quick-access" data-name="quick-access-window" data-requires-auth="false">
-                        <span class="nav-link-icon">⚡</span>
-                        <span class="nav-link-title">ホーム</span>
-                    </button>
-                    <button type="button" class="nav-link" data-view-path="/widgets" data-name="widgets-window">
-                        <span class="nav-link-icon">🎛</span>
-                        <span class="nav-link-title">ウィジェット</span>
-                    </button>
-                    <button type="button" class="nav-link" data-view-path="/event-categories" data-name="video-audio-effects-window">
-                        <span class="nav-link-icon">✨</span>
-                        <span class="nav-link-title">イベントトリガー</span>
-                    </button>
-                    <button type="button" class="nav-link" data-view-path="/virtualdj" data-name="virtualdj-window">
-                        <span class="nav-link-icon">🎧</span>
-                        <span class="nav-link-title">VirtualDJ</span>
-                    </button>
-                    <button type="button" class="nav-link" data-view-path="/comments" data-name="comments-window">
-                        <span class="nav-link-icon">💬</span>
-                        <span class="nav-link-title">コメント欄</span>
-                    </button>
-                    <button type="button" class="nav-link" data-view-path="/gifts" data-name="gift-history-window">
-                        <span class="nav-link-icon">🎁</span>
-                        <span class="nav-link-title">ギフト履歴</span>
-                    </button>
-                    <button type="button" class="nav-link" data-view-path="/user-coins" data-name="user-coins-window">
-                        <span class="nav-link-icon">🪙</span>
-                        <span class="nav-link-title">ユーザーコイン数</span>
-                    </button>
-                </nav>
-            </section>
-
-        </aside>
-
-        <main class="content-pane">
-            <div class="content-shell">
-                <section class="content-frame-card">
-                    <div class="frame-shell">
+                    <div class="page-stage">
                         <iframe class="content-frame" id="content-frame" title="TikEffect Admin Content"></iframe>
-
                     </div>
                 </section>
+                <aside class="chat">
+                    <h2>直近</h2>
+                    <div id="recent-events"></div>
+                    <p class="ev-empty" id="recent-empty">まだありません</p>
+                    <div class="composer">
+                        <textarea id="pseudo-gift-input" placeholder="疑似ギフト名を入れて送る"></textarea>
+                    </div>
+                </aside>
             </div>
-        </main>
+        </div>
     </div>
 
     <div class="admin-settings-modal" id="broadcaster-edit-modal" aria-hidden="true" hidden>
@@ -710,6 +142,7 @@
 
     <script>
         const socket = io();
+        window.controlSocket = socket;
         const broadcasterIdStatus = document.getElementById('broadcaster-id-status');
         const broadcasterIdValueEl = document.getElementById('broadcaster-id-value');
         const editBroadcasterIdButton = document.getElementById('edit-broadcaster-id-button');
@@ -721,9 +154,15 @@
         const tiktokConnectionStatus = document.getElementById('tiktok-connection-status');
         const sidebarFootnote = document.getElementById('sidebar-footnote');
         const contentFrame = document.getElementById('content-frame');
-        const navButtons = Array.from(document.querySelectorAll('.nav-link'));
+        const navButtons = Array.from(document.querySelectorAll('button.n[data-view-path], .file[data-view-path]'));
+        const controlWin = document.getElementById('control-win');
 
         const pageMeta = {
+            '/home': {
+                title: 'ホーム',
+                description: ''
+            },
+
             '/quick-access': {
                 title: 'ホーム',
                 description: '起動直後に使う操作だけをまとめたショートカット画面です。'
@@ -764,7 +203,7 @@
 
         let currentBroadcasterId = null;
         let currentTikTokConnection = null;
-        let currentRoute = '/quick-access';
+        let currentRoute = '/home';
 
 
         function getTikTokConnectionTone(connection) {
@@ -789,13 +228,18 @@
         }
 
         function syncStatusCard(element, label, value, toneClassName) {
-            element.className = 'status';
-
-            if (toneClassName) {
-                element.classList.add(toneClassName);
+            const isTikTok = element.id === 'tiktok-connection-status';
+            element.className = isTikTok ? 'warn' : 'status';
+            if (toneClassName === 'is-success' && isTikTok) {
+                element.className = '';
+            } else if (toneClassName === 'is-error' || toneClassName === 'is-warning') {
+                element.className = 'warn';
             }
-
-            element.innerHTML = `<strong>${label}</strong><span>${value}</span>`;
+            const dot = document.getElementById('connection-dot');
+            if (dot && isTikTok) {
+                dot.classList.toggle('is-off', toneClassName !== 'is-success');
+            }
+            element.textContent = value || (label + ' 不明');
         }
 
         function updateContentHeader(path) {
@@ -803,28 +247,48 @@
         }
 
         function updateNavState() {
-            navButtons.forEach((button) => {
+            document.querySelectorAll('button.n[data-view-path]').forEach((button) => {
                 const path = button.dataset.viewPath;
-                button.setAttribute('aria-current', path === currentRoute ? 'page' : 'false');
+                const on = path === currentRoute;
+                if (on) button.setAttribute('aria-current', 'page');
+                else button.removeAttribute('aria-current');
+                button.classList.toggle('on', on);
             });
         }
 
         function setCurrentRoute(path, options = {}) {
-            const nextPath = pageMeta[path] ? path : '/quick-access';
+            const nextPath = pageMeta[path] ? path : '/home';
 
             currentRoute = nextPath;
             updateContentHeader(currentRoute);
 
-            if (options.forceReload || contentFrame.dataset.currentPath !== currentRoute) {
-                contentFrame.src = currentRoute;
-                contentFrame.dataset.currentPath = currentRoute;
+            const isHome = currentRoute === '/home';
+            if (controlWin) {
+                controlWin.classList.toggle('is-page', !isHome);
+            }
+
+            if (!isHome) {
+                if (options.forceReload || contentFrame.dataset.currentPath !== currentRoute) {
+                    contentFrame.src = currentRoute;
+                    contentFrame.dataset.currentPath = currentRoute;
+                }
             }
 
             updateNavState();
+            window.currentControlRoute = currentRoute;
         }
+        window.setCurrentRoute = setCurrentRoute;
+        document.querySelector('.dots')?.addEventListener('click', (event) => {
+            const api = window.tikEffectWindow;
+            if (!api) return;
+            const index = Array.from(event.currentTarget.children).indexOf(event.target.closest('i'));
+            if (index === 0) api.close();
+            else if (index === 1) api.minimize();
+            else if (index === 2) api.toggleMax();
+        });
+
 
         function syncBroadcasterIdCard() {
-            broadcasterIdStatus.className = 'status' + (currentBroadcasterId ? ' is-success' : '');
             broadcasterIdValueEl.textContent = currentBroadcasterId ? `@${currentBroadcasterId}` : '未設定';
         }
 
@@ -973,18 +437,17 @@
             syncUi();
         });
 
-        setCurrentRoute('/quick-access');
+        setCurrentRoute('/home');
 
         refreshState().then(() => {
-            if (!currentBroadcasterId) {
-                openBroadcasterEditModal();
-            }
+            syncUi();
         }).catch(() => {
             syncUi();
-            setCurrentRoute('/quick-access');
+            setCurrentRoute('/home');
         });
     </script>
     <script src="/db/admin-theme-switcher.js"></script>
+    <script src="/db/control-home.js"></script>
     <script>
         (function () {
             const exportBtn = document.getElementById('export-settings-btn');
