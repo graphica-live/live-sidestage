@@ -71,7 +71,7 @@ last_reviewers: [Design Mode]DeepSeek単独、[Code Mode]DeepSeek単独、2026-0
 | TC-BRU-027 | 別のバトルを開くと必ず一覧モードから始まる | `BattleDetailModal` | 状態遷移 | 再生モードで閉じ、別のバトルを開く | 直前のモードを引き継がず貢献者一覧が出る | `[pw]` | PASS | モードがバトルをまたいで残ると別バトルの再生に見える |
 | TC-BRU-028 | 再生データの取得失敗時はステージの高さを保ったままエラー文と再試行を出す | `BattleReplayView` | 異常 | `/replay` が HTTP 500 | エラー文と「再試行」が可視。ステージ高さが保たれる。再試行で再生画面が出る | `[inject]` | PASS | 高さが潰れると下のコントロールが飛ぶ |
 | TC-BRU-029 | ペイロードの `version` が想定と違うときは再生画面を描かない | `BattleReplayView` | 異常/境界 | `version: 999` | 再読み込みを促す文言のみ。ステージ・コントロールは出さない | `[inject]` | PASS | 古いクライアントが新形式を誤って描くのを防ぐ |
-| TC-BRU-030 | `truncated` と初回ボーナス推定は注記チップで出し、推定は赤帯にしない | `BattleReplayView` / `isBandSegment` | データ欠損/境界 | `truncated: true` かつ `opening.confidence: "inferred"` | 省略の注記と「(推定)」チップが可視。赤帯は出ない | `[inject]` / `[unit]` | PASS | 推定を事実として見せない（設計レビュー F5-3） |
+| TC-BRU-030 | `truncated` は注記チップで出し、初回ボーナス推定は `(推定)` ラベル付き赤帯 | `BattleReplayView` / `isBandSegment` / `ReplayBand` | データ欠損/境界 | `truncated: true` かつ `opening.confidence: "inferred"` | 省略の注記チップが可視。推定チップは出さず赤帯 `初めてのギフト×N倍(推定)` | `[inject]` / `[unit]` | PASS | 推定は帯ラベルで明示 |
 | TC-BRU-031 | シードに無い陣営構成(3コラボ / 2vs2 / 1vs3)でもステージが崩れない | `ReplayStage` | 正常/デバイス差 | ペイロードの `teams` を各構成へ差し替え | グリッドが `trio` / `team22` / `one3` になり、セル数が参加者数と一致する | `[inject]` | PASS | シードは 1vs1 / 4コラボしか持たない |
 | TC-BRU-032 | 表示上限(各サイド5枚・貢献者6人)を超えても新しい方が残る | `cardsByAnchor` / `contributorsAt` | 境界 | 同時に7枚・8人 | カードは各アンカー5枚まで、貢献者は6人まで。切り捨てるのは古い方・下位の方 | `[unit]` | PASS | 上限が無いとステージが溢れる |
 | TC-BRU-033 | カードの太さはダイヤ額で決まり、アイコンは名前の頭文字で代替する | `cardSizeOf` / `initialOf` | 境界 | 99 / 100 / 999 / 1000 ダイヤ、アバターなしの送信者 | `sm` / `md` / `md` / `lg`。アバターが無ければ頭文字1字 | `[unit]` | PASS | comp の上段(小額)・下段(高額)の作り分け |

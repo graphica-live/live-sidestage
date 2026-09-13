@@ -141,7 +141,7 @@ duration は等速で **420ms**、実効速度（速度チップ × 自動早送
 ### 4.5 赤帯
 
 `padding: 5px 12px` / `gap: 10px` / 中央寄せ。ステージ直下・貢献者ボードの上。
-`showCountdown` のときだけ「残り{n}秒」。**`opening` は `confidence === "measured"` のときだけ帯にする**（`inferred` はチップ止まり）。
+`showCountdown` のときだけ「残り{n}秒」。**`opening` は `measured` / `inferred` とも赤帯**（`inferred` はラベル末尾 `(推定)`）。
 
 ### 4.6 コントロール（パネル地の実バー。ステージへ被せない）
 

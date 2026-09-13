@@ -244,7 +244,10 @@ function buildSegments(row: ReplayRow): ReplaySegment[] {
       startMs: clamp(row.openingWindowStartedAt),
       endMs: clamp(row.openingWindowEndedAt),
       multiplier: row.openingMultiplier,
-      label: `初めてのギフト×${row.openingMultiplier}倍`,
+      label:
+        confidence === "inferred"
+          ? `初めてのギフト×${row.openingMultiplier}倍(推定)`
+          : `初めてのギフト×${row.openingMultiplier}倍`,
       // 終端は OPENING_WINDOW_MS 仮定(TikTok は区間終了を配信しない)なので残り秒数は出さない。
       showCountdown: false,
       confidence,

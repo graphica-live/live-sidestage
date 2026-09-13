@@ -392,7 +392,7 @@ describe("cardSizeOf", () => {
 });
 
 describe("isBandSegment", () => {
-  it("初ギフト倍率は実測(measured)のときだけ帯にする", () => {
+  it("初ギフト倍率は measured / inferred とも帯にする", () => {
     const opening = (confidence: "measured" | "inferred") => ({
       kind: "opening" as const,
       startMs: 0,
@@ -403,7 +403,7 @@ describe("isBandSegment", () => {
       confidence,
     });
     expect(isBandSegment(opening("measured"))).toBe(true);
-    expect(isBandSegment(opening("inferred"))).toBe(false);
+    expect(isBandSegment(opening("inferred"))).toBe(true);
     expect(
       isBandSegment({
         kind: "bonus_mission",

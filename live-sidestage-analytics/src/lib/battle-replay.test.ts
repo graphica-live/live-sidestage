@@ -626,6 +626,7 @@ describe("buildPayload の区間(segments)", () => {
       NO_CATALOG
     );
     expect(payload.segments.map((s) => [s.kind, s.confidence])).toEqual([["opening", "inferred"]]);
+    expect(payload.segments[0]?.label).toBe("初めてのギフト×2倍(推定)");
   });
 
   it("measured でも倍率が null なら帯を作らない", () => {
