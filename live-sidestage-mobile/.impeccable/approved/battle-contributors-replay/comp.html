@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>バトル履歴 — 詳細シートの再生CTA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #FAF7F5;
+    --card: #FFFFFF;
+    --ink: #2A2130;
+    --sub: #7C7286;
+    --line: #EFE6E9;
+    --divider: #F1EBEE;
+    --c1: #FF7A59;
+    --c2: #9B6BFF;
+    --c3: #2FC6A0;
+    --danger: #E24B4B;
+    --scrim: rgba(42, 33, 48, .42);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #1a1520; color: #f4eef8; font-family: "M PLUS 2", sans-serif; }
+  body { padding: 32px 24px 64px; }
+  h1 { font-size: 22px; font-weight: 800; margin: 0 0 8px; letter-spacing: -.02em; }
+  .lede { color: #c8bcd4; font-size: 14px; line-height: 1.55; max-width: 920px; margin: 0 0 28px; }
+  .row { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+  .col { display: flex; flex-direction: column; gap: 10px; }
+  .cap { font-size: 12px; font-weight: 700; color: #d4c6de; letter-spacing: .04em; text-transform: none; }
+  .note { font-size: 12px; color: #a898b4; line-height: 1.5; max-width: 280px; }
+  .phone {
+    width: 264px; height: 560px; background: #111; border-radius: 36px;
+    padding: 10px; box-shadow: 0 24px 60px rgba(0,0,0,.45);
+  }
+  .scr {
+    height: 100%; background: var(--bg); color: var(--ink); border-radius: 28px;
+    overflow: hidden; position: relative; display: flex; flex-direction: column;
+  }
+  .appbar { height: 36px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+  .page { flex: 1; position: relative; padding: 0 0 12px; overflow: hidden; }
+  .title { font-size: 18px; font-weight: 800; padding: 4px 16px 8px;
+    background: linear-gradient(90deg, var(--c1), var(--c2));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card {
+    margin: 0 16px 12px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 18px; padding: 14px; min-height: 118px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    box-shadow: 0 8px 22px rgba(155,107,255,.12);
+  }
+  .head { display: flex; justify-content: space-between; font-size: 11px; color: var(--sub); }
+  .win { background: linear-gradient(90deg, var(--c3), var(--c2)); color: #fff;
+    font-size: 10px; font-weight: 800; border-radius: 999px; padding: 4px 10px; }
+  .score { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 8px 0 6px; }
+  .seg { display: flex; align-items: center; gap: 6px; }
+  .av { width: 28px; height: 28px; border-radius: 999px; background: #ddd; border: 2px solid var(--c2); }
+  .av.opp { border-color: #fff; outline: 1px solid var(--line); }
+  .num { font-size: 18px; font-weight: 800; }
+  .num.g { background: linear-gradient(90deg, var(--c1), var(--c3)); -webkit-background-clip: text; color: transparent; }
+  .dash { color: var(--sub); font-weight: 700; }
+  .names { display: flex; justify-content: space-between; font-size: 9px; color: var(--sub); padding: 0 4px; }
+  .names .me { color: var(--c2); font-weight: 700; }
+  .foot { display: flex; align-items: center; justify-content: center; position: relative; margin-top: 6px; }
+  .foot span { font-size: 9px; color: var(--sub); }
+  .tiny {
+    position: absolute; right: -6px; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; gap: 2px; color: var(--c2);
+    font-size: 10px; font-weight: 700; padding: 2px 6px;
+  }
+  .tiny svg { width: 12px; height: 12px; }
+  .scrim {
+    position: absolute; inset: 0; background: var(--scrim);
+  }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: var(--card); border-radius: 20px 20px 0 0;
+    padding: 8px 0 16px; box-shadow: 0 -12px 32px rgba(42,33,48,.18);
+  }
+  .sheet.tall {
+    top: 44px;
+    padding: 8px 0 12px;
+    display: flex;
+    flex-direction: column;
+  }
+  .handle { width: 36px; height: 4px; background: var(--line); border-radius: 999px; margin: 4px auto 10px; flex: none; }
+  .sheet-h { font-size: 13px; font-weight: 700; text-align: center; padding: 0 16px 10px; flex: none; }
+  .cta {
+    margin: 0 16px 12px; height: 48px; border: 0; border-radius: 999px; color: #fff;
+    font: 800 15px/1 "M PLUS 2", sans-serif; display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: linear-gradient(90deg, var(--c1), var(--c2));
+    box-shadow: 0 10px 22px -10px rgba(155,107,255,.85);
+    width: calc(100% - 32px); flex: none;
+  }
+  .cta svg { width: 22px; height: 22px; fill: #fff; }
+  .rows { padding: 0 8px; flex: 1; min-height: 0; overflow: auto; }
+  .rowi { display: flex; align-items: center; gap: 8px; padding: 11px 8px; border-top: 1px solid var(--divider); }
+  .medal { width: 18px; height: 18px; border-radius: 999px; color: #fff; font-size: 9px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, var(--c1), var(--c2)); }
+  .rav { width: 26px; height: 26px; border-radius: 999px; background: #e8e0ec; }
+  .rname { font-size: 11px; font-weight: 700; }
+  .rsub { font-size: 9px; color: var(--sub); }
+  .coin { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--c2); }
+  .muted { text-align: center; color: var(--sub); font-size: 11px; padding: 18px 16px; }
+</style>
+</head>
+<body>
+  <h1>バトル詳細シートの再生ボタン</h1>
+  <p class="lede">
+    いまの再生はカード右下の 16dp アイコン＋縮小タップ領域で、日時と食い合っている。
+    カードを開いたあとのシートで、見出し「このバトルの貢献者」の直上に全幅の光彩プライマリボタンを置く。
+    シートは画面の約9割まで上げ、貢献者リストに縦を渡す（再生ボタンでリストを潰さない）。
+    再生可能でないバトルではボタンを出さない。カード側の小さい「再生」は外し、日時を中央に戻す。
+  </p>
+  <div class="row">
+    <div class="col">
+      <div class="cap">いま — カードの端に小さな再生</div>
+      <div class="phone"><div class="scr">
+        <div class="appbar">LIVE Sidestage</div>
+        <div class="page">
+          <div class="title">バトル履歴</div>
+          <div class="card">
+            <div class="head"><span>1 vs 1</span><span class="win">WIN</span></div>
+            <div class="score">
+              <div class="seg"><div class="av"></div><div class="num g">12,400</div></div>
+              <div class="dash">–</div>
+              <div class="seg"><div class="num">9,180</div><div class="av opp"></div></div>
+            </div>
+            <div class="names"><span class="me">@me</span><span>@opp</span></div>
+            <div class="foot">
+              <span>09/13 21:04 終了</span>
+              <span class="tiny">
+                <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 1 0 .001 20.001A10 10 0 0 0 12 2zm-1.5 14.5v-9l7 4.5-7 4.5z"/></svg>
+                再生
+              </span>
+            </div>
+          </div>
+          <div class="scrim"></div>
+          <div class="sheet">
+            <div class="handle"></div>
+            <div class="sheet-h">このバトルの貢献者</div>
+            <div class="rows">
+              <div class="rowi"><div class="medal">1</div><div class="rav"></div><div><div class="rname">リスナーA</div><div class="rsub">@aaa</div></div><div class="coin">🪙 8,200</div></div>
+              <div class="rowi"><div class="medal" style="background:linear-gradient(135deg,#9B6BFF,#2FC6A0)">2</div><div class="rav"></div><div><div class="rname">リスナーB</div><div class="rsub">@bbb</div></div><div class="coin">🪙 3,100</div></div>
+              <div class="rowi"><div style="width:18px;text-align:center;font-size:10px;color:#7C7286">4</div><div class="rav"></div><div><div class="rname">リスナーC</div><div class="rsub">@ccc</div></div><div class="coin">🪙 420</div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <p class="note">問題: 再生はカードにしか無く、ヒット領域は 16dp。シートを開いたあとに再生する導線が無い。</p>
+    </div>
+
+    <div class="col">
+      <div class="cap">提案 — シート先頭の大きい再生</div>
+      <div class="phone"><div class="scr">
+        <div class="appbar">LIVE Sidestage</div>
+        <div class="page">
+          <div class="title">バトル履歴</div>
+          <div class="card">
+            <div class="head"><span>1 vs 1</span><span class="win">WIN</span></div>
+            <div class="score">
+              <div class="seg"><div class="av"></div><div class="num g">12,400</div></div>
+              <div class="dash">–</div>
+              <div class="seg"><div class="num">9,180</div><div class="av opp"></div></div>
+            </div>
+            <div class="names"><span class="me">@me</span><span>@opp</span></div>
+            <div class="foot"><span>09/13 21:04 終了</span></div>
+          </div>
+          <div class="scrim"></div>
+          <div class="sheet tall">
+            <div class="handle"></div>
+            <button class="cta" type="button">
+              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              再生
+            </button>
+            <div class="sheet-h">このバトルの貢献者</div>
+            <div class="rows">
+              <div class="rowi"><div class="medal">1</div><div class="rav"></div><div><div class="rname">リスナーA</div><div class="rsub">@aaa</div></div><div class="coin">🪙 8,200</div></div>
+              <div class="rowi"><div class="medal" style="background:linear-gradient(135deg,#9B6BFF,#2FC6A0)">2</div><div class="rav"></div><div><div class="rname">リスナーB</div><div class="rsub">@bbb</div></div><div class="coin">🪙 3,100</div></div>
+              <div class="rowi"><div class="medal" style="background:linear-gradient(135deg,#2FC6A0,#FF7A59);opacity:.85">3</div><div class="rav"></div><div><div class="rname">リスナーC</div><div class="rsub">@ccc</div></div><div class="coin">🪙 1,040</div></div>
+              <div class="rowi"><div style="width:18px;text-align:center;font-size:10px;color:#7C7286">4</div><div class="rav"></div><div><div class="rname">リスナーD</div><div class="rsub">@ddd</div></div><div class="coin">🪙 420</div></div>
+              <div class="rowi"><div style="width:18px;text-align:center;font-size:10px;color:#7C7286">5</div><div class="rav"></div><div><div class="rname">リスナーE</div><div class="rsub">@eee</div></div><div class="coin">🪙 210</div></div>
+              <div class="rowi"><div style="width:18px;text-align:center;font-size:10px;color:#7C7286">6</div><div class="rav"></div><div><div class="rname">リスナーF</div><div class="rsub">@fff</div></div><div class="coin">🪙 99</div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <p class="note">シートは画面の約88%。再生は固定、貢献者は残り全部。行の縦パディングも少し広げて読む。</p>
+    </div>
+
+    <div class="col">
+      <div class="cap">再生できないとき</div>
+      <div class="phone"><div class="scr">
+        <div class="appbar">LIVE Sidestage</div>
+        <div class="page">
+          <div class="title">バトル履歴</div>
+          <div class="card">
+            <div class="head"><span>1 vs 1</span><span class="win">WIN</span></div>
+            <div class="score">
+              <div class="seg"><div class="av"></div><div class="num g">1,200</div></div>
+              <div class="dash">–</div>
+              <div class="seg"><div class="num">900</div><div class="av opp"></div></div>
+            </div>
+            <div class="names"><span class="me">@me</span><span>@opp</span></div>
+            <div class="foot"><span>09/12 18:10 終了</span></div>
+          </div>
+          <div class="scrim"></div>
+          <div class="sheet tall">
+            <div class="handle"></div>
+            <div class="sheet-h">このバトルの貢献者</div>
+            <div class="muted">このバトルの貢献者はいません</div>
+          </div>
+        </div>
+      </div></div>
+      <p class="note">unavailable のときはボタンを出さない。無効ボタンや理由文は足さない（いまのカードと同じ）。</p>
+    </div>
+  </div>
+</body>
+</html>

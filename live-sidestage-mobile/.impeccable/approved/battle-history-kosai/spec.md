@@ -59,7 +59,7 @@ comp caption:
        全体を比例縮小する。省略・欠落は発生させない(数値は必ず表示する)
    - **フッター行**(comp `.battle-foot`): 中央、11dp sub、
      「MM-DD HH:MM 終了」(進行中は「MM-DD HH:MM 開始」)
-   - カードタップ → そのバトルの貢献者ボトムシート(既存 `_BattleContributorsSheet`)
+   - カードタップ → そのバトルの貢献者ボトムシート(既存 `_BattleContributorsSheet`)。シート高さは画面の88%。再生可能なら見出し直上に KosaiPrimaryButton「再生」（詳細は `../battle-contributors-replay/spec.md`）。カードフッターの小さい再生ボタンは置かない（2026-09-14 ユーザー明示）
    - **2026-09-06 サイズ改訂**: 配信者フィードバック(「カードが全体的に小さい」)を受け、
      comp採用時の初期数値から約20%拡大。その後実機確認で「アイコンがまだ小さい」との
      追加指摘を受け、アバター径のみ再拡大(通常32→40dp、many 24→32dp、重なり-12→-15dp)。
@@ -82,10 +82,11 @@ API・データ形式は変更しない方針のため、3陣営以上でも**�
 陣営数の表示(「1 vs 1 vs 1」)は `opponentTeam` / `opponent.count` から作る。
 comp の「4スコア横並び」は**未実装**として明記する(データ不在。実装漏れではない)。
 
-## 貢献者ボトムシート(既存 / comp未定義)
+## 貢献者ボトムシート
 
-見出し「このバトルの貢献者」15dp w700、`ListPanel` + `RankingListTile`(貢献タブと同一)。
-loading / empty / error は既存のまま維持する。
+シート高さは画面の88%。見出し「このバトルの貢献者」16dp w700 中央。
+`replay.available` なら見出し直上に `KosaiPrimaryButton`「再生」（`../battle-contributors-replay/spec.md`）。
+`ListPanel` + `RankingListTile`(貢献タブと同一)。loading / empty / error は既存のまま維持する。
 
 ## 状態
 
