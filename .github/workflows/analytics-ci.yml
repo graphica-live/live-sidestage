@@ -22,6 +22,8 @@ defaults:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      cron_image_deploy: ${{ steps.cron_image_deploy.outputs.cron_image_deploy }}
 
     # integration テストは実DBを使う(スナップショット集計・advisory lock・
     # public と event をまたぐ結合は、モックでは意味のある検証にならない)。
@@ -86,6 +88,19 @@ jobs:
             exit 0
           fi
           npx tsx scripts/check-worker-restart-proposal.ts --base="$PROPOSAL_BASE" --head="$PROPOSAL_HEAD"
+
+      - id: cron_image_deploy
+        name: Decide cron GHCR image deploy
+        env:
+          PROPOSAL_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          PROPOSAL_HEAD: ${{ github.sha }}
+        run: |
+          if [ -z "$PROPOSAL_BASE" ] || [ "$PROPOSAL_BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "initial push: treat as cron image deploy needed"
+            echo "cron_image_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          npx tsx scripts/check-cron-image-deploy.ts --base="$PROPOSAL_BASE" --head="$PROPOSAL_HEAD"
 
       # Apply baseline migration to test DB.
       # prisma/migrations/ contains 0_init and Wave1-B CHECK migration, so migrate deploy applies both.
@@ -155,8 +170,13 @@ jobs:
   # TikTok worker1/2/3 は RAILWAY_ANALYTICS_MANAGED_SERVICE_IDS に入れない。
   # 入れると毎 main push で serviceConnect(image) が走り TikTok worker が再起動する。
   # DeploymentTrigger は操作しない（既存維持）。
+  # RAILWAY_ANALYTICS_CRON_SERVICE_IDS:
+  # cron 専用の Service ID 一覧(JSON配列)。MANAGED に入れないこと（毎 push で cron が動く）。
+  # verify が cron import graph 交差を true にしたとき、またはまだ GitHub Source
+  # (source.repo が残る) の cutover のときだけ serviceConnect する。
+  # 空 / [] なら cron 配布は skip。
   deploy-railway:
-    needs: build-and-push
+    needs: [verify, build-and-push]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -173,21 +193,77 @@ jobs:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       IMAGE_REF: ghcr.io/graphica-live/live-sidestage-analytics:${{ needs.build-and-push.outputs.image_tag }}
       MANAGED_SERVICE_IDS: ${{ vars.RAILWAY_ANALYTICS_MANAGED_SERVICE_IDS }}
+      CRON_SERVICE_IDS: ${{ vars.RAILWAY_ANALYTICS_CRON_SERVICE_IDS }}
+      CRON_IMAGE_DEPLOY: ${{ needs.verify.outputs.cron_image_deploy }}
     steps:
       - name: Deploy managed Railway services from GHCR
         run: |
           set -euo pipefail
+          railway_gql() {
+            local attempt=1
+            local resp
+            while [ "$attempt" -le 3 ]; do
+              if resp=$(curl -sS --fail-with-body -X POST https://backboard.railway.com/graphql/v2 \
+                -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
+                -d "$1"); then
+                echo "$resp"
+                return 0
+              fi
+              echo "railway_gql attempt $attempt failed" >&2
+              attempt=$((attempt + 1))
+              sleep 2
+            done
+            echo "::error::railway GraphQL failed after 3 attempts"
+            return 1
+          }
           if [ -z "${MANAGED_SERVICE_IDS:-}" ] || [ "$MANAGED_SERVICE_IDS" = "[]" ]; then
-            echo "no managed services yet, skipping"
+            echo "no managed services yet, skipping managed"
+          else
+            while IFS= read -r sid; do
+              [ -z "$sid" ] && continue
+              connect_body=$(jq -nc --arg sid "$sid" --arg img "$IMAGE_REF" \
+                '{query:"mutation($sid:String!,$img:String!){ serviceConnect(id:$sid, input:{image:$img}) { id } }", variables:{sid:$sid,img:$img}}')
+              resp=$(railway_gql "$connect_body")
+              echo "$resp"
+              echo "$resp" | jq -e '.data.serviceConnect.id' >/dev/null || { echo "::error::serviceConnect failed for $sid"; exit 1; }
+
+              source_body=$(jq -nc --arg sid "$sid" \
+                '{query:"query($sid:String!){ service(id:$sid){ id name serviceInstances { edges { node { environmentId source { image repo } } } } } }", variables:{sid:$sid}}')
+              source_resp=$(railway_gql "$source_body")
+              echo "$source_resp"
+              echo "$source_resp" | jq -e '.data.service' >/dev/null || { echo "::error::source query failed for $sid"; exit 1; }
+
+              echo "$source_resp" | jq -r --arg img "$IMAGE_REF" --arg sid "$sid" '
+                .data.service.serviceInstances.edges[]? as $e
+                | "source check service=\($sid) env=\($e.node.environmentId // "null") image=\($e.node.source.image // "null") repo=\($e.node.source.repo // "null") expected=\($img)"
+              '
+
+              unmatched=$(echo "$source_resp" | jq -r --arg img "$IMAGE_REF" '
+                [
+                  .data.service.serviceInstances.edges[]?
+                  | select((.node.source.image // "") != $img)
+                  | .node.environmentId
+                ] | length
+              ')
+              instance_count=$(echo "$source_resp" | jq -r '.data.service.serviceInstances.edges | length')
+              if [ "$instance_count" = "0" ]; then
+                echo "::error::no serviceInstances returned for $sid"
+                exit 1
+              fi
+              if [ "$unmatched" != "0" ]; then
+                echo "::error::source.image mismatch for $sid ($unmatched instance(s) != $IMAGE_REF)"
+                exit 1
+              fi
+            done < <(echo "$MANAGED_SERVICE_IDS" | jq -r '.[]')
+          fi
+
+          if [ -z "${CRON_SERVICE_IDS:-}" ] || [ "$CRON_SERVICE_IDS" = "[]" ]; then
+            echo "no cron services configured, skipping cron deploy"
             exit 0
           fi
-          railway_gql() {
-            curl -sS --fail-with-body -X POST https://backboard.railway.com/graphql/v2 \
-              -H "Authorization: Bearer $RAILWAY_TOKEN" -H "Content-Type: application/json" \
-              -d "$1"
-          }
-          while IFS= read -r sid; do
-            [ -z "$sid" ] && continue
+
+          connect_service() {
+            local sid="$1"
             connect_body=$(jq -nc --arg sid "$sid" --arg img "$IMAGE_REF" \
               '{query:"mutation($sid:String!,$img:String!){ serviceConnect(id:$sid, input:{image:$img}) { id } }", variables:{sid:$sid,img:$img}}')
             resp=$(railway_gql "$connect_body")
@@ -221,4 +297,29 @@ jobs:
               echo "::error::source.image mismatch for $sid ($unmatched instance(s) != $IMAGE_REF)"
               exit 1
             fi
-          done < <(echo "$MANAGED_SERVICE_IDS" | jq -r '.[]')
+          }
+
+          while IFS= read -r sid; do
+            [ -z "$sid" ] && continue
+            source_body=$(jq -nc --arg sid "$sid" \
+              '{query:"query($sid:String!){ service(id:$sid){ id name serviceInstances { edges { node { environmentId source { image repo } } } } } }", variables:{sid:$sid}}')
+            source_resp=$(railway_gql "$source_body")
+            echo "$source_resp"
+            echo "$source_resp" | jq -e '.data.service' >/dev/null || { echo "::error::cron source query failed for $sid"; exit 1; }
+
+            github_left=$(echo "$source_resp" | jq -r '
+              [
+                .data.service.serviceInstances.edges[]?
+                | select((.node.source.repo // "") != "")
+              ] | length
+            ')
+            if [ "$github_left" != "0" ]; then
+              echo "cron cutover from GitHub source: $sid"
+              connect_service "$sid"
+            elif [ "${CRON_IMAGE_DEPLOY:-}" = "true" ]; then
+              echo "cron path hit, connecting: $sid"
+              connect_service "$sid"
+            else
+              echo "cron skip (image source, no path hit): $sid"
+            fi
+          done < <(echo "$CRON_SERVICE_IDS" | jq -r '.[]')
