@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
-import { buildImportGraph, buildExpectedPatterns, diffPatterns, COMMON_WATCH_PATTERNS } from "./core";
+import {
+  buildImportGraph,
+  buildExpectedPatterns,
+  COMMON_WATCH_PATTERNS,
+  normalizeRepoRelativePath,
+  patternMatches,
+  intersectChangedWithExpected,
+} from "./core";
 
 describe("buildImportGraph", () => {
   describe("回帰テスト - 実リポジトリ", () => {
@@ -252,66 +259,77 @@ describe("buildExpectedPatterns", () => {
   });
 });
 
-describe("diffPatterns", () => {
-  it("完全一致のときは missing/extra が空", () => {
-    const expected = new Set([
-      "live-sidestage-analytics/worker.ts",
-      "live-sidestage-analytics/src/lib/helper.ts",
-    ]);
-    const actual = [
-      "live-sidestage-analytics/worker.ts",
-      "live-sidestage-analytics/src/lib/helper.ts",
-    ];
-
-    const diff = diffPatterns(expected, actual);
-
-    expect(diff.missing).toEqual([]);
-    expect(diff.extra).toEqual([]);
+describe("normalizeRepoRelativePath", () => {
+  it("src/lib 相対に analytics プレフィックスを付ける", () => {
+    expect(normalizeRepoRelativePath("src/lib/foo.ts")).toBe(
+      "live-sidestage-analytics/src/lib/foo.ts"
+    );
   });
-
-  it("expectedに無いものはmissingに入る", () => {
-    const expected = new Set([
-      "live-sidestage-analytics/worker.ts",
-    ]);
-    const actual = [
-      "live-sidestage-analytics/worker.ts",
-      "live-sidestage-analytics/src/lib/helper.ts",
-    ];
-
-    const diff = diffPatterns(expected, actual);
-
-    expect(diff.missing).toEqual([]);
-    expect(diff.extra).toContain("live-sidestage-analytics/src/lib/helper.ts");
+  it("既にプレフィックス付きなら二重付与しない", () => {
+    expect(
+      normalizeRepoRelativePath("live-sidestage-analytics/src/lib/foo.ts")
+    ).toBe("live-sidestage-analytics/src/lib/foo.ts");
   });
-
-  it("actualに無いものはextraに入る", () => {
-    const expected = new Set([
-      "live-sidestage-analytics/worker.ts",
-      "live-sidestage-analytics/src/lib/helper.ts",
-    ]);
-    const actual = [
-      "live-sidestage-analytics/worker.ts",
-    ];
-
-    const diff = diffPatterns(expected, actual);
-
-    expect(diff.missing).toContain("live-sidestage-analytics/src/lib/helper.ts");
-    expect(diff.extra).toEqual([]);
+  it("バックスラッシュと先頭 ./ を正規化する", () => {
+    expect(normalizeRepoRelativePath(".\\src\\lib\\foo.ts")).toBe(
+      "live-sidestage-analytics/src/lib/foo.ts"
+    );
   });
+});
 
-  it("missing と extra が両方ある場合", () => {
-    const expected = new Set([
+describe("patternMatches", () => {
+  it("完全一致", () => {
+    expect(
+      patternMatches(
+        "live-sidestage-analytics/worker.ts",
+        "live-sidestage-analytics/worker.ts"
+      )
+    ).toBe(true);
+  });
+  it("prisma/** は配下にマッチし兄弟にはマッチしない", () => {
+    expect(
+      patternMatches(
+        "live-sidestage-analytics/prisma/schema.prisma",
+        "live-sidestage-analytics/prisma/**"
+      )
+    ).toBe(true);
+    expect(
+      patternMatches(
+        "live-sidestage-analytics/prisma-not/schema.prisma",
+        "live-sidestage-analytics/prisma/**"
+      )
+    ).toBe(false);
+  });
+});
+
+describe("intersectChangedWithExpected", () => {
+  const expected = new Set([
+    "live-sidestage-analytics/worker.ts",
+    "live-sidestage-analytics/prisma/**",
+    "live-sidestage-analytics/src/lib/tiktok-listener.ts",
+  ]);
+  it("hit をソート一意で返す", () => {
+    expect(
+      intersectChangedWithExpected(
+        [
+          "src/lib/tiktok-listener.ts",
+          "live-sidestage-analytics/worker.ts",
+          "live-sidestage-analytics/src/app/page.tsx",
+          "live-sidestage-analytics/worker.ts",
+        ],
+        expected
+      )
+    ).toEqual([
+      "live-sidestage-analytics/src/lib/tiktok-listener.ts",
       "live-sidestage-analytics/worker.ts",
-      "live-sidestage-analytics/src/lib/expected.ts",
     ]);
-    const actual = [
-      "live-sidestage-analytics/worker.ts",
-      "live-sidestage-analytics/src/lib/extra.ts",
-    ];
-
-    const diff = diffPatterns(expected, actual);
-
-    expect(diff.missing).toContain("live-sidestage-analytics/src/lib/expected.ts");
-    expect(diff.extra).toContain("live-sidestage-analytics/src/lib/extra.ts");
+  });
+  it("page だけなら空", () => {
+    expect(
+      intersectChangedWithExpected(
+        ["live-sidestage-analytics/src/app/page.tsx"],
+        expected
+      )
+    ).toEqual([]);
   });
 });

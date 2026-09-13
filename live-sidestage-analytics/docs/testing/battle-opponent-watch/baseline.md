@@ -84,9 +84,7 @@ last_reviewers: "Design Mode=Codex-terra+Gemini(agy)並行。Code Mode=Codex-ter
 - `npm run test:unit`(除外: integration) — PASS(127 files / 1679 tests、2026-09-12)
 - `npm run test:integration` — PASS(106 files / 1015 tests、2026-09-12。code-review round1反映のTC-BOW-035/036、
   round2反映のTC-BOW-037を含む)
-- `npx dotenv -e .env.local.test -- vitest run scripts/worker-watch-patterns/cli.test.ts`(Railway watchPatterns
-  ドリフト検知。新規ファイル`tiktok-collab-source.ts`追加に伴いworker1/2/3のRailway設定と
-  `__fixtures__/watchpatterns-snapshot.json`を更新して解消) — PASS(4/4、2026-09-12)
+- `npx vitest run scripts/worker-watch-patterns/`（TikTok worker import graph / 再起動提案 CLI の回帰。`tiktok-collab-source.ts` 等 graph 内の変更は提案対象になり、Railway snapshot の人手更新は不要） — PASS（2026-09-13）
 
 ## Out of Scope
 

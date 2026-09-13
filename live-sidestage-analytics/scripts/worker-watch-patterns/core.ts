@@ -26,6 +26,64 @@ export const COMMON_WATCH_PATTERNS: string[] = [
   "tsconfig.json",
 ];
 
+export const ANALYTICS_REPO_PREFIX = "live-sidestage-analytics/";
+
+/**
+ * モノレポ相対パスを expected パターンと揃える（バックスラッシュ・./ 除去、analytics プレフィックス）
+ */
+export function normalizeRepoRelativePath(file: string): string {
+  const trimmed = file.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  let normalized = trimmed.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalized.startsWith(ANALYTICS_REPO_PREFIX)) {
+    return normalized;
+  }
+
+  return ANALYTICS_REPO_PREFIX + normalized;
+}
+
+/**
+ * expected パターン（完全一致、または `/**` 終端のディレクトリプレフィックス）と path が一致するか
+ */
+export function patternMatches(path: string, pattern: string): boolean {
+  if (pattern.endsWith("/**")) {
+    const dir = pattern.slice(0, -3);
+    return path === dir || path.startsWith(`${dir}/`);
+  }
+
+  return path === pattern;
+}
+
+/**
+ * 変更ファイル一覧と expected パターン集合の交差（正規化後の変更パスをソート一意で返す）
+ */
+export function intersectChangedWithExpected(
+  changedFiles: string[],
+  expected: Set<string>
+): string[] {
+  const patterns = Array.from(expected);
+  const hits = new Set<string>();
+
+  for (const file of changedFiles) {
+    const normalized = normalizeRepoRelativePath(file);
+    if (!normalized) {
+      continue;
+    }
+
+    for (const pattern of patterns) {
+      if (patternMatches(normalized, pattern)) {
+        hits.add(normalized);
+        break;
+      }
+    }
+  }
+
+  return Array.from(hits).sort();
+}
+
 /**
  * 正規表現ベースのimport/export抽出
  * import/export ... from "..." 形式の他、動的importやrequireにも対応
@@ -206,7 +264,7 @@ export function buildExpectedPatterns(
   libFiles: string[],
   opts?: { pathPrefix?: string }
 ): Set<string> {
-  const prefix = opts?.pathPrefix ?? "live-sidestage-analytics/";
+  const prefix = opts?.pathPrefix ?? ANALYTICS_REPO_PREFIX;
   const expected = new Set<string>();
 
   // 共通パターン

@@ -74,6 +74,19 @@ jobs:
       # Does not fail CI, only alerts reviewers.
       - run: npx tsx scripts/check-migration-safety.ts
 
+      # Import graph intersect changed files. Suggests TikTok worker1/2/3 restart;
+      # does not deploy or restart. CLI exits 0 even when recommending restart.
+      - name: Propose TikTok worker restart (no deploy)
+        env:
+          PROPOSAL_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          PROPOSAL_HEAD: ${{ github.sha }}
+        run: |
+          if [ -z "$PROPOSAL_BASE" ] || [ "$PROPOSAL_BASE" = "0000000000000000000000000000000000000000" ]; then
+            echo "skip: empty or zero PROPOSAL_BASE (initial push)"
+            exit 0
+          fi
+          npx tsx scripts/check-worker-restart-proposal.ts --base="$PROPOSAL_BASE" --head="$PROPOSAL_HEAD"
+
       # Apply baseline migration to test DB.
       # prisma/migrations/ contains 0_init and Wave1-B CHECK migration, so migrate deploy applies both.
       - run: npx prisma migrate deploy
@@ -139,6 +152,9 @@ jobs:
   # Dashboard での事前 Source 切替は不要。serviceDisconnect も挟まない。
   # 一度に複数追加せず1件ずつ増やすのは安全なロールアウト策(必須ではない)。
   # 空 / [] ならこのジョブは skip。DeploymentTrigger は操作しない。
+  # TikTok worker1/2/3 は RAILWAY_ANALYTICS_MANAGED_SERVICE_IDS に入れない。
+  # 入れると毎 main push で serviceConnect(image) が走り TikTok worker が再起動する。
+  # DeploymentTrigger は操作しない（既存維持）。
   deploy-railway:
     needs: build-and-push
     runs-on: ubuntu-latest
