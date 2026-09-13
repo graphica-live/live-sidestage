@@ -592,47 +592,23 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
     return buffer.toString();
   }
 
-  /// 再生の連打防止に使う。発行中のbattleIdだけ保持し、それ以外は常にnull。
-  String? _replayLoadingBattleId;
-
-  Future<void> _openReplay(BattleSummary battle) async {
-    if (_replayLoadingBattleId != null) return;
-    final sessions = context.read<SessionController>();
-    final token = sessions.session?.token;
-    if (token == null) return;
-
-    setState(() => _replayLoadingBattleId = battle.battleId);
-    try {
-      final url = await withTokenRefresh(
-        call: (t) => _api.fetchBattleReplayShareUrl(token: t, battleId: battle.battleId),
-        token: token,
-        refreshToken: sessions.refreshToken,
-      );
-      if (!mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => BattleReplayWebViewScreen(url: url)),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-    } finally {
-      if (mounted) setState(() => _replayLoadingBattleId = null);
-    }
-  }
-
   void _showContributors(BattleSummary battle) {
     final sessions = context.read<SessionController>();
     final token = sessions.session?.token;
     if (token == null) return;
 
+    final height = MediaQuery.sizeOf(context).height * 0.88;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _BattleContributorsSheet(
-        api: _api,
-        battleId: battle.battleId,
-        token: token,
-        refreshToken: sessions.refreshToken,
+      builder: (context) => SizedBox(
+        height: height,
+        child: _BattleContributorsSheet(
+          api: _api,
+          battle: battle,
+          token: token,
+          refreshToken: sessions.refreshToken,
+        ),
       ),
     );
   }
@@ -757,7 +733,6 @@ class _BattleHistoryTabState extends State<BattleHistoryTab> with WidgetsBinding
               battle: battle,
               myTiktokId: myTiktokId,
               onTap: () => _showContributors(battle),
-              onReplayTap: _replayLoadingBattleId == null ? () => _openReplay(battle) : null,
             ),
           if (battles.isNotEmpty && hiddenCount > 0)
             Padding(
@@ -796,15 +771,11 @@ class _BattleCard extends StatelessWidget {
     required this.battle,
     required this.myTiktokId,
     required this.onTap,
-    required this.onReplayTap,
   });
 
   final BattleSummary battle;
   final String? myTiktokId;
   final VoidCallback onTap;
-
-  /// 再生可能(`battle.replay.available == true`)なときだけ非null。
-  final VoidCallback? onReplayTap;
 
   /// comp `.battle-card` の `min-height:118px` 相当。2026-09-06、配信者フィードバックで約20%拡大。
   /// 2026-09-06 再調整: アバター40dp化でコンテンツ自然高さが増えた分、168dpだと
@@ -986,28 +957,11 @@ class _BattleCard extends StatelessWidget {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${_BattleHistoryTabState._formatStartedAt(battle.startedAt)} '
-                          '${_BattleHistoryTabState._statusLabel(battle.status)}',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, color: sub),
-                        ),
-                      ),
-                      if (battle.replay.available)
-                        TextButton.icon(
-                          onPressed: onReplayTap,
-                          icon: const Icon(Icons.play_circle_outline, size: 16),
-                          label: const Text('再生', style: TextStyle(fontSize: 12)),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ),
-                    ],
+                  child: Text(
+                    '${_BattleHistoryTabState._formatStartedAt(battle.startedAt)} '
+                    '${_BattleHistoryTabState._statusLabel(battle.status)}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 11, color: sub),
                   ),
                 ),
               ],
@@ -1135,13 +1089,13 @@ class _OutcomeBadge extends StatelessWidget {
 class _BattleContributorsSheet extends StatefulWidget {
   const _BattleContributorsSheet({
     required this.api,
-    required this.battleId,
+    required this.battle,
     required this.token,
     required this.refreshToken,
   });
 
   final LiveAnalyticsApi api;
-  final String battleId;
+  final BattleSummary battle;
   final String token;
   final Future<String?> Function() refreshToken;
 
@@ -1153,6 +1107,7 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
   BattleContributorsResult? _result;
   String? _error;
   bool _loading = true;
+  bool _replayBusy = false;
 
   @override
   void initState() {
@@ -1167,7 +1122,7 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
     });
     try {
       final result = await withTokenRefresh(
-        call: (t) => widget.api.fetchBattleContributors(token: t, battleId: widget.battleId),
+        call: (t) => widget.api.fetchBattleContributors(token: t, battleId: widget.battle.battleId),
         token: widget.token,
         refreshToken: widget.refreshToken,
       );
@@ -1185,6 +1140,27 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
     }
   }
 
+  Future<void> _openReplay() async {
+    if (_replayBusy) return;
+    setState(() => _replayBusy = true);
+    try {
+      final url = await withTokenRefresh(
+        call: (t) => widget.api.fetchBattleReplayShareUrl(token: t, battleId: widget.battle.battleId),
+        token: widget.token,
+        refreshToken: widget.refreshToken,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => BattleReplayWebViewScreen(url: url)),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _replayBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
@@ -1195,26 +1171,36 @@ class _BattleContributorsSheetState extends State<_BattleContributorsSheet> {
       child: Padding(
         padding: const EdgeInsets.only(top: 16),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.battle.replay.available)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: KosaiPrimaryButton(
+                  label: '再生',
+                  icon: Icons.play_arrow,
+                  onPressed: _replayBusy ? null : _openReplay,
+                  busy: _replayBusy,
+                ),
+              ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('このバトルの貢献者', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text('このバトルの貢献者', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
             const SizedBox(height: 8),
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: CircularProgressIndicator(),
+              const Expanded(
+                child: Center(child: CircularProgressIndicator()),
               ),
             if (_error != null) AnalyticsErrorBanner(message: _error!, onRetry: _load),
             if (!_loading && _error == null && teams == null && (contributors?.isEmpty ?? false))
-              const EmptyListNotice(message: 'このバトルの貢献者はいません'),
+              const Expanded(
+                child: Center(child: EmptyListNotice(message: 'このバトルの貢献者はいません')),
+              ),
             // 陣営が2つ以上あるときだけ陣営別タブ表示。それ以外(2陣営未満・旧サーバー)は
             // 既存のフラット一覧へフォールバックする。
-            if (teams != null) _TeamsContributorsView(teams: teams),
+            if (teams != null) Expanded(child: _TeamsContributorsView(teams: teams)),
             if (teams == null && contributors != null && contributors.isNotEmpty)
-              Flexible(
+              Expanded(
                 child: SingleChildScrollView(
                   child: ListPanel(
                     children: [
@@ -1246,22 +1232,19 @@ class _TeamsContributorsView extends StatelessWidget {
 
     return DefaultTabController(
       length: ordered.length,
-      child: SizedBox(
-        height: 380,
-        child: Column(
-          children: [
-            TabBar(
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              tabs: [for (final t in ordered) Tab(text: t.displayName)],
+      child: Column(
+        children: [
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [for (final t in ordered) Tab(text: t.displayName)],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [for (final t in ordered) _TeamTabContent(team: t)],
             ),
-            Expanded(
-              child: TabBarView(
-                children: [for (final t in ordered) _TeamTabContent(team: t)],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
