@@ -303,7 +303,14 @@ body {
   height: 22px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.88);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --replay-item-appear: 0;
+  --replay-item-glow: transparent;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.45),
+    0 0 calc(6px + 22px * var(--replay-item-appear)) calc(1px + 10px * var(--replay-item-appear))
+      var(--replay-item-glow);
+  transform: scale(calc(1 + 0.32 * var(--replay-item-appear)));
+  filter: brightness(calc(1 + 0.65 * var(--replay-item-appear)));
   display: grid;
   place-items: center;
   color: #fff;
@@ -314,22 +321,32 @@ body {
 }
 .replay-item-icon--glove {
   background-color: #fe4d4d;
+  --replay-item-glow: rgba(254, 77, 77, 0.95);
 }
 .replay-item-icon--vault {
   background-color: #f5c451;
+  --replay-item-glow: rgba(255, 232, 140, 0.95);
+}
+.replay-item-icon--top2,
+.replay-item-icon--top3 {
+  background-color: #f5c451;
+  color: #0d0f13;
+  --replay-item-glow: rgba(255, 232, 140, 0.95);
 }
 .replay-item-icon--hammer {
   background-color: #6b7280;
-}
-.replay-item-icon--top2 {
-  background: #4d9fff;
-}
-.replay-item-icon--top3 {
-  background: #ffa64d;
-  color: #0d0f13;
+  --replay-item-glow: rgba(220, 228, 240, 0.9);
 }
 .replay-item-icon--unknown {
   background: #2b303a;
+  --replay-item-glow: rgba(255, 255, 255, 0.7);
+}
+@media (prefers-reduced-motion: reduce) {
+  .replay-item-icon {
+    transform: none;
+    filter: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  }
 }
 .replay-item-glyph {
   width: 13px;

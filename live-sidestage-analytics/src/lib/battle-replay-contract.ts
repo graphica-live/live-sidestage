@@ -24,6 +24,9 @@ export const REPLAY_BAR_LIFETIME_MS = 4000;
 /** バトルアイテム(グローブ等)の効果時間。種別を問わず 30 秒固定(BATTLE-EVENTS.md)。 */
 export const ITEM_EFFECT_MS = 30_000;
 
+/** アイテム出現時の発光。elapsedMs 由来。クライアント描画のみ。 */
+export const ITEM_APPEAR_MS = 520;
+
 /** スコアバー片側に同時に出すアイテムの上限。超えたら新しい方を残す。 */
 export const MAX_VISIBLE_ITEMS_PER_SIDE = 5;
 
