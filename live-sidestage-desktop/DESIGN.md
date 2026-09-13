@@ -2,97 +2,81 @@
 name: TikEffect
 description: TikTok Live配信者向けのローカル完結型オーバーレイ演出ツール
 colors:
-  bg-base: "#dfe6f0"
-  panel: "rgba(248, 250, 252, 0.86)"
-  panel-strong: "rgba(255, 255, 255, 0.92)"
-  line: "rgba(33, 45, 69, 0.12)"
-  line-strong: "rgba(33, 45, 69, 0.18)"
-  text: "#0f172a"
-  muted: "#5b6880"
-  accent: "#ef4444"
-  accent-strong: "#dc2626"
-  accent-soft: "rgba(239, 68, 68, 0.12)"
-  sidebar-bg-start: "#101826"
-  sidebar-bg-end: "#1c2740"
-  ok: "#166534"
-  warn: "#9a3412"
-  error: "#b42318"
+  desk-bg: "#12110f"
+  window: "rgba(22,18,14,0.72)"
+  window-border: "rgba(232,214,176,0.18)"
+  text: "#e8e6e1"
+  text-title: "#f3efe8"
+  muted: "#6f6a62"
+  nav: "#b7b1a7"
+  brass: "#d4b483"
+  warn: "#e0b03a"
+  ok: "#3ddc84"
+  button-face: "#2a2622"
+  button-text: "#f4f1ea"
+  button-border: "rgba(244,241,234,0.35)"
+  preview-well: "#0f0e0c"
 typography:
   body:
-    fontFamily: "Bahnschrift, Yu Gothic UI, sans-serif"
-    fontSize: "14px"
-    fontWeight: 400
-    lineHeight: 1.5
-    letterSpacing: "normal"
+    fontFamily: "Zen Kaku Gothic New, Yu Gothic UI, sans-serif"
+    fontSize: "15px"
+    fontWeight: 500
+    lineHeight: 1.55
+    letterSpacing: "0.01em"
+  titlebar:
+    fontSize: "12px"
+    letterSpacing: "0.08em"
+    color: "#c6bba8"
   headline:
-    fontFamily: "Bahnschrift, Yu Gothic UI, sans-serif"
-    fontSize: "34px"
-    fontWeight: 700
-    lineHeight: 1.08
-  title:
-    fontFamily: "Bahnschrift, Yu Gothic UI, sans-serif"
-    fontSize: "21px"
-    fontWeight: 700
-    lineHeight: 1.2
-  label:
-    fontFamily: "Consolas, Bahnschrift, sans-serif"
-    fontSize: "13px"
+    fontFamily: "Zen Kaku Gothic New, Yu Gothic UI, sans-serif"
+    fontSize: "16px"
     fontWeight: 600
+    lineHeight: 1.4
 rounded:
-  sm: "8px"
-  md: "9px"
-  card: "14px"
-  panel: "16px"
-  pill: "999px"
+  window: "12px"
+  preview: "8px"
+  button: "6px"
+  nav: "6px"
+  search: "5px"
+  composer: "8px"
 spacing:
-  sm: "8px"
-  md: "14px"
-  lg: "18px"
-  xl: "24px"
+  desk: "36px"
+  titlebar: "38px"
+  main: "16px 18px"
+  preview-height: "340px"
 components:
   button-primary:
-    backgroundColor: "{colors.accent}"
-    textColor: "#ffffff"
-    rounded: "{rounded.md}"
-    padding: "9px 16px"
-  button-primary-hover:
-    backgroundColor: "{colors.accent-strong}"
-    textColor: "#ffffff"
-    rounded: "{rounded.md}"
-  button-ghost:
-    backgroundColor: "rgba(255, 255, 255, 0.72)"
-    textColor: "{colors.text}"
-    rounded: "{rounded.md}"
-    padding: "9px 16px"
+    backgroundColor: "#2a2622"
+    textColor: "#f4f1ea"
+    rounded: "6px"
+    padding: "0 12px"
+    height: "30px"
+    border: "1px solid rgba(244,241,234,0.35)"
   panel:
-    backgroundColor: "{colors.panel}"
-    rounded: "{rounded.panel}"
-    padding: "24px"
-  card:
-    backgroundColor: "#ffffff"
-    rounded: "{rounded.card}"
-    padding: "20px"
+    backgroundColor: "rgba(22,18,14,0.72)"
+    rounded: "12px"
+    padding: "0"
 ---
 
 # Design System: TikEffect
 
 ## Overview
 
-**Creative North Star: "配信のコントロールルーム"**
+**Creative North Star: "机の上の漆窓"**
 
-TikEffectのControl画面(管理UI)は、配信を裏で操作する司令室の性格を持つ。左側の紺のサイドバーが操縦席のように常駐し、右側のライトなパネル群がその日の状況(接続状態・ギフト・コメント)を淡々と表示する。装飾より判読性を優先し、危険や成功を伝える色(赤・緑・オレンジ)だけがアクセントとして光る。既知の視覚的リジェクトはない — Controlは実務的な画面であり続けることが確認済みの方針。
+Control（`backend/public/db`、正本は `.impeccable/approved/control-home/`）は Cursor 型の浮き窓。暗い無地の上に、半透明の漆（`rgba(22,18,14,0.72)` + `blur(22px)`）が乗る。左 220px が今夜のファイル、中央が ON AIR プレビュー、右 280px が直近発火。大きなベージュ塗り面はモニター色被りになるので禁止。OBS ウィジェット本体は透過キャンバスのまま、この世界の対象外。
 
-配信画面に表示される「ウィジェット」は、この司令室とは別の位置づけを持つ。ウィジェットはOBS等のブラウザソースとして視聴者の目に触れる演出そのものであり、配信者がフォント・配色を自分の配信の世界観に合わせて選べる、意図的にオープンなテーマシステムとして設計されている(詳細はComponents > Widget Overlaysを参照)。
+旧「紺サイドバー + 寒色ライトパネル」は棄却済み。
 
 **Key Characteristics:**
-- Controlはニュートラルな寒色グレー背景に、警告・成功・強調のときだけ暖色(赤〜オレンジ)が灯る
-- 静止状態はほぼフラット。hover/focusでのみ軽く浮き上がり、操作可能性を伝える
-- パネル・カードの角は指先で押せそうな柔らかい丸み(14〜16px)を持つが、ボタンや入力欄はもう少し締まった丸み(8〜9px)
-- ウィジェット側は固定デザインを持たず、配信者が選んだフォント・色がそのままシステムの見た目になる
+- Controlシェルは暗い無地の上の半透明漆窓。列は 220 / 1fr / 280、窓角 12px、プレビュー 340px
+- 主ボタンは暗い面 `#2a2622`。大きな明るい塗り面は禁止
+- 真鍮 `#d4b483` は順位番号などテキストのみ
+- OBSウィジェットは透過キャンバスのまま。テーマ選択はウィジェット側の既存システム
 
 ## Colors
 
-Controlのパレットは「警告シグナルとしての暖色」を基調に、それ以外は寒色系グレーに徹する構成。
+Controlホームの正本は `.impeccable/approved/control-home/spec.md`。テーマプリセットは iframe 内の旧ページに残るが、シェルは凍結色が勝つ。
 
 ### Primary
 - **アラートレッド** (`#ef4444` / hover `#dc2626`): プライマリボタン、選択中のタブ、強い強調が必要な操作。Control全体で最も使用箇所を絞っている色

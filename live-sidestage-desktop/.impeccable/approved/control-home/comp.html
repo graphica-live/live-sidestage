@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font: 15px/1.55 "Zen Kaku Gothic New", "Yu Gothic UI", sans-serif;
+      font-weight: 500;
+      letter-spacing: .01em;
+      color: #e8e6e1;
+      background: #1a1814 url("tik-effect-desk-bg.png") center / cover no-repeat;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    .desk {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 36px;
+      background: linear-gradient(180deg, rgba(20,16,12,.18), rgba(12,10,8,.28));
+    }
+    .win {
+      width: min(1180px, 96vw);
+      height: min(720px, 90vh);
+      display: grid;
+      grid-template-rows: 38px 1fr;
+      background: rgba(22, 18, 14, .72);
+      border: 1px solid rgba(232, 214, 176, .18);
+      border-radius: 12px;
+      box-shadow:
+        0 1px 0 rgba(255,240,210,.14) inset,
+        0 50px 120px rgba(0,0,0,.5);
+      overflow: hidden;
+      backdrop-filter: blur(22px) saturate(1.15);
+    }
+    .tb {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 14px;
+      background: rgba(38, 32, 26, .55);
+      border-bottom: 1px solid rgba(232, 214, 176, .12);
+      color: #c6bba8;
+      font-size: 12px;
+      letter-spacing: .08em;
+    }
+    .tb input {
+      margin-left: auto; width: 240px; height: 24px; padding: 0 8px;
+      border: 1px solid rgba(255,255,255,.08); background: #1e1c19; color: #cfc8bc;
+      border-radius: 5px; font: 12px inherit;
+    }
+    .sec { color: #6f6a62; font-size: 11px; padding: 14px 10px 4px; }
+    .file { display: flex; justify-content: space-between; padding: 5px 10px; color: #9a958c; font-size: 12px; }
+    .file.on { color: #f3efe8; background: #2a2622; border-radius: 5px; }
+    .path { color: #6f6a62; font-size: 12px; margin: 0 0 10px; }
+    .warn { color: #e0b03a; }
+    .composer {
+      margin-top: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+      padding: 8px; background: #151310;
+    }
+    .composer textarea {
+      width: 100%; height: 52px; resize: none; border: 0; background: none;
+      color: #cfc8bc; font: 12.5px inherit; outline: none;
+    }
+    .chat { display: flex; flex-direction: column; }
+    .dots { display: flex; gap: 6px; margin-right: 8px; }
+    .dots i { width: 10px; height: 10px; border-radius: 99px; display: block; }
+    .dots i:nth-child(1) { background: #ff5f57; }
+    .dots i:nth-child(2) { background: #febc2e; }
+    .dots i:nth-child(3) { background: #28c840; }
+    .body {
+      display: grid;
+      grid-template-columns: 220px 1fr 280px;
+      min-height: 0;
+    }
+    .side, .main, .chat {
+      min-height: 0; overflow: auto;
+    }
+    .side {
+      background: rgba(14, 12, 10, .35);
+      border-right: 1px solid rgba(232, 214, 176, .1);
+      padding: 10px 8px;
+    }
+    a.n {
+      display: block; color: #b7b1a7; text-decoration: none;
+      padding: 7px 10px; border-radius: 6px;
+    }
+    a.n.on { background: #2a2622; color: #f3efe8; }
+    .me { margin-top: 18px; padding: 10px; color: #8f8a80; font-size: 12px; }
+    .ok { width: 6px; height: 6px; border-radius: 99px; background: #3ddc84; display: inline-block; margin-right: 6px; }
+    .main { padding: 16px 18px; }
+    h1 { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: #f3efe8; }
+    .preview {
+      height: 340px; border-radius: 8px;
+      background: #0f0e0c;
+      border: 1px solid rgba(255,255,255,.07);
+      position: relative;
+    }
+    .rank {
+      position: absolute; left: 16px; right: 16px; bottom: 16px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .rank div {
+      display: flex; gap: 10px; padding: 8px 10px;
+      background: rgba(20,18,16,.78); border-radius: 6px;
+    }
+    .rank b { color: #d4b483; width: 1.2em; }
+    .rank span { margin-left: auto; color: #cfc8bc; }
+    .row { display: flex; gap: 8px; margin-top: 12px; }
+    button {
+      height: 30px; padding: 0 12px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,.1);
+      background: #2a2622; color: #eee; font: 12.5px inherit; cursor: pointer;
+    }
+    button.p {
+      background: #2a2622;
+      color: #f4f1ea;
+      border-color: rgba(244,241,234,.35);
+      font-weight: 700;
+    }
+    .chat {
+      display: flex; flex-direction: column;
+      border-left: 1px solid rgba(232, 214, 176, .1);
+      background: rgba(16, 14, 12, .4);
+      padding: 12px;
+    }
+    .chat h2 { margin: 0 0 10px; font-size: 12px; color: #8f8a80; font-weight: 600; }
+    .ev { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.05); color: #b7b1a7; font-size: 12.5px; }
+    .ev b { color: #f3efe8; font-weight: 600; display: block; }
+  </style>
+</head>
+<body>
+  <div class="desk">
+    <div class="win">
+      <div class="tb">
+        <div class="dots"><i></i><i></i><i></i></div>
+        TikEffect
+        <input value="" placeholder="接続、ウィジェット、ギフト…" readonly />
+      </div>
+      <div class="body">
+        <aside class="side">
+          <a class="n on" href="#">ホーム</a>
+          <a class="n" href="#">ウィジェット</a>
+          <a class="n" href="#">エフェクト</a>
+          <a class="n" href="#">ギフト</a>
+          <a class="n" href="#">コメント</a>
+          <a class="n" href="#">設定</a>
+          <div class="sec">TONIGHT</div>
+          <div class="file on"><span>top-gift.html</span><span>使用中</span></div>
+          <div class="file"><span>effects 汎用</span><span>12</span></div>
+          <div class="sec">庫</div>
+          <div class="file"><span>goal-gifts</span></div>
+          <div class="file"><span>comments</span></div>
+          <div class="file"><span>timer</span></div>
+          <div class="me"><span class="ok"></span>@yu_ki_nojo<br /><span class="warn">TikTok 再確認 8s</span></div>
+        </aside>
+        <section class="main">
+          <h1>トップギフトランキング</h1>
+          <p class="path">widgets / top-gift · 127.0.0.1.sslip.io:38099</p>
+          <div class="preview">
+            <div class="rank">
+              <div><b>1</b>さくら<span>12,400</span></div>
+              <div><b>2</b>レン<span>8,100</span></div>
+              <div><b>3</b>みお<span>3,220</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <button class="p">URLをコピー</button>
+            <button>今のギフトで出す</button>
+            <button>詳細</button>
+          </div>
+        </section>
+        <aside class="chat">
+          <h2>直近</h2>
+          <div class="ev"><b>ローズ → SE 拍手.mp3</b>0.4s</div>
+          <div class="ev"><b>ハート → LIVE Studio 画面1</b>12s</div>
+          <div class="ev"><b>再接続 成功</b>1m</div>
+          <div class="composer"><textarea readonly placeholder="疑似ギフト名を入れて送る"></textarea></div>
+        </aside>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
