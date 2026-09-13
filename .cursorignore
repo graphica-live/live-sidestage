@@ -1,0 +1,21 @@
+# Agent / Index の走査対象から依存・生成物を外す。
+# ソース横断は維持。node_modules / ビルド成果を切る。
+# Cursor 既定 ignore と重複するが、Windows の Glob が剪定前に歩く報告があるのでルートで明示する。
+
+node_modules/
+.next/
+.nuxt/
+.dart_tool/
+.gradle/
+.parcel-cache/
+.eslintcache/
+coverage/
+
+**/build/
+**/dist/
+
+.tmp/
+.codegraph/
+.serena/
+.scratch/
+.claude/worktrees/
