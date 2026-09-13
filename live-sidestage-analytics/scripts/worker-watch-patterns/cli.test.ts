@@ -69,4 +69,40 @@ describe("check-worker-restart-proposal CLI", () => {
     expect(result.stdout).toContain("live-sidestage-analytics/prisma/schema.prisma");
   }, 60_000);
 
+
+  it("battle-replay.ts 単独変更で WORKER_RESTART_GRAPH_ONLY（RECOMMENDED なし）", () => {
+    const changedFilesPath = writeChangedFiles([
+      "live-sidestage-analytics/src/lib/battle-replay.ts",
+    ]);
+    const result = runCli(`--changed-files=${changedFilesPath}`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("WORKER_RESTART_GRAPH_ONLY");
+    expect(result.stdout).toContain("live-sidestage-analytics/src/lib/battle-replay.ts");
+    expect(result.stdout).not.toContain("WORKER_RESTART_RECOMMENDED");
+    expect(result.stdout).not.toContain("::notice title=Worker restart recommended");
+  }, 60_000);
+
+  it("battle-replay.ts と worker.ts 同時変更では RECOMMENDED 優先", () => {
+    const changedFilesPath = writeChangedFiles([
+      "live-sidestage-analytics/src/lib/battle-replay.ts",
+      "live-sidestage-analytics/worker.ts",
+    ]);
+    const result = runCli(`--changed-files=${changedFilesPath}`);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.startsWith("WORKER_RESTART_RECOMMENDED")).toBe(true);
+    expect(result.stdout).toContain("live-sidestage-analytics/worker.ts");
+    expect(result.stdout).not.toMatch(/^WORKER_RESTART_GRAPH_ONLY/m);
+  }, 60_000);
+
+  it("NOT_NEEDED 時に GRAPH_ONLY を出さない", () => {
+    const changedFilesPath = writeChangedFiles([
+      "live-sidestage-analytics/src/app/page.tsx",
+    ]);
+    const result = runCli(`--changed-files=${changedFilesPath}`);
+
+    expect(result.stdout).not.toContain("WORKER_RESTART_GRAPH_ONLY");
+  }, 60_000);
+
 });

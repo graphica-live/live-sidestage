@@ -55,6 +55,17 @@ Source 種別が未確認のまま Watch Paths だけ空にしない。
 
 CI またはローカルで `npm run check:worker-restart-proposal`（verify ステップ）が **再起動を提案**した変更のあと、必要なら Dashboard の Restart または手動デプロイで worker1/2/3 を再起動する（TikTok 接続切断を承知する）。
 
+
+## CLI 出力の 3 状態（2026-09-14）
+
+`npm run check:worker-restart-proposal` の stdout 先頭トークンは次のいずれかです。**手動再起動を検討するのは `WORKER_RESTART_RECOMMENDED` のときだけ**です。
+
+- **`WORKER_RESTART_RECOMMENDED`**: 変更が worker の used-export 経路（または COMMON の worker.ts / prisma 等）に入る。Job Summary / `::notice title=Worker restart recommended` が出る場合あり。
+- **`WORKER_RESTART_GRAPH_ONLY`**: 静的 import graph には載るが used-export 経路外（例: リスト UI 専用の import）。**再起動必須ではない**。`Worker restart recommended` notice は出さない。
+- **`WORKER_RESTART_NOT_NEEDED`**: used と graph の両方の対象外。
+
+いずれも exit code は 0（CI verify は失敗しない）。
+
 ## ローカル確認
 
 ```bash
