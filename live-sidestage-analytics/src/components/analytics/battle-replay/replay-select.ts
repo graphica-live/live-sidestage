@@ -390,6 +390,7 @@ export function cardSizeOf(diamonds: number): "sm" | "md" | "lg" {
 
 /** 帯にしてよい区間か。`opening` は `measured` / `inferred` とも赤帯(`inferred` はラベル末尾に `(推定)`)。 */
 export function isBandSegment(segment: ReplaySegment): boolean {
+  if (segment.kind === "opening_intro") return true;
   if (segment.kind !== "opening") return true;
   return segment.confidence === "measured" || segment.confidence === "inferred";
 }
@@ -403,5 +404,9 @@ export function segmentAt(
     (s) => s.startMs <= elapsedMs && elapsedMs < s.endMs
   );
   if (active.length === 0) return null;
-  return active.find((s) => s.kind === "opening") ?? active[0]!;
+  return (
+    active.find((s) => s.kind === "opening_intro") ??
+    active.find((s) => s.kind === "opening") ??
+    active[0]!
+  );
 }

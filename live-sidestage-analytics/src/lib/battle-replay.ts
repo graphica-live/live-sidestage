@@ -16,6 +16,7 @@ import {
   MAX_REPLAY_WINDOW_MS,
   MIN_REPLAY_SCORE_POINTS,
   MIN_REPLAY_WINDOW_MS,
+  OPENING_INTRO_MS,
   type BattleReplayPayload,
   type ReplayAvailability,
   type ReplayEligibility,
@@ -121,8 +122,11 @@ const REPLAY_SELECT = {
   },
   bonusMissions: {
     select: {
+      targetType: true,
+      progressTarget: true,
       rewardMultiple: true,
       startedAt: true,
+      settledAt: true,
       rewardStartedAt: true,
       rewardEndedAt: true,
     },
@@ -172,8 +176,11 @@ export type ReplayRow = {
   }[];
   scorePoints: { tiktokUid: string; offsetMs: number; score: string }[];
   bonusMissions: {
+    targetType: number;
+    progressTarget: number;
     rewardMultiple: number;
     startedAt: Date;
+    settledAt: Date | null;
     rewardStartedAt: Date | null;
     rewardEndedAt: Date | null;
   }[];
@@ -224,14 +231,25 @@ async function loadGiftCatalog(giftIds: number[]): Promise<Map<number, { labelJa
   return new Map(rows.map((r) => [r.giftId, { labelJa: r.labelJa, imageUrl: r.imageUrl }]));
 }
 
+function bonusMissionLabel(targetType: number, progressTarget: number): string {
+  switch (targetType) {
+    case 1:
+      return `ギフター${progressTarget}人ミッション`;
+    case 2:
+      return `${progressTarget}pt獲得ミッション`;
+    case 8:
+      return `チーム${progressTarget}ptミッション`;
+    default:
+      return `ミッション(目標${progressTarget})`;
+  }
+}
+
 function buildSegments(row: ReplayRow): ReplaySegment[] {
   const segments: ReplaySegment[] = [];
   const windowStartMs = row.windowStart.getTime();
   const windowLengthMs = row.windowEnd.getTime() - windowStartMs;
   const clamp = (at: Date): number => Math.min(windowLengthMs, Math.max(0, at.getTime() - windowStartMs));
 
-  // 初ギフトx倍。`openingWindow*` が保存されているときだけ帯にする(逆算成功時に確定処理が埋める)。
-  // 終端は OPENING_WINDOW_MS 仮定なので残り秒数(showCountdown)は出さない。
   const confidence = row.openingMultiplierConfidence;
   if (
     (confidence === "measured" || confidence === "inferred") &&
@@ -239,18 +257,53 @@ function buildSegments(row: ReplayRow): ReplaySegment[] {
     row.openingWindowStartedAt !== null &&
     row.openingWindowEndedAt !== null
   ) {
+    const openingStartMs = clamp(row.openingWindowStartedAt);
+    const openingEndMs = clamp(row.openingWindowEndedAt);
+    const introEndMs = Math.min(openingEndMs, openingStartMs + OPENING_INTRO_MS);
+    const mainStartMs = Math.min(openingEndMs, openingStartMs + OPENING_INTRO_MS);
+    if (introEndMs > openingStartMs) {
+      segments.push({
+        kind: "opening_intro",
+        startMs: openingStartMs,
+        endMs: introEndMs,
+        multiplier: row.openingMultiplier,
+        label: `30秒間、初めてのギフトポイント×${row.openingMultiplier}倍`,
+        showCountdown: false,
+        scrollLabel: true,
+      });
+    }
+    if (mainStartMs < openingEndMs) {
+      segments.push({
+        kind: "opening",
+        startMs: mainStartMs,
+        endMs: openingEndMs,
+        multiplier: row.openingMultiplier,
+        label:
+          confidence === "inferred"
+            ? `初めてのギフト×${row.openingMultiplier}倍(推定)`
+            : `初めてのギフト×${row.openingMultiplier}倍`,
+        showCountdown: false,
+        confidence,
+      });
+    }
+  }
+
+  const seenMissions = new Set<string>();
+  for (const mission of row.bonusMissions) {
+    if (mission.settledAt === null) continue;
+    const startMs = clamp(mission.startedAt);
+    const endMs = clamp(mission.settledAt);
+    if (endMs <= startMs) continue;
+    const key = `${startMs}-${endMs}-${mission.targetType}-${mission.progressTarget}-${mission.rewardMultiple}`;
+    if (seenMissions.has(key)) continue;
+    seenMissions.add(key);
     segments.push({
-      kind: "opening",
-      startMs: clamp(row.openingWindowStartedAt),
-      endMs: clamp(row.openingWindowEndedAt),
-      multiplier: row.openingMultiplier,
-      label:
-        confidence === "inferred"
-          ? `初めてのギフト×${row.openingMultiplier}倍(推定)`
-          : `初めてのギフト×${row.openingMultiplier}倍`,
-      // 終端は OPENING_WINDOW_MS 仮定(TikTok は区間終了を配信しない)なので残り秒数は出さない。
+      kind: "bonus_mission",
+      startMs,
+      endMs,
+      multiplier: mission.rewardMultiple,
+      label: bonusMissionLabel(mission.targetType, mission.progressTarget),
       showCountdown: false,
-      confidence,
     });
   }
 
@@ -262,8 +315,6 @@ function buildSegments(row: ReplayRow): ReplaySegment[] {
       endMs: clamp(mission.rewardEndedAt),
       multiplier: mission.rewardMultiple,
       label: `ボーナス×${mission.rewardMultiple}倍`,
-      // `rewardEndedAt` は TikTok が配信してくる実測値なので残り秒数を出してよい。
-      // opening と重なった区間は `segmentAt` が opening を優先するので帯は競合しない。
       showCountdown: true,
     });
   }

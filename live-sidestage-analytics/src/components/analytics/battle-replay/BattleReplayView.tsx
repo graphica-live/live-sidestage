@@ -187,7 +187,9 @@ export function ReplayPlayer({ payload }: { payload: BattleReplayPayload }) {
   );
 
   const contributors = contributorsAt(payload, cards, clock.elapsedMs);
-  const opening = payload.segments.find((segment) => segment.kind === "opening");
+  const opening = payload.segments.find(
+    (segment) => segment.kind === "opening" || segment.kind === "opening_intro"
+  );
 
   return (
     <div className="flex flex-col">

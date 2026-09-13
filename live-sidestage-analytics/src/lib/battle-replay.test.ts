@@ -555,8 +555,17 @@ describe("buildPayload の区間(segments)", () => {
     );
     expect(payload.segments).toEqual([
       {
-        kind: "opening",
+        kind: "opening_intro",
         startMs: 0,
+        endMs: 18_000,
+        multiplier: 2,
+        label: "30秒間、初めてのギフトポイント×2倍",
+        showCountdown: false,
+        scrollLabel: true,
+      },
+      {
+        kind: "opening",
+        startMs: 18_000,
         endMs: 48_000,
         multiplier: 2,
         label: "初めてのギフト×2倍",
@@ -586,10 +595,13 @@ describe("buildPayload の区間(segments)", () => {
     const payload = buildPayload(
       row({
         bonusMissions: [
-          { rewardMultiple: 3, startedAt: WINDOW_START, rewardStartedAt: null, rewardEndedAt: null },
+          { targetType: 1, progressTarget: 3, rewardMultiple: 3, startedAt: WINDOW_START, settledAt: null, rewardStartedAt: null, rewardEndedAt: null },
           {
+            targetType: 1,
+            progressTarget: 3,
             rewardMultiple: 3,
             startedAt: WINDOW_START,
+            settledAt: new Date(WINDOW_START.getTime() + 120_000),
             rewardStartedAt: new Date(WINDOW_START.getTime() + 150_000),
             rewardEndedAt: new Date(WINDOW_START.getTime() + 180_000),
           },
@@ -601,6 +613,14 @@ describe("buildPayload の区間(segments)", () => {
       NO_CATALOG
     );
     expect(payload.segments).toEqual([
+      {
+        kind: "bonus_mission",
+        startMs: 0,
+        endMs: 120_000,
+        multiplier: 3,
+        label: "ギフター3人ミッション",
+        showCountdown: false,
+      },
       {
         kind: "bonus_reward",
         startMs: 150_000,
@@ -625,8 +645,11 @@ describe("buildPayload の区間(segments)", () => {
       NO_AVATARS,
       NO_CATALOG
     );
-    expect(payload.segments.map((s) => [s.kind, s.confidence])).toEqual([["opening", "inferred"]]);
-    expect(payload.segments[0]?.label).toBe("初めてのギフト×2倍(推定)");
+    expect(payload.segments.map((s) => [s.kind, s.confidence])).toEqual([
+      ["opening_intro", undefined],
+      ["opening", "inferred"],
+    ]);
+    expect(payload.segments[1]?.label).toBe("初めてのギフト×2倍(推定)");
   });
 
   it("measured でも倍率が null なら帯を作らない", () => {
@@ -645,6 +668,48 @@ describe("buildPayload の区間(segments)", () => {
     expect(payload.segments).toEqual([]);
   });
 
+  it("ボーナスミッション区間は settledAt まで赤帯にする", () => {
+    const missionStart = new Date(WINDOW_START.getTime() + 60_000);
+    const missionEnd = new Date(WINDOW_START.getTime() + 90_000);
+    const payload = buildPayload(
+      row({
+        bonusMissions: [
+          {
+            targetType: 1,
+            progressTarget: 3,
+            rewardMultiple: 3,
+            startedAt: missionStart,
+            settledAt: missionEnd,
+            rewardStartedAt: new Date(WINDOW_START.getTime() + 90_000),
+            rewardEndedAt: new Date(WINDOW_START.getTime() + 120_000),
+          },
+        ],
+      }),
+      "private",
+      NO_AVATARS,
+      NO_AVATARS,
+      NO_CATALOG
+    );
+    expect(payload.segments).toEqual([
+      {
+        kind: "bonus_mission",
+        startMs: 60_000,
+        endMs: 90_000,
+        multiplier: 3,
+        label: "ギフター3人ミッション",
+        showCountdown: false,
+      },
+      {
+        kind: "bonus_reward",
+        startMs: 90_000,
+        endMs: 120_000,
+        multiplier: 3,
+        label: "ボーナス×3倍",
+        showCountdown: true,
+      },
+    ]);
+  });
+
   it("opening とボーナスが両方あれば開始時刻の昇順で並べる", () => {
     const payload = buildPayload(
       row({
@@ -654,8 +719,11 @@ describe("buildPayload の区間(segments)", () => {
         openingWindowEndedAt: new Date(WINDOW_START.getTime() + 48_000),
         bonusMissions: [
           {
+            targetType: 1,
+            progressTarget: 3,
             rewardMultiple: 3,
             startedAt: WINDOW_START,
+            settledAt: null,
             rewardStartedAt: new Date(WINDOW_START.getTime() + 150_000),
             rewardEndedAt: new Date(WINDOW_START.getTime() + 180_000),
           },
@@ -667,7 +735,8 @@ describe("buildPayload の区間(segments)", () => {
       NO_CATALOG
     );
     expect(payload.segments.map((s) => [s.kind, s.startMs])).toEqual([
-      ["opening", 0],
+      ["opening_intro", 0],
+      ["opening", 18_000],
       ["bonus_reward", 150_000],
     ]);
   });

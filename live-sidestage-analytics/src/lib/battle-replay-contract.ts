@@ -10,7 +10,10 @@
 // 既存2ファイルの統合は別課題として残す。
 
 /** ペイロードの形。互換性を壊す変更を入れたら上げる。クライアントは不一致なら再生を拒否する。 */
-export const BATTLE_REPLAY_VERSION = 2;
+export const BATTLE_REPLAY_VERSION = 3;
+
+export const OPENING_INTRO_MS = 18_000;
+export const OPENING_MAIN_MS = 30_000;
 
 /** 1回のレスポンスに載せるギフトイベントの上限。超えたら時系列の先頭から残す。 */
 export const MAX_REPLAY_EVENTS = 3000;
@@ -47,7 +50,7 @@ export const MIN_REPLAY_WINDOW_MS = 30_000;
 export const MAX_REPLAY_WINDOW_MS = 30 * 60_000;
 
 /** 画面下部の帯。`opening` は逆算、`bonus_*` は TikTok が配信してきた実測値。 */
-export type ReplaySegmentKind = "opening" | "bonus_mission" | "bonus_reward";
+export type ReplaySegmentKind = "opening_intro" | "opening" | "bonus_mission" | "bonus_reward";
 
 export type ReplaySegment = {
   kind: ReplaySegmentKind;
@@ -63,6 +66,7 @@ export type ReplaySegment = {
   showCountdown: boolean;
   /** `opening` のみ。`measured` / `inferred` は赤帯(`inferred` はラベルに `(推定)`)。 */
   confidence?: "measured" | "inferred";
+  scrollLabel?: boolean;
 };
 
 export type ReplayParticipant = {

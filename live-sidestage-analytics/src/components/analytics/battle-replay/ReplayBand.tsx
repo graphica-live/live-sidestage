@@ -8,6 +8,17 @@ import type { ReplaySegment } from "@/lib/battle-replay-contract";
  */
 export function ReplayBand({ segment, elapsedMs }: { segment: ReplaySegment; elapsedMs: number }) {
   const remaining = Math.max(0, Math.ceil((segment.endMs - elapsedMs) / 1000));
+  if (segment.scrollLabel) {
+    const text = segment.label;
+    return (
+      <div className="replay-band replay-band--scroll" aria-label={text}>
+        <div className="replay-band__marquee">
+          <span>{text}</span>
+          <span aria-hidden>{text}</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="replay-band">
       <span>{segment.label}</span>

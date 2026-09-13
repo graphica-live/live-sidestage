@@ -1,6 +1,6 @@
 ---
-last_updated: 2026-09-10
-last_risk: MEDIUM
+last_updated: 2026-09-13
+last_risk: LOW
 last_reviewers: [Design Mode]DeepSeek単独、[Code Mode]DeepSeek単独、2026-09-10 WINバッジの重なり解消・速度非依存化・拡大修正時。追加修正(END_FADE_MS速度非依存化)は [Code Mode]DeepSeek単独(NO ISSUES) 2026-09-10。着地位置のアバター真上統一(全レイアウト共通・.replay-ripple基準)は [Code Mode]DeepSeek単独(NO ISSUES) 2026-09-10
 ---
 
@@ -54,7 +54,7 @@ last_reviewers: [Design Mode]DeepSeek単独、[Code Mode]DeepSeek単独、2026-0
 | TC-BRU-012 | 表示時間(4000ms)を過ぎたカードは消える。出現・消滅の境界ちょうど | `cardsAt` | 境界 | 出現1000ms のカード | 999ms で0枚 / 1000ms で1枚 / 5000ms で0枚 | `[unit]` | PASS | |
 | TC-BRU-013 | 貢献者は金額降順に並び、まだ到達していないコンボ分を加算しない | `contributorsAt` | 正常/回帰 | コンボ2回 + 単発 | t=0 は単発の送信者が1位。t=2000 でコンボ側が 200 で1位 | `[unit]` | PASS | 未来のギフトを先取りすると順位が破綻する |
 | TC-BRU-014 | 貢献者ボードは順位が入れ替わっても全員が別々の位置に見える | `ReplayContributorBoard` | 回帰 | 6人が入れ替わりながら投げるシード | 再生中どの時点でも貢献者が1人へ潰れない。各アイコンの座標が重ならない | `[pw]` | PASS | FLIP の基準を transform 込みの矩形で採ると毎フレーム差分が積み上がり全員が1点へ収束する |
-| TC-BRU-015 | 赤帯は該当区間だけ出て、重複時は `opening` を優先する | `segmentAt` | 境界 | opening(0-48s) と bonus(0-60s) | 10,000ms は opening / 50,000ms は bonus / 90,000ms は帯なし | `[unit]` | PASS | 帯が無い時間帯は行ごと出さない |
+| TC-BRU-015 | 赤帯は該当区間だけ出て、重複時は `opening_intro` → `opening` を優先する | `segmentAt` / `ReplayBand` | 境界 | opening_intro+opening(0-48s) と bonus_mission(0-60s) | 10,000ms は `opening_intro` / 50,000ms は `bonus_mission` / 90,000ms は帯なし。intro は `scrollLabel` で横スクロール | `[unit]` | PASS | 下部チップは廃止。intro 帯も倍率チップ対象 |
 | TC-BRU-016 | 陣営構成ごとにステージの割り方が変わる（5バリアント） | `buildStageLayout` | 正常 | 1vs1 / 3コラボ / 4コラボ / 2vs2 / 1vs3 | `duo`(全幅レーン) / `trio` / `quad` / `team22` / `one3`。左右の振り分けと相手カード縮小が構成ごとに一致 | `[unit]` | PASS | comp の5バリアントすべてが契約対象 |
 | TC-BRU-017 | 自陣が `teams` の先頭でなくても自分が左枠・大アイコンになる | `buildStageLayout` | 回帰 | `teams[0].isSelf === false` の 1vs1 | 先頭セルが自陣。`right: false` / `largeAvatar: true` | `[unit]` | PASS | 配列の並びに依存すると、順序が変わった瞬間に自分が右枠へ回り気づけない |
 | TC-BRU-018 | WIN バッジは陣営の公式スコアで決め、同点・スコア未確定では出さない | `resolveWinningTeamIndex` / `ReplayStage` | 回帰/境界 | 陣営スコア 5000 vs 9000 / 同点 / 確定陣営1つ以下 | 最大スコアの陣営のみ WIN。同点と確定2陣営未満は null。再生画面でも最終スコア最大の枠にだけ出る | `[color]` / `[pw]` | PASS | 個人スコア基準にすると「負け陣営の最多貢献メンバー」に WIN が付き、一覧・詳細モーダルと食い違う |
