@@ -1,3 +1,4 @@
+import { AnalyticsThemeShell } from "@/components/theme/AnalyticsThemeShell";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -17,7 +18,7 @@ export default async function DashboardLayout({
   const { label: planLabel } = await getWebPlanBadgeDisplay(session.user.id, "analytics");
 
   return (
-    <>
+    <AnalyticsThemeShell variant="dark">
       {isAdminEmail(session.user.email) && (
         <div className="bg-panel border-b border-border px-4 py-1 text-right">
           <Link href="/admin" className="text-xs text-brand hover:underline">
@@ -27,6 +28,6 @@ export default async function DashboardLayout({
       )}
       <DashboardHeader email={session.user.email} planLabel={planLabel} />
       {children}
-    </>
+    </AnalyticsThemeShell>
   );
 }

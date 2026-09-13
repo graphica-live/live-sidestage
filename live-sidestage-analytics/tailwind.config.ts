@@ -14,6 +14,8 @@ function withOpacity(varName: string): string {
 }
 
 const config: Config = {
+  darkMode: ['class', '.analytics-theme-dark'],
+
   // src 配下を丸ごと見る。app/ と components/ だけに絞ると、
   // src/event/labels.ts のように「クラス名の文字列を定数として持つモジュール」が
   // スキャン対象から外れ、そのクラスだけ CSS から消える(バッジの色が出ない)。
