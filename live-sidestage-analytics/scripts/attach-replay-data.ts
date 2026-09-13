@@ -14,14 +14,15 @@
 //   npx tsx scripts/attach-replay-data.ts             # 未付加(replayScorePointCount=0)だけ処理
 //   npx tsx scripts/attach-replay-data.ts --force     # 付加済みも再計算する
 //   npx tsx scripts/attach-replay-data.ts --sender-group-only  # senderGroupId だけ埋める
+//   npx tsx scripts/attach-replay-data.ts --gift-picture-only  # giftPictureUrlSnapshot だけ埋める
 //
-// `--sender-group-only` は、**既に付加済み(replayScorePointCount>0)の行が通常モードでは
-// スキップされる**ため用意した専用経路。senderGroupId(コンボの束ね鍵)は score points の
-// 付加より後に足した列なので、既存の付加済み行は null のまま残る。元 `Gift` は受信から90日で
-// 消えるので、**この経路は列追加から90日以内に流す必要がある**(過ぎた分は恒久的に取れない)。
+// `--sender-group-only` / `--gift-picture-only` は、**既に付加済み(replayScorePointCount>0)の行が通常モードでは
+// スキップされる**ため用意した専用経路。senderGroupId(コンボの束ね鍵)と giftPictureUrlSnapshot
+// (コミュニティギフト画像)は score points の付加より後に足した列なので、既存の付加済み行は null のまま残る。
+// 元 `Gift` は受信から90日で消えるので、**この経路は列追加から90日以内に流す必要がある**(過ぎた分は恒久的に取れない)。
 import { Prisma } from "@prisma/client";
 import { prisma } from "../src/lib/prisma";
-import { attachReplayData, backfillSenderGroupIds } from "../src/lib/battle-history-finalize";
+import { attachReplayData, backfillSenderGroupIds, backfillGiftPictureUrlSnapshots } from "../src/lib/battle-history-finalize";
 
 const TAG = "[attach-replay-data]";
 
@@ -37,10 +38,11 @@ async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const force = process.argv.includes("--force");
   const senderGroupOnly = process.argv.includes("--sender-group-only");
+  const giftPictureOnly = process.argv.includes("--gift-picture-only");
 
   console.log(
     `${TAG} 開始${dryRun ? "(ドライラン)" : ""}${force ? "(付加済みも再計算)" : ""}` +
-      `${senderGroupOnly ? "(senderGroupId のみ)" : ""}`
+      `${senderGroupOnly ? "(senderGroupId のみ)" : ""}${giftPictureOnly ? "(giftPictureUrlSnapshot のみ)" : ""}`
   );
 
   let scanned = 0;
@@ -70,13 +72,24 @@ async function main() {
       // 未付加の判定は replayScorePointCount で行う。**0 のまま残る行は正常にありうる**
       // (armies が cascade 消滅している等)ので、--force なしでは毎回再試行されることになる。
       // 付加そのものが軽い(2クエリ + update)ので許容する。
-      if (!senderGroupOnly && !force && row.replayScorePointCount > 0) continue;
+      if (!senderGroupOnly && !giftPictureOnly && !force && row.replayScorePointCount > 0) continue;
       targets++;
       if (dryRun) continue;
 
       if (senderGroupOnly) {
         try {
           await backfillSenderGroupIds(row.id);
+          attached++;
+        } catch (err) {
+          failed++;
+          console.error(`${TAG} 失敗 battleHistoryId=${row.id} roomId=${row.roomId} battleId=${row.battleId}`, err);
+        }
+        continue;
+      }
+
+      if (giftPictureOnly) {
+        try {
+          await backfillGiftPictureUrlSnapshots(row.id);
           attached++;
         } catch (err) {
           failed++;

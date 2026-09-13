@@ -42,6 +42,8 @@ last_reviewers: [Gemini 3.7 Flash]
 | TC-BRA-007 | participant として存在しない anchorId のスコア点は落とす | `buildPayload` | 異常/データ欠損 | 参加者に無い anchorId のスコア点 | ペイロードに含まれない(例外を投げない) | `[unit]` | PASS | 確定側でも落とすが、participants だけ作り直された行に備える |
 | TC-BRA-008 | 同じ送信者・同じギフトは辞書に1件だけ入る | `buildPayload` | 正常 | 同一送信者が同一ギフトを2回 | `senders` / `gifts` とも1件。イベントは添字で参照する | `[unit]` | PASS | 辞書化が転送量削減の根拠 |
 | TC-BRA-009 | ギフト表示名は `labelJa` を優先し、無ければ確定時のスナップショット名 | `buildPayload` | 正常/データ欠損 | カタログあり / カタログ無し | あり=`labelJa` と画像URL、無し=`giftNameSnapshot` と `img: null` | `[unit]` | PASS | カタログは **giftId** で引く(名前は670件中29が複数giftIdを持つ) |
+| TC-BRA-044 | カタログに画像が無いギフトは `giftPictureUrlSnapshot` を使い、カタログ画像があればカタログを優先する。不正URLは null | `buildPayload` | 正常/データ欠損/セキュリティ | カタログ無し+許可CDN / カタログあり / javascript: URL | snapshot URL / カタログ URL / `img: null` | `[unit]` | PASS | コミュニティギフトは gift/list/ に載らない。グローバルカタログへは書かない |
+| TC-BRA-045 | snapshot が null の既存行は sourceGiftId の Gift.giftPictureUrl で埋める | queryBattleReplay / illMissingGiftImages | 正常/データ欠損 | 確定後に snapshot を null に戻し、元 Gift は許可CDN URL を持つ | gifts[].img が Gift の URL | [itg] | PASS | 既確定行の即時救済。書き込みはしない |
 | TC-BRA-010 | 窓の外へはみ出したギフトは 0 と窓長へクランプする | `buildPayload` | 境界 | 窓開始前・窓終了後のギフト | `t` が 0 と窓長(300,000) | `[unit]` | PASS | クライアントに時刻演算をさせない |
 | TC-BRA-011 | 上限(3000)超のギフトイベントは時系列の先頭から残し `truncated` を立てる。上限ちょうどは立てない | `buildPayload` | 境界 | 3005件 / 3000件 | 3005→3000件で `truncated: true`、先頭が t=0。3000→`truncated: false` | `[unit]` | PASS | バトル序盤が欠けると再生の意味が薄い |
 | TC-BRA-038 | コンボの束ね鍵 `k` は anchor・送信者・giftId・`senderGroupId` が揃ったときだけ一致する | `buildPayload` | 正常/境界 | 同一 groupId で別ギフト・別送信者・`groupId: "0"` を混ぜる | 同一4つ組だけ同じ `k`。別ギフト・別送信者は別の `k`。`"0"` と null は `k: null`(単発) | `[unit]` | PASS | クライアントは `k` だけでカードを畳む。`"0"` は TikTok が「グループなし」に使う値 |

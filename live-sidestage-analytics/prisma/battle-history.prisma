@@ -196,6 +196,10 @@ model BattleHistoryGiftEvent {
 
   giftId           Int // TikTok側ギフト種別ID(Gift.giftIdのコピー)
   giftNameSnapshot String // Gift.giftNameのコピー(英語名)
+  // Gift.giftPictureUrl のコピー。コミュニティギフトは tiktok_gift_catalog に載らないので、
+  // 再生サムネはカタログではなくこの列に頼る。Gift は90日で消えるため履歴側へ凍結する。
+  // allowlist を通った TikTok CDN URL だけ入れる。取れなければ null。
+  giftPictureUrlSnapshot String?
   repeatCount      Int // Gift.repeatCountのコピー
   diamondCount     Int // Gift.diamondCountのコピー
   totalDiamonds    Int // Gift.totalDiamondsのコピー

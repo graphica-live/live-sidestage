@@ -28,6 +28,7 @@
 // 数秒古い」程度に限られる、という従来の想定はこの変更でさらに崩れやすくなる。
 
 import { prisma } from "@/lib/prisma";
+import { isAllowedAvatarUrl } from "@/lib/tiktok-profile";
 import { resolveTikTokUserDisplay } from "@/lib/tiktok-user";
 import { computeCaptureCoverage, refineCaptureByScore, type CaptureGap, type CaptureStatus } from "@/lib/room-connection-log";
 import {
@@ -95,6 +96,7 @@ export type BattleSnapshotGiftEvent = {
   senderNicknameSnapshot: string | null;
   giftId: number;
   giftNameSnapshot: string;
+  giftPictureUrlSnapshot: string | null;
   repeatCount: number;
   diamondCount: number;
   totalDiamonds: number;
@@ -386,6 +388,7 @@ export async function computeBattleSnapshot(
         tiktokUid: true,
         giftId: true,
         giftName: true,
+        giftPictureUrl: true,
         repeatCount: true,
         diamondCount: true,
         totalDiamonds: true,
@@ -406,6 +409,7 @@ export async function computeBattleSnapshot(
         senderNicknameSnapshot: null,
         giftId: g.giftId,
         giftNameSnapshot: g.giftName,
+        giftPictureUrlSnapshot: isAllowedAvatarUrl(g.giftPictureUrl) ? g.giftPictureUrl : null,
         repeatCount: g.repeatCount,
         diamondCount: g.diamondCount,
         totalDiamonds: g.totalDiamonds,
@@ -1002,6 +1006,7 @@ export async function attachReplayData(battleHistoryId: string): Promise<AttachR
   if (!committed) return { attached: false, reason: "not-found" };
 
   await backfillSenderGroupIds(battleHistoryId);
+  await backfillGiftPictureUrlSnapshots(battleHistoryId);
 
   return { attached: true, scorePointCount: scorePoints.length, giftEventCount: giftRows.length };
 }
@@ -1046,6 +1051,50 @@ export async function backfillSenderGroupIds(battleHistoryId: string): Promise<v
       await prisma.battleHistoryGiftEvent.updateMany({
         where: { id: { in: ids.slice(i, i + GIFT_EVENT_CHUNK_SIZE) } },
         data: { senderGroupId: groupId },
+      });
+    }
+  }
+}
+
+/**
+ * 再生サムネ用の giftPictureUrlSnapshot を元 Gift から後追いで写す。
+ *
+ * この列はコミュニティギフトがカタログに載らないために足したので、既存の確定済み行は全て null。
+ * 元 Gift が90日保持を過ぎて消えている行は諦めて null のまま残す。senderGroupId と同様、
+ * トランザクションの外に置き、失敗してもスコア点の付加を巻き戻さない。
+ */
+export async function backfillGiftPictureUrlSnapshots(battleHistoryId: string): Promise<void> {
+  const pending = await prisma.battleHistoryGiftEvent.findMany({
+    where: { participant: { battleHistoryId }, giftPictureUrlSnapshot: null },
+    select: { id: true, sourceGiftId: true },
+  });
+  if (pending.length === 0) return;
+
+  const urlBySourceId = new Map<string, string>();
+  for (let i = 0; i < pending.length; i += GIFT_EVENT_CHUNK_SIZE) {
+    const sourceGifts = await prisma.gift.findMany({
+      where: { id: { in: pending.slice(i, i + GIFT_EVENT_CHUNK_SIZE).map((e) => e.sourceGiftId) } },
+      select: { id: true, giftPictureUrl: true },
+    });
+    for (const gift of sourceGifts) {
+      if (isAllowedAvatarUrl(gift.giftPictureUrl)) urlBySourceId.set(gift.id, gift.giftPictureUrl);
+    }
+  }
+
+  const idsByUrl = new Map<string, string[]>();
+  for (const event of pending) {
+    const url = urlBySourceId.get(event.sourceGiftId);
+    if (!url) continue;
+    const bucket = idsByUrl.get(url);
+    if (bucket) bucket.push(event.id);
+    else idsByUrl.set(url, [event.id]);
+  }
+
+  for (const [url, ids] of idsByUrl) {
+    for (let i = 0; i < ids.length; i += GIFT_EVENT_CHUNK_SIZE) {
+      await prisma.battleHistoryGiftEvent.updateMany({
+        where: { id: { in: ids.slice(i, i + GIFT_EVENT_CHUNK_SIZE) } },
+        data: { giftPictureUrlSnapshot: url },
       });
     }
   }
